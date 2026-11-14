@@ -17,6 +17,7 @@ from decoy.cli.gate._run import (
     cap_error_text,
     capacity_codes,
     check_before_run,
+    check_static_before_acquire,
 )
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "cap_error_text",
     "capacity_codes",
     "check_before_run",
+    "check_static_before_acquire",
     "gate_exit_code",
     "layout_findings",
     "parse_pipeline_yaml",

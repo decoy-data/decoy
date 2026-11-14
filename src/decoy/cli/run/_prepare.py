@@ -4,7 +4,6 @@ vault writer, before any row is masked."""
 import binascii
 import contextlib
 from pathlib import Path
-from typing import Any
 
 import typer
 from rich.text import Text
@@ -17,6 +16,7 @@ from decoy.cli.gate import (
     GateRoute,
     PreRunCheckError,
     check_before_run,
+    check_static_before_acquire,
     layout_findings,
     parse_pipeline_yaml,
 )
@@ -25,7 +25,6 @@ from decoy.cli.io import (
     OutputPlacement,
     acquire_relation,
     check_declared_before_acquire,
-    duckdb_probe_config,
     duckdb_probe_raw,
     parse_flags,
     quarantine_enabled,
@@ -282,7 +281,6 @@ def prepare_preview(ctx: RunContext) -> None:
 
     assert ctx.rows is not None
     ctx.engine_version = engine_version
-
     if ctx.config_read_error is not None:
         raise ctx.config_read_error
     if ctx.saved_findings:
@@ -308,16 +306,6 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
     from decoy_engine import run_pipeline  # noqa: F401  (import kept at its original point)
 
     ctx.engine_version = engine_version
-
-    def _gate(raw: Any) -> dict:
-        return check_before_run(
-            raw,
-            ctx.config,
-            GateRoute.CHUNKED if ctx.chunked else GateRoute.PLAIN,
-            ctx.state,
-            _placement(ctx),
-            skip_subset=ctx.no_subset,
-        )
 
     if ctx.config_read_error is not None:
         raise ctx.config_read_error
@@ -377,12 +365,12 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
                     f"--duckdb-source: {_flag.table!r} is not a table in the pipeline "
                     f"`tables:` ({sorted(n for n in _declared if n)})"
                 )
-        _probe = duckdb_probe_config(ctx.raw, _flags)
-        if _probe is None:
-            # An invalid config keeps the gate's own error, raised before any database is opened.
-            _gate(duckdb_probe_raw(ctx.raw, _flags))
-        else:
-            check_declared_before_acquire(_probe, _flags, ctx.config.parent)
+        # The source-independent gate layers (config, compile) run on the placeholder config
+        # first (r13): an invalid config keeps the gate's own error, and no database is opened.
+        _probe = check_static_before_acquire(
+            duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
+        )
+        check_declared_before_acquire(_probe, _flags, ctx.config.parent)
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
@@ -401,7 +389,14 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
     # row is read. A refusal raises into the one handler below; a pass hands back the
     # validated config, so the run validates once. The DE-02 guard above keeps a
     # mask_secret_ref value out of every schema diagnostic.
-    ctx.config_dict = _gate(ctx.raw)
+    ctx.config_dict = check_before_run(
+        ctx.raw,
+        ctx.config,
+        GateRoute.CHUNKED if ctx.chunked else GateRoute.PLAIN,
+        ctx.state,
+        _placement(ctx),
+        skip_subset=ctx.no_subset,
+    )
 
     # Cloud (s3/gcs) sources/targets are refused inside the shared
     # I/O helpers below (_load_sources_from_config /

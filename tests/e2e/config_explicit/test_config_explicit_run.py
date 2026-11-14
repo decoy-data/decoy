@@ -371,6 +371,53 @@ def test_unparseable_config_keeps_the_gate_error_on_duckdb(
     assert any(m["code"] == "literal_error" for m in envelope["messages"])
 
 
+def test_a_compile_invalid_config_refuses_before_any_duckdb_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Schema-valid but rejected by the compile layer: `hash` needs a namespace (r13.4a).
+    db = _duck_db(tmp_path)
+    columns = [dict(c) for c in _ALL]
+    del columns[1]["namespace"]
+    config = _config(tmp_path, None, columns)
+    spies = _DuckSpies(monkeypatch)
+    result = runner.invoke(app, ["run", str(config), "--duckdb-source", f"people={db}", "--json"])
+    assert result.exit_code == 1, result.output
+    assert spies.untouched()
+    envelope = _envelope(result.output)
+    assert envelope["error_kind"] == "validation"
+    assert any(m["layer"] == "compile" and m["severity"] == "error" for m in envelope["messages"])
+    assert "undeclared_column" not in result.output
+
+
+def test_the_static_gate_does_no_source_io_on_placeholder_sources(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # r13.3: the probe carries `staged.parquet` placeholders that exist nowhere. A valid config
+    # passes the config and compile layers without any reader being called.
+    import pandas as pd_mod
+    import pyarrow.parquet as pq
+
+    from decoy.cli.gate import check_static_before_acquire
+    from decoy.cli.io import duckdb_probe_raw, parse_flags
+
+    def boom(*a: Any, **k: Any) -> Any:
+        raise AssertionError("the static gate read a source")
+
+    for target, name in [
+        (pq, "ParquetFile"),
+        (pq, "read_table"),
+        (pd_mod, "read_parquet"),
+        (pd_mod, "read_csv"),
+    ]:
+        monkeypatch.setattr(target, name, boom)
+    raw = yaml.safe_load(_config(tmp_path, None, _ALL).read_text())
+    probe = duckdb_probe_raw(raw, parse_flags(["people=x.duckdb"]))
+    assert probe is not None and probe["sources"]["people"]["path"] == "staged.parquet"
+    validated = check_static_before_acquire(probe, tmp_path / "pipeline.yaml")
+    assert validated["tables"][0]["name"] == "people"
+    assert not (tmp_path / "staged.parquet").exists()
+
+
 def test_a_malformed_flag_refuses_before_any_relation_is_acquired(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
