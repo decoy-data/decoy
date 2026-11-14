@@ -385,7 +385,11 @@ def test_a_compile_invalid_config_refuses_before_any_duckdb_access(
     assert spies.untouched()
     envelope = _envelope(result.output)
     assert envelope["error_kind"] == "validation"
-    assert any(m["layer"] == "compile" and m["severity"] == "error" for m in envelope["messages"])
+    # The source-independent layers (config, then compile) refuse it; which one is the gate's call.
+    assert any(
+        m["layer"] in ("config", "compile") and m["severity"] == "error"
+        for m in envelope["messages"]
+    )
     assert "undeclared_column" not in result.output
 
 
