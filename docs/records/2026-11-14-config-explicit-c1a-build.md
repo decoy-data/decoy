@@ -62,3 +62,18 @@ the engine's `prepare_declared_sources`. The CLI keeps its own readers.
   gate's own error.
 - The ambiguous `--source` refusal has the CLI-registry code `layout.report_source_ambiguous`.
   Subset prints an engine refusal's text without its leading code.
+
+## Fix round 4 (r13, static gate before DuckDB)
+
+- `gate/_layers.py::run_static_gate` runs the config layer, then the compile layer, and
+  `run_gate_on_config` calls it, so there is one ordering. `gate/_run.py::check_static_before_acquire`
+  raises `PreRunCheckError.from_result` like `check_before_run` and returns the validated config.
+  `run/_prepare.py` calls it on `duckdb_probe_raw` before `describe_relation`, `mkdtemp` or any
+  acquisition; the local `_gate` closure and the probe-None branch are gone.
+- Placeholder safety (r13.3), found: neither layer opens a source. The config layer validates the
+  schema and runs the profile-free plan-compile checks, the compile layer runs `compile_plan` with
+  an empty profile (`no_profile=True`), and only the preflight layer checks that source files
+  exist. No compile finding depends on the `staged.parquet` placeholder existing, so nothing is
+  filtered. `test_the_static_gate_does_no_source_io_on_placeholder_sources` fails if a reader runs.
+- `test_gate_refusal_removes_the_staging_dir` now forces a preflight refusal: a compile refusal
+  comes before staging, so it has no staging dir to remove.
