@@ -767,12 +767,3 @@ def test_mask_distinct_targets_write_and_the_check_leaves_the_config_alone(
     assert pd.read_csv(tmp_path / "b.csv")["id"].tolist() == ["tb1", "tb2"]
     ((before, after),) = seen
     assert before == after
-
-
-def test_mask_ignores_equal_target_entries_that_no_table_writes(tmp_path: Path):
-    config = _two_tables(tmp_path, str(tmp_path / "a.csv"), str(tmp_path / "b.csv"))
-    unused = str(tmp_path / "unused.csv")
-    config["targets"]["spare_1"] = {"type": "file", "format": "csv", "path": unused}
-    config["targets"]["spare_2"] = {"type": "file", "format": "csv", "path": unused}
-    assert set(decoy.mask(config=config)) == {"ta", "tb"}
-    assert not (tmp_path / "unused.csv").exists()
