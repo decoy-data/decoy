@@ -10,6 +10,7 @@ from decoy.cli.gate._layers import (
     run_config_gate,
     run_gate,
     run_gate_on_config,
+    shared_destination_findings,
 )
 from decoy.cli.gate._run import (
     ERROR_TEXT_CAP,
@@ -34,4 +35,5 @@ __all__ = [
     "run_config_gate",
     "run_gate",
     "run_gate_on_config",
+    "shared_destination_findings",
 ]

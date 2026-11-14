@@ -19,6 +19,8 @@ from decoy._config_file import ConfigFileError, parse_config_mapping, read_confi
 from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_OK, EXIT_USAGE, EXIT_WARNINGS
 
 if TYPE_CHECKING:
+    from decoy_engine.config import PipelineConfigError
+
     from decoy.cli.io import OutputPlacement
 
 # Prefix of the capacity finding on the CHUNKED route, where it is advisory.
@@ -114,6 +116,41 @@ def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:
     return findings
 
 
+def _schema_findings(exc: PipelineConfigError) -> list[GateFinding]:
+    """The config-layer errors for a config the engine schema refused, one per problem.
+
+    The one construction of these findings: the gate's schema layer and
+    `shared_destination_findings` both call it, so `decoy run` and `decoy validate` report a
+    schema refusal in one shape.
+    """
+    return [
+        GateFinding("config", "error", p.code, p.text, p.location or None) for p in exc.problems
+    ]
+
+
+def shared_destination_findings(raw: Any) -> list[GateFinding]:
+    """The schema refusal when the engine finds two tables writing to one destination, else [].
+
+    `decoy run` refuses layout faults before the gate, but two targets the declarations already
+    prove equal are the engine's `target_shared_destination`, which `decoy validate` reports
+    from the schema. Run raises this first so both commands give the same first code. Any other
+    schema refusal returns [] and keeps the old order: the layout check still runs before a
+    `--duckdb-source` stage reads a source.
+    """
+    from decoy_engine import ConfigError, PipelineValidationError, parse_pipeline_config, reasons
+    from decoy_engine.config import PipelineConfigError
+
+    shared = str(reasons.config.TARGET_SHARED_DESTINATION)
+    try:
+        parse_pipeline_config(raw)
+    except PipelineConfigError as exc:
+        if any(p.code == shared for p in exc.problems):
+            return _schema_findings(exc)
+    except (PipelineValidationError, ConfigError):
+        pass
+    return []
+
+
 def _run_config_base(
     raw: dict[str, Any], config_path: Path, placement: OutputPlacement | None = None
 ) -> tuple[dict[str, Any] | None, tuple[str, ...], list[GateFinding]]:
@@ -134,10 +171,7 @@ def _run_config_base(
     try:
         validated = parse_pipeline_config(raw).model_dump()
     except PipelineConfigError as exc:
-        findings: list[GateFinding] = [
-            GateFinding("config", "error", p.code, p.text, p.location or None) for p in exc.problems
-        ]
-        return None, (), findings
+        return None, (), _schema_findings(exc)
     except (PipelineValidationError, ConfigError) as exc:
         return (
             None,
