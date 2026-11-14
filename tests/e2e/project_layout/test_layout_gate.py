@@ -72,6 +72,11 @@ def _quarantine(path: str) -> dict:
 @pytest.fixture
 def read_spy(monkeypatch) -> list[str]:
     """Records every source read: the gate's preflight reads and the run's own readers."""
+    return install_read_spy(monkeypatch)
+
+
+def install_read_spy(monkeypatch) -> list[str]:
+    """The `read_spy` body, shared with `test_shared_destination_parity.py`."""
     import decoy.cli.preflight as preflight
     from decoy.cli.run import _execute
 

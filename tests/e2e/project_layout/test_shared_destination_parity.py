@@ -20,10 +20,15 @@ from tests.e2e.project_layout.test_layout_gate import (
     _project,
     _two_tables,
     _write,
+    install_read_spy,
     posix_only,
-    read_spy,  # noqa: F401  (pytest fixture)
     runner,
 )
+
+
+@pytest.fixture
+def read_spy(monkeypatch) -> list[str]:
+    return install_read_spy(monkeypatch)
 
 
 def _first_code(output: str) -> str:
