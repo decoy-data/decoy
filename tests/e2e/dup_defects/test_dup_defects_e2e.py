@@ -1,6 +1,6 @@
 """The DUP-DEFECTS engine fixes, proved through the CLI (roadmap row 24zd, slice C1).
 
-The engine fixes ship in `decoy-engine` 0.24.0, which the CLI pins: an unreadable statistical
+The engine fixes shipped in `decoy-engine` 0.24.0, and every later pin keeps them: an unreadable statistical
 snapshot gets its reason code (A5), a null timestamp feeding a `derived` column writes a null
 cell (A10), and `--chunked` runs a `when:` over a parquet `large_string` source (A15). Each test
 drives the real `decoy` app and holds the exit code, the reason code and the output bytes.
