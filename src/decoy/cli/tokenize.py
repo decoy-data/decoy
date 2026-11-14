@@ -307,18 +307,22 @@ def tokenize(
         _emit_error(_mask_secret_guidance.OLD_ENGINE_TOKENIZE)
         raise typer.Exit(code=EXIT_USAGE) from exc
 
-    if out_dir is not None:
-        # The gate's layout check, before any folder or source: the same one `run --out-dir` makes.
-        findings = layout_findings(
-            config_path, raw, OutputPlacement.fixed(out_dir, (("--vault", vault),))
-        )
-        if findings:
-            # The renderer `run` uses: the summary, the first code and every finding.
-            refusal = PreRunCheckError.from_findings(findings)
-            members = {"config": config_str, **refusal.json_members()}
-            members.pop("code", None)
-            emit_error(state, "tokenize", str(refusal), code=findings[0].code, context=members)
-            raise typer.Exit(code=refusal.exit_code)
+    # The gate's layout check, before any folder or source: the same one `run` makes. The vault
+    # is a typed side file, so no target can replace it.
+    typed = (("--vault", vault),)
+    placement = (
+        OutputPlacement.fixed(out_dir, typed)
+        if out_dir is not None
+        else OutputPlacement(typed=typed)
+    )
+    findings = layout_findings(config_path, raw, placement)
+    if findings:
+        # The renderer `run` uses: the summary, the first code and every finding.
+        refusal = PreRunCheckError.from_findings(findings)
+        members = {"config": config_str, **refusal.json_members()}
+        members.pop("code", None)
+        emit_error(state, "tokenize", str(refusal), code=findings[0].code, context=members)
+        raise typer.Exit(code=refusal.exit_code)
 
     from decoy.cli.run import _load_sources_from_config, _write_mask_outputs
 

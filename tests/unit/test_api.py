@@ -559,3 +559,184 @@ def test_decoy_module_exposes_mask_and_scan():
 def test_decoy_module_unknown_attribute_raises():
     with pytest.raises(AttributeError):
         _ = decoy.definitely_not_a_real_attribute
+
+
+# --------------------------------------------------------------------------
+# decoy.mask -- two outputs on one destination (DUP-DEST CL1)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def nothing_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The collision refusal comes before any source read and before the engine runs."""
+
+    def _no_read(*_args, **_kwargs):
+        raise AssertionError("a source was read before the collision refusal")
+
+    def _no_run(*_args, **_kwargs):
+        raise AssertionError("run_pipeline was called before the collision refusal")
+
+    monkeypatch.setattr("decoy.api._load_sources_from_config", _no_read)
+    monkeypatch.setattr("decoy_engine.run_pipeline", _no_run)
+
+
+def _two_tables(tmp_path: Path, path_a: str, path_b: str) -> dict:
+    src = tmp_path / "src"
+    src.mkdir(exist_ok=True)
+    for name in ("ta", "tb"):
+        pd.DataFrame({"id": [f"{name}1", f"{name}2"]}).to_csv(src / f"{name}.csv", index=False)
+    return {
+        "version": 2,
+        "global_settings": {"seed": 7},
+        "sources": {n: csv_source(src / f"{n}.csv") for n in ("ta", "tb")},
+        "tables": [
+            {"name": n, "columns": [{"name": "id", "strategy": "passthrough"}]}
+            for n in ("ta", "tb")
+        ],
+        "targets": {
+            "ta": {"type": "file", "format": "csv", "path": path_a},
+            "tb": {"type": "file", "format": "csv", "path": path_b},
+        },
+    }
+
+
+def _assert_collision(exc: pytest.ExceptionInfo, *locations: str) -> None:
+    from decoy.cli.io import LayoutError
+
+    assert isinstance(exc.value, LayoutError)
+    assert exc.value.code == "layout.output_path_collision"
+    for location in locations:
+        assert location in str(exc.value)
+    assert exc.value.__cause__ is None and exc.value.__context__ is None
+
+
+def test_mask_refuses_two_targets_on_one_absolute_path(tmp_path: Path, nothing_runs: None):
+    shared = tmp_path / "out" / "shared.csv"
+    config = _two_tables(tmp_path, str(shared), str(shared))
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert str(shared) not in str(exc.value)
+    assert not (tmp_path / "out").exists()
+
+
+def test_mask_refuses_out_paths_that_meet_through_a_symlinked_folder(
+    tmp_path: Path, nothing_runs: None
+):
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real, target_is_directory=True)
+    config = _two_tables(tmp_path, str(tmp_path / "a.csv"), str(tmp_path / "b.csv"))
+    out = {"ta": str(real / "x.csv"), "tb": str(tmp_path / "link" / "x.csv")}
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config, out=out)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert list(real.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("name_a", "name_b"),
+    [("Out.csv", "out.csv"), ("café.csv", "café.csv")],
+    ids=["case", "nfc-nfd"],
+)
+def test_mask_refuses_names_one_folding_volume_treats_as_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nothing_runs: None, name_a: str, name_b: str
+):
+    from decoy.cli.io import _placement
+
+    monkeypatch.setattr(_placement, "_folds_case", lambda _folder: True)
+    out = tmp_path / "out"
+    out.mkdir()
+    config = _two_tables(tmp_path, str(out / name_a), str(out / name_b))
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert list(out.iterdir()) == []
+
+
+def test_mask_refuses_two_existing_hard_links(tmp_path: Path, nothing_runs: None):
+    first = tmp_path / "first.csv"
+    first.write_text("keep\n", encoding="utf-8")
+    second = tmp_path / "second.csv"
+    second.hardlink_to(first)
+    config = _two_tables(tmp_path, str(first), str(second))
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert first.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_mask_refuses_a_relative_path_above_the_config_against_its_absolute_spelling(
+    tmp_path: Path, nothing_runs: None
+):
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    config = _two_tables(tmp_path, "../shared.csv", str(tmp_path / "shared.csv"))
+    path = cfg_dir / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=path)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert not (tmp_path / "shared.csv").exists()
+
+
+def test_mask_refuses_dot_dot_through_a_symlinked_folder_against_the_real_path(
+    tmp_path: Path, nothing_runs: None
+):
+    cfg_dir = tmp_path / "cfg"
+    cfg_dir.mkdir()
+    deep = tmp_path / "real" / "deep"
+    deep.mkdir(parents=True)
+    (cfg_dir / "sub").symlink_to(deep, target_is_directory=True)
+    landing = tmp_path / "real" / "a.csv"
+    config = _two_tables(tmp_path, "sub/../a.csv", str(landing))
+    path = cfg_dir / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=path)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert not landing.exists() and not (cfg_dir / "a.csv").exists()
+
+
+def test_mask_refuses_a_target_on_the_quarantine_file(tmp_path: Path, nothing_runs: None):
+    shared = tmp_path / "rows.csv"
+    config = _two_tables(tmp_path, str(shared), str(tmp_path / "b.csv"))
+    config["quarantine"] = {"enabled": True, "output_path": str(shared)}
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "quarantine.output_path")
+    assert not shared.exists() and not (tmp_path / "b.csv").exists()
+
+
+def test_mask_distinct_targets_write_and_the_check_leaves_the_config_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import copy
+
+    import decoy.api as api
+
+    seen: list[tuple[dict, dict]] = []
+    real_check = api._refuse_output_collisions
+
+    def _spy(config_dict: dict, layout) -> None:
+        before = copy.deepcopy(config_dict)
+        real_check(config_dict, layout)
+        seen.append((before, copy.deepcopy(config_dict)))
+
+    monkeypatch.setattr(api, "_refuse_output_collisions", _spy)
+    config = _two_tables(tmp_path, str(tmp_path / "a.csv"), str(tmp_path / "b.csv"))
+    out = decoy.mask(config=config)
+    assert set(out) == {"ta", "tb"}
+    assert pd.read_csv(tmp_path / "a.csv")["id"].tolist() == ["ta1", "ta2"]
+    assert pd.read_csv(tmp_path / "b.csv")["id"].tolist() == ["tb1", "tb2"]
+    ((before, after),) = seen
+    assert before == after
+
+
+def test_mask_ignores_equal_target_entries_that_no_table_writes(tmp_path: Path):
+    config = _two_tables(tmp_path, str(tmp_path / "a.csv"), str(tmp_path / "b.csv"))
+    unused = str(tmp_path / "unused.csv")
+    config["targets"]["spare_1"] = {"type": "file", "format": "csv", "path": unused}
+    config["targets"]["spare_2"] = {"type": "file", "format": "csv", "path": unused}
+    assert set(decoy.mask(config=config)) == {"ta", "tb"}
+    assert not (tmp_path / "unused.csv").exists()

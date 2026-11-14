@@ -35,7 +35,7 @@ from decoy import _mask_secret, _mask_secret_guidance, _native_gate
 from decoy._row_sample import sample_frame
 from decoy.cli._sources import CSV_DIALECT_KEYS, csv_file_source, resolved_source_config
 from decoy.cli.extras import UnsupportedCloudEndpointError
-from decoy.cli.io import RunLayout
+from decoy.cli.io import OUTPUT_PATH_COLLISION, RunLayout, resolved_output_collisions
 from decoy.cli.io._targets import claimed_format, format_for_path
 from decoy.cli.run import (
     _load_sources_from_config,
@@ -323,6 +323,31 @@ def _file_target_entry(existing: Any, path: Any) -> dict:
     return entry
 
 
+def _refuse_output_collisions(config_dict: dict, layout: RunLayout) -> None:
+    """Refuse two outputs that `_write_mask_outputs` would write to one file.
+
+    Checks the paths the writer will open, not the declared text, so `../x.csv`, a symlinked
+    folder or a case-only difference is caught as well as two equal spellings. Only targets
+    for declared tables take part, as in `write_targets`. The check input is built fresh:
+    `config_dict` is never edited, because the plan hash covers `quarantine`.
+    """
+    names = {t.get("name") for t in config_dict.get("tables") or () if isinstance(t, dict)}
+    placed_targets: dict[str, dict] = {}
+    for table, entry in (config_dict.get("targets") or {}).items():
+        if table not in names or not isinstance(entry, dict):
+            continue
+        raw = entry.get("path")
+        if entry.get("type", "file") in ("file", None) and isinstance(raw, str):
+            placed_targets[table] = {"type": "file", "path": str(layout.place_target(raw))}
+    placed: dict[str, Any] = {"targets": placed_targets}
+    quarantine = layout.place_quarantine(config_dict)
+    if quarantine is not None:
+        placed["quarantine"] = {"enabled": True, "output_path": quarantine}
+    clash = resolved_output_collisions(placed, None)
+    if clash is not None:
+        raise OUTPUT_PATH_COLLISION.error(first=clash[0], second=clash[1])
+
+
 def mask(
     data: Any = None,
     config: Any = None,
@@ -406,6 +431,10 @@ def mask(
         decoy.cli.io._targets.TargetFormatError: a declared target format
             contradicts its path suffix (for example `format: parquet` at
             `out.csv`). Raised before any source is read or the engine runs.
+        decoy.cli.io.LayoutError: two outputs (targets, or a target and the
+            quarantine file) resolve to one file, code
+            `layout.output_path_collision`. Raised before any source is read
+            or the engine runs, so no output is replaced.
         UnsupportedCloudEndpointError: a source or target (after `data` /
             `out` are applied) is s3 or gcs. Same refusal as `decoy run`,
             raised by the shared I/O helper before the engine runs; cloud
@@ -498,6 +527,9 @@ def mask(
             warnings.warn(gate_result.warn_message, stacklevel=2)
 
         base_dir = Path(config).parent if isinstance(config, (str, Path)) else Path.cwd()
+        # Library callers get fixed, predictable paths: no run folder, claim, `LATEST` or `current`.
+        layout = RunLayout.fixed(base_dir)
+        _refuse_output_collisions(config_dict, layout)
         # Every `sources:` entry now points at a real file (the caller's
         # own declared path, or one of the temp files just staged), so the
         # CLI's own loader (`decoy.cli.run._load_sources_from_config`)
@@ -505,8 +537,6 @@ def mask(
         # `decoy run pipeline.yaml`.
         sources = _load_sources_from_config(config_dict, base_dir)
 
-        # Library callers get fixed, predictable paths: no run folder, claim, `LATEST` or `current`.
-        layout = RunLayout.fixed(base_dir)
         resolver = _build_generation_resolver(master_key, key_label)
         instance_locale = (config_dict.get("global_settings") or {}).get("default_locale")
 
