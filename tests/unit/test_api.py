@@ -655,16 +655,18 @@ def test_mask_refuses_names_one_folding_volume_treats_as_one(
     assert list(out.iterdir()) == []
 
 
-def test_mask_writes_each_of_two_hard_linked_names_on_its_own(tmp_path: Path):
-    # The writer replaces each name's entry, so two hard links to one file are two outputs.
+def test_mask_refuses_two_existing_hard_links(tmp_path: Path, nothing_runs: None):
+    # An existing file's inode is its identity, as in `decoy run` and `decoy validate`.
     first = tmp_path / "first.csv"
     first.write_text("keep\n", encoding="utf-8")
     second = tmp_path / "second.csv"
     second.hardlink_to(first)
-    decoy.mask(config=_two_tables(tmp_path, str(first), str(second)))
-    assert not os.path.samefile(first, second)
-    assert pd.read_csv(first)["id"].tolist() == ["ta1", "ta2"]
-    assert pd.read_csv(second)["id"].tolist() == ["tb1", "tb2"]
+    config = _two_tables(tmp_path, str(first), str(second))
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert first.read_text(encoding="utf-8") == "keep\n"
+    assert os.path.samefile(first, second)
 
 
 def test_mask_refuses_quarantine_through_a_link_to_a_hard_linked_target(
@@ -686,19 +688,16 @@ def test_mask_refuses_quarantine_through_a_link_to_a_hard_linked_target(
     assert shared.read_text(encoding="utf-8") == "keep\n"
 
 
-def test_mask_writes_a_linked_target_and_a_hard_link_to_where_it_lands_apart(tmp_path: Path):
-    # The writer follows the link and replaces the entry it lands on, so the hard link keeps
-    # its own name and gets its own rows.
-    shared = tmp_path / "shared.csv"
-    shared.write_text("keep\n", encoding="utf-8")
-    alias = tmp_path / "alias.csv"
-    alias.hardlink_to(shared)
-    link = tmp_path / "link.csv"
-    link.symlink_to(shared)
-    decoy.mask(config=_two_tables(tmp_path, str(link), str(alias)))
-    assert link.is_symlink() and not os.path.samefile(shared, alias)
-    assert pd.read_csv(shared)["id"].tolist() == ["ta1", "ta2"]
-    assert pd.read_csv(alias)["id"].tolist() == ["tb1", "tb2"]
+def test_mask_refuses_equal_targets_no_table_writes(tmp_path: Path, nothing_runs: None):
+    # Every file target takes part, as in `decoy run` and `decoy validate`.
+    config = _two_tables(tmp_path, str(tmp_path / "a.csv"), str(tmp_path / "b.csv"))
+    unused = {"type": "file", "format": "csv", "path": str(tmp_path / "unused.csv")}
+    config["targets"]["ghost_a"] = unused
+    config["targets"]["ghost_b"] = dict(unused)
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ghost_a.path", "targets.ghost_b.path")
+    assert not (tmp_path / "unused.csv").exists()
 
 
 def test_mask_refuses_a_relative_path_above_the_config_against_its_absolute_spelling(

@@ -70,10 +70,6 @@ class OutputPlacement:
     typed: tuple[tuple[str, Path], ...] = ()
     chunked: bool = False
 
-    def __post_init__(self) -> None:
-        for flag, _path in self.typed:
-            _writer(flag)
-
     @classmethod
     def fixed(
         cls, directory: Path, typed: tuple[tuple[str, Path], ...] = (), chunked: bool = False
@@ -85,64 +81,16 @@ class OutputPlacement:
         return cls("preview")
 
 
-@dataclass(frozen=True)
-class _Writer:
-    """How the writer behind one output kind treats an existing final path component.
-
-    `replaces_final`: it replaces a final symlink with a file instead of following it.
-    `in_place`: it may change an existing regular file's bytes instead of replacing its
-    directory entry, so a hard link to that file is the same destination.
-    """
-
-    replaces_final: bool
-    in_place: bool
-
-
-# The one writer table. File targets and `--evidence-out` use `write_local_target` REPLACE:
-# follow a final link, then replace the entry it lands on. The engine's quarantine writer
-# truncates through a final symlink. `--vault` replaces a final link; `tokenize` updates an
-# existing vault with SQLite, and `run` refuses an existing one (`vault_exists`), so treating
-# both as in place only refuses earlier. The split root, the side-file check and the
-# collision rule all read this; an output kind missing here raises instead of guessing.
-_TARGET_WRITER = _Writer(replaces_final=False, in_place=False)
-_WRITERS = {
-    "quarantine.output_path": _Writer(replaces_final=False, in_place=True),
-    "--evidence-out": _Writer(replaces_final=False, in_place=False),
-    "--vault": _Writer(replaces_final=True, in_place=True),
-}
-
-
-def _writer(label: str) -> _Writer:
-    if label.startswith("targets.") and label.endswith(".path"):
-        return _TARGET_WRITER
-    policy = _WRITERS.get(label)
-    if policy is None:
-        raise ValueError("an output kind has no declared writer policy")
-    return policy
+# The one policy for a destination's final path component. A writer either follows a final
+# symlink (file targets, quarantine and `--evidence-out`, which use `write_local_target`
+# REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
+# root, the side-file check and the collision rule all read this, so none decides alone.
+_REPLACES_FINAL = frozenset({"--vault"})
 
 
 def replaces_final(label: str) -> bool:
     """True when the writer behind `label` (a config location or flag) replaces a final link."""
-    return _writer(label).replaces_final
-
-
-def writes_in_place(label: str) -> bool:
-    """True when the writer behind `label` may change an existing file's bytes in place."""
-    return _writer(label).in_place
-
-
-def _shared_inode(path: Path, label: str, replaces: bool) -> tuple[tuple | None, bool]:
-    """The existing regular file `path` lands on, by device and inode, and whether its writer
-    replaces that entry. Hard links to the file are separate destinations only when every
-    writer touching it replaces the entry it lands on; any other pair is one destination.
-    """
-    try:
-        landed = os.stat(_landing(path, replaces))
-    except (OSError, ValueError):
-        return None, True
-    if not stat.S_ISREG(landed.st_mode):
-        return None, True
-    return (landed.st_dev, landed.st_ino), not writes_in_place(label)
+    return label in _REPLACES_FINAL
 
 
 def _landing(path: Path, replaces: bool) -> Path:
@@ -180,15 +128,12 @@ def _destination_key(path: Path, *, replaces_final: bool = False) -> tuple:
     """Return one key for every spelling that the filesystem treats as one destination.
 
     The same key covers a symlink anywhere in the path; a dangling final symlink and its
-    missing target; dot segments and repeated or trailing separators; and case variants of an
-    existing ancestor or suffix on a folding filesystem. NFC and NFD variants of a suffix also
-    share a key where names fold, as on APFS and HFS+. A regular file, existing or not, is keyed
-    by the identity of the nearest existing directory plus its filesystem-normalized suffix:
-    an entry-replacing writer leaves two hard links to one file as two files, and
-    `resolved_output_collisions` adds the inode check for the writers that do not. Other
-    existing kinds (a device, FIFO or folder) are written through or
-    held in place, so they use device and inode identity. Two mounts of one remote share are
-    outside this contract.
+    missing target; dot segments and repeated or trailing separators; hard links to an existing
+    file; and case variants of an existing ancestor or missing suffix on a folding filesystem.
+    NFC and NFD variants of a missing suffix also share a key where names fold, as on APFS and
+    HFS+. Existing files use device and inode identity. Missing files use that identity for the
+    nearest existing directory plus its filesystem-normalized suffix. Two mounts of one remote
+    share are outside this contract.
     """
     real = _landing(path, replaces_final)
     try:
@@ -196,7 +141,7 @@ def _destination_key(path: Path, *, replaces_final: bool = False) -> tuple:
         found = None if entry is not None and stat.S_ISLNK(entry.st_mode) else os.stat(real)
     except (OSError, ValueError):
         found = None
-    if found is not None and not stat.S_ISREG(found.st_mode):
+    if found is not None:
         return ("file", found.st_dev, found.st_ino)
     for ancestor in real.parents:
         try:
@@ -277,7 +222,6 @@ def resolved_output_collisions(
     """
     seen: dict[tuple, str] = {}
     entries: dict[tuple, str] = {}
-    inodes: dict[tuple, tuple[str, bool]] = {}
     destinations: list[tuple[str, Path, bool]] = []
     for location, raw in relative_outputs(config_dict):
         if Path(raw).is_absolute():
@@ -298,12 +242,6 @@ def resolved_output_collisions(
         first = seen.get(key) or entries.get(entry)
         if first is not None:
             return first, label
-        inode, separable = _shared_inode(path, label, replaces)
-        if inode is not None:
-            earlier = inodes.get(inode)
-            if earlier is not None and not (separable and earlier[1]):
-                return earlier[0], label
-            inodes.setdefault(inode, (label, separable))
         seen[key] = label
         entries[entry] = label
     return None
