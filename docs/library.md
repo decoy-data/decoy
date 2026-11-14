@@ -79,6 +79,11 @@ A symlink, FIFO, device or a file swapped between the check and the open is refu
 `library_read_failed` and never followed or waited on. A record file over 16 MiB is refused with
 `library_file_too_large`, and a record that large is never written.
 
+No library operation follows a link out of the library. Every path below the library root is
+checked one folder at a time: a symlink, a Windows junction, a file or a pipe where a folder
+should be is refused with `library_path_unsafe` before anything is read, written or removed. A
+link inside a folder Decoy deletes is removed as an entry; its target is never touched.
+
 Errors name a code and an error class, never a path.
 
 ## Refs
@@ -156,7 +161,8 @@ degraded mode and why. It creates nothing.
 - no temp file in `library/tmp/` is older than an hour;
 - on Linux and macOS, the index, `tmp/`, `scratch/` and `logs/` are private (a finding);
   records and refs that git checked out 0644 get a note only;
-- job log lines parse (a truncated last line is a warning).
+- job log lines parse (a truncated last line is a warning);
+- no library folder is a link (`path_linked`); fsck reports the link and never looks inside it.
 
 Each problem prints one line: `finding`, `warning` or `note`, a code (`object_corrupt`,
 `payload_invalid`, `ref_dangling`, `index_stale`, `temp_stale`, `mode_open`, ...) and the path
@@ -165,7 +171,7 @@ inside the library. Exit 0 when there are no findings, 4 when there are.
 `--repair` copies each corrupt record into `library/quarantine/` and then removes it, deletes
 stale temp files, removes refs to missing records (printing each) and rebuilds the index. It
 never deletes a valid record, and it changes nothing in a library whose `LAYOUT` is newer than
-this Decoy.
+this Decoy, nothing under a linked folder, and no entry that was replaced after the check.
 
 ## File modes
 

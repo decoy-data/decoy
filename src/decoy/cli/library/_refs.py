@@ -32,7 +32,14 @@ from decoy.cli.library._errors import (
     REF_NAME_RESERVED,
     LibraryError,
 )
-from decoy.cli.library._fs import ensure_private_dir, read_capped, replace_file
+from decoy.cli.library._fs import (
+    Entry,
+    ensure_private_dir,
+    read_capped,
+    remove_file,
+    replace_file,
+    walk_tree,
+)
 from decoy.cli.library._paths import REFS, record_digest
 
 if TYPE_CHECKING:
@@ -78,11 +85,13 @@ def set_ref(library: Library, kind: str, name: str, record_id: str) -> None:
     with _index.locked(library.library_dir):
         library.get(record_id)  # exists and is the record its id names
         folder = library.library_dir / REFS
-        ensure_private_dir(folder)
+        ensure_private_dir(library.root, folder)
         for part in parts[:-1]:
             folder = folder / part
-            ensure_private_dir(folder)
-        replace_file(folder, parts[-1], f"{record_id}\n".encode(), tmp_dir=library.tmp_dir)
+            ensure_private_dir(library.root, folder)
+        replace_file(
+            library.root, folder, parts[-1], f"{record_id}\n".encode(), tmp_dir=library.tmp_dir
+        )
 
 
 def read_ref(library: Library, kind: str, name: str) -> str | None:
@@ -91,7 +100,7 @@ def read_ref(library: Library, kind: str, name: str) -> str | None:
     path = library.library_dir / REFS
     for part in _ref_parts(kind, name):
         path = path / part
-    data = read_capped(path, _MAX_REF_BYTES)
+    data = read_capped(library.root, path, _MAX_REF_BYTES)
     if data is None:
         return None
     text = data.decode("utf-8", errors="replace").strip()
@@ -100,40 +109,40 @@ def read_ref(library: Library, kind: str, name: str) -> str | None:
     return text
 
 
-def _ref_id(path: Path) -> str | None:
+def _ref_id(root: Path, path: Path) -> str | None:
     """The id a ref file holds, or None when it holds none (an unreadable, oversized or linked
     ref file included: fsck reports it like any ref without an id)."""
     data: bytes | None = None
     with contextlib.suppress(LibraryError):
-        data = read_capped(path, _MAX_REF_BYTES)
+        data = read_capped(root, path, _MAX_REF_BYTES)
     text = (data or b"").decode("utf-8", errors="replace").strip()
     return text if record_digest(text) is not None else None
 
 
-def iter_refs(refs_dir: Path) -> Iterator[tuple[Path, str | None]]:
-    """Every ref file under `refs_dir` with the id it holds, or None when it holds no id."""
-    if not refs_dir.is_dir():
-        return
-    for path in sorted(refs_dir.rglob("*")):
-        if path.is_file():
-            yield path, _ref_id(path)
+def iter_refs(root: Path, refs_dir: Path) -> Iterator[tuple[Entry, str | None]]:
+    """Every entry under `refs_dir` that is not a real folder, with the id a ref file holds.
+
+    Never descends through a link: a linked kind folder or ref is yielded as a `link` entry
+    with no id, for fsck to report. `library_path_unsafe` when `refs_dir` itself is linked.
+    """
+    for entry in walk_tree(root, refs_dir):
+        if entry.kind == "dir":
+            continue
+        yield entry, _ref_id(root, entry.path) if entry.kind == "file" else None
 
 
-def remove_refs(library: Library, paths: list[Path]) -> list[Path]:
+def remove_refs(library: Library, entries: list[Entry]) -> list[Path]:
     """Remove the given ref files that still point at no stored record, under the library lock
-    (fsck --repair, plan 4.10). Returns the ones removed; a ref set meanwhile is kept."""
+    (fsck --repair, plan 4.10). Returns the ones removed; a ref set meanwhile is kept, and an
+    entry replaced since fsck judged it (another inode) is left alone."""
     removed: list[Path] = []
-    if not paths:
+    if not entries:
         return removed
-    refs_dir = (library.library_dir / REFS).resolve()
     with _index.locked(library.library_dir):
-        for path in paths:
-            if refs_dir not in path.resolve().parents or not path.is_file():
+        for entry in entries:
+            target = _ref_id(library.root, entry.path)
+            if target is not None and library.has(target):
                 continue
-            target = _ref_id(path)
-            digest = record_digest(target) if target is not None else None
-            if digest is not None and library.has(target or ""):
-                continue
-            path.unlink()
-            removed.append(path)
+            if remove_file(library.root, entry.path, inode=entry.inode):
+                removed.append(entry.path)
     return removed
