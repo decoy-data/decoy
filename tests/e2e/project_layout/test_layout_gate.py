@@ -593,14 +593,18 @@ def test_resolved_output_collisions_dot_and_separator_spellings(
     _assert_collision(result, "targets.a.path", "targets.b.path", read_spy)
 
 
-def test_resolved_output_collisions_hard_links(tmp_path: Path, read_spy: list[str]) -> None:
+def test_two_hard_linked_targets_are_two_outputs(tmp_path: Path) -> None:
+    # The writer replaces each name's entry, so the run leaves two separate files.
     root = _project(tmp_path)
     first, second = tmp_path / "first.csv", tmp_path / "second.csv"
-    first.touch()
+    first.write_text("keep\n", encoding="utf-8")
     os.link(first, second)
     cfg = _write(root, "pipelines/orders/pipeline.yaml", _two_tables(root, str(first), str(second)))
-    result = runner.invoke(app, ["validate", "preflight", str(cfg), "--json"])
-    _assert_collision(result, "targets.a.path", "targets.b.path", read_spy)
+    result = runner.invoke(app, ["run", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert not os.path.samefile(first, second)
+    for path in (first, second):
+        assert len(pd.read_csv(path)) == 2
 
 
 def test_resolved_output_collisions_case_only_names_on_a_folding_parent(
