@@ -13,7 +13,7 @@ from pathlib import Path
 import typer
 
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE
-from decoy.ui.output import OutputState, setup_output
+from decoy.ui.output import OutputState, emit_error, setup_output
 from decoy.ui.theme import error, hint, success, warn
 
 __all__ = ["library_app"]
@@ -28,7 +28,7 @@ _LIBRARY_HELP = "Use DIR as the library (else DECOY_LIBRARY, else the project's 
 _SOURCE = {"flag": "--library", "env": "DECOY_LIBRARY", "project": "project"}
 
 
-def _root(state: OutputState, library: Path | None):
+def _root(state: OutputState, command: str, library: Path | None):
     from decoy.cli.io import LayoutError
     from decoy.cli.library._paths import resolve_root
 
@@ -37,12 +37,12 @@ def _root(state: OutputState, library: Path | None):
         return resolve_root(flag=library)
     except LayoutError as exc:
         failure = exc
-    state.err_console.print(error("error:"), str(failure))
-    raise typer.Exit(code=EXIT_USAGE)
+    raise _usage(state, command, failure)
 
 
-def _usage(state: OutputState, exc: Exception) -> typer.Exit:
-    state.err_console.print(error("error:"), str(exc))
+def _usage(state: OutputState, command: str, exc: Exception | None) -> typer.Exit:
+    """Report a refusal through the one error emitter; its code, never its cause."""
+    emit_error(state, command, str(exc), code=getattr(exc, "code", None))
     return typer.Exit(code=EXIT_USAGE)
 
 
@@ -55,14 +55,14 @@ def path_command(
     from decoy.cli.library._store import open_library
 
     state = setup_output(False, False, False)
-    root = _root(state, library)
+    root = _root(state, "library path", library)
     caught: LibraryError | None = None
     try:
         opened = open_library(root.path)
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        raise _usage(state, caught)
+        raise _usage(state, "library path", caught)
     state.console.print("root:", str(root.path))
     state.console.print("from:", _SOURCE[root.source])
     state.console.print("records:", "on" if root.records else "off (DECOY_LIBRARY=off)")
@@ -98,7 +98,7 @@ def fsck_command(
     from decoy.cli.library._paths import check_root_budget
 
     state = setup_output(False, False, False)
-    root = _root(state, library)
+    root = _root(state, "library fsck", library)
     caught: LibraryError | None = None
     try:
         check_root_budget(root.path)
@@ -109,7 +109,7 @@ def fsck_command(
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        raise _usage(state, caught)
+        raise _usage(state, "library fsck", caught)
     state.console.print("library:", str(root.path))
     for action in actions:
         state.console.print(success("repaired"), action.code, action.target)
