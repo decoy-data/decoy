@@ -14,7 +14,7 @@ description = "Source-available CLI for data masking and synthetic generation. W
 readme = "README.md"
 requires-python = ">=3.10"
 # FSL-1.1-ALv2 (owner decision, replacing BUSL-1.1) for the CLI; the engine
-# takes it from its first FSL release (0.22.0 and earlier stay Apache-2.0). Any use except a Competing Use; each release
+# takes it from 0.23.0, its first FSL release (0.22.0 and earlier stay Apache-2.0). Any use except a Competing Use; each release
 # becomes Apache-2.0 two years after it ships. Counsel confirms in R1-c.
 # FSL has no Trove classifier, hence Other/Proprietary below.
 license = "FSL-1.1-ALv2"
@@ -111,10 +111,25 @@ dependencies = [
     # generate columns per type at validate; the certified row aa038ddd is kept
     # and d5898d1f is added for the CLI runtime profile.
     #
+    # 0.23.0 adds the post-scan gate core and the chunked scan guards, makes the
+    # lgbm field classifier (scikit-learn, lightgbm) a base dependency, and moves the
+    # engine to FSL-1.1-ALv2; row 73acf493 is the CLI runtime profile (67 pins).
+    #
+    # 0.24.0 raises the `cryptography` floor to 49 (already in the certified set),
+    # adds the `blocked` isolated-run outcome for a post-scan block, and makes a
+    # profile's `generated_at` end `+00:00`; row 620a48a5 is the CLI runtime
+    # profile (67 pins, unchanged).
+    #
+    # 0.25.0 canonicalises every digest input (pinned-plan and resume fingerprints
+    # and `pipeline_config_hash` move), refuses a YAML date, NaN or surrogate in a
+    # config at plan compile, and renames `CUSTOM_PROVIDERS_DIR` to
+    # `DECOY_CUSTOM_PROVIDERS_DIR`; row c80550ef is the CLI runtime profile (67
+    # pins, unchanged).
+    #
     # Hard-pinned to one engine release. The platform is parked and stays on
     # 0.18.0, so the two pins differ for now. The engine is not on PyPI, so CI
-    # and the smoke docs install the `v0.22.0` git tag.
-    "decoy-engine==0.22.0",
+    # and the smoke docs install the `v0.25.0` git tag.
+    "decoy-engine==0.25.0",
     # Pin the typer minor: `typer utils docs` metavar rendering differs across
     # typer minors (0.26.x emits `TEXT`/`FILE`; 0.27.x emits `<str>`/`<file>`),
     # and docs/cli-reference.md is committed and checked by the test_cli_surface
@@ -132,8 +147,9 @@ dependencies = [
     # decoy.distribution.version_document, pulled in on every `decoy` invocation
     # via __main__ -> cli.upgrade. `cryptography` (Ed25519 verify) backs
     # decoy.distribution.signing (used by `decoy upgrade`). Floors match the
-    # engine's own (`packaging>=21.0`, `cryptography>=42`), so a minimal env that
-    # lacks either breaks the whole CLI, not just upgrade.
+    # engine's own for `packaging` (`>=21.0`); `cryptography>=42` is the CLI's own floor
+    # (engine 0.24.0 itself needs a newer one), so a minimal env that lacks either
+    # breaks the whole CLI, not just upgrade.
     "packaging>=21.0",
     "cryptography>=42",
     # Declared directly: `decoy ci` owns the decoy-ci/v1 manifest as a strict Pydantic model
