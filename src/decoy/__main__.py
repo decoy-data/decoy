@@ -7,7 +7,6 @@ through `if __name__ == "__main__":`.
 
 import copy
 import errno
-import os
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ import typer
 from typer.core import TyperGroup
 
 from decoy import __version__
+from decoy._env_flags import safe_env_flag
 from decoy.cli.ci import ci_app
 from decoy.cli.cockpit import DOCTOR_EPILOG, doctor
 from decoy.cli.demo import DEMO_EPILOG
@@ -27,6 +27,7 @@ from decoy.cli.info import INFO_EPILOG
 from decoy.cli.info import info as info_command
 from decoy.cli.init import INIT_EPILOG, init_command
 from decoy.cli.library import library_app
+from decoy.cli.project import project_app
 from decoy.cli.reference import LIST_EPILOG, SHOW_EPILOG, list_, show
 from decoy.cli.report import report_app
 from decoy.cli.run import RUN_EPILOG
@@ -65,8 +66,9 @@ Try one of:
   decoy tokenize pipeline.yaml --vault tokens.db   Reversible tokenization: mask tokenize columns + write a local vault.
   decoy detokenize pipeline.yaml tokenized.csv --vault tokens.db   Reverse a tokenized file from the local vault.
   decoy fit source.csv             Fit a distribution snapshot for statistical generation.
-  decoy init                       Scaffold a starter pipeline interactively.
+  decoy init <name>                Scaffold a pipeline in the current project.
   decoy setup                      Set this box's max memory and threads for `decoy run`.
+  decoy project new acme           Make a project folder for one client's pipelines and outputs.
   decoy list templates             Browse bundled pipeline templates.
   decoy show template hipaa        Dump one bundled template to stdout.
   decoy explain modes              Plain-English topic help. `explain` lists topics.
@@ -141,7 +143,9 @@ class _GuardedGroup(TyperGroup):
         return name, _record_contexts(cmd) if cmd is not None else cmd, rest
 
     def invoke(self, ctx: Any) -> Any:
-        debug = os.environ.get("DECOY_DEBUG") == "1"
+        # Read here, in the crash handler, so it cannot raise. Tracebacks can hold row data,
+        # so an unknown spelling leaves debug off.
+        debug = safe_env_flag("DECOY_DEBUG", default=False, unknown=False)
         try:
             return super().invoke(ctx)
         except _PASS_THROUGH:
@@ -273,6 +277,7 @@ app.command(name="demo", rich_help_panel="Start", epilog=DEMO_EPILOG)(demo_comma
 app.command(name="explain", rich_help_panel="Reference", epilog=EXPLAIN_EPILOG)(explain_command)
 app.command(name="info", rich_help_panel="Start", epilog=INFO_EPILOG)(info_command)
 app.command(name="schema", rich_help_panel="Reference", epilog=SCHEMA_EPILOG)(schema_command)
+app.add_typer(project_app, name="project", rich_help_panel="Start")
 app.add_typer(scan_app, name="scan", rich_help_panel="Mask")
 app.add_typer(report_app, name="report", rich_help_panel="Check and report")
 app.add_typer(ci_app, name="ci", rich_help_panel="Check and report")

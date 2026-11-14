@@ -63,15 +63,15 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from decoy import _private_file
-
-try:
-    import fcntl
-except ImportError:  # Windows: no directory lock
-    fcntl = None  # type: ignore[assignment]
 from decoy._private_file import (
+    PRIVATE_BUSY,
+    PRIVATE_OPEN_FAILED,
+    PrivateFileError,
+    advisory_lock_available,
     apply_mode,
     create_exclusive,
     restrict_owner_only,
+    try_lock_exclusive,
 )
 
 __all__ = [
@@ -524,11 +524,16 @@ class _TargetHeld(PermissionError):
     """The Windows retry ran out with the target still held open (`ATOMIC_TARGET_BUSY`)."""
 
 
-def _retry_on_windows(move: Callable[[], None]) -> None:
-    """Run `move`, retrying a PermissionError (target briefly held open) on Windows only.
+# ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION: another handle holds the file, which clears.
+# Access denied (5) or a folder in the way (267) is permanent and must not read as "try again".
+_HELD_WINERRORS = frozenset({32, 33})
 
-    Off Windows the error propagates at once. On Windows, still refused after the last try, it
-    becomes `_TargetHeld` so the writer can report `ATOMIC_TARGET_BUSY`.
+
+def _retry_on_windows(move: Callable[[], None]) -> None:
+    """Run `move`, retrying on Windows only while the target is held open by another handle.
+
+    Off Windows, or for any other refusal, the error propagates at once. On Windows, still held
+    after the last try, it becomes `_TargetHeld` so the writer can report `ATOMIC_TARGET_BUSY`.
     """
     delay = _RETRY_FIRST_SECONDS
     held_errno: int | None = None
@@ -537,7 +542,7 @@ def _retry_on_windows(move: Callable[[], None]) -> None:
             move()
             return
         except PermissionError as exc:
-            if not _private_file._WINDOWS:
+            if not _private_file._WINDOWS or getattr(exc, "winerror", None) not in _HELD_WINERRORS:
                 raise
             held_errno = exc.errno
             if attempt == _RETRY_ATTEMPTS - 1:
@@ -646,22 +651,25 @@ def _folder_lock(directory: Path) -> Iterator[None]:
 
     POSIX only: without `fcntl` (Windows) there is no lock and two publishers can interleave.
     """
-    if fcntl is None:
+    if not advisory_lock_available():
         yield
         return
-    failed = False
-    failed_errno: int | None = None
+    failure: PrivateFileError | None = None
     fd = -1
     try:
         fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        try_lock_exclusive(fd)
+    except PrivateFileError as exc:
+        failure = exc
     except OSError as exc:
-        failed, failed_errno = True, exc.errno
+        failure = PrivateFileError(PRIVATE_OPEN_FAILED, exc.errno)
+    if failure is not None:
         if fd >= 0:
             os.close(fd)
-    if failed:
-        busy = failed_errno in (errno.EWOULDBLOCK, errno.EAGAIN)
-        raise AtomicWriteError(ATOMIC_BATCH_BUSY if busy else ATOMIC_WRITE_FAILED, failed_errno)
+        raise AtomicWriteError(
+            ATOMIC_BATCH_BUSY if failure.code == PRIVATE_BUSY else ATOMIC_WRITE_FAILED,
+            failure.errno,
+        )
     try:
         yield
     finally:
