@@ -169,3 +169,84 @@ def test_a_refusal_carries_its_code_and_every_finding_in_json(
     assert doc["code"] == "layout.output_path_collision"
     assert doc["error_kind"] == "validation"
     assert [m["code"] for m in doc["messages"]] == ["layout.output_path_collision"]
+
+
+# DUP-DEST CL1: the project route (no --out-dir) runs the same layout check, with --vault typed.
+
+
+def _two_table_project(tmp_path: Path, path_a: str, path_b: str) -> Path:
+    root = _project(tmp_path)
+    cfg = root / "pipelines" / "orders" / "pipeline.yaml"
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    raw["sources"]["people_b"] = raw["sources"]["people"]
+    raw["tables"].append({**raw["tables"][0], "name": "people_b"})
+    raw["targets"]["people"]["path"] = path_a
+    raw["targets"]["people_b"] = {**raw["targets"]["people"], "path": path_b}
+    cfg.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    return root
+
+
+def _engine_must_not_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_a: object, **_k: object) -> None:
+        raise AssertionError("run_pipeline was called before the refusal")
+
+    monkeypatch.setattr("decoy_engine.run_pipeline", boom)
+
+
+def _refused(result: Any, root: Path, before: set[str]) -> None:
+    assert result.exit_code == EXIT_USAGE
+    assert "layout.output_path_collision" in result.output
+    assert _files(root) == before
+
+
+def test_project_route_refuses_two_targets_on_one_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shared = str(tmp_path / "shared.csv")
+    root = _two_table_project(tmp_path, shared, shared)
+    _no_source_read(monkeypatch)
+    _engine_must_not_run(monkeypatch)
+    before = _files(root)
+    _refused(_tokenize(root, monkeypatch, "--vault", "v.db"), root, before)
+    assert not (tmp_path / "shared.csv").exists()
+
+
+@pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
+def test_targets_meeting_through_a_symlinked_folder_are_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
+) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real, target_is_directory=True)
+    root = _two_table_project(tmp_path, str(real / "t.csv"), str(tmp_path / "link" / "t.csv"))
+    _no_source_read(monkeypatch)
+    _engine_must_not_run(monkeypatch)
+    before = _files(root)
+    args = ("--out-dir", "b") if out_dir else ()
+    _refused(_tokenize(root, monkeypatch, *args, "--vault", "v.db"), root, before)
+    assert list(real.iterdir()) == []
+
+
+@pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
+def test_a_target_on_the_vault_path_is_refused_and_the_vault_is_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
+) -> None:
+    vault = tmp_path / "vault.db"
+    root = _project(tmp_path, target=str(vault))
+    _no_source_read(monkeypatch)
+    _engine_must_not_run(monkeypatch)
+    before = _files(root)
+    args = ("--out-dir", "b") if out_dir else ()
+    _refused(_tokenize(root, monkeypatch, *args, "--vault", str(vault)), root, before)
+    assert not vault.exists()
+
+
+def test_project_route_with_distinct_absolute_targets_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = tmp_path / "first.csv", tmp_path / "second.csv"
+    root = _two_table_project(tmp_path, str(first), str(second))
+    result = _tokenize(root, monkeypatch, "--vault", str(tmp_path / "vault.db"))
+    assert result.exit_code == EXIT_OK, result.output
+    assert first.exists() and second.exists()
+    assert (tmp_path / "vault.db").exists()
