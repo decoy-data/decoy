@@ -7,6 +7,7 @@ current folder. Every refusal exits 1 before a source is read or a folder is mad
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -265,3 +266,22 @@ def test_an_existing_vault_a_target_names_keeps_its_bytes(
     args = ("--out-dir", "b") if out_dir else ()
     _refused(_tokenize(root, monkeypatch, *args, "--vault", str(vault)), root, before)
     assert vault.read_bytes() == b"canary vault bytes"
+
+
+@pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
+def test_a_target_hard_linked_to_an_existing_vault_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
+) -> None:
+    # tokenize updates an existing vault in place, so a hard link to it is the vault.
+    vault = tmp_path / "vault.db"
+    vault.write_bytes(b"canary vault bytes")
+    alias = tmp_path / "alias.csv"
+    os.link(vault, alias)
+    root = _project(tmp_path, target=str(alias))
+    _no_source_read(monkeypatch)
+    _engine_must_not_run(monkeypatch)
+    before = _files(root)
+    args = ("--out-dir", "b") if out_dir else ()
+    _refused(_tokenize(root, monkeypatch, *args, "--vault", str(vault)), root, before)
+    assert vault.read_bytes() == b"canary vault bytes"
+    assert os.path.samefile(vault, alias)

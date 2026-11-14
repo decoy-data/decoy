@@ -86,11 +86,39 @@ class OutputPlacement:
 # REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
 # root, the side-file check and the collision rule all read this, so none decides alone.
 _REPLACES_FINAL = frozenset({"--vault"})
+# Writers that may change an existing regular file's bytes in place rather than replace its
+# entry: `tokenize` updates an existing vault with SQLite, and the engine's quarantine writer
+# truncates through a final symlink. A file targets or `--evidence-out` publish replaces the
+# entry. Only two entry-replacing writers on plain (not symlinked) names may share an inode.
+_WRITES_IN_PLACE = frozenset({"--vault", "quarantine.output_path"})
 
 
 def replaces_final(label: str) -> bool:
     """True when the writer behind `label` (a config location or flag) replaces a final link."""
     return label in _REPLACES_FINAL
+
+
+def writes_in_place(label: str) -> bool:
+    """True when the writer behind `label` may change an existing file's bytes in place."""
+    return label in _WRITES_IN_PLACE
+
+
+def _shared_inode(path: Path, label: str, replaces: bool) -> tuple[tuple | None, bool]:
+    """The existing regular file `path` lands on, by device and inode, and whether its writer
+    replaces a plain entry. Hard links to that file are separate destinations only when every
+    writer touching it replaces a plain entry; any other pair is one destination.
+    """
+    try:
+        landed = os.stat(_landing(path, replaces))
+    except (OSError, ValueError):
+        return None, True
+    if not stat.S_ISREG(landed.st_mode):
+        return None, True
+    try:
+        plain = stat.S_ISREG(os.lstat(destination_entry(path)).st_mode)
+    except (OSError, ValueError):
+        plain = False
+    return (landed.st_dev, landed.st_ino), plain and not writes_in_place(label)
 
 
 def _landing(path: Path, replaces: bool) -> Path:
@@ -132,8 +160,9 @@ def _destination_key(path: Path, *, replaces_final: bool = False) -> tuple:
     existing ancestor or suffix on a folding filesystem. NFC and NFD variants of a suffix also
     share a key where names fold, as on APFS and HFS+. A regular file, existing or not, is keyed
     by the identity of the nearest existing directory plus its filesystem-normalized suffix:
-    every writer replaces a regular file's directory entry, so two hard links to one file stay
-    two destinations. Other existing kinds (a device, FIFO or folder) are written through or
+    an entry-replacing writer leaves two hard links to one file as two files, and
+    `resolved_output_collisions` adds the inode check for the writers that do not. Other
+    existing kinds (a device, FIFO or folder) are written through or
     held in place, so they use device and inode identity. Two mounts of one remote share are
     outside this contract.
     """
@@ -224,6 +253,7 @@ def resolved_output_collisions(
     """
     seen: dict[tuple, str] = {}
     entries: dict[tuple, str] = {}
+    inodes: dict[tuple, tuple[str, bool]] = {}
     destinations: list[tuple[str, Path, bool]] = []
     for location, raw in relative_outputs(config_dict):
         if Path(raw).is_absolute():
@@ -244,6 +274,12 @@ def resolved_output_collisions(
         first = seen.get(key) or entries.get(entry)
         if first is not None:
             return first, label
+        inode, separable = _shared_inode(path, label, replaces)
+        if inode is not None:
+            earlier = inodes.get(inode)
+            if earlier is not None and not (separable and earlier[1]):
+                return earlier[0], label
+            inodes.setdefault(inode, (label, separable))
         seen[key] = label
         entries[entry] = label
     return None

@@ -17,6 +17,7 @@ from decoy.cli.io._placement import (
     _folds_case,
     layout_issues,
     replaces_final,
+    writes_in_place,
 )
 
 SPLIT = "layout.delivery_root_split"
@@ -200,6 +201,14 @@ def test_the_final_link_policy_is_one_declared_mapping() -> None:
     assert not replaces_final("--evidence-out")
     assert not replaces_final("targets.a.path")
     assert not replaces_final("quarantine.path")
+
+
+def test_the_in_place_writer_policy_is_one_declared_mapping() -> None:
+    # An in-place writer and a hard link to its file are one destination.
+    assert writes_in_place("--vault")
+    assert writes_in_place("quarantine.output_path")
+    assert not writes_in_place("--evidence-out")
+    assert not writes_in_place("targets.a.path")
 
 
 @posix_only
