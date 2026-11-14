@@ -16,6 +16,7 @@ from decoy.cli.gate import (
     GateRoute,
     PreRunCheckError,
     check_before_run,
+    layout_findings,
     parse_pipeline_yaml,
 )
 from decoy.cli.io import (
@@ -34,10 +35,16 @@ from decoy.cli.run._execute import (
     _ChunkedReportFlagError,
     _load_sources_from_config,
     _note_chunked_key_check_skipped,
-    _refuse_chunked_integrity_requested,
+    _refuse_chunked_integrity,
+    _refuse_chunked_subset,
     _require_local_io_endpoints,
 )
-from decoy.cli.run._vault import _CHUNKED_VAULT_MESSAGE, _ChunkedVaultError, _VaultUsageError
+from decoy.cli.run._vault import (
+    _CHUNKED_VAULT_MESSAGE,
+    _ChunkedVaultError,
+    _VaultUsageError,
+    refuse_existing_vault,
+)
 from decoy.ui.output import OutputMode, emit_json
 from decoy.ui.theme import error, hint, warn
 
@@ -46,19 +53,15 @@ class _MaskSecretUsageError(Exception):
     """--mask-secret AND YAML mask_secret_ref both set; user error (exits EXIT_USAGE)."""
 
 
-# The raw pre-check (before Pydantic) and the effective-ref guard share the one
-# predicate in `decoy._mask_secret`; callers never echo the value.
-_is_valid_mask_secret_ref = _mask_secret.is_valid_mask_secret_ref
-
-
 def _load_raw_config(
     config_path: Path,
 ) -> tuple[object, list[GateFinding], Exception | None]:
     """The run path's single YAML parse, through the gate's parser.
 
     Returns `(raw, findings, read_error)`: `findings` holds a YAML syntax error (the run
-    refuses it before any work), `read_error` an unreadable or non-UTF-8 file (kept as
-    today: it surfaces through the run-level handler as a runtime error).
+    refuses it before any work), as do a non-UTF-8, empty or non-mapping file; `read_error`
+    an unreadable file (an `OSError`: it surfaces through the run-level handler as a runtime
+    error).
     """
     try:
         raw, findings = parse_pipeline_yaml(config_path)
@@ -234,13 +237,11 @@ def _guard_mask_secret_ref(raw: object) -> None:
             "See: decoy explain keys."
         )
     _raw_ref = _raw_gs.get("mask_secret_ref") if isinstance(_raw_gs, dict) else None
-    if _raw_ref is not None and not _is_valid_mask_secret_ref(_raw_ref):
-        raise _MaskSecretUsageError(
-            "Invalid global_settings.mask_secret_ref: expected an "
-            "'env:NAME' or 'file:/PATH' reference to a >=32-byte secret. "
-            "It is a REFERENCE, never the raw secret. "
-            "See: decoy explain keys."
-        )
+    # The raw pre-check (before Pydantic) shares the one shape rule in `decoy._mask_secret`;
+    # its text never echoes the value.
+    _problem = None if _raw_ref is None else _mask_secret.mask_secret_ref_problem(_raw_ref)
+    if _problem is not None:
+        raise _MaskSecretUsageError(_problem)
 
 
 def _placement(ctx: RunContext) -> OutputPlacement:
@@ -252,8 +253,21 @@ def _placement(ctx: RunContext) -> OutputPlacement:
         if path is not None
     )
     if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed)
-    return OutputPlacement(typed=typed)
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
+    return OutputPlacement(typed=typed, chunked=ctx.chunked)
+
+
+def _refuse_layout_faults(ctx: RunContext) -> None:
+    """Raise the gate's own refusal for an output layout fault, before any source is touched.
+
+    A config the layout check cannot read is left to the gate, which names the fault.
+    """
+    try:
+        findings = layout_findings(ctx.config, ctx.raw, _placement(ctx))
+    except Exception:
+        return
+    if findings:
+        raise PreRunCheckError.from_findings(findings)
 
 
 def prepare_preview(ctx: RunContext) -> None:
@@ -280,39 +294,6 @@ def prepare_preview(ctx: RunContext) -> None:
     ctx._res = _resources.resolve(max_memory=ctx.max_memory, threads=ctx.threads)
 
 
-def _refuse_chunked_integrity(ctx: RunContext) -> None:
-    """Refuse `--chunked` with post-scan integrity before any source is opened or staged.
-
-    The model is validated first so a malformed config still gets its normal validation
-    error from the gate. `--duckdb-source` tables get a placeholder file source for this
-    check only, because staging has not run and the model requires a source per mask table.
-    """
-    from decoy_engine import ConfigError, PipelineValidationError, parse_pipeline_config
-    from decoy_engine.config import PipelineConfigError
-
-    if not isinstance(ctx.raw, dict):
-        return
-    # A null `sources` block is an omitted one, as in staging below.
-    sources = ctx.raw.get("sources")
-    if sources is not None and not isinstance(sources, dict):
-        return
-    probe = {**ctx.raw, "sources": dict(sources or {})}
-    for spec in ctx.duckdb_source:
-        try:
-            probe["sources"][parse_flag(spec)[0]] = {
-                "type": "file",
-                "format": "parquet",
-                "path": "staged.parquet",
-            }
-        except DuckDBSourceError:
-            return
-    try:
-        validated = parse_pipeline_config(probe).model_dump()
-    except (PipelineConfigError, PipelineValidationError, ConfigError):
-        return
-    _refuse_chunked_integrity_requested(validated)
-
-
 def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
     """Everything between the config read and the first row: the engine import, the config
     guards, `--duckdb-source` staging, the gate, admission and the source load."""
@@ -330,7 +311,14 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
 
     _guard_mask_secret_ref(ctx.raw)
     if ctx.chunked:
+        _refuse_chunked_subset(ctx)
         _refuse_chunked_integrity(ctx)
+    # Layout and vault-path refusals need no source, so they come before DuckDB staging and
+    # the source preflight: a source failure must not hide either of them.
+    if isinstance(ctx.raw, dict):
+        _refuse_layout_faults(ctx)
+    if ctx.vault is not None and not ctx.chunked:
+        refuse_existing_vault(ctx.vault)
 
     # DuckDB-in sources: acquire each flagged relation read-only to a
     # temp Parquet and rewrite the in-memory source to that Parquet
@@ -393,6 +381,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         GateRoute.CHUNKED if ctx.chunked else GateRoute.PLAIN,
         ctx.state,
         _placement(ctx),
+        skip_subset=ctx.no_subset,
     )
 
     # Cloud (s3/gcs) sources/targets are refused inside the shared

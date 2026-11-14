@@ -130,15 +130,35 @@ class FromFile:
 
 
 @dataclass(frozen=True)
+class FromScan:
+    """Keys recomputed from the source tree by a scanner module's ``reasons()``.
+
+    The scanner is the single definition of the inventory, so the baseline cannot drift from a
+    second hand-kept list.
+    """
+
+    module: str
+
+    def __call__(self) -> set[str]:
+        return set(self.reasons())
+
+    def reasons(self) -> dict[str, str]:
+        mod = load_module(ROOT / self.module)
+        return dict(mod.reasons())
+
+
+@dataclass(frozen=True)
 class Source:
     sentry_id: str
     where: str  # file the sentry reads
-    keys: InCode | FromFile
+    keys: InCode | FromFile | FromScan
     data_file: str = ""  # a committed data file the sentry reads besides its baseline
     numeric: bool = False  # entries are counts, recorded as ``max`` beside the reason
 
     def maxes(self) -> dict[str, int] | None:
-        return self.keys.maxes() if self.numeric else None
+        if self.numeric and isinstance(self.keys, InCode):
+            return self.keys.maxes()
+        return None
 
 
 _SURFACE = "tests/unit/test_surface_docs_consistency.py"
@@ -335,6 +355,41 @@ SOURCES: tuple[Source, ...] = (
         _FANOUT,
         InCode(_FANOUT, "FANOUT_ALLOWLIST", reason=lambda e: _FANOUT_WHY, literal=True),
         numeric=True,
+    ),
+    Source(
+        "one-error-emitter",
+        "tests/sentry/cli_text/test_one_error_emitter.py",
+        FromScan("tests/sentry/cli_text/_error_sites.py"),
+    ),
+    Source(
+        "env-reads",
+        "tests/sentry/io_policy/test_environment_reads.py",
+        FromScan("tests/sentry/io_policy/_env_read_sites.py"),
+    ),
+    Source(
+        "json-stdout-writes",
+        "tests/sentry/cli_text/test_stdout_writes.py",
+        FromScan("tests/sentry/cli_text/_stdout_sites.py"),
+    ),
+    Source(
+        "exit-code-owner",
+        "tests/sentry/defects/test_exit_code_owner.py",
+        InCode(
+            "tests/sentry/defects/test_exit_code_owner.py",
+            "ALLOWLIST",
+            key=lambda e: f"{e.file}::{e.function}",
+            reason=lambda e: e.reason,
+        ),
+    ),
+    Source(
+        "config-load-allow",
+        "tests/sentry/io_policy/test_config_load_choke_point.py",
+        InCode(
+            "tests/sentry/io_policy/test_config_load_choke_point.py",
+            "ALLOWLIST",
+            key=lambda e: f"{e.file}::{e.function}::{e.n}",
+            reason=lambda e: f"{e.kind}: {e.reason}",
+        ),
     ),
     Source("import-layers", ".importlinter", FromFile(".importlinter", import_layer_reasons)),
 )
