@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 from decoy._config_file import ConfigFileError, parse_config_mapping, read_config_text
 from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_OK, EXIT_USAGE, EXIT_WARNINGS
@@ -367,6 +367,38 @@ def layout_findings(
     ]
 
 
+class StaticGate(NamedTuple):
+    """The source-independent layers of the gate: config, then compile.
+
+    `config` is None when the config layer failed (compile did not run, so `compile_findings`
+    is empty)."""
+
+    config: dict[str, Any] | None
+    checks_run: tuple[str, ...]
+    config_findings: list[GateFinding]
+    compile_findings: list[GateFinding]
+
+    @property
+    def layers(self) -> frozenset[str]:
+        return frozenset({"config"}) if self.config is None else frozenset({"config", "compile"})
+
+
+def run_static_gate(
+    raw: dict[str, Any], config_path: Path, placement: OutputPlacement | None = None
+) -> StaticGate:
+    """The config layer, short-circuiting on failure, then the compile layer.
+
+    Neither layer reads a source row or opens a source file (preflight does), so a caller can
+    run this before any source is staged or acquired. `run_gate_on_config` calls it, so there
+    is one ordering."""
+    config, checks_run, config_findings = _run_config_base(raw, config_path, placement)
+    if config is None:
+        return StaticGate(None, (), config_findings, [])
+    return StaticGate(
+        config, checks_run, config_findings, _run_compile_layer(raw, config_path.parent, config)
+    )
+
+
 def run_gate_on_config(
     raw: dict[str, Any],
     config_path: Path,
@@ -379,10 +411,11 @@ def run_gate_on_config(
     failed config layer. `config_path` names the YAML; `placement` says where relative outputs
     land (project placement when None). `skip_subset` (`--no-subset`) prices the capacity
     estimate on the config without its `subset:` block, as the run will read it."""
-    config, checks_run, config_findings = _run_config_base(raw, config_path, placement)
+    static = run_static_gate(raw, config_path, placement)
+    config, checks_run = static.config, static.checks_run
+    config_findings, compile_findings = static.config_findings, static.compile_findings
     if config is None:
         return GateResult(config_findings, frozenset({"config"}), False)
-    compile_findings = _run_compile_layer(raw, config_path.parent, config)
     compile_errors = frozenset(
         (f.code, f.location) for f in compile_findings if f.severity == "error"
     )
