@@ -680,22 +680,21 @@ def test_mask_refuses_a_relative_path_above_the_config_against_its_absolute_spel
     assert not (tmp_path / "shared.csv").exists()
 
 
-def test_mask_refuses_dot_dot_through_a_symlinked_folder_against_the_real_path(
-    tmp_path: Path, nothing_runs: None
-):
+def test_mask_checks_dot_dot_where_the_writer_lands_it(tmp_path: Path, nothing_runs: None):
+    # The writer joins a relative path lexically (`config_relative`), so `sub/../a.csv` lands
+    # in the config folder even when `sub` is a link elsewhere; the check follows the writer.
     cfg_dir = tmp_path / "cfg"
     cfg_dir.mkdir()
     deep = tmp_path / "real" / "deep"
     deep.mkdir(parents=True)
     (cfg_dir / "sub").symlink_to(deep, target_is_directory=True)
-    landing = tmp_path / "real" / "a.csv"
-    config = _two_tables(tmp_path, "sub/../a.csv", str(landing))
+    config = _two_tables(tmp_path, "sub/../a.csv", str(cfg_dir / "a.csv"))
     path = cfg_dir / "config.yaml"
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
     with pytest.raises(Exception) as exc:
         decoy.mask(config=path)
     _assert_collision(exc, "targets.ta.path", "targets.tb.path")
-    assert not landing.exists() and not (cfg_dir / "a.csv").exists()
+    assert not (cfg_dir / "a.csv").exists() and not (tmp_path / "real" / "a.csv").exists()
 
 
 def test_mask_refuses_a_target_on_the_quarantine_file(tmp_path: Path, nothing_runs: None):
@@ -724,8 +723,11 @@ def test_mask_distinct_targets_write_and_the_check_leaves_the_config_alone(
         seen.append((before, copy.deepcopy(config_dict)))
 
     monkeypatch.setattr(api, "_refuse_output_collisions", _spy)
-    config = _two_tables(tmp_path, str(tmp_path / "a.csv"), str(tmp_path / "b.csv"))
-    out = decoy.mask(config=config)
+    # Relative targets, so a check that placed them in the caller's dict would change it.
+    config = _two_tables(tmp_path, "a.csv", "b.csv")
+    path = tmp_path / "config.yaml"
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    out = decoy.mask(config=path)
     assert set(out) == {"ta", "tb"}
     assert pd.read_csv(tmp_path / "a.csv")["id"].tolist() == ["ta1", "ta2"]
     assert pd.read_csv(tmp_path / "b.csv")["id"].tolist() == ["tb1", "tb2"]
