@@ -19,6 +19,7 @@ placeholder sources/targets before PipelineConfig validation).
 from __future__ import annotations
 
 import json as _json
+import os
 import secrets
 from pathlib import Path
 
@@ -654,16 +655,16 @@ def test_mask_refuses_names_one_folding_volume_treats_as_one(
     assert list(out.iterdir()) == []
 
 
-def test_mask_refuses_two_existing_hard_links(tmp_path: Path, nothing_runs: None):
+def test_mask_writes_each_of_two_hard_linked_names_on_its_own(tmp_path: Path):
+    # The writer replaces each name's entry, so two hard links to one file are two outputs.
     first = tmp_path / "first.csv"
     first.write_text("keep\n", encoding="utf-8")
     second = tmp_path / "second.csv"
     second.hardlink_to(first)
-    config = _two_tables(tmp_path, str(first), str(second))
-    with pytest.raises(Exception) as exc:
-        decoy.mask(config=config)
-    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
-    assert first.read_text(encoding="utf-8") == "keep\n"
+    decoy.mask(config=_two_tables(tmp_path, str(first), str(second)))
+    assert not os.path.samefile(first, second)
+    assert pd.read_csv(first)["id"].tolist() == ["ta1", "ta2"]
+    assert pd.read_csv(second)["id"].tolist() == ["tb1", "tb2"]
 
 
 def test_mask_refuses_a_relative_path_above_the_config_against_its_absolute_spelling(

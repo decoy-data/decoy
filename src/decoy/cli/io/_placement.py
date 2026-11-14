@@ -128,12 +128,14 @@ def _destination_key(path: Path, *, replaces_final: bool = False) -> tuple:
     """Return one key for every spelling that the filesystem treats as one destination.
 
     The same key covers a symlink anywhere in the path; a dangling final symlink and its
-    missing target; dot segments and repeated or trailing separators; hard links to an existing
-    file; and case variants of an existing ancestor or missing suffix on a folding filesystem.
-    NFC and NFD variants of a missing suffix also share a key where names fold, as on APFS and
-    HFS+. Existing files use device and inode identity. Missing files use that identity for the
-    nearest existing directory plus its filesystem-normalized suffix. Two mounts of one remote
-    share are outside this contract.
+    missing target; dot segments and repeated or trailing separators; and case variants of an
+    existing ancestor or suffix on a folding filesystem. NFC and NFD variants of a suffix also
+    share a key where names fold, as on APFS and HFS+. A regular file, existing or not, is keyed
+    by the identity of the nearest existing directory plus its filesystem-normalized suffix:
+    every writer replaces a regular file's directory entry, so two hard links to one file stay
+    two destinations. Other existing kinds (a device, FIFO or folder) are written through or
+    held in place, so they use device and inode identity. Two mounts of one remote share are
+    outside this contract.
     """
     real = _landing(path, replaces_final)
     try:
@@ -141,7 +143,7 @@ def _destination_key(path: Path, *, replaces_final: bool = False) -> tuple:
         found = None if entry is not None and stat.S_ISLNK(entry.st_mode) else os.stat(real)
     except (OSError, ValueError):
         found = None
-    if found is not None:
+    if found is not None and not stat.S_ISREG(found.st_mode):
         return ("file", found.st_dev, found.st_ino)
     for ancestor in real.parents:
         try:
