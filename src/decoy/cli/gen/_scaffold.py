@@ -19,11 +19,13 @@ import yaml
 
 from decoy import _atomic
 from decoy._atomic import LocalTarget, WriteMode
+from decoy._config_file import parse_config_mapping
 from decoy._resources import ResourceError, read_fit_max_rows
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.gen._fit import FitSourceError, fit_exact_snapshot
-from decoy.ui.output import OutputMode, OutputState, emit_json
-from decoy.ui.theme import code, error, hint, success
+from decoy.cli.io import side_file_name
+from decoy.ui.output import OutputMode, OutputState, emit_error, emit_json
+from decoy.ui.theme import code, hint, success
 
 _STDOUT = "-"
 _NAME_OK = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -83,11 +85,12 @@ def layout_for(csv: Path, out: Path) -> Layout:
     table = stem if _NAME_OK.fullmatch(stem) else (re.sub(r"\W", "_", stem) or "data")
     if not _NAME_OK.fullmatch(table):
         table = f"t_{table}"
+    snapshot_name = side_file_name("snapshot", stem)
     return Layout(
         config=out,
-        snapshot=out.parent / f"{stem}.snapshot.json",
+        snapshot=out.parent / snapshot_name,
         source_name=csv.name,
-        snapshot_name=f"{stem}.snapshot.json",
+        snapshot_name=snapshot_name,
         target_name=f"{stem}.synthetic.csv",
         table=table,
     )
@@ -138,7 +141,7 @@ def _validate_pair(config_text: str, staged_snapshot: Path) -> list[str]:
 
     from decoy.cli.gate import GateRoute, run_gate_on_config
 
-    raw = yaml.safe_load(config_text)
+    raw = parse_config_mapping(config_text)
     for column in raw["tables"][0]["generate_columns"]:
         column["snapshot_file"] = str(staged_snapshot)
     result = run_gate_on_config(raw, staged_snapshot.parent / "pipeline.yaml", GateRoute.PLAIN)
@@ -163,15 +166,7 @@ def _validate_pair(config_text: str, staged_snapshot: Path) -> list[str]:
 
 def _fail(state: OutputState, text: str, hint_text: str | None = None) -> NoReturn:
     """Print a usage error in the active mode and exit 1. Files and column names only."""
-    if state.mode is OutputMode.json:
-        payload: dict[str, Any] = {"command": "init", "status": "error", "error": text}
-        if hint_text:
-            payload["hint"] = hint_text
-        emit_json(state, payload)
-    else:
-        state.err_console.print(error("error:"), text, markup=False)
-        if hint_text:
-            state.err_console.print(" ", hint("hint:"), hint_text, markup=False)
+    emit_error(state, "init", text, hint=hint_text or None)
     raise typer.Exit(code=EXIT_USAGE)
 
 
