@@ -36,6 +36,7 @@ SENTRIES = (
     "tests/sentry/io_policy/test_private_files_aliases.py",
     "tests/sentry/io_policy/test_scaffold_publish.py",
     "tests/sentry/io_policy/test_canonical_json.py",
+    "tests/sentry/io_policy/test_library_fs.py",
     "tests/sentry/io_policy/test_library_writer.py",
     "tests/sentry/io_policy/test_manifest_path_resolution.py",
     "tests/sentry/cli_text/test_help_panels.py",
