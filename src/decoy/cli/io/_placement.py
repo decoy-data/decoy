@@ -70,6 +70,10 @@ class OutputPlacement:
     typed: tuple[tuple[str, Path], ...] = ()
     chunked: bool = False
 
+    def __post_init__(self) -> None:
+        for flag, _path in self.typed:
+            _writer(flag)
+
     @classmethod
     def fixed(
         cls, directory: Path, typed: tuple[tuple[str, Path], ...] = (), chunked: bool = False
@@ -81,32 +85,56 @@ class OutputPlacement:
         return cls("preview")
 
 
-# The one policy for a destination's final path component. A writer either follows a final
-# symlink (file targets, quarantine and `--evidence-out`, which use `write_local_target`
-# REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
-# root, the side-file check and the collision rule all read this, so none decides alone.
-_REPLACES_FINAL = frozenset({"--vault"})
-# Writers that may change an existing regular file's bytes in place rather than replace its
-# entry: `tokenize` updates an existing vault with SQLite, and the engine's quarantine writer
-# truncates through a final symlink. A file targets or `--evidence-out` publish replaces the
-# entry. Only two entry-replacing writers on plain (not symlinked) names may share an inode.
-_WRITES_IN_PLACE = frozenset({"--vault", "quarantine.output_path"})
+@dataclass(frozen=True)
+class _Writer:
+    """How the writer behind one output kind treats an existing final path component.
+
+    `replaces_final`: it replaces a final symlink with a file instead of following it.
+    `in_place`: it may change an existing regular file's bytes instead of replacing its
+    directory entry, so a hard link to that file is the same destination.
+    """
+
+    replaces_final: bool
+    in_place: bool
+
+
+# The one writer table. File targets and `--evidence-out` use `write_local_target` REPLACE:
+# follow a final link, then replace the entry it lands on. The engine's quarantine writer
+# truncates through a final symlink. `--vault` replaces a final link; `tokenize` updates an
+# existing vault with SQLite, and `run` refuses an existing one (`vault_exists`), so treating
+# both as in place only refuses earlier. The split root, the side-file check and the
+# collision rule all read this; an output kind missing here raises instead of guessing.
+_TARGET_WRITER = _Writer(replaces_final=False, in_place=False)
+_WRITERS = {
+    "quarantine.output_path": _Writer(replaces_final=False, in_place=True),
+    "--evidence-out": _Writer(replaces_final=False, in_place=False),
+    "--vault": _Writer(replaces_final=True, in_place=True),
+}
+
+
+def _writer(label: str) -> _Writer:
+    if label.startswith("targets.") and label.endswith(".path"):
+        return _TARGET_WRITER
+    policy = _WRITERS.get(label)
+    if policy is None:
+        raise ValueError("an output kind has no declared writer policy")
+    return policy
 
 
 def replaces_final(label: str) -> bool:
     """True when the writer behind `label` (a config location or flag) replaces a final link."""
-    return label in _REPLACES_FINAL
+    return _writer(label).replaces_final
 
 
 def writes_in_place(label: str) -> bool:
     """True when the writer behind `label` may change an existing file's bytes in place."""
-    return label in _WRITES_IN_PLACE
+    return _writer(label).in_place
 
 
 def _shared_inode(path: Path, label: str, replaces: bool) -> tuple[tuple | None, bool]:
     """The existing regular file `path` lands on, by device and inode, and whether its writer
-    replaces a plain entry. Hard links to that file are separate destinations only when every
-    writer touching it replaces a plain entry; any other pair is one destination.
+    replaces that entry. Hard links to the file are separate destinations only when every
+    writer touching it replaces the entry it lands on; any other pair is one destination.
     """
     try:
         landed = os.stat(_landing(path, replaces))
@@ -114,11 +142,7 @@ def _shared_inode(path: Path, label: str, replaces: bool) -> tuple[tuple | None,
         return None, True
     if not stat.S_ISREG(landed.st_mode):
         return None, True
-    try:
-        plain = stat.S_ISREG(os.lstat(destination_entry(path)).st_mode)
-    except (OSError, ValueError):
-        plain = False
-    return (landed.st_dev, landed.st_ino), plain and not writes_in_place(label)
+    return (landed.st_dev, landed.st_ino), not writes_in_place(label)
 
 
 def _landing(path: Path, replaces: bool) -> Path:

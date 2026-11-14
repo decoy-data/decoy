@@ -254,6 +254,24 @@ def test_project_route_with_distinct_absolute_targets_still_runs(
 
 
 @pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
+def test_equal_targets_no_table_writes_do_not_block_a_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
+) -> None:
+    # `write_targets` skips a target keyed by no declared table, so the gate skips it too.
+    root = _project(tmp_path)
+    cfg = root / "pipelines" / "orders" / "pipeline.yaml"
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    unused = {"type": "file", "format": "csv", "path": str(tmp_path / "unused.csv")}
+    raw["targets"]["ghost_a"] = unused
+    raw["targets"]["ghost_b"] = dict(unused)
+    cfg.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    args = ("--out-dir", "b") if out_dir else ()
+    result = _tokenize(root, monkeypatch, *args, "--vault", str(tmp_path / "vault.db"))
+    assert result.exit_code == EXIT_OK, result.output
+    assert not (tmp_path / "unused.csv").exists()
+
+
+@pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
 def test_an_existing_vault_a_target_names_keeps_its_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
 ) -> None:

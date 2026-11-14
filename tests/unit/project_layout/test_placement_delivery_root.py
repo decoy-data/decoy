@@ -6,6 +6,7 @@ The gate refuses before any row is read, so every case runs `layout_issues`, the
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -200,7 +201,7 @@ def test_the_final_link_policy_is_one_declared_mapping() -> None:
     assert replaces_final("--vault")
     assert not replaces_final("--evidence-out")
     assert not replaces_final("targets.a.path")
-    assert not replaces_final("quarantine.path")
+    assert not replaces_final("quarantine.output_path")
 
 
 def test_the_in_place_writer_policy_is_one_declared_mapping() -> None:
@@ -209,6 +210,50 @@ def test_the_in_place_writer_policy_is_one_declared_mapping() -> None:
     assert writes_in_place("quarantine.output_path")
     assert not writes_in_place("--evidence-out")
     assert not writes_in_place("targets.a.path")
+
+
+@pytest.mark.parametrize("label", ["--result", "quarantine.path", "targets.a"])
+def test_an_output_kind_without_a_writer_policy_is_refused(label: str) -> None:
+    with pytest.raises(ValueError, match="no declared writer policy"):
+        writes_in_place(label)
+    with pytest.raises(ValueError, match="no declared writer policy"):
+        OutputPlacement(typed=((label, Path("x")),))
+
+
+def test_every_output_kind_the_gate_sees_has_a_writer_policy(tmp_path: Path) -> None:
+    from decoy.cli.io._layout import relative_outputs
+
+    cfg = {
+        "tables": [{"name": "a"}],
+        "targets": {"a": {"type": "file", "path": "a.csv"}},
+        "quarantine": {"enabled": True, "output_path": "q.jsonl"},
+    }
+    labels = [label for label, _raw in relative_outputs(cfg)] + ["--vault", "--evidence-out"]
+    assert labels == ["targets.a.path", "quarantine.output_path", "--vault", "--evidence-out"]
+    for label in labels:
+        replaces_final(label)
+
+
+@posix_only
+def test_a_linked_evidence_file_and_a_hard_link_to_where_it_lands_are_apart(
+    tmp_path: Path,
+) -> None:
+    # Both writers follow the link and replace the entry they land on.
+    from decoy.cli.io import resolved_output_collisions
+
+    shared = tmp_path / "shared.json"
+    shared.write_text("{}", encoding="utf-8")
+    alias = tmp_path / "alias.csv"
+    os.link(shared, alias)
+    link = tmp_path / "ev.json"
+    link.symlink_to(shared)
+    cfg = {"tables": [{"name": "a"}], "targets": {"a": {"type": "file", "path": str(alias)}}}
+    assert resolved_output_collisions(cfg, None, (("--evidence-out", link),)) is None
+    vault_cfg = {**cfg, "targets": {"a": {"type": "file", "path": str(link)}}}
+    assert resolved_output_collisions(vault_cfg, None, (("--vault", alias),)) == (
+        "targets.a.path",
+        "--vault",
+    )
 
 
 @posix_only
