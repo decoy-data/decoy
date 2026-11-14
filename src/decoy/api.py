@@ -36,11 +36,10 @@ from decoy._row_sample import sample_frame
 from decoy.cli._sources import (
     CSV_DIALECT_KEYS,
     csv_file_source,
-    prepared_sources,
     resolved_source_config,
 )
 from decoy.cli.extras import UnsupportedCloudEndpointError
-from decoy.cli.io import RunLayout
+from decoy.cli.io import RunLayout, prepared_sources
 from decoy.cli.io._targets import claimed_format, format_for_path
 from decoy.cli.run import (
     _load_sources_from_config,

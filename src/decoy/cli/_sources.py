@@ -257,16 +257,18 @@ def check_declared_before_acquire(raw: dict[str, Any], flags: list[str], base_di
     tables = raw.get("tables")
     if not isinstance(tables, list):
         return
+    # Config validity first (r12.1): an invalid config returns here, so no database is opened
+    # for it and the gate reports the config error.
+    validated = duckdb_probe_config(raw, flags)
+    if validated is None:
+        return
     declared = {t.get("name") for t in tables if isinstance(t, dict)}
     schemas = {}
     for spec in flags:
         table, db = parse_flag(spec)
         if table in declared:
             schemas[table] = names_schema(describe_relation(resolve_path(db, base_dir), table))
-    if not schemas:
-        return
-    validated = duckdb_probe_config(raw, flags)
-    if validated is not None:
+    if schemas:
         prepared_sources(validated, base_dir=base_dir, schemas=schemas)
 
 
@@ -299,23 +301,25 @@ def gate_report_source(
     The table is `table` when given (integrity anchors on the first declared one); otherwise the
     declared source whose resolved path is `source`, else the config's only table. The engine
     checks the table's own descriptor with `path` set to `source`, so the bytes read are the bytes
-    checked, and a declared dialect applies. A config with no file source has nothing to check.
+    checked, and a declared dialect applies. A selected table with no file source has nothing to check.
     Returns the selected table, or None when nothing was selected to check.
     """
     from decoy_engine import PipelineValidationError
 
     sources = {n: d for n, d in (config_dict.get("sources") or {}).items() if isinstance(d, dict)}
-    if not sources:
-        return None
+    # The table is selected before any early return (r12.2), whether or not `sources` has entries.
     if table is None:
         table = _declared_table_for(source, config_dict, config_dir)
         if table is None:
+            declares_tables = any(isinstance(t, dict) for t in config_dict.get("tables") or [])
+            if not (sources or declares_tables):
+                return None  # no config at all: nothing declared, nothing to check
             from decoy.cli.io import REPORT_SOURCE_AMBIGUOUS
 
             raise ReportSourceError(REPORT_SOURCE_AMBIGUOUS.message, REPORT_SOURCE_AMBIGUOUS.code)
     descriptor = sources.get(table)
     if descriptor is None or descriptor.get("type", "file") != "file":
-        return None
+        return None  # no file source for the selected table: nothing to check
     # `read_report_source` reads any source that is not `format: csv` as a default CSV, so the
     # check uses the descriptor the reader will use, not the declared reader.
     target = str(source.resolve())

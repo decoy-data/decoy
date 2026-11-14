@@ -5,6 +5,10 @@ Status: record
 Slice: roadmap row 22, CLI part C1a. Engine pin: decoy-engine 0.24.0 (already pinned).
 Plan: the CONFIG-EXPLICIT handoff, Part C1 as narrowed by revision note r11.
 
+Placement: the C1 e2e cells live in `tests/e2e/config_explicit/` (`test_config_explicit_run.py`,
+`test_config_explicit_reports.py`); the order sentry is
+`tests/sentry/io_policy/test_declared_read_choke_point.py`.
+
 ## Where each route gates
 
 | Route | Gate, before the first row read, stage or acquisition |

@@ -36,9 +36,9 @@ from typing import Any
 import typer
 
 from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
-from decoy.cli._sources import prepared_sources, refusal_message
+from decoy.cli._sources import refusal_message
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE, exit_code_for
-from decoy.cli.io import pipeline_argument, resolve_pipeline
+from decoy.cli.io import pipeline_argument, prepared_sources, resolve_pipeline
 from decoy.ui.output import OutputMode, emit_error, emit_json, print_traceback, setup_output
 from decoy.ui.table import make_table
 from decoy.ui.theme import accent, code, error, hint, success, warn

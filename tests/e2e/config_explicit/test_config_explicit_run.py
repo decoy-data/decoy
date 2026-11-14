@@ -300,8 +300,17 @@ def test_undeclared_duckdb_fails_before_acquisition(
     _assert_refused(result.output, "source_file.undeclared_column", tmp_path, spies)
 
 
-def test_unparseable_config_keeps_the_gate_error_on_duckdb(tmp_path: Path) -> None:
+def _envelope(output: str) -> dict[str, Any]:
+    line = next(ln for ln in output.splitlines() if ln.startswith("{"))
+    return json.loads(line)
+
+
+def test_unparseable_config_keeps_the_gate_error_on_duckdb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import duckdb
+
+    import decoy.cli._duckdb_source as duck_mod
 
     db = tmp_path / "in.duckdb"
     con = duckdb.connect(str(db))
@@ -311,9 +320,22 @@ def test_unparseable_config_keeps_the_gate_error_on_duckdb(tmp_path: Path) -> No
     raw = yaml.safe_load(config.read_text())
     raw["version"] = "not-a-version"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
-    result = runner.invoke(app, ["run", str(config), "--duckdb-source", f"people={db}"])
+    described: list[str] = []
+    real = duck_mod.describe_relation
+
+    def spy(*a, **k):
+        described.append("describe")
+        return real(*a, **k)
+
+    monkeypatch.setattr(duck_mod, "describe_relation", spy)
+    result = runner.invoke(app, ["run", str(config), "--duckdb-source", f"people={db}", "--json"])
     assert result.exit_code == 1
     assert "undeclared_column" not in result.output
+    # Config validity comes first (r12.1): the database is never opened for an invalid config.
+    assert described == []
+    envelope = _envelope(result.output)
+    assert envelope["error_kind"] == "validation"
+    assert any(m["code"] == "literal_error" for m in envelope["messages"])
 
 
 def _subset_config(tmp_path: Path, columns: list[dict[str, Any]]) -> Path:
@@ -382,3 +404,90 @@ def test_headerless_file_declared_headered_refuses_without_echoing_a_value(
         assert "source_file.undeclared_column" in result.output
         assert not any(n in result.output for n in names)
     assert not (tmp_path / "out.csv").exists()
+
+
+# ---------------------------------------------------------------- r12.3 refusal contract
+
+
+def _tokenize_config(tmp_path: Path) -> Path:
+    cols = [
+        {"name": "id", "strategy": "passthrough"},
+        {"name": "name", "strategy": "tokenize", "namespace": "name_ns"},
+        {"name": "age", "strategy": "passthrough"},
+    ]
+    return _config(tmp_path, csv_source(tmp_path / "people.csv"), cols)
+
+
+_BROKEN = {
+    "missing": ("source_file.file_not_found", None),
+    "malformed": ("csv_malformed", b"\xff\xfe\x00zz_marker\n1\n"),
+}
+
+
+def _assert_one_coded_refusal(result: Any, code: str, *, as_json: bool) -> None:
+    assert result.exit_code == 1, result.output
+    out = result.output
+    assert "internal error" not in out and "zz_marker" not in out and "people.csv" not in out
+    if as_json:
+        envelope = _envelope(out)
+        assert envelope["code"] == code
+        assert code not in envelope["error"]
+    else:
+        assert out.count(code) == 1
+
+
+@pytest.mark.parametrize("kind", sorted(_BROKEN))
+@pytest.mark.parametrize("as_json", [False, True])
+def test_tokenize_refuses_a_broken_source_once_with_its_code(
+    kind: str, as_json: bool, tmp_path: Path
+) -> None:
+    code, data = _BROKEN[kind]
+    if data is not None:
+        (tmp_path / "people.csv").write_bytes(data)
+    config = _tokenize_config(tmp_path)
+    args = ["tokenize", str(config), "--vault", str(tmp_path / "v.db")]
+    result = runner.invoke(app, args + (["--json"] if as_json else []))
+    _assert_one_coded_refusal(result, code, as_json=as_json)
+    assert not (tmp_path / "v.db").exists()
+
+
+@pytest.mark.parametrize("kind", sorted(_BROKEN))
+@pytest.mark.parametrize("as_json", [False, True])
+def test_demo_refuses_a_broken_source_once_with_its_code(
+    kind: str, as_json: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import decoy.cli.demo as demo_mod
+
+    code, data = _BROKEN[kind]
+    real = demo_mod._run_v2_mask
+
+    def broken(pipeline_yaml: Path, *a: Any, **k: Any) -> Any:
+        sample = pipeline_yaml.parent / "customers.csv"
+        if data is None:
+            sample.unlink()
+        else:
+            sample.write_bytes(data)
+        return real(pipeline_yaml, *a, **k)
+
+    monkeypatch.setattr(demo_mod, "_run_v2_mask", broken)
+    args = ["demo", "--dir", str(tmp_path / "d")] + (["--json"] if as_json else [])
+    result = runner.invoke(app, args)
+    _assert_one_coded_refusal(result, code, as_json=as_json)
+
+
+@pytest.mark.parametrize("kind", sorted(_BROKEN))
+def test_a_read_refusal_carries_no_cause_or_context(kind: str, tmp_path: Path) -> None:
+    from decoy_engine import PipelineValidationError
+
+    from decoy.cli._sources import prepared_sources
+
+    code, data = _BROKEN[kind]
+    if data is not None:
+        (tmp_path / "people.csv").write_bytes(data)
+    config = yaml.safe_load(
+        _config(tmp_path, csv_source(tmp_path / "people.csv"), _PLAIN).read_text()
+    )
+    with pytest.raises(PipelineValidationError) as excinfo:
+        prepared_sources(config, base_dir=tmp_path)
+    assert excinfo.value.code == code
+    assert excinfo.value.__cause__ is None and excinfo.value.__context__ is None

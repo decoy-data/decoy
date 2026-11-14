@@ -1,6 +1,6 @@
 """AT-C13: `report fidelity` and `report integrity` with `--config` check the actual `--source`
 against the selected table's declaration before reading it. `detokenize` names its own artifact:
-it validates and gates the config, and opens no declared source.
+it validates the config, and opens no declared source.
 
 Fidelity picks the declared source whose path is `--source`, else the config's only table, else
 refuses with fixed text. Integrity anchors on the first declared table. Without `--config` both
@@ -227,4 +227,40 @@ def test_ambiguous_report_source_carries_a_registered_code(tmp_path: Path) -> No
     )
     result = runner.invoke(app, ["report", "fidelity", str(other), str(out), "--config", str(cfg)])
     assert result.exit_code == 1
+    assert "layout.report_source_ambiguous" in result.output
+
+
+def test_several_generate_tables_with_no_sources_still_refuse_an_ambiguous_source(
+    tmp_path: Path,
+) -> None:
+    # Table selection runs before the "no file source" early return (r12.2).
+    _src, out = _pair(tmp_path)
+    other = tmp_path / "elsewhere.csv"
+    _FRAME.to_csv(other, index=False)
+    tables = [
+        {
+            "name": name,
+            "row_count": 5,
+            "generate_columns": [{"name": "n", "type": "sequence", "start": 1, "step": 1}],
+        }
+        for name in ("a", "b")
+    ]
+    cfg = tmp_path / "gen.yaml"
+    cfg.write_text(
+        yaml.safe_dump(
+            {
+                "version": 2,
+                "global_settings": {"seed": 1},
+                "sources": {},
+                "tables": tables,
+                "targets": {
+                    n: {"type": "file", "format": "csv", "path": str(tmp_path / f"{n}.csv")}
+                    for n in ("a", "b")
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    result = runner.invoke(app, ["report", "fidelity", str(other), str(out), "--config", str(cfg)])
+    assert result.exit_code == 1, result.output
     assert "layout.report_source_ambiguous" in result.output
