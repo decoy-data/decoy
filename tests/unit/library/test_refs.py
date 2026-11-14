@@ -274,7 +274,9 @@ def test_two_processes_set_the_same_ref_twenty_times_each(root: Path, tmp_path: 
 # -- B1-win-retry -----------------------------------------------------------------------------
 
 
-def _flaky_replace(monkeypatch: pytest.MonkeyPatch, fails: int) -> list[str]:
+def _flaky_replace(monkeypatch: pytest.MonkeyPatch, fails: int, winerror: int = 32) -> list[str]:
+    """`os.replace` of a ref refused as Windows refuses it (`winerror` 32 is a sharing
+    violation; CPython sets `winerror` only on Windows, so it is set here by hand)."""
     calls: list[str] = []
     real = os.replace
 
@@ -282,7 +284,9 @@ def _flaky_replace(monkeypatch: pytest.MonkeyPatch, fails: int) -> list[str]:
         if "refs" in str(dst):
             calls.append(str(dst))
             if fails < 0 or len(calls) <= fails:
-                raise PermissionError(errno.EACCES, "held open", str(dst))
+                exc = PermissionError(errno.EACCES, "refused", str(dst))
+                exc.winerror = winerror  # type: ignore[attr-defined]
+                raise exc
         real(src, dst, **kw)  # type: ignore[arg-type]
 
     monkeypatch.setattr(os, "replace", replace)
@@ -316,6 +320,22 @@ def test_a_ref_held_open_past_the_window_is_library_busy(
         library.set_ref("sample-run", "main", b)
     assert caught.value.code == LIBRARY_BUSY
     assert len(calls) == 10  # the writer's bounded retry, not a loop of its own
+    monkeypatch.undo()
+    assert library.read_ref("sample-run", "main") == a
+
+
+def test_a_ref_publish_denied_for_good_is_a_write_failure(
+    root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`winerror` 5 (access denied) at the publish step is permanent: never "try again"."""
+    a, b = _stored(root, 0), _stored(root, 1)
+    library = open_library(root)
+    library.set_ref("sample-run", "main", a)
+    calls = _flaky_replace(monkeypatch, fails=-1, winerror=5)
+    with pytest.raises(LibraryError) as caught:
+        library.set_ref("sample-run", "main", b)
+    assert caught.value.code == LIBRARY_WRITE_FAILED
+    assert len(calls) == 1  # refused once, not retried
     monkeypatch.undo()
     assert library.read_ref("sample-run", "main") == a
 
