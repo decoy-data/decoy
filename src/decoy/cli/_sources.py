@@ -204,20 +204,14 @@ def read_csv_frame(
     )
 
 
-def duckdb_probe_config(raw: Any, flags: list[str]) -> dict[str, Any] | None:
-    """The validated config with a placeholder Parquet source for each flagged, declared table.
+def duckdb_probe_raw(raw: Any, flags: list[Any]) -> dict[str, Any] | None:
+    """The raw config with a placeholder Parquet source for each flagged, declared table.
 
     Staging has not run when a `--duckdb-source` run is checked, and the model requires a source
-    per mask table, so a copy stands one in for each flagged table. This is the one deliberate
-    parse before the gate (r11 ruling 4): a config that does not parse returns None, so the gate
-    keeps reporting it. A malformed `--duckdb-source` flag also returns None; a flag naming an
-    undeclared table is left to the membership check.
+    per mask table, so a copy stands one in for each flagged table. No file is opened. None when
+    `raw` is not a mapping or its `sources` is not one; a flag naming an undeclared table is left
+    to the membership check.
     """
-    from decoy_engine import ConfigError, PipelineValidationError, parse_pipeline_config
-    from decoy_engine.config import PipelineConfigError
-
-    from decoy.cli._duckdb_source import DuckDBSourceError, parse_flag
-
     if not isinstance(raw, dict):
         return None
     # A null `sources` block is an omitted one, as in staging.
@@ -231,43 +225,53 @@ def duckdb_probe_config(raw: Any, flags: list[str]) -> dict[str, Any] | None:
         else set()
     )
     probe_sources = dict(sources or {})
-    for spec in flags:
-        try:
-            table = parse_flag(spec)[0]
-        except DuckDBSourceError:
-            return None
-        if table in declared:
-            probe_sources[table] = {"type": "file", "format": "parquet", "path": "staged.parquet"}
+    for flag in flags:
+        if flag.table in declared:
+            probe_sources[flag.table] = {
+                "type": "file",
+                "format": "parquet",
+                "path": "staged.parquet",
+            }
+    return {**raw, "sources": probe_sources}
+
+
+def duckdb_probe_config(raw: Any, flags: list[Any]) -> dict[str, Any] | None:
+    """`duckdb_probe_raw` validated, or None when the config does not parse.
+
+    The one deliberate parse before the gate (r11 ruling 4, r12.1): it opens no file. The caller
+    refuses a None through the gate, so an invalid config keeps the gate's own error and no
+    database is opened for it.
+    """
+    from decoy_engine import ConfigError, PipelineValidationError, parse_pipeline_config
+    from decoy_engine.config import PipelineConfigError
+
+    probe = duckdb_probe_raw(raw, flags)
+    if probe is None:
+        return None
     try:
-        return parse_pipeline_config({**raw, "sources": probe_sources}).model_dump()
+        return parse_pipeline_config(probe).model_dump()
     except (PipelineConfigError, PipelineValidationError, ConfigError):
         return None
 
 
-def check_declared_before_acquire(raw: dict[str, Any], flags: list[str], base_dir: Path) -> None:
+def check_declared_before_acquire(
+    validated: dict[str, Any], flags: list[Any], base_dir: Path
+) -> None:
     """Refuse an undeclared column of a flagged DuckDB relation before any relation is staged.
 
+    `validated` is `duckdb_probe_config`'s result and `flags` the flags parsed once up front.
     Each relation's columns come from `describe_relation`; the engine checks them against the
-    config's table declarations (`prepared_sources`) on the config `duckdb_probe_config` builds.
-    A config that does not parse is left alone: the gate reports it, as it does today.
-    A flag naming a table the config does not declare is left to the membership check.
+    config's table declarations (`prepared_sources`). A flag naming a table the config does not
+    declare is left to the membership check.
     """
-    from decoy.cli._duckdb_source import describe_relation, parse_flag
+    from decoy.cli._duckdb_source import describe_relation
 
-    tables = raw.get("tables")
-    if not isinstance(tables, list):
-        return
-    # Config validity first (r12.1): an invalid config returns here, so no database is opened
-    # for it and the gate reports the config error.
-    validated = duckdb_probe_config(raw, flags)
-    if validated is None:
-        return
-    declared = {t.get("name") for t in tables if isinstance(t, dict)}
-    schemas = {}
-    for spec in flags:
-        table, db = parse_flag(spec)
-        if table in declared:
-            schemas[table] = names_schema(describe_relation(resolve_path(db, base_dir), table))
+    declared = {t.get("name") for t in validated.get("tables") or [] if isinstance(t, dict)}
+    schemas = {
+        f.table: names_schema(describe_relation(resolve_path(f.db_path, base_dir), f.table))
+        for f in flags
+        if f.table in declared
+    }
     if schemas:
         prepared_sources(validated, base_dir=base_dir, schemas=schemas)
 

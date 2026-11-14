@@ -27,21 +27,29 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from tests.sentry.io_policy._calls import bindings, qualified, sites
+from tests.sentry.io_policy._calls import bindings, is_raw_reader, qualified, sites
 from tests.sentry.io_policy._calls import leaf as _leaf
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 
 OWNERS = ("cli/_sources.py", "cli/_duckdb_source.py")
-# What a read primitive does at the bottom: it opens a data file or a database. The readers are
-# derived from the owner modules, not listed (r12.4): a function there that reaches one of these,
-# directly or through another owner function, is a reader, so a new primitive is watched at once.
-RAW_READS = frozenset(
-    {"read_csv_source", "read_fixed_width", "read_table", "read_parquet", "ParquetFile", "connect"}
-)
-# Readers that are not owner functions: the engine's subset entries and the in-memory stager.
+# What a read primitive does at the bottom: it opens a data file (the shared qualified predicate
+# `is_raw_reader`, the one G-ONE-CSV-READ also uses) or a database. The readers are derived from
+# the owner modules, not listed (r12.4): a public function there that reaches a raw read, directly
+# or through another owner function, is a reader, so a new primitive is watched at once.
+# Explicit entries are only for readers that are not file reads: the DuckDB connection, the engine's
+# subset entries and the in-memory stager.
+NON_FILE_RAW = frozenset({"duckdb.connect"})
 EXTRA_READERS = frozenset({"run_subset", "plan_subset", "_stage_source_entry"})
+
+
+def _is_raw(call: ast.Call, bound: dict[str, str]) -> bool:
+    name = qualified(call, bound)
+    if name is None:
+        return False
+    package, _dot, member = name.rpartition(".")
+    return name in NON_FILE_RAW or is_raw_reader(package, member)
 
 
 def derive_readers(source: str) -> frozenset[str]:
@@ -49,13 +57,15 @@ def derive_readers(source: str) -> frozenset[str]:
     tree = ast.parse(source)
     module_bound = bindings(tree)
     calls: dict[str, set[str]] = {}
+    raw: set[str] = set()
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             bound = {**module_bound, **bindings(node)}
-            calls[node.name] = {
-                str(_leaf(c, bound)) for c in ast.walk(node) if isinstance(c, ast.Call)
-            }
-    readers = {fn for fn, names in calls.items() if names & RAW_READS}
+            found = [c for c in ast.walk(node) if isinstance(c, ast.Call)]
+            calls[node.name] = {str(_leaf(c, bound)) for c in found}
+            if any(_is_raw(c, bound) for c in found):
+                raw.add(node.name)
+    readers = set(raw)
     while True:
         more = {fn for fn, names in calls.items() if names & readers} - readers
         if not more:
@@ -248,6 +258,9 @@ def test_seeded_bypasses_are_detected() -> None:
         "def _private(p):\n    return pq.read_table(p)\n"
     )
     assert derive_readers(owner) == {"read_new_thing", "wrapper"}
+    # A reader family nobody listed (`pandas.read_feather`) is derived through the shared predicate.
+    feather = "import pandas as pd\ndef read_feather_thing(p):\n    return pd.read_feather(p)\n"
+    assert derive_readers(feather) == {"read_feather_thing"}
     new_reader = "def cmd(cfg):\n    return read_new_thing(cfg['p'])\n"
     assert ordering_violations(new_reader, readers=derive_readers(owner)) == ["cmd"]
     # Aliased imports resolve to the real name.

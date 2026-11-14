@@ -12,10 +12,17 @@ The source and DuckDB helpers `decoy run` uses are re-exported here as one bridg
 `cli/_sources.py` and `cli/_duckdb_source.py`, so `cli/run/` imports no private module.
 """
 
-from decoy.cli._duckdb_source import DuckDBSourceError, acquire_relation, parse_flag
+from decoy.cli._duckdb_source import (
+    DuckDBFlag,
+    DuckDBSourceError,
+    acquire_relation,
+    parse_flag,
+    parse_flags,
+)
 from decoy.cli._sources import (
     check_declared_before_acquire,
     duckdb_probe_config,
+    duckdb_probe_raw,
     iter_source_chunks,
     names_schema,
     parquet_schema,
@@ -149,6 +156,7 @@ __all__ = [
     "WARNING_CODES",
     "WARNING_DESCRIPTORS",
     "Descriptor",
+    "DuckDBFlag",
     "DuckDBSourceError",
     "LayoutError",
     "LayoutWarning",
@@ -173,6 +181,7 @@ __all__ = [
     "contained_path",
     "create_run_folder",
     "duckdb_probe_config",
+    "duckdb_probe_raw",
     "ensure_decoy_dir",
     "entry_format",
     "explicit_project",
@@ -205,6 +214,7 @@ __all__ = [
     "owning_pipeline",
     "parquet_schema",
     "parse_flag",
+    "parse_flags",
     "parse_pipeline_token",
     "pipeline_argument",
     "pipeline_identity",

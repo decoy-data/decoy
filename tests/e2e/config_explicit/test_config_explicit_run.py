@@ -305,37 +305,99 @@ def _envelope(output: str) -> dict[str, Any]:
     return json.loads(line)
 
 
-def test_unparseable_config_keeps_the_gate_error_on_duckdb(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import duckdb
+class _DuckSpies:
+    """Counts every database access and temp dir of `--duckdb-source` staging (r12.1)."""
 
-    import decoy.cli._duckdb_source as duck_mod
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import tempfile
+
+        import decoy.cli._duckdb_source as duck_mod
+        import decoy.cli.run._prepare as prepare_mod
+
+        self.describe: list[str] = []
+        self.acquire: list[str] = []
+        self.tmpdirs: list[str] = []
+        real_describe, real_acquire = duck_mod.describe_relation, duck_mod.acquire_relation
+        real_mkdtemp = tempfile.mkdtemp
+
+        def describe(*a, **k):
+            self.describe.append("describe")
+            return real_describe(*a, **k)
+
+        def acquire(*a, **k):
+            self.acquire.append("acquire")
+            return real_acquire(*a, **k)
+
+        def mkdtemp(*a, **k):
+            if k.get("prefix") == "decoy-duckdb-":
+                self.tmpdirs.append("mkdtemp")
+            return real_mkdtemp(*a, **k)
+
+        monkeypatch.setattr(duck_mod, "describe_relation", describe)
+        monkeypatch.setattr(duck_mod, "acquire_relation", acquire)
+        monkeypatch.setattr(prepare_mod, "acquire_relation", acquire)
+        monkeypatch.setattr(tempfile, "mkdtemp", mkdtemp)
+
+    def untouched(self) -> bool:
+        return self.describe == [] and self.acquire == [] and self.tmpdirs == []
+
+
+def _duck_db(tmp_path: Path) -> Path:
+    import duckdb
 
     db = tmp_path / "in.duckdb"
     con = duckdb.connect(str(db))
-    con.execute("CREATE TABLE people AS SELECT 1 AS id")
+    con.execute("CREATE TABLE people AS SELECT 1 AS id, 'a' AS name, '3' AS age")
     con.close()
+    return db
+
+
+def test_unparseable_config_keeps_the_gate_error_on_duckdb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = _duck_db(tmp_path)
     config = _config(tmp_path, None, _PARTIAL)
     raw = yaml.safe_load(config.read_text())
     raw["version"] = "not-a-version"
     config.write_text(yaml.safe_dump(raw), encoding="utf-8")
-    described: list[str] = []
-    real = duck_mod.describe_relation
-
-    def spy(*a, **k):
-        described.append("describe")
-        return real(*a, **k)
-
-    monkeypatch.setattr(duck_mod, "describe_relation", spy)
+    spies = _DuckSpies(monkeypatch)
     result = runner.invoke(app, ["run", str(config), "--duckdb-source", f"people={db}", "--json"])
     assert result.exit_code == 1
     assert "undeclared_column" not in result.output
-    # Config validity comes first (r12.1): the database is never opened for an invalid config.
-    assert described == []
+    # Config validity first (r12.1): no describe, no acquisition, no temp dir for it.
+    assert spies.untouched()
     envelope = _envelope(result.output)
     assert envelope["error_kind"] == "validation"
     assert any(m["code"] == "literal_error" for m in envelope["messages"])
+
+
+def test_a_malformed_flag_refuses_before_any_relation_is_acquired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = _duck_db(tmp_path)
+    config = _config(tmp_path, None, _ALL)
+    spies = _DuckSpies(monkeypatch)
+    result = runner.invoke(
+        app, ["run", str(config), "--duckdb-source", f"people={db}", "--duckdb-source", "nope"]
+    )
+    assert result.exit_code == 1
+    assert "--duckdb-source: expected TABLE=DB_PATH, got 'nope'" in result.output
+    assert spies.untouched()
+
+
+def test_an_undeclared_flag_table_refuses_before_any_relation_is_acquired(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db = _duck_db(tmp_path)
+    config = _config(tmp_path, None, _ALL)
+    spies = _DuckSpies(monkeypatch)
+    result = runner.invoke(
+        app,
+        ["run", str(config), "--duckdb-source", f"people={db}", "--duckdb-source", f"ghost={db}"],
+    )
+    assert result.exit_code == 1
+    assert "'ghost' is not a table in the pipeline" in result.output
+    assert spies.untouched()
 
 
 def _subset_config(tmp_path: Path, columns: list[dict[str, Any]]) -> Path:
