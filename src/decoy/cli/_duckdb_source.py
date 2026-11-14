@@ -23,8 +23,9 @@ connection, the same posture as the postgres_snapshot connector.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import overload
+from typing import NamedTuple, overload
 
 # A relation name we will interpolate into `COPY (SELECT * FROM <name>)`. The
 # allowlist is exactly a simple SQL identifier, so the name cannot carry a
@@ -37,6 +38,18 @@ class DuckDBSourceError(Exception):
     """A `--duckdb-source` the operator can fix: a malformed flag value, a
     missing database file, an unknown relation, or an unreadable database.
     `decoy run` maps it to EXIT_USAGE and never prints a traceback."""
+
+
+class DuckDBFlag(NamedTuple):
+    """One parsed `--duckdb-source`: the table it feeds and the database path as typed."""
+
+    table: str
+    db_path: str
+
+
+def parse_flags(values: Iterable[str]) -> list[DuckDBFlag]:
+    """Parse every flag before any database is touched; the first bad one refuses."""
+    return [DuckDBFlag(*parse_flag(v)) for v in values]
 
 
 def parse_flag(value: str) -> tuple[str, str]:
