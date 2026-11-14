@@ -667,6 +667,42 @@ def test_mask_writes_each_of_two_hard_linked_names_on_its_own(tmp_path: Path):
     assert pd.read_csv(second)["id"].tolist() == ["tb1", "tb2"]
 
 
+def test_mask_refuses_quarantine_through_a_link_to_a_hard_linked_target(
+    tmp_path: Path, nothing_runs: None
+):
+    # The quarantine writer truncates through a final symlink, so it would rewrite the
+    # file a hard-linked target shares.
+    shared = tmp_path / "shared.csv"
+    shared.write_text("keep\n", encoding="utf-8")
+    alias = tmp_path / "alias.csv"
+    alias.hardlink_to(shared)
+    link = tmp_path / "rows.jsonl"
+    link.symlink_to(shared)
+    config = _two_tables(tmp_path, str(alias), str(tmp_path / "b.csv"))
+    config["quarantine"] = {"enabled": True, "output_path": str(link)}
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "quarantine.output_path")
+    assert shared.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_mask_refuses_a_linked_target_and_a_hard_link_to_where_it_lands(
+    tmp_path: Path, nothing_runs: None
+):
+    # A writer that writes through a final symlink changes the inode the hard link shares.
+    shared = tmp_path / "shared.csv"
+    shared.write_text("keep\n", encoding="utf-8")
+    alias = tmp_path / "alias.csv"
+    alias.hardlink_to(shared)
+    link = tmp_path / "link.csv"
+    link.symlink_to(shared)
+    config = _two_tables(tmp_path, str(link), str(alias))
+    with pytest.raises(Exception) as exc:
+        decoy.mask(config=config)
+    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
+    assert shared.read_text(encoding="utf-8") == "keep\n"
+
+
 def test_mask_refuses_a_relative_path_above_the_config_against_its_absolute_spelling(
     tmp_path: Path, nothing_runs: None
 ):
