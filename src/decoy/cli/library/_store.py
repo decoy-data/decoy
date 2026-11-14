@@ -170,6 +170,7 @@ class Library:
     def rebuild_index(self) -> None:
         """Drop the index and rebuild it from the object files, under the lock (fsck --repair).
         Raises `LibraryError` when the lock cannot be taken."""
+
         def work(conn: sqlite3.Connection) -> None:
             _index.rebuild(conn)
             _index.sync(conn, _index.object_ids(self._objects), self._index_row)
@@ -228,10 +229,10 @@ class Library:
         if len(data) > MAX_RECORD_BYTES:
             raise LibraryError(LIBRARY_FILE_TOO_LARGE)
         folder = self._objects / digest[:2]
-        ensure_private_dir(folder)
-        created = write_once(folder, f"{digest[2:]}{_SUFFIX}", data, tmp_dir=self._tmp)
+        ensure_private_dir(self.root, folder)
+        created = write_once(self.root, folder, f"{digest[2:]}{_SUFFIX}", data, tmp_dir=self._tmp)
         if not created:
-            self._verify(self._object(digest), envelope.id)
+            self._verify(self.root, self._object(digest), envelope.id)
         self._index_put(_index.row_from(envelope.to_dict(), len(data), True))
         return PutResult(envelope.id, created, warnings)
 
@@ -245,7 +246,11 @@ class Library:
         `RecordNeedsNewer`. This is the one library read (G-ONE-SCAN-READER exempts this file).
         """
         digest = record_digest(record_id)
-        data = None if digest is None else read_capped(self._object(digest), MAX_RECORD_BYTES)
+        data = (
+            None
+            if digest is None
+            else read_capped(self.root, self._object(digest), MAX_RECORD_BYTES)
+        )
         if data is None:
             raise LibraryError(RECORD_NOT_FOUND)
         failure: records.RecordError | None = None
@@ -311,7 +316,7 @@ class Library:
         if self._ready:
             return ()
         warnings: tuple[LayoutWarning, ...] = ()
-        ensure_private_dir(self.root)
+        ensure_private_dir(self.root, self.root)
         if is_project_folder(self.root):
             failure: OSError | None = None
             try:
@@ -320,23 +325,25 @@ class Library:
                 failure = exc
             if failure is not None:
                 raise library_error(LIBRARY_WRITE_FAILED, failure)
-            write_dotfile_once(self.root / GITATTRIBUTES, GITATTRIBUTES_TEXT.encode("utf-8"))
-        ensure_private_dir(self._library)
-        ensure_private_dir(self._tmp)
+            write_dotfile_once(
+                self.root, self.root / GITATTRIBUTES, GITATTRIBUTES_TEXT.encode("utf-8")
+            )
+        ensure_private_dir(self.root, self._library)
+        ensure_private_dir(self.root, self._tmp)
         self._check_layout()
-        ensure_private_dir(self._objects)
+        ensure_private_dir(self.root, self._objects)
         self._ready = True
         return warnings
 
     def _check_layout(self) -> None:
         """Write `LAYOUT` once; refuse a library whose layout this version does not write."""
         layout = records.canonical_bytes({"layout": LAYOUT_VERSION})
-        if write_once(self._library, LAYOUT_FILE, layout, tmp_dir=self._tmp):
+        if write_once(self.root, self._library, LAYOUT_FILE, layout, tmp_dir=self._tmp):
             return
         found: object = None
         try:
             found = json.loads(
-                read_capped(self._library / LAYOUT_FILE, MAX_LAYOUT_BYTES) or b"null"
+                read_capped(self.root, self._library / LAYOUT_FILE, MAX_LAYOUT_BYTES) or b"null"
             )
         except ValueError:
             found = None
@@ -345,13 +352,13 @@ class Library:
             raise LibraryError(LIBRARY_LAYOUT_NEWER)
 
     @staticmethod
-    def _verify(path: Path, record_id: str) -> None:
+    def _verify(root: Path, path: Path, record_id: str) -> None:
         """An existing object is the same record only if its parsed content has this id.
 
         Parsing first means a CRLF or re-indented copy keeps its id. Only the id is checked: a
         record of a kind or major this version cannot read is still the same bytes.
         """
-        data = read_capped(path, MAX_RECORD_BYTES)
+        data = read_capped(root, path, MAX_RECORD_BYTES)
         parsed: object = None
         try:
             parsed = json.loads(data) if data is not None else None
