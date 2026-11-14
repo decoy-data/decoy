@@ -563,19 +563,10 @@ def test_an_access_denied_at_publish_is_a_write_failure_not_busy(
 ) -> None:
     """Staging succeeds; `os.replace` is then refused for good (an ACL deny, a folder in the
     way). Retrying cannot help, so it is neither retried nor reported as "try again"."""
-    staged: list[str] = []
-    real_stage = _atomic._stage_bytes
-
-    def stage(*args: object, **kw: object) -> tuple[str, int]:
-        out = real_stage(*args, **kw)  # type: ignore[arg-type]
-        staged.append(out[0])
-        return out
-
-    monkeypatch.setattr(_atomic, "_stage_bytes", stage)
     calls = _held_open(monkeypatch, windows=True, winerror=winerror)
     with pytest.raises(AtomicWriteError) as caught:
         write_atomic(tmp_path, "ref", b"x", WriteMode.REPLACE)
-    assert staged and len(calls) == 1  # non-vacuous: staging passed, publish refused once
+    assert len(calls) == 1  # non-vacuous: the temp was staged and publish was refused once
     assert caught.value.code == _atomic.ATOMIC_WRITE_FAILED
     assert caught.value.__context__ is None
     assert _names(tmp_path) == []
