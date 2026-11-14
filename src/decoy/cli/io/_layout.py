@@ -747,19 +747,19 @@ def quarantine_enabled(cfg: object) -> bool:
 
 
 def relative_outputs(config_dict: dict) -> list[tuple[str, str]]:
-    """Every string path the local writers can place: targets of declared tables, quarantine.
+    """Enumerate every string path the local target writers can place.
 
-    Absolute paths, URLs and empty paths stay in this one walk so the gate can tell them apart.
+    The predicate `is_placed_relative` decides which entries receive relative placement.
+    Keeping absolute paths and URLs in this one enumeration lets the gate distinguish them
+    without a second target walk. An empty path is retained so the gate refuses it.
     """
     found: list[tuple[str, object]] = []
-    targets, tables = config_dict.get("targets"), config_dict.get("tables")
-    named = isinstance(tables, list) and {t.get("name") for t in tables if isinstance(t, dict)}
+    targets = config_dict.get("targets")
     if isinstance(targets, dict):
         found.extend(
             (f"targets.{table}.path", entry.get("path"))
             for table, entry in targets.items()
             if isinstance(entry, dict) and entry.get("type", "file") in ("file", None)
-            if named is False or table in named
         )
     if quarantine_enabled(config_dict):
         found.append(("quarantine.output_path", config_dict["quarantine"].get("output_path")))
