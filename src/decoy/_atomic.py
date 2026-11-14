@@ -524,11 +524,16 @@ class _TargetHeld(PermissionError):
     """The Windows retry ran out with the target still held open (`ATOMIC_TARGET_BUSY`)."""
 
 
-def _retry_on_windows(move: Callable[[], None]) -> None:
-    """Run `move`, retrying a PermissionError (target briefly held open) on Windows only.
+# ERROR_SHARING_VIOLATION and ERROR_LOCK_VIOLATION: another handle holds the file, which clears.
+# Access denied (5) or a folder in the way (267) is permanent and must not read as "try again".
+_HELD_WINERRORS = frozenset({32, 33})
 
-    Off Windows the error propagates at once. On Windows, still refused after the last try, it
-    becomes `_TargetHeld` so the writer can report `ATOMIC_TARGET_BUSY`.
+
+def _retry_on_windows(move: Callable[[], None]) -> None:
+    """Run `move`, retrying on Windows only while the target is held open by another handle.
+
+    Off Windows, or for any other refusal, the error propagates at once. On Windows, still held
+    after the last try, it becomes `_TargetHeld` so the writer can report `ATOMIC_TARGET_BUSY`.
     """
     delay = _RETRY_FIRST_SECONDS
     held_errno: int | None = None
@@ -537,7 +542,7 @@ def _retry_on_windows(move: Callable[[], None]) -> None:
             move()
             return
         except PermissionError as exc:
-            if not _private_file._WINDOWS:
+            if not _private_file._WINDOWS or getattr(exc, "winerror", None) not in _HELD_WINERRORS:
                 raise
             held_errno = exc.errno
             if attempt == _RETRY_ATTEMPTS - 1:
