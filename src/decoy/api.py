@@ -331,15 +331,14 @@ def _refuse_output_collisions(config_dict: dict, layout: RunLayout) -> None:
     for declared tables take part, as in `write_targets`. The check input is built fresh:
     `config_dict` is never edited, because the plan hash covers `quarantine`.
     """
-    names = {t.get("name") for t in config_dict.get("tables") or () if isinstance(t, dict)}
     placed_targets: dict[str, dict] = {}
     for table, entry in (config_dict.get("targets") or {}).items():
-        if table not in names or not isinstance(entry, dict):
+        if not isinstance(entry, dict):
             continue
         raw = entry.get("path")
         if entry.get("type", "file") in ("file", None) and isinstance(raw, str):
             placed_targets[table] = {"type": "file", "path": str(layout.place_target(raw))}
-    placed: dict[str, Any] = {"targets": placed_targets}
+    placed: dict[str, Any] = {"tables": config_dict.get("tables"), "targets": placed_targets}
     quarantine = layout.place_quarantine(config_dict)
     if quarantine is not None:
         placed["quarantine"] = {"enabled": True, "output_path": quarantine}
