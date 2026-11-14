@@ -5,16 +5,17 @@ The engine owns the rule (`prepare_declared_sources`); the CLI reaches it throug
 every module under `src/decoy/` and applies three checks:
 
 1. A function that calls a row reader, a stager or `acquire_relation` (`READERS`) must call a
-   gate no later than its first such call. `CALLER_NAMED` modules read a file the caller named, not a declared source.
+   gate no later than its first such call. `CALLER_NAMED` lists the exact (module, function) pairs that read a file the caller named.
+   `READERS` is derived from the owner modules (`derive_readers`), not listed by hand.
 2. `REQUIRED` names the config-backed commands and loaders that must hold a gate call, so
    deleting a gate from one of them fails even when no reader sits in the same function.
 3. An engine entry that reads sources (`ENGINE_ENTRIES`) receives the reader-side copy
    (`resolved_source_config(...)`) as its first argument, never the dump as written, and no
    module builds a `CsvDialect(...)` of its own.
 
-Caller-named files (`decoy scan`, `decoy init`'s input, `read_file`, and the tokenized file of
-`decoy detokenize`, which opens no declared source) are not declared sources and
-are outside the watch lists. The csv and parquet read primitives themselves are owned by
+Caller-named files (`decoy scan`, `decoy init`'s input, the tokenized file of `decoy detokenize`,
+which opens no declared source) are not declared sources; each is an exact exemption with its
+reason. The csv and parquet read primitives themselves are owned by
 `test_csv_read_choke_point.py`; this sentry is about the order of the check.
 
 Named limits of a syntax walk: a call through a runtime-bound name, an alias by assignment, and a
@@ -26,25 +27,51 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.sentry.io_policy._calls import bindings, qualified, sites
 from tests.sentry.io_policy._calls import leaf as _leaf
-from tests.sentry.io_policy._calls import qualified, sites
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 
-READERS = frozenset(
-    {
-        "read_source",
-        "iter_source_chunks",
-        "read_csv_frame",
-        "source_schema_and_chunks",
-        "read_report_source",
-        "acquire_relation",
-        "_stage_source_entry",
-        "run_subset",
-        "plan_subset",
-    }
+OWNERS = ("cli/_sources.py", "cli/_duckdb_source.py")
+# What a read primitive does at the bottom: it opens a data file or a database. The readers are
+# derived from the owner modules, not listed (r12.4): a function there that reaches one of these,
+# directly or through another owner function, is a reader, so a new primitive is watched at once.
+RAW_READS = frozenset(
+    {"read_csv_source", "read_fixed_width", "read_table", "read_parquet", "ParquetFile", "connect"}
 )
+# Readers that are not owner functions: the engine's subset entries and the in-memory stager.
+EXTRA_READERS = frozenset({"run_subset", "plan_subset", "_stage_source_entry"})
+
+
+def derive_readers(source: str) -> frozenset[str]:
+    """Public top-level functions of an owner module that reach a raw read, transitively."""
+    tree = ast.parse(source)
+    module_bound = bindings(tree)
+    calls: dict[str, set[str]] = {}
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            bound = {**module_bound, **bindings(node)}
+            calls[node.name] = {
+                str(_leaf(c, bound)) for c in ast.walk(node) if isinstance(c, ast.Call)
+            }
+    readers = {fn for fn, names in calls.items() if names & RAW_READS}
+    while True:
+        more = {fn for fn, names in calls.items() if names & readers} - readers
+        if not more:
+            break
+        readers |= more
+    return frozenset(r for r in readers if not r.startswith("_"))
+
+
+def _owner_readers() -> frozenset[str]:
+    found: set[str] = set()
+    for rel in OWNERS:
+        found |= derive_readers((SRC / rel).read_text(encoding="utf-8"))
+    return frozenset(found)
+
+
+READERS = _owner_readers() | EXTRA_READERS
 # A gate counts by the name its import resolves to, never by its spelling: a local function that
 # happens to be called `prepared_sources` is not the gate. `decoy.cli.io` re-exports the same
 # functions for `cli/run/`. `api.py` owns its in-memory gate, a function defined in that module.
@@ -55,11 +82,22 @@ GATES = frozenset(
 )
 LOCAL_GATES = frozenset({("api.py", "_gate_in_memory_data")})
 ENGINE_ENTRIES = frozenset({"run_pipeline", "run_mask_pipeline_chunked", "profile_source"})
-OWNERS = ("cli/_sources.py", "cli/_duckdb_source.py")
 
-# `decoy init` reads the one file the caller named, with its own descriptor; it is not a declared
-# source of any config.
-CALLER_NAMED = ("cli/init.py",)
+# Callers that read a file the caller named, not a declared source. Exact (module, function)
+# pairs, each with its reason; any other call of a reader must follow a gate.
+CALLER_NAMED: dict[tuple[str, str], str] = {
+    ("cli/init.py", "_load_dataframe"): "`decoy init` reads the one input file the caller named",
+    (
+        "cli/scan.py",
+        "_load_parquet_with_sampling",
+    ): "`decoy scan` reads the Parquet the caller named",
+    ("cli/unmask.py", "unmask"): "reads the masked file the caller named, reversed from the vault",
+    (
+        "cli/tokenize.py",
+        "detokenize",
+    ): "reads the tokenized file the caller named; no declared source",
+    ("cli/report.py", "compare_data"): "reads the output files two evidence manifests recorded",
+}
 
 REQUIRED: tuple[tuple[str, str], ...] = (
     ("cli/run/_execute.py", "_load_sources_from_config"),
@@ -70,6 +108,7 @@ REQUIRED: tuple[tuple[str, str], ...] = (
     ("cli/report.py", "_fidelity"),
     ("cli/report.py", "_integrity"),
     ("api.py", "_stage_data_sources"),
+    ("api.py", "_gate_in_memory_data"),
 )
 
 
@@ -99,12 +138,15 @@ def _gate_lines(source: str, rel: str) -> dict[str, int]:
     return first
 
 
-def ordering_violations(source: str, rel: str = "") -> list[str]:
+def ordering_violations(
+    source: str, rel: str = "", readers: frozenset[str] | None = None
+) -> list[str]:
     """Functions whose first reader call has no gate call on or before its line."""
+    readers = READERS if readers is None else readers
     first_read: dict[str, int] = {}
     first_gate = _gate_lines(source, rel)
     for fn, name, line, _node in _calls(source):
-        if name in READERS:
+        if name in readers:
             first_read[fn] = min(line, first_read.get(fn, line))
     return sorted(fn for fn, line in first_read.items() if first_gate.get(fn, 10**9) > line)
 
@@ -143,8 +185,9 @@ def test_every_reader_is_gated_first() -> None:
     found = {
         (rel, fn)
         for rel, text in _modules()
-        if rel not in OWNERS and rel not in CALLER_NAMED
+        if rel not in OWNERS
         for fn in ordering_violations(text, rel)
+        if (rel, fn) not in CALLER_NAMED
     }
     assert found == set(), sorted(found)
 
@@ -194,6 +237,19 @@ def test_seeded_bypasses_are_detected() -> None:
         == []
     )
     assert dialect_constructions("def f():\n    return CsvDialect(names=None)\n") == [2]
+    # A config-backed `read_file` (a reader the old hand list missed) and a brand-new primitive.
+    assert "read_file" in READERS
+    cfg_read = "def cmd(cfg, base):\n    return read_file(cfg['p'], 'csv', None, table='t')\n"
+    assert ordering_violations(cfg_read) == ["cmd"]
+    owner = (
+        "import pyarrow.parquet as pq\n"
+        "def read_new_thing(p):\n    return pq.read_table(p)\n"
+        "def wrapper(p):\n    return read_new_thing(p)\n"
+        "def _private(p):\n    return pq.read_table(p)\n"
+    )
+    assert derive_readers(owner) == {"read_new_thing", "wrapper"}
+    new_reader = "def cmd(cfg):\n    return read_new_thing(cfg['p'])\n"
+    assert ordering_violations(new_reader, readers=derive_readers(owner)) == ["cmd"]
     # Aliased imports resolve to the real name.
     aliased = (
         "from decoy.cli._sources import read_source as rs\ndef f(c):\n    return rs('t', c, b)\n"
