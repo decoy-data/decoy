@@ -250,3 +250,18 @@ def test_project_route_with_distinct_absolute_targets_still_runs(
     assert result.exit_code == EXIT_OK, result.output
     assert first.exists() and second.exists()
     assert (tmp_path / "vault.db").exists()
+
+
+@pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
+def test_an_existing_vault_a_target_names_keeps_its_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
+) -> None:
+    vault = tmp_path / "vault.db"
+    vault.write_bytes(b"canary vault bytes")
+    root = _project(tmp_path, target=str(vault))
+    _no_source_read(monkeypatch)
+    _engine_must_not_run(monkeypatch)
+    before = _files(root)
+    args = ("--out-dir", "b") if out_dir else ()
+    _refused(_tokenize(root, monkeypatch, *args, "--vault", str(vault)), root, before)
+    assert vault.read_bytes() == b"canary vault bytes"
