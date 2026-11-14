@@ -116,7 +116,7 @@ def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:
     return findings
 
 
-def _schema_findings(exc: PipelineConfigError) -> list[GateFinding]:
+def _schema_findings(refusal: PipelineConfigError) -> list[GateFinding]:
     """The config-layer errors for a config the engine schema refused, one per problem.
 
     The one construction of these findings: the gate's schema layer and
@@ -124,7 +124,8 @@ def _schema_findings(exc: PipelineConfigError) -> list[GateFinding]:
     schema refusal in one shape.
     """
     return [
-        GateFinding("config", "error", p.code, p.text, p.location or None) for p in exc.problems
+        GateFinding("config", "error", p.code, p.text, p.location or None)
+        for p in refusal.problems
     ]
 
 
@@ -143,9 +144,9 @@ def shared_destination_findings(raw: Any) -> list[GateFinding]:
     shared = str(reasons.config.TARGET_SHARED_DESTINATION)
     try:
         parse_pipeline_config(raw)
-    except PipelineConfigError as exc:
-        if any(p.code == shared for p in exc.problems):
-            return _schema_findings(exc)
+    except PipelineConfigError as refusal:
+        if any(p.code == shared for p in refusal.problems):
+            return _schema_findings(refusal)
     except (PipelineValidationError, ConfigError):
         pass
     return []
