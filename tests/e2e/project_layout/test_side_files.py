@@ -196,6 +196,26 @@ def test_side_file_default_names_beside_the_input(
     assert side_file_default(kind, tmp_path / name) == tmp_path / expected
 
 
+@pytest.mark.parametrize(
+    "name", ["a.b.csv", "noext", ".hidden", "x.tar.gz", "t.pq", "m.unmasked.csv", "a b.csv"]
+)
+@pytest.mark.parametrize(
+    ("kind", "suffix"),
+    [
+        ("unmasked", ".unmasked.csv"),
+        ("detokenized", ".detokenized.csv"),
+        ("snapshot", ".snapshot.json"),
+    ],
+)
+def test_side_file_default_keeps_the_with_suffix_names_for_edge_stems(
+    tmp_path: Path, name: str, kind: str, suffix: str
+) -> None:
+    assert side_file_default(kind, tmp_path / name) == (tmp_path / name).with_suffix(suffix)  # type: ignore[arg-type]
+    assert side_file_default("detokenized", tmp_path / name, parquet=True) == (
+        tmp_path / name
+    ).with_suffix(".detokenized.parquet")
+
+
 def test_side_file_default_parquet_form_for_detokenized(tmp_path: Path) -> None:
     got = side_file_default("detokenized", tmp_path / "t.pq", parquet=True)
     assert got == tmp_path / "t.detokenized.parquet"

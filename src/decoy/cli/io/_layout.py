@@ -140,12 +140,18 @@ _SIDE_SUFFIX: dict[str, str] = {
 }
 
 
+def side_file_name(kind: SideKind, stem: str, *, parquet: bool = False) -> str:
+    """The default side-file name for a stem, the one place a suffix joins it. `parquet` picks
+    the Parquet form of a detokenized file; no other kind has one."""
+    suffix = ".detokenized.parquet" if parquet and kind == "detokenized" else _SIDE_SUFFIX[kind]
+    return f"{stem}{suffix}"
+
+
 def side_file_default(kind: SideKind, input_path: Path, *, parquet: bool = False) -> Path:
     """The default side file beside its input; `current` is resolved first. Unknown kind: `KeyError`."""
-    suffix = ".detokenized.parquet" if parquet and kind == "detokenized" else _SIDE_SUFFIX[kind]
     real, plain = input_path.parent.resolve(), Path(os.path.abspath(input_path.parent))
     beside = input_path if real == plain else real / input_path.name
-    return beside.with_suffix(suffix)
+    return beside.with_name(side_file_name(kind, beside.stem, parquet=parquet))
 
 
 def placed_path(run: RunFolder, raw: str) -> Path | None:
