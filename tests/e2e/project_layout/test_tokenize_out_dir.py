@@ -257,11 +257,12 @@ def test_project_route_with_distinct_absolute_targets_still_runs(
 def test_equal_targets_no_table_writes_are_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, out_dir: bool
 ) -> None:
-    # Every file target takes part, as in `decoy run` and `decoy validate`.
+    # Every file target takes part, as in `decoy run` and `decoy validate`. The spare targets
+    # share the real target's folder, so the collision is the first layout finding.
     root = _project(tmp_path)
     cfg = root / "pipelines" / "orders" / "pipeline.yaml"
     raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
-    unused = {"type": "file", "format": "csv", "path": str(tmp_path / "unused.csv")}
+    unused = {"type": "file", "format": "csv", "path": "unused.csv"}
     raw["targets"]["ghost_a"] = unused
     raw["targets"]["ghost_b"] = dict(unused)
     cfg.write_text(yaml.safe_dump(raw), encoding="utf-8")
@@ -272,7 +273,6 @@ def test_equal_targets_no_table_writes_are_refused(
     _refused(
         _tokenize(root, monkeypatch, *args, "--vault", str(tmp_path / "vault.db")), root, before
     )
-    assert not (tmp_path / "unused.csv").exists()
 
 
 @pytest.mark.parametrize("out_dir", [False, True], ids=["project", "out-dir"])
