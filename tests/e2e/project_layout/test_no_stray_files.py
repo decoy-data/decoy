@@ -131,6 +131,28 @@ def _assert_only(step: str, new: set[Path], *allowed: Path) -> None:
     assert not [p for p in new if p.name == "logs"], f"{step} made a logs folder"
 
 
+def _assert_exact(step: str, new: set[Path], expected: set[Path]) -> None:
+    """The new paths are exactly `expected`: nothing extra, nothing missing."""
+    assert new == expected, (
+        f"{step}: unexpected {sorted(str(p) for p in new - expected)}, "
+        f"missing {sorted(str(p) for p in expected - new)}"
+    )
+
+
+def _out_first(project: Path) -> set[Path]:
+    """`out/` and its `.gitignore`, made by the first run in a project."""
+    return {project / "out", project / "out" / ".gitignore"}
+
+
+def _run_paths(project: Path, name: str, run: Path, *files: str) -> set[Path]:
+    """One pipeline's `out/<name>/`: claim, pointer, link, the run folder and its files."""
+    base = project / "out" / name
+    paths = {base, base / "PIPELINE", base / "LATEST", run, *(run / f for f in files)}
+    if os.name == "posix":
+        paths.add(base / "current")
+    return paths
+
+
 def test_each_command_writes_only_where_the_guarantee_allows(world: World) -> None:
     w = world
     w.pipeline("mask", [FPE, HASH])
@@ -142,42 +164,43 @@ def test_each_command_writes_only_where_the_guarantee_allows(world: World) -> No
 
     done, new = w.run("init", "initd", "--source", str(w.source))
     assert done.returncode == 0, done.stderr
-    _assert_only("init", new, w.project / "pipelines" / "initd")
+    folder = w.project / "pipelines" / "initd"
+    _assert_exact("init", new, {folder, folder / "pipeline.yaml"})
 
     done, new = w.run("scan", str(w.source), "--has-header")
     assert done.returncode == 0, done.stderr
     _assert_quiet(done)
-    _assert_only("scan", new)
+    _assert_exact("scan", new, set())
 
     done, new = w.run("validate", "mask")
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
-    _assert_only("validate", new)
+    _assert_exact("validate", new, set())
 
     done, new = w.run("run", "mask", "--json")
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
     run = w.run_dir("mask")
-    _assert_only("run", new, w.project / "out")
+    _assert_exact("run", new, _out_first(w.project) | _run_paths(w.project, "mask", run, "out.csv"))
     assert json.loads(done.stdout)["output_dir"] == str(run)
     masked = run / "out.csv"
 
     done, new = w.run("unmask", "mask", str(masked))
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
-    _assert_only("unmask", new, run)
+    _assert_exact("unmask", new, {run / "out.unmasked.csv"})
 
     done, new = w.run("report", "fidelity", str(w.source), str(masked), "--config", "mask")
     assert done.returncode in (0, 4), done.stdout + done.stderr
     _assert_quiet(done)
-    _assert_only("report fidelity", new, run / "reports")
+    _assert_exact("report fidelity", new, {run / "reports", run / "reports" / "fidelity.json"})
 
     done, new = w.run(
         "report", "integrity", str(masked), "--source", str(w.source), "--config", "mask"
     )
     assert done.returncode in (0, 4), done.stdout + done.stderr
     _assert_quiet(done)
-    _assert_only("report integrity", new, run / "reports")
+    _assert_exact("report integrity", new, {run / "reports" / "integrity.json"})
 
     vault = w.typed / "tokens.db"
     done, new = w.run("tokenize", "tok", "--vault", str(vault))
@@ -185,28 +208,38 @@ def test_each_command_writes_only_where_the_guarantee_allows(world: World) -> No
     _assert_quiet(done)
     tok_run = w.run_dir("tok")
     # The vault's lock file stays beside the typed vault path.
-    _assert_only("tokenize", new, w.project / "out", vault, vault.with_name(f".{vault.name}.lock"))
+    lock = vault.with_name(f".{vault.name}.lock")
+    _assert_exact("tokenize", new, _run_paths(w.project, "tok", tok_run, "tok.csv") | {vault, lock})
 
     done, new = w.run("detokenize", "tok", str(tok_run / "tok.csv"), "--vault", str(vault))
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
-    _assert_only("detokenize", new, tok_run)
+    _assert_exact("detokenize", new, {tok_run / "tok.detokenized.csv"})
 
     done, new = w.run("fit", str(w.source))
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
-    _assert_only("fit", new, w.data)
+    _assert_exact("fit", new, {w.data / "people.snapshot.json"})
 
     done, new = w.run("demo")
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_only("demo", new, w.cwd / "decoy_demo")
 
-    done, new = w.run("run", "--all")
-    assert done.returncode in (0, 1, 3), done.stdout + done.stderr
-    _assert_quiet(done)
-    _assert_only("run --all", new, w.project / "out")
-
     assert not [p for p in w.snapshot() if p.name == "logs"]
+    assert not list(w.home.rglob("*")), "a command wrote into the home folder"
+
+
+def test_run_all_writes_only_each_pipelines_run_folder(world: World) -> None:
+    w = world
+    w.pipeline("alpha", [FPE, HASH])
+    w.pipeline("beta", [FPE, HASH])
+    done, new = w.run("run", "--all")
+    assert done.returncode == 0, done.stdout + done.stderr
+    _assert_quiet(done)
+    expected = _out_first(w.project)
+    for name in ("alpha", "beta"):
+        expected |= _run_paths(w.project, name, w.run_dir(name), "out.csv")
+    _assert_exact("run --all", new, expected)
     assert not list(w.home.rglob("*")), "a command wrote into the home folder"
 
 

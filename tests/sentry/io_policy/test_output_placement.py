@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -195,6 +196,72 @@ def test_default_names_and_out_are_built_only_by_the_placers() -> None:
     found, allowed = _name_tally(SRC), _allowed(NAME_ALLOWLIST)
     extra = {k: n for k, n in found.items() if allowed.get(k, 0) < n}
     assert not extra, f"path built from a layout literal outside the placers: {sorted(extra)}"
+
+
+SIDE_OWNER = "cli/io/_layout.py"
+SIDE_FUNCTION = "side_file_name"
+SIDE_TABLE = "_SIDE_SUFFIX"
+SIDE_SUFFIX_TEXT = re.compile(r"\.(unmasked|detokenized|snapshot)(\.[a-z]+)+")
+
+
+def side_suffix_uses(source: str) -> list[tuple[int, str]]:
+    """(line, scope) of each read of the suffix table and each side-file suffix literal.
+
+    The table's own definition and docstrings are not uses; prose that only mentions a name in
+    help text is not a suffix, so only a string that is a whole suffix counts.
+    """
+    found: list[tuple[int, str]] = []
+
+    def visit(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                visit(child, child.name if scope == "<module>" else f"{scope}.{child.name}")
+                continue
+            if isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant):
+                continue  # a docstring
+            targets = (
+                [child.target]
+                if isinstance(child, ast.AnnAssign)
+                else getattr(child, "targets", [])
+            )
+            if any(isinstance(t, ast.Name) and t.id == SIDE_TABLE for t in targets):
+                continue  # the table's definition
+            if isinstance(child, ast.Name) and child.id == SIDE_TABLE:
+                found.append((child.lineno, scope))
+            elif (
+                isinstance(child, ast.Constant)
+                and isinstance(child.value, str)
+                and SIDE_SUFFIX_TEXT.fullmatch(child.value)
+            ):
+                found.append((child.lineno, scope))
+            visit(child, scope)
+
+    visit(ast.parse(source), "<module>")
+    return found
+
+
+def test_only_side_file_name_joins_a_side_file_suffix() -> None:
+    """The suffix table is read, and its suffixes spelled, only inside `side_file_name`."""
+    stray = []
+    for path in sorted(SRC.rglob("*.py")):
+        rel = path.relative_to(SRC).as_posix()
+        for line, scope in side_suffix_uses(path.read_text(encoding="utf-8")):
+            if (rel, scope) != (SIDE_OWNER, SIDE_FUNCTION):
+                stray.append(f"{rel}:{line} in {scope}")
+    assert not stray, f"a side-file suffix is used outside side_file_name: {stray}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "_SIDE_SUFFIX = {'a': '.unmasked.csv'}\ndef side_file_default(k, p):\n"
+        "    return p.with_suffix(_SIDE_SUFFIX[k])\n",
+        "def side_file_default(k, p, parquet):\n"
+        "    return p.with_suffix('.detokenized.parquet' if parquet else '.x')\n",
+    ],
+)
+def test_a_second_suffix_join_is_caught(source: str) -> None:
+    assert [scope for _l, scope in side_suffix_uses(source)] == ["side_file_default"]
 
 
 def test_no_default_name_is_built_outside_the_placers() -> None:

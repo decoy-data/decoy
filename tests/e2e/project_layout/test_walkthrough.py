@@ -150,8 +150,13 @@ def test_walkthrough(home: Path, seed: _Seed, monkeypatch: pytest.MonkeyPatch) -
     source = home / "data" / "acme" / "members.csv"
     made = _decoy("init", "members-mask", "--source", str(source))
     assert made.exit_code == EXIT_OK, made.output
+    assert "scaffolded pipelines/members-mask/pipeline.yaml from" in made.stdout
+    assert str(source) in made.stdout
+    assert "decoy validate config members-mask" in made.stdout
     made = _decoy("init", "members-generate", "--preset", "generate", input="\n" * 12)
     assert made.exit_code == EXIT_OK, made.output
+    assert "wrote pipelines/members-generate/pipeline.yaml (preset: generate)" in made.stdout
+    assert "decoy validate config members-generate" in made.stdout
     for name in ("members-mask", "members-generate"):
         assert (acme / "pipelines" / name / "pipeline.yaml").is_file()
 
@@ -194,15 +199,20 @@ def test_walkthrough(home: Path, seed: _Seed, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.chdir(globex)
     stems = {"claims-mask": "claims", "providers-mask": "providers"}
     for name, stem in stems.items():
-        made = _decoy("init", name, "--source", str(home / "data" / "globex" / f"{stem}.csv"))
+        given = home / "data" / "globex" / f"{stem}.csv"
+        made = _decoy("init", name, "--source", str(given))
         assert made.exit_code == EXIT_OK, made.output
+        assert f"scaffolded pipelines/{name}/pipeline.yaml from" in made.stdout
+        assert str(given) in made.stdout
     monkeypatch.chdir(work)
     ran = _decoy("--project", "globex", "run", "--all", "--mask-secret", KEY)
     assert ran.exit_code == EXIT_OK, ran.output
     assert "All 2 pipelines exited 0." in ran.stdout
-    for name, stem in stems.items():
+    for number, (name, stem) in enumerate(stems.items(), start=1):
         (child,) = [p for p in (globex / "out" / name).iterdir() if RUN_ID.fullmatch(p.name)]
         assert (child / f"{stem}.masked.csv").is_file()
+        assert f"Running pipeline {name} ({number} of 2)" in ran.output
+        assert str(child) in ran.stdout, "the summary names each child's run folder"
 
     # A name outside any project is refused, and nothing is written for it.
     before = _tree(home)
@@ -219,10 +229,11 @@ def test_walkthrough(home: Path, seed: _Seed, monkeypatch: pytest.MonkeyPatch) -
     ]
 
     # A second masking run: a new folder, and `LATEST` and `current` move to it.
-    ran = _decoy("--project", "acme", "run", "members-mask", "--mask-secret", KEY, "--json")
+    ran = _decoy("--project", "acme", "run", "members-mask", "--mask-secret", KEY)
     assert ran.exit_code == EXIT_OK, ran.output
     pipeline_out = acme / "out" / "members-mask"
-    assert _json(ran)["output_dir"] == str(pipeline_out / third)
+    # Printed relative to the current folder, as the plan's walk-through shows.
+    assert f"acme/out/members-mask/{third}/members.masked.csv" in ran.stdout
     assert (pipeline_out / "LATEST").read_text(encoding="utf-8").strip() == third
     assert (pipeline_out / "current").readlink().as_posix() == third
     assert (pipeline_out / "PIPELINE").read_text(encoding="utf-8") == (
