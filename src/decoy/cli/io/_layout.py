@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, Literal, TypeGuard
 
 from decoy._atomic import (
     AtomicWriteError,
@@ -130,6 +130,28 @@ def owning_run(path: Path, root: Path, name: str) -> RunFolder | None:
                 return None
             return RunFolder(base / ancestor.name, ancestor.name)
     return None
+
+
+SideKind = Literal["unmasked", "detokenized", "snapshot"]
+_SIDE_SUFFIX: dict[str, str] = {
+    "unmasked": ".unmasked.csv",
+    "detokenized": ".detokenized.csv",
+    "snapshot": ".snapshot.json",
+}
+
+
+def side_file_name(kind: SideKind, stem: str, *, parquet: bool = False) -> str:
+    """The default side-file name for a stem, the one place a suffix joins it. `parquet` picks
+    the Parquet form of a detokenized file; no other kind has one."""
+    suffix = ".detokenized.parquet" if parquet and kind == "detokenized" else _SIDE_SUFFIX[kind]
+    return f"{stem}{suffix}"
+
+
+def side_file_default(kind: SideKind, input_path: Path, *, parquet: bool = False) -> Path:
+    """The default side file beside its input; `current` is resolved first. Unknown kind: `KeyError`."""
+    real, plain = input_path.parent.resolve(), Path(os.path.abspath(input_path.parent))
+    beside = input_path if real == plain else real / input_path.name
+    return beside.with_name(side_file_name(kind, beside.stem, parquet=parquet))
 
 
 def placed_path(run: RunFolder, raw: str) -> Path | None:
@@ -264,7 +286,8 @@ def _rel_posix(root: Path, yaml: Path) -> str:
         return resolved.as_posix()
 
 
-def _slug(stem: str) -> str:
+def name_slug(stem: str) -> str:
+    """A file stem as a pipeline-name candidate: safe characters only, at most 56. May be empty."""
     slug = _DASH_RUNS.sub("-", _SLUG_BAD.sub("-", stem))
     slug = slug.lstrip("-._")[:_SLUG_MAX]
     return slug.rstrip("-.")
@@ -272,7 +295,7 @@ def _slug(stem: str) -> str:
 
 def _derived(root: Path, yaml_rel: str, stem: str) -> str:
     digest = hashlib.sha256(yaml_rel.encode()).hexdigest()[:6]
-    slug = _slug(stem)
+    slug = name_slug(stem)
     for base in (slug or "pipeline", "pipeline"):
         candidate = f"{base}-{digest}"
         if is_valid_name(candidate):
@@ -342,15 +365,20 @@ def pipeline_name_for(root: Path, yaml: Path, declared: object) -> PipelineName:
             )
         return PipelineName(declared, True, yaml_rel)
     stem = yaml.name.rsplit(".", 1)[0] if "." in yaml.name else yaml.name
-    slug = _slug(stem)
+    slug = name_slug(stem)
     if slug == stem and is_valid_name(slug) and _taken(root, slug, yaml_rel) is None:
         return PipelineName(slug, False, yaml_rel)
     return PipelineName(_derived(root, yaml_rel, stem), False, yaml_rel)
 
 
+def project_out_folder(root: Path) -> Path:
+    """`<root>/out/` as a path only: nothing is made, read or resolved."""
+    return root / "out"
+
+
 def pipeline_folder(root: Path, name: str) -> Path:
     """`<root>/out/<name>/` as a path only: nothing is made, read or resolved."""
-    return root / "out" / name
+    return project_out_folder(root) / name
 
 
 def name_dir(out: Path, name: str) -> Path:
@@ -584,7 +612,7 @@ class RunLayout:
             return ()
         folder, run_id = self._pipeline_dir, self._run.run_id
         warnings: list[LayoutWarning] = []
-        current = _read_latest(folder)
+        current = read_latest(folder)
         if current is not None and not is_run_id(current):
             warnings.append(LATEST_INVALID.warning(path=folder))
         elif current is not None and current > run_id:
@@ -680,7 +708,7 @@ def shown_path(path: Path) -> str:
         return str(path)
 
 
-def _read_latest(folder: Path) -> str | None:
+def read_latest(folder: Path) -> str | None:
     """The run id `LATEST` names; None when absent, "" when something unreadable is there."""
     path = folder / _LATEST_FILE
     raw = _read_small(path)
@@ -751,11 +779,22 @@ def open_run_layout(
     The project root is the marker folder above the YAML, or the YAML's folder when none is
     found. Raises `LayoutError`, `AtomicWriteError` or `PrivateFileError`.
     """
-    from decoy.cli.io._project import find_project
-
     yaml = config.resolve()
     if not has_placed_output(config_dict):
         return RunLayout.fixed(yaml.parent)
-    found = find_project(yaml.parent, project)
-    name = pipeline_name_for(found.root, yaml, config_dict.get("name"))
+    found, name = pipeline_identity(yaml, config_dict.get("name"), project)
     return RunLayout.open(found.root, name, invocation_id, project=found)
+
+
+def pipeline_identity(
+    config: Path, declared: object, project: Project | Path | None = None
+) -> tuple[Project, PipelineName]:
+    """The project and run-folder name of a pipeline YAML: the one place both are decided.
+
+    `project` is a found project, a root to read (`--project`), or None to walk up. Raises `LayoutError`.
+    """
+    from decoy.cli.io._project import find_project
+
+    walk = project is None or isinstance(project, Path)
+    found = find_project(config.resolve().parent, project) if walk else project
+    return found, pipeline_name_for(found.root, config.resolve(), declared)

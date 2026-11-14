@@ -15,13 +15,48 @@ Moved here from `decoy-platform/docs/backlog/RECENTLY-SHIPPED.md` on 2026-11-05 
 ([ROADMAP.md](ROADMAP.md)). The platform copy is frozen at that date. Entries below 2026-11-05 are
 copied unchanged; paths in them are relative to the repo they name.
 
-Last updated: 2026-11-12 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
+Last updated: 2026-11-14 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
 git logs).
 
 ---
 
+## 2026-11-14
+
+- **CLI** (`0d8f5b91`, CLI #253): PROJECT-LAYOUT P9 (roadmap row 24t, still partly merged). Side files and reports follow the run folder. P10 is in review as CLI #256.
+- **CLI** (`ba7cdc7c`, CLI #252): SUB-RUN C1 (roadmap row 57, now closed). `decoy run` applies the subset block, and `--no-subset` turns it off.
+- **CLI** (`49dac61a`, CLI #254): DUP-DEFECTS C1 (roadmap row 24zd, now closed). End-to-end tests prove the duplicated-logic fixes through the CLI.
+- **CLI** (`1828b808`, CLI #250): PROJECT-LAYOUT P7 (roadmap row 24t). `decoy init` writes pipelines into the project, with paths relative to the YAML.
+- **CLI** (`8477b345`, CLI #248): PROJECT-LAYOUT P8 (roadmap row 24t, still partly merged). `decoy run` with no argument runs the project's one pipeline; `decoy run --all` runs every pipeline in its own process and exits with the most serious child exit code.
+- **CLI** (`f876137f`, CLI #246): DUP-FREEZE CL3 (roadmap row 24zf, partly merged). One config loader, one exception-to-exit-code map and one secret-ref rule.
+- **CLI** (`41986152`, CLI #245): repin to engine 0.24.0. A vault is created only under its writer lock, a failed run removes only the vault it created, and layout refusals come before vault and source checks.
+- **Engine** (`e5114b17`, engine #585): POSTSCAN-STREAM PS-11 (roadmap row 60, partly merged). Loader and transformed baselines are teed on the sequential route. It ships in the next engine release.
+- **Engine** (`f298104e`, engine #584): LOADER-DROP (roadmap row 24zg, added and closed). A run refuses a declared table the plan would drop: `config/loader_table_undeclared` before any read, `config/declared_table_dropped` after the plan is built. It ships in the next engine release.
+- **Engine** (`07763ff5`, engine #579): POSTSCAN-STREAM part PS-10 (roadmap row 60, still partly merged). Staged output is checked before commit on streamed routes. PS-11 merged later the same day (engine #585).
+- **Engine** (`a43bdaa8`, engine #578): PS-9. An isolated post-scan block reports outcome `blocked`.
+- **Engine** (`81dbfe00`, engine #570): PS-8. The post-scan gate runs on every no-sink route.
+- **Engine** (`b1254eb1`, engine #581): DUP-FREEZE E1 (roadmap row 24zf, partly merged). One canonical JSON owner for digests and fingerprints. It ships in the next engine release.
+- **Engine** (`8a77c8b6`, engine #580): DUP-FREEZE E3. One flag registry with two spelling sets.
+- **Engine** (`61aa9d8e`, engine #577): DUP-FREEZE E4. One NER mismatch raise and one generated-at shape.
+- **Engine** (`5aeda26f`, tag `v0.24.0`, engine #576): engine release 0.24.0. The CLI repin is CLI #245 (open).
+- **Engine** (engine #563 `85d99c75`, #564 `de22841d`, #565 `63beef10`, 2026-11-13): DUP-DEFECTS E1 to E3 (roadmap row 24zd, now partly merged). One snapshot parse helper, one missing-cell rule for derived and formula, one text-type predicate for the chunked guard. All three are in 0.24.0.
+- **CLI** (`af9b07fc`, #243): DUP-FREEZE CL2. One env flag rule and one JSON document writer.
+- **CLI** (`50da81e6`, #244): DUP-FREEZE CL1. One error emitter and one `--json` error shape. CL0 (#242, `1f36e1ed`) merged 2026-11-13; CL3 is in review as #246.
+
+## 2026-11-13
+
+- **Engine** (`8c9c1162`, engine #562): F23 resume part E1 (roadmap row 85, now partly merged). Resume run fingerprint, `binding_digest`, the HMAC key check and the `decoy/resume_*` reason codes. Nothing calls it yet; it ships in the next engine release.
+- **Engine** (`c86ca58d`, engine #559): B-6 vault core (roadmap row 12, now done). HKDF key derivation, scoped tokens and exclusive publish of the vault file. Pre-GA hard cut: no reader for old vaults. It merged after the `v0.23.0` tag, so it ships in the next engine release. The CLI handles `vault_exists` and `TokenVaultWriter.derivation_scope` at its next repin.
+- **Engine** (`dac26109`, engine #548): POSTSCAN-STREAM part PS-7 (roadmap row 60). The post-scan gate core and its applies predicate.
+- **Engine** (`efedebc0`, engine #560): perf test fix. The reorder memory tests pass the config to `run_fk_out_of_core`.
+- **Engine** (`a2b2d77f`, engine #556, tag `v0.23.0`): engine release 0.23.0. The licence is FSL-1.1-ALv2 from this release. The CLI repin is CLI #233.
+- **CLI** (`7850e217`, #233): repin to engine 0.23.0. The CLI now pins `decoy-engine==0.23.0`. Roadmap row 71 needs no further repin; row 67 (F34 E3 and its release) is done.
+- **Engine** (`13778a0d`, engine #549): CLI-CLOUD part EC2a (roadmap row 64), merged 2026-11-12 and in 0.23.0. One S3 put path and SDK floors.
+- **CLI** (`16135525`, #205): LIB part L1b.2 (roadmap row 34). The local record store core. L1b.3 remains.
+- **CLI** (`048068a6`, #232): V2 rows VAULT-STREAM and TOKENIZE-CHUNKED added to `docs/roadmap/out-of-scope.md`.
+
 ## 2026-11-12
 
+- **Engine** (`7a0547ee`, engine #547): SAMPLE part SE2 (roadmap row 63, still partly merged). The sample stage runs inside the subset stage.
 - **CLI** (`52a2399b`, #226): PROJECT-LAYOUT part P5 (roadmap row 24t, still open). Every command takes a pipeline name in place of its config path. P6 to P10 remain.
 - **CLI** (`ae58f682`, #225): SAMPLE part SC0 (roadmap row 63). `decoy run --rows` refuses a run with quarantine on, and the quarantine path is passed to the engine explicitly.
 - **CLI** (`62798427`, #224): CLI-QA1 part C3b (roadmap row 24e). `decoy validate` checks output targets. This is the last slice of `plan/cli-qa1`; the row stays open for its distribution-integrity QA items.
