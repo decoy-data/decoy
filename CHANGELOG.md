@@ -1,16 +1,22 @@
 # Changelog
 
-All notable changes to the `decoy-cli` PyPI distribution (which ships
-the `decoy` import package + the `decoy` console script) land here.
+All notable changes to the `decoy` CLI land here. The CLI ships as a signed
+bundle (the `decoy` import package, the `decoy` console script and the pinned
+engine), not from PyPI.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **Versioning policy and license wording checks (REL-GATE RG-L).** `docs/release/versioning.md` now describes the signed-bundle release and the exact `decoy-engine==` pin instead of a PyPI publish and a `>=` floor, and the 1.0.0 gate list is current. New metadata tests keep FSL-1.1-ALv2 as the one license id across the license docs and refuse a PyPI or `>=` statement in the policy. No command or flag changes.
+
 ### Added
 
 - **Release readiness template and check (REL-GATE RG-R).** `docs/release/release-readiness.md` lists the 18 gate rows and `scripts/release/readiness_check.py` checks a filled copy: rows, results, evidence, G3/G5 to G7 identity, the candidate record, known-limit cells in both frozen-surface maps and, with `--release`, the sign-off and licensor lines. It prints reason codes only.
+- **The `--json` success shapes are pinned by a snapshot (REL-GATE RG-F2).** `tests/fixtures/release_freeze/json-shapes.json` records the key paths and JSON types of one success document per `--json` command, never a value. A change to any shape now shows up as a snapshot diff, and the `shape-changelog` CI job refuses a pull request that changes the snapshot without a `CHANGELOG.md` entry. See `docs/release/frozen-surfaces.md`.
 
 - **Library index, freshness and degraded mode (LIB L1c.1, roadmap row 35).** No command uses them yet. `library/index.sqlite` (pre-created 0600 before SQLite opens it, through the same open and lock as refs) indexes each record's kind, schema, time, invocation, pipeline, status, digest, size, tables and links, with unknown kinds kept as opaque rows. Every `open_library` lists the object file names and catches the index up in one locked transaction (missing rows inserted, rows for deleted files dropped); a missing, corrupt, other-version or table-less index is rebuilt, never migrated, and a schema rebuilt mid-process is filled from the objects before it answers. A corrupt index is emptied in place (`open_private(..., truncate=True)`, the same inode), never replaced, so two processes cannot each hold the lock on a different file. No `sqlite3.Error` leaves the lock: a corrupt index is `library_index_corrupt` (emptied and retried once), any other SQLite failure `library_index_failed`. `put` inserts the row after the object exists and a failed insert or commit never fails the put. `Library.rows(kind, pipeline, table)` and the virtual `Library.latest` (largest creation time, then id) read the index without opening record files. A network filesystem (Linux `statfs` magic numbers, macOS `f_fstypename`, Windows UNC or `DRIVE_REMOTE`) or an index that cannot be locked puts the library in degraded mode: `put` still works, ref updates refuse with `library_lock_unavailable`, and queries parse the files. See `docs/library.md`.
 
@@ -133,6 +139,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 - **Resource settings: `decoy run --max-memory` and `--threads`, `DECOY_MAX_MEMORY` and `DECOY_THREADS`, `decoy setup`, and `settings.json` (RUN-STREAM C3).** Each key resolves on its own: flag, then environment variable, then `$DECOY_HOME/settings.json`, then `auto`. `auto` threads is the engine's cgroup-aware usable CPU count, and `auto` memory is the engine's conservative out-of-core budget (25% of the memory ceiling, passed as explicit bytes), so two automatic runs on one host do not both claim most of it. The values reach the native and out-of-core routes; `--chunked` ignores them until it moves to the shared path. `decoy setup` (`--yes` accepts the detected values, `--json` for a result) writes the file atomically with mode 0600, keeps every other section and key already in it, and replaces a file it cannot read. The file is a JSON object with `schema_version` `"1.0"`; unknown minors and keys are accepted, and an unknown major, a duplicate key, a boolean or text where a number belongs, or NaN is refused with a value-free message (exit 1). `decoy doctor` lists the resolved memory and threads with their source and warns when the file is group or world writable. The `decoy run --json` payload gains `resources` with `max_memory_bytes`, `max_memory_source`, `threads` and `threads_source`.
 
+- **Launch pin check (RG-F3).** `scripts/release/launch_pin_check.py --engine-tag vX.Y.Z` fails closed unless `lock_version.sh --engine-spec` ends in that tag, the lock-profile sentry and `lock.sh --check` pass, and `pyproject.toml`, `_version.py` and `decoy --version` agree; one line per step, exit 0, 1 or 2. The engine pin test now reads the pin from `lock_version.sh`.
 - **CycloneDX SBOM generator (R1-c).** `scripts/release/sbom.sh` writes a reproducible CycloneDX 1.6 SBOM of the certified runtime pins (`requirements-certified.txt`) with the tool environment pinned, hash-enforced and wheel-only from `scripts/release/sbom-tool-requirements.txt`, run isolated (`python -I`, `uv --no-config`, no ambient `UV_*` settings, CPython 3.12 only); no timestamp or serial; well-formed public pins only, one per package, with the generated components checked against the pins. Not signed or published. Docs: `docs/release/sbom.md`.
 
 ### Fixed

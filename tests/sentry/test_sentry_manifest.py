@@ -57,6 +57,7 @@ SENTRIES = (
     "tests/sentry/io_policy/test_csv_frame_choke_point.py",
     "tests/sentry/io_policy/test_quarantine_enabled_choke_point.py",
     "tests/sentry/io_policy/test_small_file_reader.py",
+    "tests/sentry/release/test_frozen_surface_map.py",
     "tests/sentry/test_csv_read_choke_point.py",
     "tests/sentry/test_baseline_registry.py",
     "tests/sentry/test_ci_lock_installs.py",

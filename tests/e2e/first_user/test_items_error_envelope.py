@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_USAGE
-from tests.command_tree import visible_paths
+from tests.command_tree import json_leaf_commands
 
 SCHEMA_PATH = (
     Path(__file__).resolve().parents[3] / "docs" / "schemas" / "decoy-error-v1.schema.json"
@@ -84,24 +84,8 @@ def files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return tmp_path
 
 
-def _leaf_commands() -> set[str]:
-    import typer.main
-
-    root = typer.main.get_command(app)
-    found: set[str] = set()
-    for path in visible_paths():
-        cmd = root
-        for part in path:
-            cmd = cmd.commands[part]  # type: ignore[attr-defined]
-        if not getattr(cmd, "commands", None) and any(
-            "--json" in getattr(p, "opts", []) for p in cmd.params
-        ):
-            found.add(" ".join(path))
-    return found
-
-
 def test_every_json_command_has_a_bad_input_or_a_stated_exemption() -> None:
-    assert set(BAD_INPUT) | set(EXEMPT) == _leaf_commands()
+    assert set(BAD_INPUT) | set(EXEMPT) == json_leaf_commands()
     assert set(BAD_INPUT) & set(EXEMPT) == set()
 
 
