@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -116,6 +117,9 @@ def test_a_fifo_index_hangs_nothing_and_is_a_finding(root: Path, step: str) -> N
     assert out and not isinstance(out[0], BaseException), out
     report = out[0] if step == "check" else out[0][1]  # type: ignore[index]
     assert ("index_not_file", "library/index.sqlite") in _codes(report)  # type: ignore[arg-type]
+    assert stat.S_ISFIFO(os.lstat(index).st_mode)  # never opened as an index, never replaced
+    if step == "repair":
+        assert not any(a.code == "index_rebuilt" for a in out[0][0])  # type: ignore[index]
 
 
 # -- item 2 ---------------------------------------------------------------------------------------

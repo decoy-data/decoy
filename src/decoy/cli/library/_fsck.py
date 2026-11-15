@@ -37,7 +37,13 @@ from typing import Literal
 from decoy_engine import records
 
 from decoy.cli.library import _index, _refs
-from decoy.cli.library._errors import RECORD_INVALID, LibraryError
+from decoy.cli.library._errors import (
+    LIBRARY_FILE_TOO_LARGE,
+    LIBRARY_PATH_UNSAFE,
+    LIBRARY_READ_FAILED,
+    RECORD_INVALID,
+    LibraryError,
+)
 from decoy.cli.library._fs import (
     Entry,
     ensure_private_dir,
@@ -77,6 +83,9 @@ _MAX_LOG_BYTES = 64 * 1024 * 1024
 _SUFFIX = ".json"
 _POSIX = sys.platform != "win32"
 _CORRUPT_CODES = frozenset({"object_corrupt", "object_name_invalid"})
+# A `get` that could not read the file says nothing about its content: never quarantined.
+_UNREADABLE_CODES = frozenset({LIBRARY_READ_FAILED, LIBRARY_FILE_TOO_LARGE, LIBRARY_PATH_UNSAFE})
+_BLOCKING_CODES = frozenset({"layout_newer", "layout_unreadable"})
 
 
 @dataclass(frozen=True)
@@ -145,7 +154,14 @@ class _Walk:
         return walk_tree(self.root, path)
 
     def layout_newer(self) -> bool:
-        data = read_capped(self.root, self.lib / LAYOUT_FILE, MAX_LAYOUT_BYTES)
+        """True when the walk must stop: a `LAYOUT` this version did not write, or one it
+        cannot read. Either way nothing is repaired."""
+        data: bytes | None = None
+        try:
+            data = read_capped(self.root, self.lib / LAYOUT_FILE, MAX_LAYOUT_BYTES)
+        except LibraryError:
+            self.add("finding", "layout_unreadable", self.lib / LAYOUT_FILE)
+            return True
         if data is None:
             return False
         found: object = None
@@ -163,12 +179,16 @@ class _Walk:
         if not self.folder(objects):
             return
         for path, record_id, entry in _object_files(self.root, objects):
+            if entry is None:
+                self.add("finding", "object_unreadable", path)
+                continue
             if entry.kind == "link":
                 self.add("finding", "path_linked", path)
                 continue
             if record_id is None:
                 self.add("finding", "object_name_invalid", path)
-                self.inodes[self.rel(path)] = entry.inode
+                if entry.kind == "file":
+                    self.inodes[self.rel(path)] = entry.inode
                 continue
             self.objects += 1
             self.present.add(record_id)
@@ -178,9 +198,12 @@ class _Walk:
                 decoded = self.library.get(record_id)
             except LibraryError as exc:
                 code = exc.code
-            if code is not None:
-                bad = "payload_invalid" if code == RECORD_INVALID else "object_corrupt"
-                self.add("finding", bad, path)
+            if code in _UNREADABLE_CODES:
+                self.add("finding", "object_unreadable", path)
+            elif code == RECORD_INVALID:
+                self.add("finding", "payload_invalid", path)
+            elif code is not None:
+                self.add("finding", "object_corrupt", path)
                 self.inodes[self.rel(path)] = entry.inode
             elif isinstance(decoded, records.RecordNeedsNewer):
                 self.add("warning", "needs_newer", path)
@@ -196,21 +219,26 @@ class _Walk:
         refs_dir = self.lib / REFS
         if not self.folder(refs_dir):
             return
-        for entry, record_id in _refs.iter_refs(self.root, refs_dir):
+        for entry, read, record_id in _refs.iter_refs(self.root, refs_dir):
             if entry.kind == "link":
                 self.add("finding", "path_linked", entry.path)
+            elif not read:
+                self.add("finding", "ref_unreadable", entry.path)
             elif record_id is None:
                 self.add("finding", "ref_corrupt", entry.path)
-                self.dangling_refs.append(entry)
             elif record_id not in self.present:
                 self.add("finding", "ref_dangling", entry.path)
                 self.dangling_refs.append(entry)
 
     def index(self) -> None:
         path = self.lib / INDEX_FILE
-        if kind_of(self.root, path) is None:
+        found_kind = kind_of(self.root, path)
+        if found_kind is None:
             if self.present:
                 self.add("finding", "index_missing", path)
+            return
+        if found_kind != "file":
+            self.add("finding", "index_not_file", path)  # a FIFO would block the open
             return
         found = _indexed_ids(path)
         if found is None:
@@ -242,12 +270,21 @@ class _Walk:
                         self.add(level, "mode_open", entry.path)
 
     def logs(self) -> None:
-        for entry in self.listing(self.root / LOGS):
+        try:
+            found = self.listing(self.root / LOGS)
+        except LibraryError:
+            self.add("finding", "log_unreadable", self.root / LOGS)
+            return
+        for entry in found:
             if entry.kind != "file" or not entry.name.endswith(".jsonl"):
                 continue
             if entry.path.parent != self.root / LOGS:
                 continue
-            data = read_capped(self.root, entry.path, _MAX_LOG_BYTES) or b""
+            try:
+                data = read_capped(self.root, entry.path, _MAX_LOG_BYTES) or b""
+            except LibraryError:
+                self.add("finding", "log_unreadable", entry.path)
+                continue
             log = None
             with contextlib.suppress(records.RecordError):
                 log = records.read_job_log(data)
@@ -260,19 +297,30 @@ class _Walk:
                 self.add("warning", "log_truncated", entry.path)
 
 
-def _object_files(root: Path, objects: Path) -> Iterator[tuple[Path, str | None, Entry]]:
+def _object_files(root: Path, objects: Path) -> Iterator[tuple[Path, str | None, Entry | None]]:
     """Every entry under `objects/`, with its record id, or None for a name that is not one.
 
-    A linked fan folder or object is yielded as a `link` entry and never entered.
+    A linked fan folder or object is yielded as a `link` entry and never entered; a folder that
+    cannot be listed is yielded with no entry, so the walk reports it and goes on.
     """
-    for fan in entries(root, objects) or []:
+    try:
+        fans = entries(root, objects) or []
+    except LibraryError:
+        yield objects, None, None
+        return
+    for fan in fans:
         if fan.kind != "dir":
             yield fan.path, None, fan
             continue
-        for item in entries(root, fan.path) or []:
+        try:
+            items = entries(root, fan.path) or []
+        except LibraryError:
+            yield fan.path, None, None
+            continue
+        for item in items:
             stem = item.name[: -len(_SUFFIX)] if item.name.endswith(_SUFFIX) else ""
             candidate = f"sha256:{fan.name}{stem}"
-            ok = item.kind == "file" and record_digest(candidate) is not None
+            ok = record_digest(candidate) is not None
             yield item.path, candidate if ok else None, item
 
 
@@ -282,7 +330,7 @@ def _mode_entries(root: Path, path: Path) -> list[Entry]:
     if found is None or found == "link":
         return []
     if found == "dir":
-        return walk_tree(root, path)
+        return walk_tree(root, path, unreadable=[])  # unlistable folders are reported elsewhere
     info = os.lstat(path)
     return [Entry(path.name, path, found, (0, 0), 0, 0.0, stat.S_IMODE(info.st_mode))]
 
@@ -291,7 +339,7 @@ def _indexed_ids(path: Path) -> tuple[int, set[str]] | None:
     """The index's schema version and ids, read-only; None when it is not a readable index."""
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"{Path(os.path.abspath(path)).as_uri()}?mode=ro", uri=True)
         version = int(conn.execute("PRAGMA user_version").fetchone()[0])
         if version != _index.SCHEMA_VERSION:
             return version, set()
@@ -329,25 +377,62 @@ def check(
     return _report(walk)
 
 
-def _quarantine(root: Path, source: Path, inode: tuple[int, int] | None) -> None:
-    """Copy `source` into `quarantine/` (atomic, create-once), then remove it."""
-    lib = root / LIBRARY
-    data = read_capped(root, source, MAX_RECORD_BYTES)
+QuarantineOutcome = Literal["quarantined", "kept", "failed"]
+
+
+def _still_corrupt(root: Path, source: Path) -> bool | None:
+    """Read `source` again: True when it does not parse or its content is not the record its
+    name says (the one id rule), False when it is that record, None when it cannot be read."""
+    try:
+        data = read_capped(root, source, MAX_RECORD_BYTES)
+    except LibraryError:
+        return None
     if data is None:
-        return
-    folder = lib / QUARANTINE
-    ensure_private_dir(root, folder)
-    base = source.parent.name + source.name if source.parent.name != OBJECTS else "stray"
-    if record_digest(f"sha256:{base[: -len(_SUFFIX)]}") is None:
-        base = "stray"
-    for n in range(1000):
-        name = base if n == 0 else f"{base}.{n}"
-        if (
-            write_once(root, folder, name, data, tmp_dir=lib / TMP)
-            or read_capped(root, folder / name, MAX_RECORD_BYTES) == data
-        ):
-            remove_file(root, source, inode=inode)
-            return
+        return None
+    expected = f"sha256:{source.parent.name}{source.name[: -len(_SUFFIX)]}"
+    if record_digest(expected) is None:
+        return True  # a stray name: no record can live there
+    parsed: object = None
+    with contextlib.suppress(ValueError):
+        parsed = json.loads(data)
+    if not isinstance(parsed, dict):
+        return True
+    try:
+        return bool(records.record_id(parsed) != expected)
+    except (records.RecordError, TypeError, ValueError):
+        return True
+
+
+def _quarantine(root: Path, source: Path, inode: tuple[int, int] | None) -> QuarantineOutcome:
+    """Copy `source` into `quarantine/` (atomic, create-once), then remove it; called under the
+    library lock. A file that now reads as the record its name says is kept. Every failure is
+    this entry's outcome, never an abort."""
+    corrupt = _still_corrupt(root, source)
+    if corrupt is None:
+        return "failed"
+    if not corrupt:
+        return "kept"
+    lib = root / LIBRARY
+    try:
+        data = read_capped(root, source, MAX_RECORD_BYTES)
+        if data is None:
+            return "failed"
+        folder = lib / QUARANTINE
+        ensure_private_dir(root, folder)
+        base = source.parent.name + source.name if source.parent.name != OBJECTS else "stray"
+        if record_digest(f"sha256:{base[: -len(_SUFFIX)]}") is None:
+            base = "stray"
+        for n in range(1000):
+            name = base if n == 0 else f"{base}.{n}"
+            if (
+                write_once(root, folder, name, data, tmp_dir=lib / TMP)
+                or read_capped(root, folder / name, MAX_RECORD_BYTES) == data
+            ):
+                remove_file(root, source, inode=inode)
+                break
+    except LibraryError:
+        return "failed"
+    return "failed" if kind_of(root, source) is not None else "quarantined"
 
 
 def repair(
@@ -358,12 +443,13 @@ def repair(
 ) -> tuple[tuple[Action, ...], FsckReport]:
     """Apply the repairs plan 4.10 allows; return them and the report after them.
 
-    Nothing under a linked folder is repaired: the walk never listed it.
+    Nothing under a linked folder is repaired (the walk never listed it), and one entry that
+    cannot be repaired is reported for itself while the rest goes on.
     """
     before = check(root, now=now)
     linked = {f.target for f in before.items if f.code == "path_linked"}
     lib = root / LIBRARY
-    if any(f.code == "layout_newer" for f in before.items) or LIBRARY in linked:
+    if any(f.code in _BLOCKING_CODES for f in before.items) or LIBRARY in linked:
         return (), before
     if kind_of(root, lib) != "dir":
         return (), before
@@ -371,12 +457,16 @@ def repair(
     if tmp_ok:
         ensure_private_dir(root, lib / TMP)
     actions: list[Action] = []
+    candidates = [f for f in before.items if f.code in _CORRUPT_CODES and f.target in before.inodes]
+    if candidates and tmp_ok:
+        actions += _quarantine_all(root, lib, candidates, before)
     for f in before.items:
-        if f.code in _CORRUPT_CODES and tmp_ok:
-            _quarantine(root, root / f.target, before.inodes.get(f.target))
-            actions.append(Action("object_quarantined", f.target))
-        elif f.code == "temp_stale":
-            remove_file(root, root / f.target, inode=before.inodes.get(f.target))
+        if f.code == "temp_stale":
+            try:
+                remove_file(root, root / f.target, inode=before.inodes.get(f.target))
+            except LibraryError:
+                actions.append(Action("temp_delete_failed", f.target))
+                continue
             actions.append(Action("temp_deleted", f.target))
     library = open_library(root, probe=probe)
     if library.degraded is None:
@@ -385,3 +475,21 @@ def repair(
         library.rebuild_index()
         actions.append(Action("index_rebuilt", f"{LIBRARY}/{INDEX_FILE}"))
     return tuple(actions), check(root, now=now)
+
+
+def _quarantine_all(
+    root: Path, lib: Path, candidates: list[Finding], before: FsckReport
+) -> list[Action]:
+    """Each candidate re-judged and moved under the library lock; no lock, no move."""
+    actions: list[Action] = []
+    try:
+        with _index.locked(lib):
+            for f in candidates:
+                outcome = _quarantine(root, root / f.target, before.inodes.get(f.target))
+                if outcome == "quarantined":
+                    actions.append(Action("object_quarantined", f.target))
+                elif outcome == "failed":
+                    actions.append(Action("quarantine_failed", f.target))
+    except LibraryError:
+        actions += [Action("quarantine_failed", f.target) for f in candidates]
+    return actions
