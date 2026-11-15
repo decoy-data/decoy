@@ -48,6 +48,21 @@ PINNED_PUBKEY='-----BEGIN PUBLIC KEY-----
 __DECOY_RELEASE_PUBLIC_KEY__
 -----END PUBLIC KEY-----'
 
+# Same release key as PINNED_PUBKEY, as the base64 ssh-ed25519 blob that ssh-keygen -Y verify
+# reads (it cannot import the PEM). `packaging_tools/sign_release.py inject-keys` fills both and
+# `check-keys` proves they are one key.
+PINNED_SSH_PUBKEY='__DECOY_RELEASE_SSH_PUBLIC_KEY__'
+
+# Known answer for the SSHSIG route: a throwaway key (private half discarded) signed the one
+# byte 0x72 in namespace decoy-release. A verifier that accepts it and rejects 0x73 is real.
+KAT_SSH_PUBKEY='AAAAC3NzaC1lZDI1NTE5AAAAIH7vnyAF/LccI7MtEWXzWlBQ2gudYsUsOWkcHtw5FX25'
+KAT_SSHSIG='-----BEGIN SSH SIGNATURE-----
+U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgfu+fIAX8txwjsy0RZfNaUFDaC5
+1ixSw5aRwe3DkVfbkAAAANZGVjb3ktcmVsZWFzZQAAAAAAAAAGc2hhNTEyAAAAUwAAAAtz
+c2gtZWQyNTUxOQAAAEB+iuN19bqZQ1G1GtU7swHFU6KZmfoimlg1V+XtaVZ0Sl2l+VEFk8
+8E3UhqgWQjknqU9A958r4mZ/pn8MmDXyUC
+-----END SSH SIGNATURE-----'
+
 die() { printf 'decoy install: %s\n' "$*" >&2; exit 1; }
 info() { printf 'decoy install: %s\n' "$*" >&2; }
 need() { command -v "$1" >/dev/null 2>&1 || die "required tool not found: $1"; }
