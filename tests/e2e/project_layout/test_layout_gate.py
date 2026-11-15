@@ -823,4 +823,3 @@ def test_a_nul_in_an_absolute_destination_is_refused_before_a_source_read(
     assert ESCAPES in _codes(result.output)
     assert read_spy == []
     assert "a\\u0000b" not in result.output
-
