@@ -102,15 +102,24 @@ def read_owned_yaml(path: Path, max_bytes: int) -> OwnedYaml | None:
         return None
     if hasattr(os, "geteuid") and found.uid != os.geteuid():
         raise OwnedYamlError("untrusted")
+    return OwnedYaml(_parse_marker(found.data))
+
+
+def _parse_marker(data: bytes) -> object:
+    """The one YAML parse of an owned bookkeeping file (G-ONE-CONFIG-LOAD's marker entry).
+
+    The library policy shares the marker's trust class (bounded, owner-checked, never a pipeline
+    config), so it is parsed here too rather than at a second allowlisted site.
+    """
     parsed: object = None
     broken = False
     try:
-        parsed = yaml.safe_load(found.data)
+        parsed = yaml.safe_load(data)
     except (yaml.YAMLError, UnicodeDecodeError, RecursionError):
         broken = True
     if broken:
         raise OwnedYamlError("unsafe")
-    return OwnedYaml(parsed)
+    return parsed
 
 
 def _read_marker(marker: Path) -> OwnedYaml | None:
@@ -129,7 +138,7 @@ def _read_marker(marker: Path) -> OwnedYaml | None:
     return found
 
 
-def _parse_marker(marker: Path, parsed: object) -> dict[object, object] | None:
+def _marker_mapping(marker: Path, parsed: object) -> dict[object, object] | None:
     """The marker mapping, None for a YAML mapping with no `kind` (not a marker)."""
     if not isinstance(parsed, dict):
         raise PROJECT_MARKER_INVALID.error(path=marker)
@@ -148,7 +157,7 @@ def _explicit_project(explicit: Path) -> Project:
     root = explicit.resolve()
     marker = root / MARKER_NAME
     found = _read_marker(marker)
-    parsed = None if found is None else _parse_marker(marker, found.parsed)
+    parsed = None if found is None else _marker_mapping(marker, found.parsed)
     if found is None:
         raise PROJECT_NOT_FOUND.error(where=root)
     if parsed is None:
@@ -177,7 +186,7 @@ def find_project(start: Path | None, explicit: Path | None) -> Project:
         marker = folder / MARKER_NAME
         found = _read_marker(marker)
         if found is not None:
-            parsed = _parse_marker(marker, found.parsed)
+            parsed = _marker_mapping(marker, found.parsed)
             if parsed is not None:
                 return Project(root=folder, skipped=tuple(skipped), extra_keys=_extra(parsed))
             skipped.append(marker)
@@ -189,6 +198,30 @@ def find_project(start: Path | None, explicit: Path | None) -> Project:
     return Project(root=begin, implicit=True, skipped=tuple(skipped))
 
 
+def _create_once(target: Path, data: bytes) -> bool:
+    """Write `target` only when absent: True when this call wrote it, False when it was there.
+
+    The one create-once write of this module, so the marker and the `.decoy/.gitignore` share
+    one place that decides what an existing file means. Raises `AtomicWriteError` otherwise.
+    """
+    try:
+        return write_local_target(target, data, WriteMode.CREATE_ONCE)
+    except AtomicWriteError as exc:
+        if exc.errno == errno.EEXIST:
+            return False
+        raise
+
+
+def write_project_marker(root: Path) -> bool:
+    """Write `<root>/decoy.yaml` only when absent; True when this call wrote it.
+
+    An existing file is never touched, so a caller reads it back with `find_project` to learn
+    whether it is a valid marker (also the way a losing concurrent writer checks the winner's).
+    Raises `AtomicWriteError`.
+    """
+    return _create_once(root / MARKER_NAME, f"kind: {MARKER_KIND}\n".encode())
+
+
 def ensure_decoy_dir(root: Path) -> tuple[LayoutWarning, ...]:
     """Make `<root>/.decoy/` and its `.gitignore` when absent; the one writer of both.
 
@@ -197,12 +230,22 @@ def ensure_decoy_dir(root: Path) -> tuple[LayoutWarning, ...]:
     """
     folder = root / DECOY_DIR
     folder.mkdir(exist_ok=True)
+    return write_decoy_gitignore(folder)
+
+
+def write_decoy_gitignore(folder: Path) -> tuple[LayoutWarning, ...]:
+    """Write `<folder>/.gitignore` with `DECOY_DIR_GITIGNORE` only when absent; the one writer
+    of it, for the project's `.decoy/` and for a library at any other folder (`--library DIR`).
+
+    An existing `.gitignore` is kept (the user may have edited it); one that cannot be written
+    is a warning, not a failure.
+    """
     target = folder / ".gitignore"
     problem = False
     try:
-        write_local_target(target, DECOY_DIR_GITIGNORE.encode(), WriteMode.CREATE_ONCE)
-    except AtomicWriteError as exc:
-        problem = exc.errno != errno.EEXIST
+        _create_once(target, DECOY_DIR_GITIGNORE.encode())
+    except AtomicWriteError:
+        problem = True
     if problem:
         return (GITIGNORE_WRITE_FAILED.warning(path=target),)
     return ()

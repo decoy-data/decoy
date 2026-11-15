@@ -47,8 +47,9 @@ Use `--library` with a shorter path.
   scratch/              the only place Decoy keeps rows (sample output, staging); never committed
 ```
 
-Decoy never edits an existing `.gitignore` or `.gitattributes`. A library root not named
-`.decoy` (a `--library` folder on a mounted volume, for example) gets neither file.
+Decoy never edits an existing `.gitignore` or `.gitattributes`. A library root with another name
+(a `--library` folder, for example) gets the same two files in that folder, also only if absent,
+so scratch rows under it are never committed. A `.gitignore` Decoy cannot write is a warning.
 
 A record id is `sha256:` plus the SHA-256 of the record's canonical JSON without its `id` field.
 The check parses the file before hashing, so a copy with CRLF line endings or different
@@ -80,6 +81,11 @@ Every library file is read through the CLI's one small-file reader (`decoy.cli.i
 A symlink, FIFO, device or a file swapped between the check and the open is refused with
 `library_read_failed` and never followed or waited on. A record file over 16 MiB is refused with
 `library_file_too_large`, and a record that large is never written.
+
+No library operation follows a link out of the library. Every path below the library root is
+checked one folder at a time: a symlink, a Windows junction, a file or a pipe where a folder
+should be is refused with `library_path_unsafe` before anything is read, written or removed. A
+link inside a folder Decoy deletes is removed as an entry; its target is never touched.
 
 Errors name a code and an error class, never a path.
 
@@ -193,16 +199,27 @@ degraded mode and why. It creates nothing.
 - no temp file in `library/tmp/` is older than an hour;
 - on Linux and macOS, the index, `tmp/`, `scratch/` and `logs/` are private (a finding);
   records and refs that git checked out 0644 get a note only;
-- job log lines parse (a truncated last line is a warning).
+- job log lines parse (a truncated last line is a warning);
+- no library folder is a link (`path_linked`); fsck reports the link and never looks inside it;
+- the index is a regular file (`index_not_file`: a pipe there is never opened).
+
+An entry fsck cannot read is its own finding and the check goes on: `layout_unreadable` (fsck
+then stops, and repair changes nothing), `object_unreadable` (a record file or fan folder),
+`ref_unreadable` and `log_unreadable`. A ref may start with a byte order mark.
 
 Each problem prints one line: `finding`, `warning` or `note`, a code (`object_corrupt`,
 `payload_invalid`, `ref_dangling`, `index_stale`, `temp_stale`, `mode_open`, ...) and the path
 inside the library. Exit 0 when there are no findings, 4 when there are.
 
 `--repair` copies each corrupt record into `library/quarantine/` and then removes it, deletes
-stale temp files, removes refs to missing records (printing each) and rebuilds the index. It
+stale temp files, removes refs to missing records (printing each) and rebuilds the index. Under
+the library lock it reads each corrupt record again and moves it only if it still does not
+parse or its content is not the record its name says; a record it cannot read is never moved.
+A ref is removed only when it was read, holds a record id, and that record is not stored. If
+one entry cannot be moved or deleted, repair prints `quarantine_failed` or
+`temp_delete_failed` for it and goes on. It
 never deletes a valid record, and it changes nothing in a library whose `LAYOUT` is newer than
-this Decoy.
+this Decoy, nothing under a linked folder, and no entry that was replaced after the check.
 
 ## Scratch
 
@@ -220,9 +237,11 @@ the protection cannot be applied, the command stops before it writes any row
   `retention.scratch.sample_ttl_hours`); removing expired output arrives with `decoy run --sample`.
 - Deletes go file by file. A file another program has open (on Windows, a sample open in Excel)
   is skipped and reported with `library_delete_skipped`, and the next cleanup removes it.
+- A `scratch/` that is a link, or a link on the way to the folder being deleted, is refused with
+  `library_path_unsafe` and nothing is deleted. A link inside a scratch folder is removed as an
+  entry; whatever it points at is never touched.
 
-`.decoy/.gitignore` ignores `scratch/`. A `--library` folder with another name gets no
-`.gitignore`; keep such a folder outside any git work tree.
+The library's `.gitignore` ignores `scratch/`, in `.decoy/` and in any `--library` folder.
 
 ## File modes
 

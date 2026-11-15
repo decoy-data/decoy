@@ -329,6 +329,19 @@ def test_cross_device_link_error_is_not_a_fallback(
     assert _names(tmp_path) == []
 
 
+_SHARING_VIOLATION = 32  # ERROR_SHARING_VIOLATION: another handle has the file open
+
+
+def _windows_error(winerror: int, filename: str | None = None) -> PermissionError:
+    """The PermissionError Windows raises: errno EACCES, the cause only in `winerror`.
+
+    CPython sets `winerror` only on Windows, so the cells set it by hand to run on any lane.
+    """
+    exc = PermissionError(errno.EACCES, "refused", filename)
+    exc.winerror = winerror  # type: ignore[attr-defined]
+    return exc
+
+
 def test_windows_retries_permission_error_with_bounded_backoff(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -338,7 +351,7 @@ def test_windows_retries_permission_error_with_bounded_backoff(
     def flaky(a: str, b: Path) -> None:
         if fails["n"]:
             fails["n"] -= 1
-            raise PermissionError(errno.EACCES, "held open")
+            raise _windows_error(_SHARING_VIOLATION)
         real(a, b)
 
     monkeypatch.setattr(_private_file, "_WINDOWS", True)
@@ -353,7 +366,7 @@ def test_windows_gives_up_after_the_bound(tmp_path: Path, monkeypatch: pytest.Mo
     sleeps: list[float] = []
 
     def held(*_a: object) -> None:
-        raise PermissionError(errno.EACCES, "held open")
+        raise _windows_error(_SHARING_VIOLATION)
 
     monkeypatch.setattr(_private_file, "_WINDOWS", True)
     monkeypatch.setattr(_atomic, "_sleep", sleeps.append)
@@ -493,12 +506,12 @@ def test_replace_symlink_lstat_failure_keeps_no_path_context(
     assert caught.value.__context__ is None
 
 
-def _held_open(monkeypatch: pytest.MonkeyPatch, *, windows: bool) -> list[str]:
+def _held_open(monkeypatch: pytest.MonkeyPatch, *, windows: bool, winerror: int = 32) -> list[str]:
     calls: list[str] = []
 
     def replace(src: str, dst: str, **_k: object) -> None:
         calls.append(dst)
-        raise PermissionError(errno.EACCES, "held open", str(dst))
+        raise _windows_error(winerror, str(dst))
 
     monkeypatch.setattr(_atomic.os, "replace", replace)
     monkeypatch.setattr(_atomic, "_sleep", lambda _s: None)
@@ -527,3 +540,33 @@ def test_a_refused_replace_off_windows_is_a_plain_write_failure(
         write_atomic(tmp_path, "ref", b"x", WriteMode.REPLACE)
     assert len(calls) == 1  # no retry off Windows
     assert caught.value.code == _atomic.ATOMIC_WRITE_FAILED
+
+
+# -- review round 2 on #206: only a sharing or lock violation is busy ---------------------------
+
+
+@pytest.mark.parametrize("winerror", [32, 33])  # ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION
+def test_a_sharing_or_lock_violation_at_publish_is_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, winerror: int
+) -> None:
+    calls = _held_open(monkeypatch, windows=True, winerror=winerror)
+    with pytest.raises(AtomicWriteError) as caught:
+        write_atomic(tmp_path, "ref", b"x", WriteMode.REPLACE)
+    assert len(calls) == _atomic._RETRY_ATTEMPTS
+    assert caught.value.code == _atomic.ATOMIC_TARGET_BUSY
+    assert _names(tmp_path) == []
+
+
+@pytest.mark.parametrize("winerror", [5, 267])  # ERROR_ACCESS_DENIED, ERROR_DIRECTORY
+def test_an_access_denied_at_publish_is_a_write_failure_not_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, winerror: int
+) -> None:
+    """Staging succeeds; `os.replace` is then refused for good (an ACL deny, a folder in the
+    way). Retrying cannot help, so it is neither retried nor reported as "try again"."""
+    calls = _held_open(monkeypatch, windows=True, winerror=winerror)
+    with pytest.raises(AtomicWriteError) as caught:
+        write_atomic(tmp_path, "ref", b"x", WriteMode.REPLACE)
+    assert len(calls) == 1  # non-vacuous: the temp was staged and publish was refused once
+    assert caught.value.code == _atomic.ATOMIC_WRITE_FAILED
+    assert caught.value.__context__ is None
+    assert _names(tmp_path) == []

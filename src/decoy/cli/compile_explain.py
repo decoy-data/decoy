@@ -37,14 +37,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-import yaml
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
+from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
 from decoy.cli import gen
-from decoy.cli._yaml_errors import sanitize_yaml_error
-from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE, exit_code_for
 from decoy.cli.io import pipeline_argument, resolve_pipeline
-from decoy.ui.output import OutputMode, emit_json, setup_output
+from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.table import make_table
 from decoy.ui.theme import accent, code, error, hint, success, warn
 
@@ -133,7 +132,10 @@ def compile(
         help="Emit structured JSON instead of the styled table output.",
     ),
     quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Suppress stdout. Exit code carries success or failure."
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress stdout. Errors still go to stderr; exit code carries success or failure.",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable debug-level CLI logs on stderr."
@@ -170,32 +172,18 @@ def compile(
         )
         raise typer.Exit(code=EXIT_USAGE)
 
-    # Parse YAML -- defensive; real parse errors surface here.
     try:
-        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as exc:
-        # YAMLError quotes the offending source line; sanitize to coordinates.
-        _simple_error(state, config_path, sanitize_yaml_error(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-    except (OSError, UnicodeDecodeError) as exc:
-        # A read/decode failure is a different category; report it as one. The
-        # path is the user's own argument and only the exception TYPE is shown,
-        # never str(exc) (a UnicodeDecodeError repr carries the offending byte).
-        # UnicodeDecodeError is a ValueError, not an OSError, so it is named
-        # explicitly: without it a non-UTF-8 config would escape as an uncaught
-        # traceback and emit no --json envelope.
-        _simple_error(state, config_path, f"could not read {config_path}: {type(exc).__name__}")
-        raise typer.Exit(code=EXIT_USAGE)
-
-    if not isinstance(raw, dict):
-        _simple_error(
-            state, config_path, f"{config_path} does not parse to a YAML mapping at the top level."
-        )
-        raise typer.Exit(code=EXIT_USAGE)
+        raw = load_config_mapping(config_path)
+    except (ConfigFileError, OSError) as exc:
+        refusal = config_refusal(exc)
+        _simple_error(state, config_path, str(refusal["message"]), code=refusal["code"])
+        raise typer.Exit(code=exit_code_for(exc))
 
     from decoy_engine import __version__ as engine_version
+    from decoy_engine import parse_pipeline_config
     from decoy_engine.plan import compile_plan
     from decoy_engine.profile import profile_from_json
+    from decoy_engine.subset import split_subset_config
 
     # Resolve the profile. --profile loads a pre-computed Profile and runs the
     # full check set; otherwise no-profile mode (the default) uses the empty
@@ -238,8 +226,14 @@ def compile(
         if profile is None:
             # Inside the try: an unequal composite relationship raises here.
             profile = empty_profile_for_no_profile(raw, engine_version)
+        # `compile_plan` refuses a `subset:` block; the run applies it, so compile what it runs.
+        # The split reads a validated dump, so a block is validated first; a schema or subset
+        # error is shown through `_compile_error` like any other compile error.
+        run_config = raw
+        if raw.get("subset") is not None:
+            run_config = split_subset_config(parse_pipeline_config(raw).model_dump()).run_config
         plan = compile_plan(
-            raw,
+            run_config,
             profile,
             decoy_engine_version=engine_version,
             no_profile=not use_profile,
@@ -316,21 +310,9 @@ def compile(
         state.console.print(hint("Wrote plan artifact:"), code(str(out)))
 
 
-def _simple_error(state, config: Path, msg: str) -> None:
+def _simple_error(state, config: Path, msg: str, *, code: str | None = None) -> None:
     """Render a usage error in the compile command's envelope / console style."""
-    if state.mode is OutputMode.json:
-        emit_json(
-            state,
-            {
-                "command": "validate compile",
-                "status": "error",
-                "config": str(config),
-                "error": msg,
-            },
-        )
-    elif state.mode is not OutputMode.quiet:
-        # markup=False: msg can carry user paths / bracketed text.
-        state.err_console.print(error("error:"), msg, markup=False)
+    emit_error(state, "validate compile", msg, code=code, context={"config": str(config)})
 
 
 def _compile_error(state, config: Path, exc: Exception) -> None:
@@ -364,7 +346,7 @@ def _compile_error(state, config: Path, exc: Exception) -> None:
         if err_code is not None:
             payload["code"] = err_code
         emit_json(state, payload)
-    elif state.mode is not OutputMode.quiet:
+    else:
         # markup=False: msg starts with a bracketed error code and can carry
         # an install line such as `pip install decoy-cli[ner]`; Rich would
         # parse both as unknown style tags and drop them.
