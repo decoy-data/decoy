@@ -14,6 +14,7 @@ than crashing.
 ```
 https://decoy.dev/cli/version.json        the signed document (canonical JSON)
 https://decoy.dev/cli/version.json.sig    detached Ed25519 signature (base64) over the file bytes
+https://decoy.dev/cli/version.json.sshsig the same key's signature in SSHSIG format (armored)
 ```
 
 Per-version bundles live under the same base:
@@ -22,6 +23,25 @@ Per-version bundles live under the same base:
 https://decoy.dev/cli/<version>/decoy-<version>-<target>.tar.gz
 https://decoy.dev/cli/<version>/decoy-<version>-<target>.tar.gz.sha256
 https://decoy.dev/cli/<version>/decoy-<version>-<target>.tar.gz.sig
+https://decoy.dev/cli/<version>/decoy-<version>-<target>.tar.gz.sshsig
+```
+
+## SSHSIG sidecars
+
+Every file that has a `.sig` also has a `.sshsig`: an armored `-----BEGIN SSH SIGNATURE-----`
+block made by `ssh-keygen -Y sign` with the same release key. A host whose OpenSSL cannot
+verify Ed25519 (stock macOS) checks it with the `ssh-keygen` it already has. The document
+schema does not change: a bundle's `.sshsig` URL is its artifact `url` plus `.sshsig`, so the
+document carries no `sshsig` field.
+
+- Namespace: `decoy-release`
+- Identity: `decoy-release@decoy.dev`
+- `allowed_signers` holds one line, with the release key as a base64 `ssh-ed25519` blob:
+  `decoy-release@decoy.dev namespaces="decoy-release" ssh-ed25519 <base64 key blob>`
+- Verify (exit 0 means the signature is good):
+
+```
+ssh-keygen -Y verify -f allowed_signers -I decoy-release@decoy.dev -n decoy-release -s version.json.sshsig < version.json
 ```
 
 ## Document shape
