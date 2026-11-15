@@ -196,7 +196,7 @@ def _closed_port_url() -> str:
 
 
 @pytest.mark.parametrize(
-    "case", ["oversize", "redirect", "escape-code", "not-a-version", "refused"]
+    "case", ["oversize", "redirect", "escape-code", "not-a-version", "too-long", "refused"]
 )
 def test_a_bad_response_is_cached_as_null_and_prints_nothing(monkeypatch, home, serve, case) -> None:
     server = {
@@ -205,6 +205,7 @@ def test_a_bad_response_is_cached_as_null_and_prints_nothing(monkeypatch, home, 
         "redirect": lambda: serve(status=302, headers={"Location": "http://127.0.0.1:9/"}),
         "escape-code": lambda: serve(body=_document("\x1b[2J")),
         "not-a-version": lambda: serve(body=_document("latest, trust me")),
+        "too-long": lambda: serve(body=_document("1." + "9" * 80)),
         "refused": lambda: None,
     }[case]()
     monkeypatch.setenv("DECOY_VERSION_URL", server.url if server else _closed_port_url())
@@ -234,5 +235,5 @@ def test_the_notice_prints_the_canonical_version(monkeypatch, home, serve) -> No
 def test_a_raw_value_already_in_the_cache_is_not_shown(monkeypatch, home) -> None:
     _update_check._write_cache("\x1b[2J", int(time.time()))  # as an older build could have
     monkeypatch.setenv("DECOY_VERSION_URL", _closed_port_url())
-    assert _update_check.check_latest() is None
+    assert _cache()["latest"] == "\x1b[2J" and _update_check.check_latest() is None
     assert _start() == ""
