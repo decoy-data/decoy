@@ -279,10 +279,6 @@ class PipelineName:
 
 
 def project_relative_posix(root: Path, yaml: Path) -> str:
-    """`yaml` relative to the project `root`, with "/", or absolute when it lies outside.
-
-    The one spelling of a pipeline's YAML in a claim and in a record's `pipeline` label.
-    """
     resolved = yaml.resolve()
     try:
         return resolved.relative_to(root.resolve()).as_posix()

@@ -20,7 +20,7 @@ import typer
 from decoy.cli.exit_codes import EXIT_OK, EXIT_USAGE
 from decoy.cli.io import PipelineRef, pipeline_option, resolve_pipeline
 from decoy.cli.library._cli import LibraryCommand, library_option, start
-from decoy.ui.output import OutputMode, OutputState, emit_json
+from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 
 __all__ = ["diff_command", "list_command", "ref_command", "show_command"]
 
@@ -98,8 +98,8 @@ def list_command(
     library: Path | None = library_option(),
 ) -> None:
     """List stored records, oldest first, from the index (no record file is opened)."""
-    cmd = start("library list", json_)
-    state = cmd.state
+    state = setup_output(json_, False, False)
+    cmd = LibraryCommand(state, "library list")
     ref = resolve_pipeline(pipeline, state, "library list")
     cutoff: datetime | None = None
     if since is not None:
