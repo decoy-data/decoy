@@ -258,6 +258,26 @@ jobs:
         run: check-jsonschema --builtin-schema vendor.gitlab-ci integrations/gitlab/decoy-ci.yml
 
   # ---------------------------------------------------------------------------
+  # shape-changelog: a `--json` shape snapshot change must come with a CHANGELOG entry.
+  # A sentry sees one tree, not a diff, so this step compares the pull request with its base.
+  # ---------------------------------------------------------------------------
+  shape-changelog:
+    name: shape-changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (full history, so the base commit is reachable)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Step-level guard: the lane sentry refuses a job-level `if` on a merge job, because a
+      # skipped job reports success.
+      - name: Shape snapshot change needs a CHANGELOG entry
+        if: github.event_name == 'pull_request'
+        run: python scripts/release/check_shape_changelog.py --base ${{ github.event.pull_request.base.sha }}
+
+  # ---------------------------------------------------------------------------
   # certified-profile: requirements-certified.txt still reproduces a
   # certified DP row
   # ---------------------------------------------------------------------------
