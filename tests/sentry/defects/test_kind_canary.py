@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from decoy_engine import records
+from tests.e2e.library._canary import CASES, CanaryCase
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURES = ROOT / "tests" / "e2e" / "library"
@@ -72,7 +73,7 @@ def findings(specs: Any, pending: tuple[PendingKind, ...], fixtures: set[str]) -
 def test_every_writable_kind_has_a_canary_or_a_pending_row() -> None:
     specs = records.registered_kinds()
     assert any(s.write_model is not None for s in specs)  # non-vacuous: kinds were read
-    assert findings(specs, PENDING_ALLOWLIST, fixture_ids()) == []
+    assert findings(specs, PENDING_ALLOWLIST, CASES) == []
 
 
 def test_pending_rows_are_unique_and_explained() -> None:
@@ -95,29 +96,41 @@ class _Spec:
     canary_fixture: str | None
 
 
-def test_seeded_kind_without_a_fixture_is_red() -> None:
-    """M-KIND-NOFIX: a writable kind registered with no fixture and no pending row."""
+def test_seeded_kind_without_a_case_is_red() -> None:
+    """M-KIND-NOFIX: a writable kind registered with no canary case and no pending row."""
     specs = (*records.registered_kinds(), _Spec("audit-thing", object(), "audit-thing"))
-    assert findings(specs, PENDING_ALLOWLIST, fixture_ids()) == [
-        "audit-thing: no canary fixture test_canary_audit_thing.py and no pending row"
+    assert findings(specs, PENDING_ALLOWLIST, CASES) == [
+        "audit-thing: no runnable canary case and no pending row"
     ]
 
 
-def test_seeded_fixture_clears_its_kind_and_flags_a_leftover_row(tmp_path: Path) -> None:
+def _runnable(kind: str) -> CanaryCase:
+    return CanaryCase(kind, produce=lambda _project: None)
+
+
+def test_an_empty_placeholder_fixture_file_covers_nothing(tmp_path: Path) -> None:
+    """Review round 1 on #210, DESIGN 10: coverage comes from the case registry, never a file."""
     (tmp_path / "test_canary_scan_set.py").write_text("", encoding="utf-8")
-    found = findings(records.registered_kinds(), PENDING_ALLOWLIST, fixture_ids(tmp_path))
-    assert found == ["scan-set: canary fixture exists; remove its pending row"]
     rows = tuple(p for p in PENDING_ALLOWLIST if p.kind != "scan-set")
-    assert findings(records.registered_kinds(), rows, fixture_ids(tmp_path)) == []
+    found = findings(records.registered_kinds(), rows, CASES)
+    assert "scan-set: no runnable canary case and no pending row" in found
+
+
+def test_seeded_case_clears_its_kind_and_flags_a_leftover_row() -> None:
+    cases = {**CASES, "scan-set": _runnable("scan-set")}
+    found = findings(records.registered_kinds(), PENDING_ALLOWLIST, cases)
+    assert found == ["scan-set: canary case exists; remove its pending row"]
+    rows = tuple(p for p in PENDING_ALLOWLIST if p.kind != "scan-set")
+    assert findings(records.registered_kinds(), rows, cases) == []
 
 
 def test_seeded_reserved_kind_needs_nothing_and_a_stale_row_is_red() -> None:
     specs = (_Spec("later", None, None),)
-    assert findings(specs, (), set()) == []
-    assert findings(specs, (PendingKind("later", "r" * 20),), set()) == [
+    assert findings(specs, (), {}) == []
+    assert findings(specs, (PendingKind("later", "r" * 20),), {}) == [
         "later: pending row for a kind that is not writable (remove it)"
     ]
     nofix = (_Spec("odd", object(), None),)
-    assert findings(nofix, (), set()) == [
+    assert findings(nofix, (), {}) == [
         "odd: writable kind with no canary_fixture id in the engine registry"
     ]
