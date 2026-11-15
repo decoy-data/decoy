@@ -24,5 +24,14 @@ Post-V1 on demand: route-coverage phase 2 (OOC address faker, FPE FK key, reside
 quarantine); the CLI init wizard (spec CLI #73); value-based FK discovery (SCAN-MULTI plan section 7);
 chunk-level resume; a user-level library store (LIB Q7).
 
+Post-V1 proportionality work (audit 2026-11-15, report
+`C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md`; V1 part is rows 24zi to 24zl):
+package C dead code (keep C13 `cli/library` for row 35; check C7 against row 32c and C8 against the
+platform before deleting), the package F comment sweeps, G, H, I (each cut shows the unit's coverage
+and mutation score unchanged), J (unless a V1 row already owns the file), E8, E5's move from exact
+pins to ceilings, and the re-export and no-production-caller guards (section 15). Any time, as docs
+filler: K2 and K3 archive shipped plans. K4 (owner 2026-11-15): shipped state is kept in
+`ROADMAP.md` and `docs/RECENTLY-SHIPPED.md`; `docs/archive/shipped-*.md` is retired.
+
 V2 corrective backlog and audit: vault `handoffs/V2-CORRECTIVE-BACKLOG.md`. DuckDB opportunities:
 vault `v2/duckdb/` and platform `plan/v2-duckdb-plans` (`1c8eba8d`); proposals, not scheduled.
