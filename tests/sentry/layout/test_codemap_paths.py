@@ -48,6 +48,7 @@ KINDS = frozenset(
         "Shared cross-suite test helpers (constants and lookups used by more than one test folder)",
         "Developer environment scripts",
         "Release scripts",
+        "Release runbooks, logs and maps",
         "CI install, vendor and lane policy",
         "Composite CI actions",
         "Task-oriented user guides (one folder per topic, with a `README.md` index)",
