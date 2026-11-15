@@ -30,7 +30,7 @@ _SOURCE = {"flag": "--library", "env": "DECOY_LIBRARY", "project": "project"}
 
 def _root(state: OutputState, command: str, library: Path | None):
     from decoy.cli.io import LayoutError
-    from decoy.cli.library._paths import resolve_root
+    from decoy.cli.library import resolve_root
 
     failure: LayoutError | None = None
     try:
@@ -51,8 +51,7 @@ def path_command(
     library: Path | None = typer.Option(None, "--library", metavar="DIR", help=_LIBRARY_HELP),
 ) -> None:
     """Print the library root, where it came from, and whether it runs in degraded mode."""
-    from decoy.cli.library._errors import LibraryError
-    from decoy.cli.library._store import open_library
+    from decoy.cli.library import LibraryError, open_library
 
     state = setup_output(False, False, False)
     root = _root(state, "library path", library)
@@ -93,9 +92,7 @@ def fsck_command(
 
     Exit 0 when clean, 4 when there are findings (warnings and notes do not count).
     """
-    from decoy.cli.library import _fsck
-    from decoy.cli.library._errors import LibraryError
-    from decoy.cli.library._paths import check_root_budget
+    from decoy.cli.library import LibraryError, check_root_budget, fsck_check, fsck_repair
 
     state = setup_output(False, False, False)
     root = _root(state, "library fsck", library)
@@ -103,9 +100,9 @@ def fsck_command(
     try:
         check_root_budget(root.path)
         if repair:
-            actions, report = _fsck.repair(root.path)
+            actions, report = fsck_repair(root.path)
         else:
-            actions, report = (), _fsck.check(root.path)
+            actions, report = (), fsck_check(root.path)
     except LibraryError as exc:
         caught = exc
     if caught is not None:
