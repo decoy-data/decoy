@@ -80,8 +80,8 @@ _PATH = re.compile(r"[\w.-]+(?:/[\w.-]+)+")
 _SHA = re.compile(r"[0-9a-f]{7,64}")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _HEX_WORD = re.compile(r"\b[0-9a-f]{7,40}\b")
-# A digit is required so prose such as "see notes" is not read as an id.
-_LIMIT_ID = re.compile(r"(?=.*\d)[A-Za-z0-9][A-Za-z0-9 ._-]*")
+# Ids look like RG-F1-KL-1: a slice prefix, "-KL-", a number from 1. Prose is not an id.
+_LIMIT_ID = re.compile(r"[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-KL-[1-9][0-9]*")
 _LIMIT_CELL = re.compile(r"accepted-known-limit:(.*)$")
 
 
@@ -323,11 +323,14 @@ def check_legal(keys: dict[str, str], text: str, roots: dict[str, Path]) -> list
     if not licensor or licensor.startswith("<") or licensor.upper() == "TBD":
         found.append(("licensor", "readiness_licensor_missing"))
         licensor = ""
-    classes = {
-        (m.group(1) + ":" + m.group(2), m.group(3)): m.group(4)
-        for m in map(_MARKER_LINE.match, text.splitlines())
-        if m
-    }
+    classes: dict[tuple[str, str], str] = {}
+    duplicated: set[str] = set()
+    for m in filter(None, map(_MARKER_LINE.match, text.splitlines())):
+        key = (m.group(1) + ":" + m.group(2), m.group(3))
+        if key in classes:
+            duplicated.add(key[0])
+        classes[key] = m.group(4)
+    found += [(f"file {label}", "readiness_legal_marker_duplicate") for label in sorted(duplicated)]
     present: set[tuple[str, str]] = set()
     lines_seen = 0
     for repo, root in roots.items():
