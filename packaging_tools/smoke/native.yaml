@@ -4,7 +4,8 @@
 # one csv file-mask table whose source key equals the table name, no relationships,
 # validators, quarantine, transforms, `when:` gates or vault columns, a deterministic
 # categorical, and one column for every strategy in `_NATIVE_STRATEGIES`.
-# The smoke writes `input.csv` (synthetic, no real values) and the mask secret beside it.
+# The smoke writes `input.csv` (synthetic, no real values) beside it, and the mask secret
+# (0600) in its temp root.
 
 version: 2
 

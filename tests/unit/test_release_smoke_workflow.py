@@ -223,6 +223,32 @@ def test_candidate_mode_requires_dist_and_native_state(candidate_set, capsys) ->
     assert not smoke.native_route_ok("not json")
 
 
+def test_run_outputs_are_the_written_files_under_the_work_dir(tmp_path) -> None:
+    # `decoy run` writes into the implicit project's run folder, not beside the pipeline.
+    work = tmp_path / "native"
+    written = work / "out" / "native" / "run-1" / "masked.csv"
+    written.parent.mkdir(parents=True)
+    written.write_text("id\n1\n")
+
+    def payload(*paths, status="ok"):
+        outputs = [{"table": "accounts", "path": str(p)} for p in paths]
+        return json.dumps({"status": status, "outputs": outputs})
+
+    assert smoke.run_outputs(payload(written), work) == [written.resolve()]
+    outside = tmp_path / "masked.csv"
+    outside.write_text("id\n")
+    for stdout in (
+        payload(),
+        payload(written, status="error"),
+        payload(work / "out" / "missing.csv"),
+        payload(outside),
+        payload(written, outside),
+        json.dumps({"status": "ok", "outputs": [{"path": 3}]}),
+        "not json",
+    ):
+        assert smoke.run_outputs(stdout, work) is None, stdout
+
+
 def test_native_smoke_pipeline_is_native_eligible_with_every_strategy() -> None:
     config = yaml.safe_load(smoke.NATIVE_PIPELINE.read_text(encoding="utf-8"))
     assert _native_gate.static_native_eligibility(config)

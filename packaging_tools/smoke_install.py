@@ -396,6 +396,35 @@ def native_route_ok(stdout: str) -> bool:
     return isinstance(route, dict) and route.get("state") == "native"
 
 
+def run_outputs(stdout: str, work: Path) -> list[Path] | None:
+    """The files a green `decoy run --json` wrote, or None.
+
+    A run writes into the implicit project's run folder (`out/<pipeline>/<run id>/`), not
+    beside the pipeline, so the payload's `outputs` is the only reliable place to find them.
+    Every path must be a file under ``work``.
+    """
+    try:
+        payload = json.loads(stdout)
+    except ValueError:
+        return None
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return None
+    outputs = payload.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        return None
+    base = work.resolve()
+    paths = []
+    for entry in outputs:
+        raw = entry.get("path") if isinstance(entry, dict) else None
+        if not isinstance(raw, str):
+            return None
+        path = Path(raw).resolve()
+        if not path.is_file() or not path.is_relative_to(base):
+            return None
+        paths.append(path)
+    return paths
+
+
 class _Candidate:
     """One candidate-mode run. Every path it writes is under ``root``, never under ``dist``."""
 
@@ -544,7 +573,7 @@ class _Candidate:
         )
         if run.returncode != 0 or not native_route_ok(run.stdout):
             raise StepFailed("smoke_native_route")
-        if not (work / "masked.csv").is_file():
+        if run_outputs(run.stdout, work) is None:
             raise StepFailed("smoke_native_route")
 
     def template(self) -> None:
@@ -559,8 +588,8 @@ class _Candidate:
         ]
         header = "first_name,last_name,email,ssn,account_status"
         (work / "input.csv").write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
-        run = self._decoy("run", "pipeline.yaml", cwd=work)
-        if run.returncode != 0 or not (work / "output.csv").is_file():
+        run = self._decoy("run", "pipeline.yaml", "--json", cwd=work)
+        if run.returncode != 0 or run_outputs(run.stdout, work) is None:
             raise StepFailed("smoke_template_failed")
 
     def _env(self, **extra: str) -> dict:
