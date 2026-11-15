@@ -1,12 +1,17 @@
 # Changelog
 
-All notable changes to the `decoy-cli` PyPI distribution (which ships
-the `decoy` import package + the `decoy` console script) land here.
+All notable changes to the `decoy` CLI land here. The CLI ships as a signed
+bundle (the `decoy` import package, the `decoy` console script and the pinned
+engine), not from PyPI.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ## [Unreleased]
+
+### Changed
+
+- **Versioning policy and license wording checks (REL-GATE RG-L).** `docs/release/versioning.md` now describes the signed-bundle release and the exact `decoy-engine==` pin instead of a PyPI publish and a `>=` floor, and the 1.0.0 gate list is current. New metadata tests keep FSL-1.1-ALv2 as the one license id across the license docs and refuse a PyPI or `>=` statement in the policy. No command or flag changes.
 
 ### Added
 
