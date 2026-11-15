@@ -25,24 +25,41 @@ their full dependency closure (the release pipeline populates this; see README).
 
 Exit 0 iff every case passed. Signing uses an ephemeral key generated here; the
 installer/upgrade pin it via DECOY_RELEASE_PUBKEY_FILE (no committed key needed).
+
+Candidate mode (REL-GATE 5.4) smokes a signed release candidate instead of building one:
+
+    python -m packaging_tools.smoke_install --from-dist DIR --candidate candidate.json \
+        --pubkey release-key.pub.pem --target macos-arm64 > summary.json
+
+It checks the set against `candidate.json`, the version document and the pinned keys, installs
+with the candidate's own installer from a copy of the tarball, then runs `decoy --version`,
+`decoy doctor --json`, `packaging_tools/smoke/native.yaml` (which must take the native route) and
+the bundled `minimal` template. It prints one `decoy-release-smoke/v1` summary on stdout for
+`scripts/release/record_smoke.py`. Exit 0 all passed, 1 a step failed, 2 usage.
 """
 
 from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import http.server
+import json
 import os
+import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
+import time
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_CANDIDATE_FLAGS = ("--from-dist", "--candidate", "--pubkey", "--target")
 
 
 def _log(msg: str) -> None:
@@ -158,6 +175,9 @@ def _install(install_sh: Path, *, home: Path, bindir: Path, version_url: str, pu
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if any(arg.split("=", 1)[0] in _CANDIDATE_FLAGS for arg in argv):
+        return candidate_main(argv)
     ap = argparse.ArgumentParser(prog="smoke_install")
     ap.add_argument("--python", required=True, help="standalone CPython dir to embed")
     ap.add_argument("--wheels", required=True, help="wheels dir (3 decoy wheels + full closure)")
@@ -323,6 +343,315 @@ def _run_upgrade_cases(bindir: Path, doc_url: str, pub: Path, check) -> None:
     # test tests/unit/test_distribution.py::test_installer_rolls_back_on_post_swap_failure
     # (a real signed bundle + an injected post-swap failure -> current rolls back).
     _log("[note] rollback-on-failure is asserted by the installer unit test (injected post-swap failure).")
+
+
+# --- candidate mode (REL-GATE 5.4) ----------------------------------------------------------
+
+NATIVE_PIPELINE = REPO_ROOT / "packaging_tools" / "smoke" / "native.yaml"
+_GATED_TARGETS = {
+    "windows-x86_64": "Windows is gated off this cycle (decoy.distribution.targets) and "
+    "install.ps1 has no local-bundle input; REL-GATE Q5 decides when it is smoked",
+}
+
+
+class StepFailed(Exception):
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def _err(msg: str) -> None:
+    print(f"smoke: {msg}", file=sys.stderr, flush=True)
+
+
+def _usage_problem(args: argparse.Namespace, host: str | None) -> str | None:
+    if args.keep:
+        return "--keep is refused in candidate mode: the temp root holds the throwaway secret"
+    if "DECOY_RELEASE_PUBKEY_FILE" in os.environ:
+        return "DECOY_RELEASE_PUBKEY_FILE is set; candidate mode trusts only the pinned keys"
+    if args.python or args.wheels or args.work:
+        return "--python, --wheels and --work belong to the build smoke, not candidate mode"
+    if not (args.from_dist and args.candidate and args.pubkey and args.target):
+        return "candidate mode needs --from-dist, --candidate, --pubkey and --target"
+    if args.target in _GATED_TARGETS:
+        return f"{args.target}: {_GATED_TARGETS[args.target]}"
+    from decoy.distribution.targets import SUPPORTED_TARGETS
+
+    if args.target not in SUPPORTED_TARGETS:
+        return f"{args.target}: not a supported target ({', '.join(SUPPORTED_TARGETS)})"
+    if args.target != host:
+        return f"--target {args.target} does not match this host ({host or 'unsupported'})"
+    if not Path(args.from_dist).is_dir() or not Path(args.pubkey).is_file():
+        return "--from-dist must be a directory and --pubkey a file"
+    return None
+
+
+def native_route_ok(stdout: str) -> bool:
+    """`decoy run --json` took the compiled kernel; `applicable` alone is not enough."""
+    try:
+        payload = json.loads(stdout)
+    except ValueError:
+        return False
+    route = payload.get("native_route") if isinstance(payload, dict) else None
+    return isinstance(route, dict) and route.get("state") == "native"
+
+
+class _Candidate:
+    """One candidate-mode run. Every path it writes is under ``root``, never under ``dist``."""
+
+    def __init__(self, args: argparse.Namespace, root: Path) -> None:
+        self.dist = Path(args.from_dist)
+        self.candidate_path = Path(args.candidate)
+        self.pubkey_path = Path(args.pubkey)
+        self.pub_pem = ""
+        self.target = args.target
+        self.root = root
+        self.copy = root / "dist"
+        self.record: dict[str, str] = {}
+        self.listing: dict[str, str] = {}
+        self.engine_version = ""
+
+    # One method per name in `candidate.SMOKE_STEPS`; the run stops at the first failure.
+    def candidate(self) -> None:
+        from packaging_tools import candidate as cand
+
+        try:
+            self.record = cand.read_candidate(self.candidate_path)
+            sums = (self.dist / cand.SUMS_NAME).read_bytes()
+            self.listing = cand.parse_sums(sums.decode("utf-8"))
+        except (OSError, ValueError):
+            raise StepFailed("smoke_candidate_mismatch")
+        if hashlib.sha256(sums).hexdigest() != self.record["sha256sums_sha256"]:
+            raise StepFailed("smoke_candidate_mismatch")
+        present = {p.name for p in self.dist.iterdir() if p.is_file() and cand.listed(p.name)}
+        if present != set(self.listing):
+            raise StepFailed("smoke_candidate_mismatch")
+        self.copy.mkdir()
+        for name, digest in self.listing.items():
+            shutil.copyfile(self.dist / name, self.copy / name)
+            if cand.sha256_file(self.copy / name) != digest:
+                raise StepFailed("smoke_candidate_mismatch")
+
+    def version_document(self) -> None:
+        from urllib.parse import urlparse
+
+        from decoy.distribution import version_document as vd
+        from packaging_tools.candidate import VERSION_DOCUMENT
+
+        try:
+            self.pub_pem = self.pubkey_path.read_text(encoding="utf-8")
+            data = (self.copy / VERSION_DOCUMENT).read_bytes()
+            signature = (self.copy / f"{VERSION_DOCUMENT}.sig").read_text(encoding="utf-8")
+            if not vd.verify_document(data, signature.strip(), expected_public_pem=self.pub_pem):
+                raise ValueError("signature")
+            payload = vd.parse_document(data)
+        except (OSError, ValueError):
+            raise StepFailed("smoke_version_document_invalid")
+        version = self.record["cli_version"]
+        artifacts = payload.get("artifacts")
+        tarballs = {n for n in self.listing if n.endswith(".tar.gz")}
+        if payload.get("latest") != version or not isinstance(artifacts, dict):
+            raise StepFailed("smoke_version_document_invalid")
+        named = set()
+        for target in artifacts:
+            entry = vd.select_artifact(payload, target)
+            name = f"decoy-{version}-{target}.tar.gz"
+            if (
+                entry is None
+                or entry["sha256"] != self.listing.get(name)
+                or Path(urlparse(entry["url"]).path).name != name
+                or Path(urlparse(entry["sig"]).path).name != f"{name}.sig"
+                or f"{name}.sig" not in self.listing
+            ):
+                raise StepFailed("smoke_version_document_invalid")
+            named.add(name)
+        if named != tarballs or self.target not in artifacts:
+            raise StepFailed("smoke_version_document_invalid")
+
+    def installer_key(self) -> None:
+        from decoy.distribution.release_key import PLACEHOLDER_MARKER
+        from packaging_tools.candidate import INSTALLERS
+
+        if "install.sh" not in self.listing:
+            raise StepFailed("smoke_candidate_mismatch")
+        for name in INSTALLERS:
+            if name in self.listing:
+                text = (self.copy / name).read_text(encoding="utf-8")
+                if PLACEHOLDER_MARKER in text:
+                    raise StepFailed("smoke_placeholder_key")
+
+    def install(self) -> None:
+        name = f"decoy-{self.record['cli_version']}-{self.target}.tar.gz"
+        tarball = self.copy / name
+        # The sidecar carries the digest the candidate step verified, not a fresh one, so a
+        # tarball swapped after that step fails the installer's checksum.
+        tarball.with_name(f"{name}.sha256").write_text(f"{self.listing[name]}  {name}\n")
+        run = subprocess.run(
+            ["sh", str(self.copy / "install.sh"), "--version", self.record["cli_version"]],
+            cwd=self.root,
+            env=self._env(DECOY_LOCAL_BUNDLE=str(tarball)),
+            capture_output=True,
+            text=True,
+        )
+        if run.returncode != 0:
+            lines = run.stderr.strip().splitlines()
+            _err(f"installer: {lines[-1] if lines else 'no output'}")
+            raise StepFailed("smoke_install_failed")
+
+    def bundle_key(self) -> None:
+        pem = self._bundle_python(
+            "import sys\n"
+            "from decoy.distribution import release_key\n"
+            "sys.stdout.write(release_key.pinned_public_pem())"
+        )
+        if pem is None or pem.strip() != self.pub_pem.strip():
+            raise StepFailed("smoke_placeholder_key")
+        engine = self._bundle_python("import decoy_engine; print(decoy_engine.__version__)")
+        if not engine:
+            raise StepFailed("smoke_engine_version")
+        self.engine_version = engine.strip()
+
+    def version(self) -> None:
+        run = self._decoy("--version")
+        if run.returncode != 0 or run.stdout.strip() != f"decoy {self.record['cli_version']}":
+            raise StepFailed("smoke_version_mismatch")
+
+    def doctor(self) -> None:
+        run = self._decoy("doctor", "--json")
+        try:
+            ok = run.returncode == 0 and isinstance(json.loads(run.stdout), dict)
+        except ValueError:
+            ok = False
+        if not ok:
+            raise StepFailed("smoke_doctor_failed")
+
+    def native(self) -> None:
+        work = self._workdir("native")
+        shutil.copyfile(NATIVE_PIPELINE, work / "native.yaml")
+        rows = [
+            f"{n},note-{n},code-{n},user{n}@example.invalid,{('bronze', 'silver', 'gold')[n % 3]},"
+            f"2024-{n % 12 + 1:02d}-15,house-{n % 4},region-{n % 3}"
+            for n in range(1, 25)
+        ]
+        header = "id,note,code,email,tier,opened,household,region"
+        (work / "input.csv").write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+        secret = self.root / "mask-secret"
+        fd = os.open(secret, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(secrets.token_hex(32))
+        run = self._decoy(
+            "run", "native.yaml", "--native", "--json", "--mask-secret", f"file:{secret}", cwd=work
+        )
+        if run.returncode != 0 or not native_route_ok(run.stdout):
+            raise StepFailed("smoke_native_route")
+        if not (work / "masked.csv").is_file():
+            raise StepFailed("smoke_native_route")
+
+    def template(self) -> None:
+        work = self._workdir("template")
+        shown = self._decoy("show", "template", "minimal")
+        if shown.returncode != 0:
+            raise StepFailed("smoke_template_failed")
+        (work / "pipeline.yaml").write_text(shown.stdout, encoding="utf-8")
+        rows = [
+            f"first-{n},last-{n},user{n}@example.invalid,000-00-{n:04d},active"
+            for n in range(1, 13)
+        ]
+        header = "first_name,last_name,email,ssn,account_status"
+        (work / "input.csv").write_text("\n".join([header, *rows]) + "\n", encoding="utf-8")
+        run = self._decoy("run", "pipeline.yaml", cwd=work)
+        if run.returncode != 0 or not (work / "output.csv").is_file():
+            raise StepFailed("smoke_template_failed")
+
+    def _env(self, **extra: str) -> dict:
+        env = _bundle_env(
+            DECOY_HOME=str(self.root / "home"),
+            DECOY_BIN_DIR=str(self.root / "bin"),
+            HOME=str(self.root / "user"),
+            DECOY_NO_UPDATE_CHECK="1",
+            **extra,
+        )
+        env.pop("DECOY_RELEASE_PUBKEY_FILE", None)
+        return env
+
+    def _workdir(self, name: str) -> Path:
+        path = self.root / name
+        path.mkdir()
+        return path
+
+    def _decoy(self, *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:
+        launcher = self.root / "bin" / "decoy"
+        return subprocess.run(
+            [str(launcher), *args],
+            cwd=cwd or self.root,
+            env=self._env(),
+            capture_output=True,
+            text=True,
+        )
+
+    def _bundle_python(self, code: str) -> str | None:
+        python = self.root / "home" / "current" / "python" / "bin" / "python3"
+        run = subprocess.run(
+            [str(python), "-I", "-c", code], env=self._env(), capture_output=True, text=True
+        )
+        return run.stdout if run.returncode == 0 else None
+
+
+def candidate_main(argv: list[str]) -> int:
+    from decoy.distribution.targets import detect_target
+    from packaging_tools.candidate import SMOKE_STEPS, SUMMARY_SCHEMA
+
+    ap = argparse.ArgumentParser(prog="smoke_install (candidate mode)")
+    ap.add_argument("--from-dist", help="the signed candidate set (read only)")
+    ap.add_argument("--candidate", help="candidate.json beside the set")
+    ap.add_argument("--pubkey", help="the release public key PEM")
+    ap.add_argument("--target", help="this host's platform tag")
+    ap.add_argument("--keep", action="store_true", help=argparse.SUPPRESS)
+    for flag in ("--python", "--wheels", "--work"):
+        ap.add_argument(flag, help=argparse.SUPPRESS)
+    try:
+        args = ap.parse_args(argv)
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 2
+    problem = _usage_problem(args, detect_target())
+    if problem:
+        _err(f"usage: {problem}")
+        return 2
+    started = time.monotonic()
+    steps: dict[str, str] = {}
+    root = Path(tempfile.mkdtemp(prefix="decoy-smoke-"))
+    run = _Candidate(args, root)
+    try:
+        for step in SMOKE_STEPS:
+            try:
+                getattr(run, step)()
+            except StepFailed as failure:
+                steps[step] = "fail"
+                _err(f"{step}: FAIL {failure.code}")
+                break
+            except Exception as exc:  # any other error is a red step, never a skipped summary
+                steps[step] = "fail"
+                _err(f"{step}: FAIL smoke_step_error ({type(exc).__name__})")
+                break
+            steps[step] = "pass"
+            _err(f"{step}: pass")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    removed = not root.exists()
+    if not removed:
+        _err("FAIL smoke_temp_root_left: the temp root (and its secret) could not be removed")
+    summary = {
+        "schema": SUMMARY_SCHEMA,
+        "platform": args.target,
+        "cli_version": run.record.get("cli_version", ""),
+        "engine_version": run.engine_version,
+        "sha256sums_sha256": run.record.get("sha256sums_sha256", ""),
+        "steps": steps,
+        "seconds": round(time.monotonic() - started, 1),
+    }
+    print(json.dumps(summary, sort_keys=True))
+    green = list(steps) == list(SMOKE_STEPS) and set(steps.values()) == {"pass"} and removed
+    return 0 if green else 1
 
 
 if __name__ == "__main__":

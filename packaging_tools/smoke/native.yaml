@@ -1,0 +1,60 @@
+# Release smoke pipeline (REL-GATE 5.4). `smoke_install.py --from-dist` runs it with
+# `decoy run --native --json` and requires `native_route.state == "native"`, so it has to
+# stay inside what native admission takes (`decoy._native_gate.static_native_eligibility`):
+# one csv file-mask table whose source key equals the table name, no relationships,
+# validators, quarantine, transforms, `when:` gates or vault columns, a deterministic
+# categorical, and one column for every strategy in `_NATIVE_STRATEGIES`.
+# The smoke writes `input.csv` (synthetic, no real values) and the mask secret beside it.
+
+version: 2
+
+global_settings:
+  seed: 7
+
+sources:
+  accounts:
+    type: file
+    format: csv
+    has_header: true
+    path: ./input.csv
+
+tables:
+  - name: accounts
+    columns:
+      - name: id
+        strategy: passthrough
+      - name: note
+        strategy: redact
+      - name: code
+        strategy: truncate
+        provider_config:
+          length: 3
+      - name: email
+        strategy: hash
+        namespace: smoke_email
+      - name: tier
+        strategy: categorical
+        deterministic: true
+        namespace: smoke_tier
+        provider_config:
+          categories: [bronze, silver, gold]
+      - name: opened
+        strategy: bucket_perturb
+        namespace: smoke_opened
+        provider_config:
+          bucket: month
+          date_format: "%Y-%m-%d"
+      - name: household
+        strategy: group_key
+        namespace: smoke_household
+        provider_config:
+          group_by: region
+          length: 8
+      - name: region
+        strategy: passthrough
+
+targets:
+  accounts:
+    type: file
+    format: csv
+    path: ./masked.csv
