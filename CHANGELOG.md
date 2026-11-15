@@ -1,7 +1,8 @@
 # Changelog
 
-All notable changes to the `decoy-cli` PyPI distribution (which ships
-the `decoy` import package + the `decoy` console script) land here.
+All notable changes to the `decoy` CLI land here. The CLI ships as a signed
+bundle (the `decoy` import package, the `decoy` console script and the pinned
+engine), not from PyPI.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 version numbers follow the [versioning policy](docs/release/versioning.md).
