@@ -68,17 +68,22 @@ def _agreement(run: Runner, root: Path) -> list[Result]:
 
 
 def _versions(run: Runner, root: Path) -> Result:
+    # Any unreadable source is a failed step, not a crash, so every run still prints one line
+    # per step. The detail stays value-free: no file text or exception message.
     try:
-        import tomllib  # type: ignore[import-not-found,unused-ignore]
-    except ModuleNotFoundError:  # Python 3.10
-        import tomli as tomllib  # type: ignore[no-redef,import-not-found,unused-ignore]
-    pyproject = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    literal = re.search(
-        r'^__version__ = "([^"]+)"', (root / "src/decoy/_version.py").read_text("utf-8"), re.M
-    )
+        try:
+            import tomllib  # type: ignore[import-not-found,unused-ignore]
+        except ModuleNotFoundError:  # Python 3.10
+            import tomli as tomllib  # type: ignore[no-redef,import-not-found,unused-ignore]
+        text = (root / "pyproject.toml").read_text(encoding="utf-8")
+        declared = str(tomllib.loads(text)["project"]["version"])
+        source = (root / "src/decoy/_version.py").read_text(encoding="utf-8")
+    except (OSError, KeyError, ModuleNotFoundError, ValueError):
+        return Result(False, "versions", "version_disagreement", "version source unreadable")
+    literal = re.search(r'^__version__ = "([^"]+)"', source, re.M)
     rc, out = run([sys.executable, "-m", "decoy", "--version"])
     cli = out.strip().removeprefix("decoy ") if rc == 0 else "unavailable"
-    found = (str(pyproject["version"]), literal.group(1) if literal else "missing", cli)
+    found = (declared, literal.group(1) if literal else "missing", cli)
     if len(set(found)) == 1 and _VERSION.fullmatch(found[0]):
         return Result(True, "versions")
     return Result(False, "versions", "version_disagreement", " ".join(found))
