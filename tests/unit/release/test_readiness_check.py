@@ -524,3 +524,67 @@ def test_a_placeholder_signoff_owner_is_refused(capsys, env, owner):
     text = _fill(rows=_known_limit_rows(), keys={"signoff.owner": owner})
     code, out = _release(capsys, env, text)
     assert code == 1 and "signoff.owner: readiness_signoff_missing" in out
+
+
+@pytest.mark.parametrize(
+    "licensor,mention,ok",
+    [
+        ("Decoy Labs LLC", "Owned by Decoy Labs LLC.", True),
+        ("Decoy Labs LLC", "Owned by Decoy Labs, LLC", True),
+        ("Decoy Labs LLC", "Owned by DECOY LABS LLC", True),
+        ("Decoy Labs LLC", "Owned by Decoy Labs L.L.C.", True),
+        ("Decoy Labs Inc", "Owned by Decoy Labs Incorporated", True),
+        ("Decoy Labs Corporation", "Owned by Decoy Labs Corp.", True),
+        ("Decoy Labs LLC", "Owned by Decoy Labs Inc.", False),
+        ("Decoy Labs LLC", "Owned by **Decoy Labs** Inc", False),
+        ("Decoy Labs LLC", "Owned by Decoy\nLabs Inc.", False),
+        ("Decoy Labs LLC", "Owned by Decoy Labs LLC and Decoy Labs Ltd", False),
+        ("Decoy Labs Corporation", "Owned by Decoy Labs Ltd", False),
+        ("Decoy Labs Ltd", "Owned by Decoy Labs Limited", True),
+        ("Decoy Labs LLC", "Owned by Decoy Labs Company", False),
+        ("Decoy Labs Corporation", "Owned by Decoy Labs Co.", False),
+        ("Decoy Labs LLC", "Owned by DECOY LABS INC", False),
+        ("Decoy Labs LLC", "Owned by Decoy *Labs* LLC", True),
+    ],
+)
+def test_entity_mentions_compare_by_equality_after_normalising(capsys, env, licensor, mention, ok):
+    _, cli, engine, _ = env
+    _legal_tree(cli, "cli", licensor=licensor)
+    _legal_tree(engine, "engine", licensor=licensor)
+    (cli / "TRADEMARKS.md").write_text(f"Copyright 2026 {licensor}\n{mention}\n")
+    text = _fill(rows=_known_limit_rows(), keys={"licensor": licensor})
+    code, out = _release(capsys, env, text)
+    if ok:
+        assert code == 0, out
+    else:
+        assert code == 1 and "file cli:TRADEMARKS.md: readiness_licensor_mismatch" in out
+
+
+def test_trailing_all_rights_reserved_is_not_part_of_the_name(capsys, env):
+    _, cli, _, _ = env
+    for tail in (" All rights reserved.", ". ALL RIGHTS RESERVED", ", all rights reserved"):
+        (cli / "NOTICE").write_text(f"Copyright 2026 {LICENSOR}{tail}\n")
+        code, out = _release(capsys, env)
+        assert code == 0, (tail, out)
+    (cli / "NOTICE").write_text("Copyright 2026 Old Entity Corp. All rights reserved.\n")
+    code, out = _release(capsys, env)
+    assert code == 1 and "file cli:NOTICE: readiness_licensor_mismatch" in out
+
+
+def test_a_template_missing_a_row_or_empty_is_unreadable(capsys, env):
+    template = env[1] / "docs/release/release-readiness.md"
+    full = template.read_text()
+    template.write_text("\n".join(ln for ln in full.splitlines() if not ln.startswith("| 9 |")))
+    code, out = _release(capsys, env)
+    assert code == 1 and "template: readiness_template_unreadable" in out
+    template.write_text("")
+    code, out = _release(capsys, env)
+    assert code == 1 and "template: readiness_template_unreadable" in out
+    assert "readiness_row_text_changed" not in out
+
+
+@pytest.mark.parametrize("owner", ["N/A", "n/a", "NA", "None", "Owner", "-"])
+def test_more_placeholder_signoff_owners_are_refused(capsys, env, owner):
+    text = _fill(rows=_known_limit_rows(), keys={"signoff.owner": owner})
+    code, out = _release(capsys, env, text)
+    assert code == 1 and "signoff.owner: readiness_signoff_missing" in out
