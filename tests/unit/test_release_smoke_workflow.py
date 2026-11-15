@@ -277,10 +277,29 @@ def test_failed_step_still_removes_the_temp_root(candidate_set, capsys) -> None:
     tarball.write_bytes(b"changed after the candidate was sealed")
     rc, summary, err = _run(candidate_set.argv, capsys)
     assert rc == 1
-    assert summary["steps"] == {"candidate": "fail"}
+    assert summary["steps"] == {"candidate": "fail", "cleanup": "pass"}
     assert "smoke_candidate_mismatch" in err
     assert len(candidate_set.temp_roots) == 1
     assert not candidate_set.temp_roots[0].exists()
+
+
+@needs_host
+def test_a_temp_root_left_behind_fails_the_cleanup_step(candidate_set, capsys, monkeypatch) -> None:
+    # Every other step passed; the summary itself must still say red, or a recorder fed
+    # only the summary would take the run.
+    monkeypatch.setattr(smoke._Candidate, "install", lambda self: None)
+    pem = candidate_set.pubkey.read_text()
+    monkeypatch.setattr(
+        smoke._Candidate,
+        "_bundle_python",
+        lambda self, code: pem if "release_key" in code else "0.27.0\n",
+    )
+    monkeypatch.setattr(smoke._Candidate, "_decoy", _fake_decoy([]))
+    monkeypatch.setattr(smoke.shutil, "rmtree", lambda *args, **kwargs: None)
+    rc, summary, err = _run(candidate_set.argv, capsys)
+    assert (rc, summary["steps"]["cleanup"]) == (1, "fail")
+    assert all(summary["steps"][step] == "pass" for step in cand.SMOKE_STEPS[:-1])
+    assert "smoke_temp_root_left" in err
 
 
 def test_keep_is_refused_in_candidate_mode(candidate_set, capsys) -> None:
