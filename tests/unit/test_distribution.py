@@ -592,7 +592,7 @@ def _serve_bundle(
     target: str = "linux-x86_64",
     declared_target: str | None = None,
 ) -> str:
-    """Build a signed bundle for ``version`` at serve_dir/<version>/ and return its file://
+    """Build a signed bundle for ``version`` at serve_dir/v<version>/ and return its file://
     URL. ``target`` is the platform the bundle is built and served for (default Linux; a test
     that drives a path detecting the host target passes ``targets.detect_target()``).
     ``declared`` overrides the version the bundle DECLARES and ``declared_target`` the
@@ -610,7 +610,7 @@ def _serve_bundle(
     mb = signing.canonical_bytes(man)
     (stage / manifest_mod.MANIFEST_NAME).write_bytes(mb)
     (stage / manifest_mod.MANIFEST_SIG_NAME).write_text(_sign_b64(key, mb))
-    vdir = serve_dir / version
+    vdir = serve_dir / f"v{version}"  # release-asset layout: <bundle base>/v<version>/
     vdir.mkdir(parents=True, exist_ok=True)
     tarball = vdir / f"decoy-{version}-{target}.tar.gz"
     _deterministic_targz(stage, tarball)
