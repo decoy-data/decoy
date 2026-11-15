@@ -68,7 +68,7 @@ class PruneReport:
 
 
 def _when(row: IndexRow) -> datetime:
-    return datetime.fromisoformat(row.created_at.replace("Z", "+00:00"))
+    return _index.parse_instant(row.created_at)
 
 
 def _order(row: IndexRow) -> tuple[str, str]:

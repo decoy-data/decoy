@@ -5,47 +5,24 @@ and their refs from the locked inventory (`_inventory`) and puts the raw verifie
 link order. It refuses while any entry is unexplained (`library_unexplained_entries`): a record
 it cannot verify would otherwise be silently missing from an export that reports success. `--ref`
 exports the closure from `_index.reachable`, the walk prune uses. The destination is checked
-here too: never a file inside the library or its scratch area, never a symlink.
+by `_fs.write_export`, the one checked write for a path the user names.
 """
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable, Sequence
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from decoy.cli.library import _index
-from decoy.cli.library._errors import EXPORT_DESTINATION_UNSAFE, LibraryError
+from decoy.cli.library._errors import LIBRARY_UNEXPLAINED_ENTRIES, LibraryError
 from decoy.cli.library._inventory import take_inventory
-from decoy.cli.library._paths import LIBRARY, SCRATCH
 
 if TYPE_CHECKING:
     from decoy.cli.library._index import IndexRow
     from decoy.cli.library._store import Library
 
-__all__ = ["check_destination", "export_lines", "link_order", "select"]
-
-
-def _instant(text: str) -> datetime:
-    value = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-
-
-def check_destination(root: Path, out: Path) -> None:
-    """`export_destination_unsafe` for a file inside `library/` or `scratch/` (named directly
-    or through a linked folder) or for a symlink: replacing the file the user named is the
-    convention, replacing the library's own records or a linked unrelated file is not."""
-    guarded = [Path(os.path.abspath(root / name)) for name in (LIBRARY, SCRATCH)]
-    named = Path(os.path.abspath(out))
-    real_parent = Path(os.path.realpath(named.parent))
-    real_guarded = [Path(os.path.realpath(g)) for g in guarded]
-    inside = any(g == named or g in named.parents for g in guarded) or any(
-        g == real_parent or g in real_parent.parents for g in real_guarded
-    )
-    if inside or os.path.islink(named):
-        raise LibraryError(EXPORT_DESTINATION_UNSAFE)
+__all__ = ["export_lines", "link_order", "select"]
 
 
 def select(
@@ -64,14 +41,16 @@ def select(
     stock.require_explained()
     rows = {row.id: row for row in stock.rows}
     if target is not None:
-        chosen = _index.reachable([target], stock.rows) & set(rows)
+        chosen = _index.reachable([target], stock.rows)
+        if not chosen <= set(rows):
+            raise LibraryError(LIBRARY_UNEXPLAINED_ENTRIES)
         refs = {ref: target} if ref in stock.refs else {}
         return link_order([rows[rid] for rid in chosen]), refs
     chosen = set(rows)
     if kind is not None:
         chosen = {rid for rid in chosen if rows[rid].kind == kind}
     if since is not None:
-        chosen = {rid for rid in chosen if _instant(rows[rid].created_at) >= since}
+        chosen = {rid for rid in chosen if _index.parse_instant(rows[rid].created_at) >= since}
     refs = {name: rid for name, rid in sorted(stock.refs.items()) if rid in chosen}
     return link_order([rows[rid] for rid in chosen]), refs
 

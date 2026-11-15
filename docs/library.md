@@ -210,7 +210,8 @@ links to; `--kind` and `--since` narrow a whole-library export and cannot be com
 `--ref`. Nothing under `scratch/` is ever exported. The output may not be a file inside
 `library/` or `scratch/`, or a symlink (`export_destination_unsafe`, exit 1). Like prune, export
 refuses with `library_unexplained_entries` while any ref or record file cannot be accounted for
-(for example a record written in a newer envelope format), rather than leave it out silently.
+(for example a record written in a newer envelope format), or while a ref or a link names a
+record that is not in the library, rather than write a file that is incomplete or not closed.
 
 By default an export carries no raw path: each record's declared path fields are reduced to file
 names, which gives that record a new id, and the line names the original id as `source_id`; links

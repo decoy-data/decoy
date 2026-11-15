@@ -11,7 +11,7 @@ stderr with the exit code; `--json` stdout carries only a successful result.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,12 +34,6 @@ def _kinds(incomplete: str) -> list[str]:
 def _say(state: OutputState, *parts: object) -> None:
     if state.mode is OutputMode.default:
         state.console.print(*parts, soft_wrap=True, markup=False, highlight=False)
-
-
-def _instant(text: str) -> datetime:
-    """A `YYYY-MM-DD` date (midnight UTC) or an ISO time; a time with no zone is UTC."""
-    value = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def _row_json(row: Any) -> dict:
@@ -98,13 +92,15 @@ def list_command(
     library: Path | None = library_option(),
 ) -> None:
     """List stored records, oldest first, from the index (no record file is opened)."""
+    from decoy.cli.library import parse_instant
+
     state = setup_output(json_, False, False)
     cmd = LibraryCommand(state, "library list")
     ref = resolve_pipeline(pipeline, state, "library list")
     cutoff: datetime | None = None
     if since is not None:
         try:
-            cutoff = _instant(since)
+            cutoff = parse_instant(since)
         except ValueError:
             cutoff = None
         if cutoff is None:
@@ -114,7 +110,7 @@ def list_command(
     rows = [
         r
         for r in opened.rows(kind=kind, pipeline=label, table=table)
-        if cutoff is None or _instant(r.created_at) >= cutoff
+        if cutoff is None or parse_instant(r.created_at) >= cutoff
     ]
     emit_json(
         state,

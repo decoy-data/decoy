@@ -5,7 +5,8 @@ only as safe as the roots they can see, so they first account for every entry: e
 read and parsed (a leading byte order mark is fine), and every object file indexed after the
 index is caught up. An entry they cannot account for (a ref that cannot be read or holds no id,
 a link or pipe among the refs or objects, a folder that cannot be listed, a record file with no
-index row because it cannot be read or verified) is counted in `unexplained`; prune `--yes` and
+index row because it cannot be read or verified, a ref or a link naming a record that is not
+here) is counted in `unexplained`; prune `--yes` and
 export refuse while it is not empty, and `decoy library fsck` names each one. A linked
 `library/`, `objects/` or `refs/` folder is `library_path_unsafe` from the walk itself.
 
@@ -60,4 +61,9 @@ def take_inventory(library: Library, conn: sqlite3.Connection) -> Inventory:
             unexplained += 1
             continue
         refs[entry.path.relative_to(refs_dir).as_posix()] = rid
+    # Every root and link must name a record that is here: a dangling ref, or a link to a
+    # record whose file is gone, would make an export that is not closed (or a prune that cannot
+    # see what the missing record linked to).
+    unexplained += sum(1 for rid in refs.values() if rid not in indexed)
+    unexplained += sum(1 for row in rows for _rel, dst in row.links if dst not in indexed)
     return Inventory(rows, refs, unexplained)

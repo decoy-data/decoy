@@ -36,6 +36,7 @@ from decoy._atomic import (
     ATOMIC_TARGET_BUSY,
     AtomicWriteError,
     WriteMode,
+    destination_entry,
     write_atomic,
     write_local_target,
 )
@@ -47,6 +48,7 @@ from decoy._private_file import (
 )
 from decoy.cli.io import UnsafeFileError, read_small_file
 from decoy.cli.library._errors import (
+    EXPORT_DESTINATION_UNSAFE,
     LIBRARY_BUSY,
     LIBRARY_FILE_TOO_LARGE,
     LIBRARY_PATH_UNSAFE,
@@ -76,8 +78,8 @@ __all__ = [
     "require_dirs",
     "walk_tree",
     "write_dotfile_once",
+    "write_export",
     "write_once",
-    "write_user_file",
 ]
 
 Kind = Literal["file", "dir", "link", "other"]
@@ -367,10 +369,38 @@ def write_dotfile_once(root: Path, path: Path, data: bytes) -> bool:
     return _write_local(path, data, WriteMode.CREATE_ONCE)
 
 
-def write_user_file(path: Path, data: bytes) -> None:
-    """Write a file at a path the user named (`export --output`), replacing it in one step,
-    0600. The caller checks the destination (`_exporting.check_destination`)."""
-    _write_local(path, data, WriteMode.REPLACE)
+def write_export(root: Path, out: Path, data: bytes) -> None:
+    """Write `data` to the file the user named (`export --output`), replacing it in one step,
+    0600; the one checked entry point for a path outside the library.
+
+    Where the bytes would land comes from `_atomic.destination_entry` (the parent resolved
+    strictly, the final name not followed), the shared output-placement rule. A landing inside
+    `library/` or `scratch/`, named directly or through a linked folder, or a final symlink, is
+    `export_destination_unsafe` and nothing is written.
+    """
+    named = Path(os.path.abspath(out))
+    lexical = [Path(os.path.abspath(Path(root) / name)) for name in ("library", "scratch")]
+    unsafe = any(g == named or g in named.parents for g in lexical)
+    landing: Path | None = None
+    failure: Exception | None = None
+    try:
+        landing = destination_entry(out)
+        guarded = [_resolved(Path(root) / name) for name in ("library", "scratch")]
+        inside = any(g == landing or g in landing.parents for g in guarded)
+        there = _lstat(landing)
+        unsafe = unsafe or inside or (there is not None and _kind(there) == "link")
+    except (OSError, ValueError) as exc:
+        failure = exc
+    if failure is not None and not unsafe:
+        raise library_error(LIBRARY_WRITE_FAILED, failure)
+    if unsafe or landing is None:
+        raise LibraryError(EXPORT_DESTINATION_UNSAFE)
+    _write_local(landing, data, WriteMode.REPLACE)
+
+
+def _resolved(path: Path) -> Path:
+    """`path` with every existing link in it followed: where a guarded folder really is."""
+    return Path(os.path.realpath(path))
 
 
 def _write_local(path: Path, data: bytes, mode: WriteMode) -> bool:

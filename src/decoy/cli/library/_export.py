@@ -73,13 +73,12 @@ def export_command(
     from decoy.cli.library import (
         LibraryError,
         TargetError,
-        check_destination,
         export_lines,
         export_select,
+        parse_instant,
         resolve_target,
-        write_user_file,
+        write_export,
     )
-    from decoy.cli.library._read import _instant as parse_instant
 
     cmd = start("library export")
     state = cmd.state
@@ -97,7 +96,6 @@ def export_command(
     opened = cmd.library(root.path)
     caught: Exception | None = None
     try:
-        check_destination(root.path, out)
         present = opened.present
     except LibraryError as exc:
         caught = exc
@@ -118,7 +116,7 @@ def export_command(
     try:
         ids, refs = export_select(opened, kind=kind, since=cutoff, ref=ref, target=target)
         lines = export_lines(opened, ids, refs, keep_paths)
-        write_user_file(out, b"".join(lines))
+        write_export(root.path, out, b"".join(lines))
     except (LibraryError, RecordError) as exc:
         caught = exc
     if caught is not None:

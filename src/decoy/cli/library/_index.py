@@ -31,6 +31,7 @@ import contextlib
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -361,6 +362,14 @@ def select(
         and (table is None or table in r.tables)
     ]
     return sorted(picked, key=lambda r: (r.created_at, r.id))
+
+
+def parse_instant(text: str) -> datetime:
+    """A record time (`created_at`) or a user's `--since`: `YYYY-MM-DD` (midnight UTC) or an ISO
+    time; a trailing `Z` or no zone is UTC. The one parser of the library's timestamps. Raises
+    `ValueError`."""
+    value = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
 
 
 def reachable(roots: Iterable[str], rows: Iterable[IndexRow]) -> set[str]:
