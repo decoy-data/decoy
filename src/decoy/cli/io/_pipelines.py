@@ -32,16 +32,22 @@ from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io._layout import (
     PIPELINE_YAML,
     PIPELINES_DIR,
+    is_run_id,
     is_valid_name,
     member_yaml,
+    pipeline_folder,
+    project_out_folder,
+    read_latest,
     same_path,
 )
 from decoy.cli.io._layout_errors import (
+    LATEST_INVALID,
     PIPELINE_NAME_INVALID,
     PIPELINE_UNKNOWN,
     PROJECT_MISMATCH,
     PROJECT_NOT_FOUND,
     LayoutError,
+    LayoutWarning,
 )
 from decoy.cli.io._project import Project, find_project
 from decoy.ui.output import OutputMode, OutputState, emit_json
@@ -105,7 +111,8 @@ def explicit_project(ctx: typer.Context | None) -> Path | None:
     return _select(project_flag(ctx))
 
 
-def _looks_like_path(raw: str) -> bool:
+def looks_like_path(raw: str) -> bool:
+    """True for a token with a separator, a YAML suffix, or `-`: a path, not a pipeline name."""
     return raw == "-" or "/" in raw or "\\" in raw or raw.lower().endswith(_PATH_SUFFIXES)
 
 
@@ -132,16 +139,22 @@ def parse_pipeline_token(ctx: typer.Context, value: str | None) -> PipelineToken
     if value is None:
         return None
     flag = project_flag(ctx)
-    if _looks_like_path(value) or os.path.isfile(value):
+    if looks_like_path(value) or os.path.isfile(value):
         _require_readable_file(value)
         return PipelineToken(value, "path", flag)
     return PipelineToken(value, "name", flag)
 
 
-def pipeline_argument(*, help: str) -> Any:
-    """The `typer.Argument` of a pipeline parameter: the one declaration every command shares."""
+def pipeline_argument(*, help: str, optional: bool = False) -> Any:
+    """The `typer.Argument` of a pipeline parameter: the one declaration every command shares.
+
+    `optional` is for `run`, which picks the project's only pipeline when none is given.
+    """
     return typer.Argument(
-        ..., callback=parse_pipeline_token, autocompletion=pipeline_names, help=help
+        None if optional else ...,
+        callback=parse_pipeline_token,
+        autocompletion=pipeline_names,
+        help=help,
     )
 
 
@@ -152,6 +165,31 @@ def pipeline_option(default: Any, *names: str, help: str) -> Any:
     )
 
 
+def out_dir_option() -> Any:
+    """The `--out-dir DIR` option of `run` and `tokenize`: one declaration, one help text."""
+    return typer.Option(
+        None,
+        "--out-dir",
+        metavar="DIR",
+        help=(
+            "Write relative output paths into DIR instead of a new run folder under "
+            "out/<pipeline>/. DIR is relative to the current folder and is made owner-only "
+            "if missing. No run id, LATEST or current link; files there are overwritten. "
+            "Absolute output paths are unchanged."
+        ),
+    )
+
+
+def member_has_link(root: Path, name: str) -> bool:
+    """True when `pipelines/`, `pipelines/<name>/` or its `pipeline.yaml` is a symbolic link.
+
+    The one link rule for a member, shared by lookup and by `decoy init`'s write. May raise
+    `OSError` from the filesystem probe.
+    """
+    yaml = member_yaml(root, name)
+    return any(p.is_symlink() for p in (root / PIPELINES_DIR, yaml.parent, yaml))
+
+
 def _member(root: Path, name: str) -> Path | None:
     """`<root>/pipelines/<name>/pipeline.yaml` when a regular file, with no link on the way.
 
@@ -160,7 +198,7 @@ def _member(root: Path, name: str) -> Path | None:
     """
     yaml = member_yaml(root, name)
     try:
-        if any(p.is_symlink() for p in (root / PIPELINES_DIR, yaml.parent, yaml)):
+        if member_has_link(root, name):
             return None
         return yaml if yaml.is_file() else None
     except OSError:
@@ -175,6 +213,55 @@ def list_pipelines(project: Project) -> list[PipelineEntry]:
         return []
     found = ((n, _member(project.root, n)) for n in folders if is_valid_name(n))
     return [PipelineEntry(n, y) for n, y in found if y is not None]
+
+
+@dataclass(frozen=True)
+class RunHistory:
+    """The newest run folder and the last clean run of one pipeline, read from `out/<name>/`."""
+
+    last_run: str | None
+    last_clean: str | None
+    warnings: tuple[LayoutWarning, ...] = ()
+
+
+def _is_plain_dir(path: Path) -> bool:
+    return path.is_dir() and not path.is_symlink()
+
+
+def _contained_history_folder(root: Path, name: str) -> Path | None:
+    """`out/<name>/` when no link is on the way and it lies inside the project, else None.
+
+    A linked `out/` or pipeline folder would report another place's runs as this project's.
+    """
+    out = project_out_folder(root)
+    folder = pipeline_folder(root, name)
+    try:
+        if out.is_symlink() or folder.is_symlink():
+            return None
+        return folder if folder.resolve().is_relative_to(root.resolve()) else None
+    except (OSError, RuntimeError):
+        return None
+
+
+def run_history(root: Path, name: str) -> RunHistory:
+    """Run ids of pipeline `name`: the newest well-formed folder, and `LATEST` when it checks out.
+
+    Folders that are not run ids (or are links) are ignored, and so is a history folder that
+    is a link or lies outside the project. A `LATEST` that is not a run id, or names no run
+    folder, is ignored with `layout.latest_invalid`. Reads only; nothing is made.
+    """
+    folder = _contained_history_folder(root, name)
+    if folder is None:
+        return RunHistory(None, None)
+    try:
+        found = os.listdir(folder)
+    except OSError:
+        found = []
+    runs = sorted(r for r in found if is_run_id(r) and _is_plain_dir(folder / r))
+    latest = read_latest(folder)
+    if latest is None or latest in runs:
+        return RunHistory(runs[-1] if runs else None, latest)
+    return RunHistory(runs[-1] if runs else None, None, (LATEST_INVALID.warning(path=folder),))
 
 
 def _by_path(token: PipelineToken) -> PipelineRef:
@@ -195,8 +282,7 @@ def _by_name(token: PipelineToken) -> PipelineRef:
     project = find_project(None, _select(token.project_flag))
     if project.implicit:
         raise PROJECT_NOT_FOUND.error(where="the current folder")
-    yaml = _member(project.root, name)
-    if yaml is None:
+    if _member(project.root, name) is None:
         names = [entry.name for entry in list_pipelines(project)]
         close = difflib.get_close_matches(name, names, n=1)
         raise PIPELINE_UNKNOWN.error(
@@ -205,8 +291,19 @@ def _by_name(token: PipelineToken) -> PipelineRef:
             known=", ".join(names) or "none",
             close=f" Did you mean {close[0]}?" if close else "",
         )
-    # Placement walks up from the YAML's folder. A marker or `.git` inside `pipelines/<name>/`
-    # would put outputs in another project than the one selected here.
+    return member_ref(project, name)
+
+
+def member_ref(project: Project, name: str) -> PipelineRef:
+    """The `PipelineRef` of a listed member, after the check that no nested marker moves it.
+
+    Placement walks up from the YAML's folder. A marker or `.git` inside `pipelines/<name>/`
+    would put outputs in another project than the one selected, so that is refused here for a
+    name given on the command line and for one picked from `list_pipelines` alike.
+    """
+    yaml = _member(project.root, name)
+    if yaml is None:
+        raise PIPELINE_UNKNOWN.error(name=name, root=project.root, known="none", close="")
     walked = find_project(yaml.resolve().parent, None)
     if not same_path(walked.root, project.root):
         raise PROJECT_MISMATCH.error(
