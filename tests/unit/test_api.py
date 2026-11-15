@@ -612,12 +612,17 @@ def _assert_collision(exc: pytest.ExceptionInfo, *locations: str) -> None:
 
 
 def test_mask_refuses_two_targets_on_one_absolute_path(tmp_path: Path, nothing_runs: None):
+    # Equal declarations are the engine's refusal since 0.26.0 (DUP-DEST E1), so mask() raises
+    # its config error, not the CLI layout code (CL2, OQ-4).
     shared = tmp_path / "out" / "shared.csv"
     config = _two_tables(tmp_path, str(shared), str(shared))
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(ConfigValidationError) as exc:
         decoy.mask(config=config)
-    _assert_collision(exc, "targets.ta.path", "targets.tb.path")
-    assert str(shared) not in str(exc.value)
+    message = str(exc.value)
+    assert "target_shared_destination" in message
+    assert "targets.ta.path" in message and "targets.tb.path" in message
+    assert str(shared) not in message
+    assert exc.value.__cause__ is None and exc.value.__context__ is None
     assert not (tmp_path / "out").exists()
 
 
