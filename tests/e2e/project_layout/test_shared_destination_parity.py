@@ -133,3 +133,24 @@ def test_equal_targets_refuse_before_a_duckdb_relation_is_acquired(
     assert COLLISION not in result.output
     assert acquire_spy == []
     assert not (root / "out").exists()
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_validate_compile_refuses_a_shared_destination_before_writing_its_plan(
+    tmp_path: Path, json_mode: bool
+) -> None:
+    # T-C12 (Codex r1): compile reads the raw mapping and never ran the schema, so equal targets
+    # compiled cleanly and `--output` wrote a plan for a config run and validate refuse.
+    root = _project(tmp_path)
+    cfg = _write(root, "pipelines/orders/pipeline.yaml", _two_tables(root, "m.csv", "m.csv"))
+    fresh, kept = tmp_path / "fresh.yaml", tmp_path / "kept.yaml"
+    kept.write_text("earlier plan\n", encoding="utf-8")
+    for out in (fresh, kept):
+        args = ["validate", "compile", str(cfg), "--output", str(out)]
+        result = runner.invoke(app, [*args, "--json"] if json_mode else args)
+        assert result.exit_code == EXIT_USAGE, result.output
+        assert SHARED in result.output
+        assert "targets.a.path" in result.output and "targets.b.path" in result.output
+        assert "m.csv" not in result.output
+    assert not fresh.exists()
+    assert kept.read_text(encoding="utf-8") == "earlier plan\n"
