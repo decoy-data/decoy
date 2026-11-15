@@ -140,55 +140,81 @@ LICENSE_DOCS = (
     "docs/install.md",
     "docs/release/versioning.md",
 )
-# Other license ids are legal only in a sentence that states history or conversion. LICENSE.md
-# is the verbatim FSL text and NOTICE's third-party table lists dependency licenses, so only
-# the prose files are scanned. Adding an entry is a visible change here, never a silent one.
-HISTORY_SENTENCES = (
-    "Apache 2.0 Future",
-    "stay Apache-2.0",
-    "becomes Apache-2.0",
-    "licensed under Apache-2.0 on the second anniversary",
-    "under Apache-2.0. Newer",
-    "becomes open source (Apache-2.0)",
-    "shipped under Apache-2.0",
-    "converts to the Apache License 2.0",
+# Other license ids are legal only in a sentence that states history or conversion. Each
+# allowlisted sentence is keyed by (file, full sentence) with its exact occurrence count, so a new
+# sentence that reuses an allowed fragment fails. LICENSE.md is the verbatim FSL text, so it is
+# only checked for the FSL id. NOTICE here has no vendored third-party table, so it is scanned
+# whole.
+OTHER_LICENSE_ID = re.compile(
+    r"Apache|\bMIT\b|GPL|\bBSD|\bMPL|BUSL|\bBSL|Business Source License|Elastic License"
+    r"|SSPL|Server Side Public License|GNU General Public License",
+    re.IGNORECASE,
 )
-OTHER_LICENSE_ID = re.compile(r"Apache|\bMIT\b|GPL|\bBSD|\bMPL|BUSL|\bBSL")
-SCANNED_FOR_OTHER_IDS = (
-    "NOTICE",
-    "LICENSING.md",
-    "README.md",
-    "docs/install.md",
-    "docs/release/versioning.md",
-)
+_FSL_NAME = "Functional Source License, Version 1.1, Apache 2.0 Future License"
+ALLOWED_ID_SENTENCES: dict[str, dict[str, int]] = {
+    "NOTICE": {
+        f"Licensed under the {_FSL_NAME} (FSL-1.1-ALv2).": 1,
+    },
+    "LICENSING.md": {
+        "Decoy (the `decoy-cli` command-line tool; the `decoy-engine` library and "
+        "the `decoy-engine-native` companion from their first FSL release onward) is licensed under "
+        f"the **{_FSL_NAME}** (SPDX: `FSL-1.1-ALv2`).": 1,
+        "Engine 0.22.0 and earlier stay Apache-2.0; 0.23.0 and later, including the 0.26.0 the CLI "
+        "pins today, are FSL-1.1-ALv2.": 1,
+        "Each release becomes Apache-2.0 open source two years after it ships.": 1,
+        "**What happens after two years?** Each release is automatically licensed under Apache-2.0 "
+        "on the second anniversary of the date it was released.": 1,
+        "From then on, that release (and only that release) can be used for any purpose, including "
+        "a competing one, under Apache-2.0.": 1,
+        "Each release becomes open source (Apache-2.0) after two years.": 1,
+        "**What about older engine releases that shipped under Apache-2.0?** They keep the license "
+        "they shipped with.": 1,
+    },
+    "README.md": {
+        "Each release becomes Apache-2.0 two years after it ships.": 1,
+        f"{_FSL_NAME} (FSL-1.1-ALv2).": 1,
+        "`decoy-engine` moves to the same license from its first FSL release onward; engine 0.22.0 "
+        "and earlier stay Apache-2.0; 0.23.0 and later, including the 0.26.0 this CLI pins today, "
+        "are FSL-1.1-ALv2.": 1,
+        "Each release converts to the Apache License 2.0 on the second anniversary of its release.": 1,
+    },
+    "docs/install.md": {},
+    "docs/release/versioning.md": {},
+}
+
+
+def _id_sentences(text: str) -> dict[str, int]:
+    """Whitespace-normalized sentences that name a license id, with occurrence counts. A new
+    markdown block (blank line, heading, bullet) starts a new sentence."""
+    blocks: list[list[str]] = [[]]
+    for line in text.splitlines():
+        if not line.strip() or line.lstrip().startswith(("#", "- ", "* ", "|")):
+            blocks.append([])
+        blocks[-1].append(line.strip())
+        if line.startswith("#"):
+            blocks.append([])
+    counts: dict[str, int] = {}
+    for block in blocks:
+        joined = " ".join(part for part in block if part)
+        for sentence in re.split(r"(?<=[.!?;])\s+(?=[A-Z*(`])", joined):
+            if OTHER_LICENSE_ID.search(sentence):
+                counts[sentence] = counts.get(sentence, 0) + 1
+    return counts
 
 
 def test_one_license_id_across_docs() -> None:
     """AT-L1: every license doc names FSL-1.1-ALv2, and any other license id sits in an
-    allowlisted history or conversion sentence."""
+    allowlisted history or conversion sentence, exactly as many times as listed."""
     for name in LICENSE_DOCS:
         text = (ROOT / name).read_text(encoding="utf-8")
         assert "FSL-1.1-ALv2" in text, f"{name} does not name FSL-1.1-ALv2"
-    assert len(HISTORY_SENTENCES) == 8, "the history allowlist changed; review the new sentence"
-    used: set[str] = set()
-    for name in SCANNED_FOR_OTHER_IDS:
-        in_notice_table = False
-        for number, line in enumerate((ROOT / name).read_text(encoding="utf-8").splitlines(), 1):
-            if name == "NOTICE" and line.startswith("THIRD-PARTY NOTICES"):
-                in_notice_table = True
-            if in_notice_table or not OTHER_LICENSE_ID.search(line):
-                continue
-            hits = [s for s in HISTORY_SENTENCES if s in line]
-            rest = line
-            for sentence in hits:
-                rest = rest.replace(sentence, "")
-            assert hits and not OTHER_LICENSE_ID.search(rest), (
-                f"{name}:{number} names another license outside the allowlist: {line.strip()!r}"
-            )
-            used.update(hits)
-    assert used == set(HISTORY_SENTENCES), (
-        f"unused allowlist entries: {set(HISTORY_SENTENCES) - used}"
-    )
+    for name, allowed in ALLOWED_ID_SENTENCES.items():
+        found = _id_sentences((ROOT / name).read_text(encoding="utf-8"))
+        assert found == allowed, (
+            f"{name}: license-id sentences changed. New or miscounted: "
+            f"{ {k: v for k, v in found.items() if allowed.get(k) != v} }; "
+            f"missing: {[k for k in allowed if k not in found]}"
+        )
 
 
 def test_versioning_has_no_pypi_or_engine_floor() -> None:
