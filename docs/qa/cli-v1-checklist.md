@@ -241,7 +241,7 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 | SCAN-04 | `decoy scan data/t1.csv --has-header --output t1-scan.json`; the marker sweep over it; `decoy scan show t1-scan.json contact --table t1`; then the `scan.json` that `decoy demo` writes | The scan file is the value-free core: no per-value members, sweep clean; `scan show` prints counts and labels only; in the demo's `scan.json`, sensitive columns show `[redacted]` and `redacted_columns` lists them; no flag brings values back | 24c | |
 | SCAN-05 | `decoy scan data/raw.csv --no-header --column-names a,b,c`; then `--column-names` with `--has-header` | Named columns; the second is refused (exit 1) | 27 | |
 | SCAN-06 | `decoy scan data/rec.fwf --layout data/layout.yaml`; then without `--layout` | Scans; the second exits 1 | 27 | |
-| SCAN-07 | `decoy scan diff old.json new.json --strict` where `new` adds a high-PII field; then with no drift; then `- -` | Exit 1 on drift (see open points); exit 0 with no drift; exit 1 when both are stdin | 27 | |
+| SCAN-07 | `decoy scan diff old.json new.json --strict` where `new` adds a high-PII field; then with no drift; then `- -` | Exit 4 on drift; exit 0 with no drift; exit 1 when both are stdin | 27 | |
 | SCAN-08 | `decoy scan data/t1.csv --has-header --emit-config`; `--compare <baseline>` | **Not built.** A starter pipeline YAML; a drift report against the baseline | 29 | |
 | SCAN-09 | Save a scan snapshot to the library, reference it as the pipeline's baseline, run | **Not built.** The run's evidence carries the snapshot hash | 30, 36 | |
 | SCAN-10 | Opt-in distribution capture, then a run whose output drifts past the set percentage, in strict mode | **Not built.** The breach blocks publication; outside strict mode it warns | 31 | |
@@ -255,9 +255,6 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 
 Open points:
 
-- `scan diff --strict` exits 1 (usage) on drift (`src/decoy/cli/scan.py:1039`). Drift is a data
-  finding, which elsewhere exits 4. The help text documents 1, so this is not a docs mismatch;
-  confirm the intended code before the exit codes freeze (row 93).
 - Row 24c's text says an opt-in flag keeps scan values. The build chose no scan opt-in flag (plan Q1
   (a), CLI #177). SCAN-04 tests the build; the row text is stale.
 
