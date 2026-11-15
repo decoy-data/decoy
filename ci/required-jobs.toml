@@ -6,4 +6,4 @@ schema = 1
 
 [[merge]]
 workflow = "ci.yml"
-jobs = ["ruff", "pytest", "layers-gate", "fresh-install-smoke", "ci-template-lint", "certified-profile"]
+jobs = ["ruff", "pytest", "layers-gate", "fresh-install-smoke", "ci-template-lint", "shape-changelog", "certified-profile"]

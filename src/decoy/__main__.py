@@ -19,6 +19,7 @@ from decoy.cli.ci import ci_app
 from decoy.cli.cockpit import DOCTOR_EPILOG, doctor
 from decoy.cli.demo import DEMO_EPILOG
 from decoy.cli.demo import _demo as demo_command
+from decoy.cli.exit_codes import _EXIT_CRASH
 from decoy.cli.explain import EXPLAIN_EPILOG
 from decoy.cli.explain import explain as explain_command
 from decoy.cli.fit import FIT_EPILOG
@@ -169,7 +170,7 @@ class _GuardedGroup(TyperGroup):
                 print_traceback(state)
         # Raised outside the `except` block so the safe exit carries neither the original
         # exception as __cause__ nor as __context__.
-        raise typer.Exit(1)
+        raise typer.Exit(_EXIT_CRASH)
 
 
 # The generation path in one place: `fit` is in the Generate panel, but `run` and the fidelity

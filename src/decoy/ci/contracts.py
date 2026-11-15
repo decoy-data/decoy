@@ -34,15 +34,7 @@ from pydantic_core import PydanticCustomError
 
 from decoy.ci import CI_MANIFEST_VERSION, CI_REPORT_VERSION
 from decoy.cli import exit_codes
-from decoy.cli.exit_codes import (
-    EXIT_CAPACITY,
-    EXIT_FINDINGS,
-    EXIT_OK,
-    EXIT_PARTIAL,
-    EXIT_RUNTIME,
-    EXIT_USAGE,
-    EXIT_WARNINGS,
-)
+from decoy.cli.exit_codes import EXIT_OK
 
 __all__ = [
     "CI_MANIFEST_VERSION",
@@ -123,16 +115,8 @@ EXIT_CODES: frozenset[int] = frozenset(
     getattr(exit_codes, name) for name in exit_codes.__all__ if name.startswith("EXIT_")
 )
 # Highest precedence first: capacity > runtime > invalid/refused > partial > findings >
-# warnings > ok.
-EXIT_PRECEDENCE: tuple[int, ...] = (
-    EXIT_CAPACITY,
-    EXIT_RUNTIME,
-    EXIT_USAGE,
-    EXIT_PARTIAL,
-    EXIT_FINDINGS,
-    EXIT_WARNINGS,
-    EXIT_OK,
-)
+# warnings > ok. The same object `decoy run --all` ranks with, so the two cannot drift.
+EXIT_PRECEDENCE: tuple[int, ...] = exit_codes.PRECEDENCE
 
 _TOKEN = re.compile(r"^[a-z][a-z0-9_.-]{0,127}\Z")
 _HEX64 = re.compile(r"^[0-9a-f]{64}\Z")
