@@ -8,6 +8,10 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ## [Unreleased]
 
+### Changed
+
+- **Versioning policy and license wording checks (REL-GATE RG-L).** `docs/release/versioning.md` now describes the signed-bundle release and the exact `decoy-engine==` pin instead of a PyPI publish and a `>=` floor, and the 1.0.0 gate list is current. New metadata tests keep FSL-1.1-ALv2 as the one license id across the license docs and refuse a PyPI or `>=` statement in the policy. No command or flag changes.
+
 ### Added
 
 - **Library index, freshness and degraded mode (LIB L1c.1, roadmap row 35).** No command uses them yet. `library/index.sqlite` (pre-created 0600 before SQLite opens it, through the same open and lock as refs) indexes each record's kind, schema, time, invocation, pipeline, status, digest, size, tables and links, with unknown kinds kept as opaque rows. Every `open_library` lists the object file names and catches the index up in one locked transaction (missing rows inserted, rows for deleted files dropped); a missing, corrupt, other-version or table-less index is rebuilt, never migrated, and a schema rebuilt mid-process is filled from the objects before it answers. A corrupt index is emptied in place (`open_private(..., truncate=True)`, the same inode), never replaced, so two processes cannot each hold the lock on a different file. No `sqlite3.Error` leaves the lock: a corrupt index is `library_index_corrupt` (emptied and retried once), any other SQLite failure `library_index_failed`. `put` inserts the row after the object exists and a failed insert or commit never fails the put. `Library.rows(kind, pipeline, table)` and the virtual `Library.latest` (largest creation time, then id) read the index without opening record files. A network filesystem (Linux `statfs` magic numbers, macOS `f_fstypename`, Windows UNC or `DRIVE_REMOTE`) or an index that cannot be locked puts the library in degraded mode: `put` still works, ref updates refuse with `library_lock_unavailable`, and queries parse the files. See `docs/library.md`.
