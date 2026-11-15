@@ -15,10 +15,14 @@ Moved here from `decoy-platform/docs/backlog/RECENTLY-SHIPPED.md` on 2026-11-05 
 ([ROADMAP.md](ROADMAP.md)). The platform copy is frozen at that date. Entries below 2026-11-05 are
 copied unchanged; paths in them are relative to the repo they name.
 
-Last updated: 2026-11-14 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
+Last updated: 2026-11-15 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
 git logs).
 
 ---
+
+## 2026-11-15
+
+- **CLI** (`1825e45a`, CLI #269): CLI-QA-CHECKLIST (roadmap row 92a, now done). `docs/qa/cli-v1-checklist.md` lists each V1 CLI promise and its check by feature group, with a run template for the dated record. It is used after the V1 build, one complete group at a time; it has not been run yet.
 
 ## 2026-11-14
 
