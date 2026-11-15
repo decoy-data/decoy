@@ -314,7 +314,7 @@ def test_sums_must_match_the_candidate_record_not_themselves(candidate_set, caps
     tarball.write_bytes(b"swapped and relisted")
     (candidate_set.dist / cand.SUMS_NAME).write_text(cand.sums_text(candidate_set.dist))
     rc, summary, err = _run(candidate_set.argv, capsys)
-    assert (rc, summary["steps"]) == (1, {"candidate": "fail"})
+    assert (rc, summary["steps"]) == (1, {"candidate": "fail", "cleanup": "pass"})
     assert "smoke_candidate_mismatch" in err
 
 
@@ -339,6 +339,7 @@ def test_swapped_bundle_after_candidate_compare_fails_install(
         "version_document": "pass",
         "installer_key": "pass",
         "install": "fail",
+        "cleanup": "pass",
     }
     assert "checksum MISMATCH" in err
 
