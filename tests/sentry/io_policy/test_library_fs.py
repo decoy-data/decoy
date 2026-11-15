@@ -12,8 +12,12 @@ Banned outside `_fs.py`, by any spelling the AST shows:
 - removes, renames and writes: `os.unlink`, `os.remove`, `os.rmdir`, `os.rename`, `os.replace`,
   `shutil.rmtree`, `shutil.move`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`,
   `shutil.copytree`, `Path.unlink`, `Path.rmdir`, `Path.rename`, `Path.replace` (one argument;
-  `str.replace` takes two), `Path.write_text`, `Path.write_bytes`, `Path.touch`, `Path.mkdir`,
-  and `open(...)` or `Path.open(...)` with a mode that writes;
+  `str.replace` takes two; `Path.replace(p, q)` on the name `Path` with any count),
+  `Path.write_text`, `Path.write_bytes`, `Path.touch`, `Path.mkdir`, `Path.chmod`,
+  `Path.symlink_to`, `Path.hardlink_to`, `os.mkdir`, `os.makedirs`, `os.chmod`, `os.symlink`,
+  `os.link`, `os.truncate`, `os.utime`, `tempfile.mkstemp`, `mkdtemp`, `NamedTemporaryFile` and
+  `TemporaryFile`; `open(...)`, `Path.open(...)`, `io.open(...)` and `os.fdopen(...)` with a mode
+  that writes; and `os.open` unless its flags are exactly `os.O_RDONLY`;
 - inspection, which follows links: `os.stat`, `os.lstat`, `os.scandir`, `os.listdir`,
   `os.walk`, `os.path.exists`, `isdir`, `isfile`, `islink`, `lexists`, `realpath`, `getsize`,
   and `Path.exists`, `is_dir`, `is_file`, `is_symlink`, `stat`, `lstat`, `iterdir`, `glob`,
@@ -40,8 +44,10 @@ OWNER = "_fs.py"
 _MODULE_CALLS = {
     "os": {
         "unlink", "remove", "rmdir", "rename", "replace", "stat", "lstat", "scandir",
-        "listdir", "walk",
+        "listdir", "walk", "mkdir", "makedirs", "chmod", "symlink", "link", "truncate", "utime",
     },
+    "tempfile": {"mkstemp", "mkdtemp", "NamedTemporaryFile", "TemporaryFile"},
+    "io": set(),
     "os.path": {"exists", "isdir", "isfile", "islink", "lexists", "realpath", "getsize"},
     "shutil": {"rmtree", "move", "copy", "copy2", "copyfile", "copytree"},
     "sqlite3": {"connect"},
@@ -49,7 +55,10 @@ _MODULE_CALLS = {
 _METHODS = {
     "unlink", "rmdir", "rename", "write_text", "write_bytes", "touch", "mkdir", "exists",
     "is_dir", "is_file", "is_symlink", "stat", "lstat", "iterdir", "glob", "rglob", "resolve",
+    "chmod", "symlink_to", "hardlink_to",
 }  # fmt: skip
+# `os.open` reads only with these flags, spelled exactly: `os.O_RDONLY` alone.
+_READ_ONLY_FLAGS = "O_RDONLY"
 _HELPERS = {
     "write_atomic", "write_local_target", "open_private", "create_private_directory",
     "create_exclusive", "read_small_file",
@@ -99,6 +108,20 @@ def _writes_mode(call: ast.Call, position: int) -> bool:
     return True  # a mode the scan cannot read is treated as a write
 
 
+def _read_only_flags(call: ast.Call, modules: dict[str, str]) -> bool:
+    """True only for `os.open(path, os.O_RDONLY)`: anything else, or flags the scan cannot read,
+    may write."""
+    flags: ast.expr | None = call.args[1] if len(call.args) > 1 else None
+    for kw in call.keywords:
+        if kw.arg == "flags":
+            flags = kw.value
+    return (
+        isinstance(flags, ast.Attribute)
+        and flags.attr == _READ_ONLY_FLAGS
+        and modules.get(_dotted(flags.value) or "") == "os"
+    )
+
+
 def offenders(source: str) -> list[tuple[int, str]]:
     """Every banned call in `source`: (line, spelling)."""
     tree = ast.parse(source)
@@ -118,15 +141,28 @@ def offenders(source: str) -> list[tuple[int, str]]:
             continue
         owner = _dotted(func.value)
         module = modules.get(owner or "", owner if owner in _MODULE_CALLS else None)
+        if module == "os" and func.attr == "open":
+            if not _read_only_flags(node, modules):
+                found.append((node.lineno, "os.open(write)"))
+            continue
+        if (module, func.attr) in (("os", "fdopen"), ("io", "open")):
+            if _writes_mode(node, 1):
+                found.append((node.lineno, f"{module}.{func.attr}(write)"))
+            continue
+        if owner == "Path" and (func.attr in _METHODS or func.attr == "replace"):
+            found.append((node.lineno, f"Path.{func.attr}"))  # the unbound form, any arguments
+            continue
         if module is not None and func.attr in _MODULE_CALLS.get(module, ()):
             found.append((node.lineno, f"{module}.{func.attr}"))
         elif module is not None:
             continue
         elif func.attr in _HELPERS:
             found.append((node.lineno, func.attr))
+        elif func.attr == "resolve" and node.args:
+            continue  # `Path.resolve` takes no positional argument (`Library.resolve(text)` does)
         elif func.attr in _METHODS:
             found.append((node.lineno, f"Path.{func.attr}"))
-        elif func.attr == "replace" and len(node.args) + len(node.keywords) == 1:
+        elif func.attr == "replace" and len(node.args) == 1 and not node.keywords:
             found.append((node.lineno, "Path.replace"))
         elif func.attr == "open" and _writes_mode(node, 0):
             found.append((node.lineno, "Path.open(write)"))
