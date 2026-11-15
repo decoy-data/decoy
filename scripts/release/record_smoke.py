@@ -84,8 +84,9 @@ def check_summary(summary: Any) -> dict[str, Any]:
 
 
 def check_green(summary: dict[str, Any]) -> None:
+    # Every step by name, not by order: the smoke prints its summary with sorted keys.
     steps = summary["steps"]
-    if list(steps) != list(SMOKE_STEPS) or any(v != "pass" for v in steps.values()):
+    if set(steps) != set(SMOKE_STEPS) or any(v != "pass" for v in steps.values()):
         raise Refused("smoke_not_green")
 
 

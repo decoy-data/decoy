@@ -90,6 +90,13 @@ def test_green_matching_summary_appends_one_row(repo, capsys) -> None:
     assert _log(repo) == before + row
 
 
+def test_summary_as_the_smoke_prints_it_is_recorded(repo, capsys) -> None:
+    # `smoke_install.py` prints with sorted keys, so the steps are not in pipeline order.
+    printed = json.dumps(_summary(), sort_keys=True)
+    assert list(json.loads(printed)["steps"]) != list(cand.SMOKE_STEPS)
+    assert _record(repo, printed, capsys)[0] == 0
+
+
 def test_summary_not_matching_the_candidate_is_refused(repo, capsys) -> None:
     before = _log(repo)
     for change in (
