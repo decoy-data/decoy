@@ -44,7 +44,7 @@ from decoy.cli.library._errors import (
     LibraryError,
     library_error,
 )
-from decoy.cli.library._paths import INDEX_FILE, record_digest
+from decoy.cli.library._paths import INDEX_FILE, object_entries
 
 _T = TypeVar("_T")
 
@@ -68,7 +68,6 @@ __all__ = [
 SCHEMA_VERSION = 1
 BUSY_TIMEOUT_SECONDS = 5.0  # read at call time, so a test can shorten it
 _INODE_RETRIES = 3
-_SUFFIX = ".json"
 # SQLITE_BUSY and SQLITE_LOCKED; `sqlite_errorcode` exists from Python 3.11.
 _BUSY_CODES = frozenset({5, 6})
 # SQLITE_CORRUPT and SQLITE_NOTADB, compared on the primary code (the low byte).
@@ -124,26 +123,13 @@ def row_from(raw: Mapping[str, Any], size: int, known: bool) -> IndexRow:
     )
 
 
-def object_ids(objects_dir: Path) -> set[str]:
-    """Every record id under `objects/`, from file names only (no file is opened)."""
-    found: set[str] = set()
+def object_ids(root: Path, objects_dir: Path) -> set[str]:
+    """Every record id under `objects/`, from file names only (no file is opened). A linked or
+    unlistable folder adds nothing; fsck reports it."""
     try:
-        fans = [e for e in os.scandir(objects_dir) if e.is_dir(follow_symlinks=False)]
-    except FileNotFoundError:
-        return found
-    for fan in fans:
-        try:
-            with os.scandir(fan.path) as entries:
-                names = [e.name for e in entries]
-        except OSError:
-            continue  # a fan folder that cannot be listed: fsck reports it, the index skips it
-        for name in names:
-            if not name.endswith(_SUFFIX):
-                continue
-            candidate = f"sha256:{fan.name}{name[: -len(_SUFFIX)]}"
-            if record_digest(candidate) is not None:
-                found.add(candidate)
-    return found
+        return {o.record_id for o in object_entries(root, objects_dir) if o.stored}  # type: ignore[misc]
+    except LibraryError:
+        return set()
 
 
 def _is_busy(exc: BaseException) -> bool:
