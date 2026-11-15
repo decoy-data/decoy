@@ -65,7 +65,7 @@ def _pipeline_label(cmd: LibraryCommand, ref: PipelineRef) -> str:
 
     failure: LayoutError | None = None
     try:
-        project = ref.project or find_project(ref.yaml.resolve().parent, None)
+        project = ref.project or find_project(ref.yaml.parent, None)  # it resolves the start
         return project_relative_posix(project.root, ref.yaml)
     except LayoutError as exc:
         failure = exc

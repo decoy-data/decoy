@@ -28,14 +28,13 @@ clone are all caught up this way.
 from __future__ import annotations
 
 import contextlib
-import os
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
 
-from decoy._private_file import PrivateFileError, open_private
+from decoy._private_file import PrivateFileError
 from decoy.cli.library._errors import (
     LIBRARY_BUSY,
     LIBRARY_INDEX_CORRUPT,
@@ -44,6 +43,7 @@ from decoy.cli.library._errors import (
     LibraryError,
     library_error,
 )
+from decoy.cli.library._fs import entry_of, open_database
 from decoy.cli.library._paths import INDEX_FILE, object_entries
 
 _T = TypeVar("_T")
@@ -155,10 +155,10 @@ def _is_corrupt(exc: BaseException) -> bool:
 
 def _inode(path: Path) -> tuple[int, int] | None:
     try:
-        info = os.stat(path)
-    except OSError:
+        found = entry_of(path.parent.parent, path)
+    except LibraryError:
         return None
-    return info.st_dev, info.st_ino
+    return None if found is None else found.inode
 
 
 def _begin(
@@ -168,9 +168,10 @@ def _begin(
     (connection, failure, still the live file)."""
     conn: sqlite3.Connection | None = None
     try:
-        open_private(path, new_parent=False, truncate=truncate)
+        conn = open_database(
+            path.parent.parent, path, truncate=truncate, timeout=BUSY_TIMEOUT_SECONDS
+        )
         before = _inode(path)
-        conn = sqlite3.connect(str(path), timeout=BUSY_TIMEOUT_SECONDS, isolation_level=None)
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("SELECT count(*) FROM sqlite_master").fetchone()  # reads the header
     except (PrivateFileError, sqlite3.Error) as exc:
@@ -193,6 +194,11 @@ def locked(library_dir: Path, *, reset: bool = False) -> Iterator[sqlite3.Connec
     `library_index_corrupt` or `library_index_failed` for a SQLite error in the block or the
     commit. A `LibraryError` the block raises itself passes through unchanged.
     """
+    # SQLite opens its database by path: `_fs` judges that path first (no linked folder above
+    # it, nothing but a regular file at it), so neither the open nor the lock reaches outside.
+    found = entry_of(library_dir.parent, library_dir / INDEX_FILE)  # unsafe: a linked folder
+    if found is not None and found.kind != "file":
+        raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)  # a folder, pipe or link where it should be
     path = library_dir / INDEX_FILE
     conn: sqlite3.Connection | None = None
     failure: BaseException | None = None
