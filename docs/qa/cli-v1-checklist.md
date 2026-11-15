@@ -190,7 +190,7 @@ What it covers: projects (`decoy project`), `decoy init` and its wizard, where a
 | PROJ-07 | `decoy run mask-basic --mask-secret env:QA_SECRET`, then `ls -l out/mask-basic` | Output under `out/mask-basic/<run-id>/` with mode 0700; `LATEST` holds the run id; `current` links to it; the summary and `--json` name the folder | 24t | |
 | PROJ-08 | Make the run fail (for example remove `data/t1.csv`), then read `LATEST` | Non-zero exit; `LATEST` and `current` still name the previous clean run | 24t | |
 | PROJ-09 | `decoy run` with no argument in a project with one pipeline; with two; outside a project | Runs the one pipeline; with two, exit 1 listing both; outside a project, exit 2 (missing argument) | 24t | |
-| PROJ-10 | `decoy run --all`, with one pipeline broken; then `decoy run --all mask-basic` and `decoy run --all --vault v.bin` | Each pipeline runs in its own process and the run goes on after a failure; the exit is the first of 3, 5, 1, 4, 2, 0 any child produced; the last two are refused with exit 1. **Changes with RG-X (CLI #270, open).** RG-X makes `run --all` use the `decoy ci` precedence; grade against the order above until #270 merges | 24t | |
+| PROJ-10 | `decoy run --all`, with one pipeline broken; then `decoy run --all mask-basic` and `decoy run --all --vault v.bin` | Each pipeline runs in its own process and the run goes on after a failure; the exit is the first of 5, 3, 1, 6, 4, 2, 0 any child produced (the `decoy ci` order, `PRECEDENCE` in `src/decoy/cli/exit_codes.py`, since CLI #270); the last two are refused with exit 1 | 24t | |
 | PROJ-11 | `decoy run mask-basic --mask-secret env:QA_SECRET --out-dir build` | Outputs in `build/`, made owner-only if new; no run id, `LATEST` or `current` | 24t | |
 | PROJ-12 | A relative target that climbs out of its folder (`../../escape.csv`); then an absolute target | The first is refused with `layout.output_path_escapes`, exit 1; the second is written as given | 24t | |
 | PROJ-13 | From another folder: `decoy --project qa-proj run mask-basic --mask-secret env:QA_SECRET`, and the same with `DECOY_PROJECT=qa-proj` instead of `--project` | Both run the project's pipeline and write under its `out/` | 24t | |
@@ -300,7 +300,7 @@ Today the CLI runs with `delivery_mode="in_place"` (`src/decoy/cli/exit_codes.py
 |---|---|---|---|---|
 | DLV-01 | `mask-fk` in strict delivery, with the child table's delivery forced to fail | **Not built.** No target is published; staged files removed; non-zero exit | 61 | |
 | DLV-02 | The same in best-effort delivery | **Not built.** The parent is delivered and the child withheld; exit 6; the run result lists both | 61, 62 | |
-| DLV-03 | `decoy run --all` where one child exits 6 | **Not built.** The summary counts it as 6, not 3 (see open points). **Changes with RG-X (CLI #270, open).** RG-X keeps a child's 6 in `run --all`; a child that exits 6 still needs row 61 | 24t, 61 | |
+| DLV-03 | `decoy run --all` where one child exits 6 | **Not built.** The summary counts it as 6, not 3 (CLI #270 keeps a child's 6); a child that exits 6 needs row 61 | 24t, 61 | |
 | DLV-04 | Targets under two different roots in one run | Refused under the local single-root rule | 61 | |
 | DLV-05 | `decoy run mask-basic --json`; read the run result document | **Not built.** `decoy-run-result/v1`: status, exit code, reason codes, tables; value-free; the shape matches the REL-GATE snapshot | 62, 66 | |
 | DLV-06 | A run whose worker runs out of memory | Exit 5 (capacity widening) | 62 | |
@@ -313,14 +313,8 @@ Today the CLI runs with `delivery_mode="in_place"` (`src/decoy/cli/exit_codes.py
 
 Open points:
 
-- **Changes with RG-X (CLI #270, open).** The two points below describe `run --all` before RG-X.
-  RG-X keeps a child's 6 and gives `run --all` and `decoy ci` one order. Rewrite them, PROJ-10 and
-  DLV-03 when #270 merges.
-- `decoy run --all` counts any child exit outside 0 to 5 as 3 (`src/decoy/cli/project/_run_all.py:9-12`,
-  `_effective`). Once exit 6 is live, a partly delivered child reads as a crash. DLV-03 fails until
-  row 61 or a follow-up adds 6 to the order.
-- `run --all` ranks 3 above 5 (`3, 5, 1, 4, 2, 0`) while `decoy ci` ranks 5 above 3
-  (`src/decoy/ci/contracts.py:125-135`). Settle one order before the exit codes freeze.
+- Exit 6 needs row 61 before DLV-03 can run: no child exits 6 yet. CLI #270 already ranks it
+  (`5, 3, 1, 6, 4, 2, 0`) and keeps it in the `run --all` summary.
 
 ## 7. Keys and secrets
 
@@ -412,7 +406,7 @@ the frozen surfaces REL-GATE snapshots.
 
 | Id | Command | Expected | Rows | Pass/fail |
 |---|---|---|---|---|
-| EXIT-01 | **RC.** `decoy explain exit-codes`; README "Exit codes"; `decoy.cli.exit_codes`; the crash handler | All agree: 0 to 6 as named, 130 for Ctrl-C, and the crash exit EXIT-03 observes. Today the docs omit 130 and give 3 for an unexpected error (see open points), so this fails until fixed. **Changes with RG-X (CLI #270, open).** RG-X adds 130 to both docs and names 1 for an internal error | 93 | |
+| EXIT-01 | **RC.** `decoy explain exit-codes`; README "Exit codes"; `decoy.cli.exit_codes`; the crash handler | All agree: 0 to 6 as named, 130 for Ctrl-C, and the crash exit EXIT-03 observes. Since CLI #270 both docs list 130 and name 1 for an internal error, and `tests/sentry/cli_text/test_exit_code_docs.py` pins them to `decoy.cli.exit_codes` | 93 | |
 | EXIT-02 | One trigger per code: clean run (0), bad config (1), `decoy validate mask-abs --fail-on-warning` (2), unwritable output mid-run (3), `report integrity` finding (4), capacity refusal (5), best-effort partial delivery (6, after row 61), Ctrl-C (130) | Each exits with its code | 61, 62 | |
 | EXIT-03 | Force an uncaught exception (an engine module that raises on import, in a scratch runtime) | `error: internal error (<Type>)` and the `--verbose` hint; no traceback; exit 1, as `tests/sentry/cli_text/test_no_traceback_escape.py` pins | 24zf | |
 | EXIT-04 | Every leaf command with `--json`, on success and on a refusal. Exempt: `decoy ci check` (no `--json`; its `--format json` report is checked in CI-03) | stdout is exactly one JSON object; refusals use the one error shape; progress only on stderr | 24zf | |
@@ -424,15 +418,6 @@ the frozen surfaces REL-GATE snapshots.
 
 Open points:
 
-- **Changes with RG-X (CLI #270, open).** The first two points below describe the docs before RG-X.
-  RG-X lists 130, drops "one of seven" and names 1 for an internal error in both docs. Rewrite them
-  and EXIT-01 when #270 merges.
-- Docs and code disagree on an uncaught error. `decoy explain exit-codes` and the README say 3 is the
-  code for "the engine raised an unexpected error", and `exit_code_for` maps "everything else" to 3.
-  The top-level crash handler exits 1 (`src/decoy/__main__.py:143-170`), and
-  `tests/sentry/cli_text/test_no_traceback_escape.py` pins 1. EXIT-03 grades the code as built.
-- Both docs say every command returns "one of seven" codes. Ctrl-C exits 130
-  (`RUN_EXIT_MAP`, `exit_code_for`), which neither lists.
 - EXIT-04 and the runtime guard. On a managed install whose native companion was removed or is
   ABI-mismatched, every command except `upgrade` is refused before it runs, in plain text on stderr
   with exit 3, and `--json` prints no error object (`src/decoy/distribution/runtime_guard.py:38-42`,

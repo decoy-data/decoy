@@ -22,6 +22,7 @@ git logs).
 
 ## 2026-11-15
 
+- **CLI** (`a2db34d9`, CLI #270): REL-GATE slice RG-X (row 93, in progress). `run --all` and `decoy ci` now use one exit-code order, 5, 3, 1, 6, 4, 2, 0, from `decoy.cli.exit_codes`; `run --all` keeps a child's exit 6. A crash still exits 1, now under a named constant, and the README and `decoy explain exit-codes` list 130 for Ctrl-C. A sentry keeps both docs in step with the code.
 - **CLI** (`1825e45a`, CLI #269): CLI-QA-CHECKLIST (roadmap row 92a, now done). `docs/qa/cli-v1-checklist.md` lists each V1 CLI promise and its check by feature group, with a run template for the dated record. It is used after the V1 build, one complete group at a time; it has not been run yet.
 
 ## 2026-11-14
