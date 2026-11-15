@@ -1,0 +1,37 @@
+# Frozen surfaces
+
+Status: current
+
+What freezes at 1.0.0 and which test or snapshot pins it. `tests/sentry/release/test_frozen_surface_map.py`
+reads this table: every path in the last two columns must exist, every item of the "Public surface" list in
+[versioning.md](versioning.md) must have a row, and so must each name in `exit_codes.__all__`, each lazy export of
+`src/decoy/__init__.py` and each file in `docs/schemas/`. A row with no test says
+`accepted-known-limit: <V2-LOG id>` instead, and the readiness record lists it.
+
+The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
+
+| Surface | Completeness source | Owning code | Pinning test or snapshot |
+|---|---|---|---|
+| Command and flag set | versioning.md item 1 | `src/decoy/__main__.py` | `tests/unit/test_cli_surface.py` (against `docs/cli-reference.md`) |
+| Exit-code integers 0 to 6 and 130, `RUN_EXIT_MAP`, `PRECEDENCE`, the `EXIT_*` constants | versioning.md item 2, `exit_codes.__all__` | `src/decoy/cli/exit_codes.py` | `tests/unit/test_exit_codes.py`, `tests/unit/test_exit_code_registries.py`, `tests/e2e/test_run_exit_map.py`, `tests/sentry/cli_text/test_exit_code_docs.py` |
+| YAML pipeline schema (engine-owned) | versioning.md item 3 | engine `PipelineConfig` | the engine snapshot (engine map); in the CLI `tests/e2e/test_schema_command.py` |
+| `--json` success shapes, per command | versioning.md item 4, the `--json` leaf commands | `src/decoy/cli/` | `tests/e2e/release_freeze/test_json_shapes.py`, `tests/fixtures/release_freeze/json-shapes.json` |
+| `--json` error object | versioning.md item 4, `docs/schemas/decoy-error-v1.schema.json` | `src/decoy/ui/output.py` | `tests/unit/test_ui_emit_error.py`, `tests/e2e/first_user/test_items_error_envelope.py` |
+| Bundled template set | versioning.md item 5 | `src/decoy/templates/` | `tests/e2e/test_release_smoke.py`, `tests/unit/test_bundled_templates.py` |
+| CI manifest | `docs/schemas/decoy-ci-v1.schema.json` | `src/decoy/ci/` | `tests/unit/test_ci_manifest.py` |
+| Python API: `mask`, `scan`, `MaskSecretConfigError`, `ConfigValidationError`, `UnsupportedCloudEndpointError` | `_LAZY_API` in `src/decoy/__init__.py` | `src/decoy/api.py` | `tests/unit/test_api.py` (the signature tests pin `mask` and `scan`) |
+| Version document and installer contract | `src/decoy/distribution/` | `src/decoy/distribution/` | `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py` |
+| `cli-local-1` evidence payload | the evidence writer | `src/decoy/cli/evidence.py` | `tests/unit/test_evidence.py` |
+| CLI version literal | `src/decoy/_version.py` | `src/decoy/_version.py` | `tests/unit/release/test_version_agreement.py` |
+
+## Limits of the `--json` snapshot
+
+The snapshot holds key paths and JSON types, never a cell value. Object keys that carry data (a map keyed by
+table or column name) are declared per command and collapse to `*`. Two lists keep "content varies by host"
+apart from "key may be absent". An opaque key (`run` `/warnings`, `info` `/native_companion`) is always present
+and only its content varies, so the snapshot pins its declared type (`array`, `null|object`) and a run that loses
+the key changes the snapshot. An optional key (`run` `/native_route`, `/notify`, `/report`, `/subset`) may be
+absent, depending on the flags used, and is left out, so the snapshot covers the listed paths only. The fixture run also pins `run` `outputs` and `output_dir` (set in `run/_context.py`) and the nullable `project` and `pipeline` (set in `_layout.py`) as present, which is stricter than the CLI's contract. Commands with no good input
+in a test environment (`doctor`, `schema`, `setup`, `upgrade`) carry a stated exemption. Regenerate with
+`python -m tests.e2e.release_freeze.write_shapes`, review the diff, and add a `CHANGELOG.md` entry: the
+`shape-changelog` CI job refuses a pull request that changes the snapshot without one.

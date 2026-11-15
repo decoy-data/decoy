@@ -25,7 +25,7 @@ operation ran cleanly, but the data being checked has issues the integrity
 runner flagged. Adding a new constant is a MINOR-eligible additive change per
 docs/release/versioning.md (existing integers 0-3 do not move). Source
 pattern: semgrep's exit-code split (0 pass, 1 findings, 2 error); the analog
-here is 0 clean / 4 findings / 3 runtime crash.
+here is 0 clean / 4 findings / 3 runtime failure.
 
 The OOM checker v1 (2026-07-24) added EXIT_CAPACITY=5: `decoy run` and
 `decoy validate preflight` both need a way to say "this job needs more memory
@@ -49,7 +49,9 @@ convention. `typer.Exit()` with no argument also exits 0."""
 EXIT_USAGE: int = 1
 """Command failed because the user gave bad input: a config that did not pass
 validation, a path that did not exist, a flag combination that was invalid.
-The fix is in the user's request, not in the CLI itself."""
+The fix is in the user's request, not in the CLI itself. Also the exit of an
+internal error that escaped a command (`error: internal error (<Type>)`, see
+`_EXIT_CRASH`) and of an aborted prompt; stderr tells them apart."""
 
 EXIT_WARNINGS: int = 2
 """The command ran clean except for advisory warnings, and `--fail-on-warning`
@@ -62,10 +64,12 @@ than held open, since a warning-blocking result is a genuinely distinct state
 from EXIT_OK and EXIT_USAGE.)"""
 
 EXIT_RUNTIME: int = 3
-"""The CLI itself blew up at run time: the engine raised an unexpected error,
-an output write failed, a temp file vanished mid-run. The fix is in the CLI
-or engine, not in the user's request. Distinct from EXIT_USAGE so CI
-pipelines can route a runtime crash to a different alert."""
+"""A command caught a run-time failure and reports it: the engine raised an
+unexpected error, an output write failed, a temp file vanished mid-run. The fix
+is in the CLI or engine, not in the user's request. Limited to errors a command
+handles itself; an exception that escapes every command exits EXIT_USAGE (see
+`_EXIT_CRASH`). Distinct from EXIT_USAGE so CI pipelines can route a handled
+runtime failure to a different alert."""
 
 EXIT_FINDINGS: int = 4
 """The CLI ran cleanly but found data issues. Used by data-validation /
@@ -105,6 +109,23 @@ script can tell a partial delivery from a crash. Ranks between EXIT_USAGE and EX
 # Status Typer returns for Ctrl-C (128 plus SIGINT). Private: a public `EXIT_` name in `__all__`
 # would join the `decoy ci` taxonomy, and 130 must not.
 _EXIT_INTERRUPTED = 130
+
+# What the top-level crash handler exits with for an exception no command caught. It stays 1 because
+# shipped code and a sentry already pin it; naming it keeps docs and tests from guessing 3.
+_EXIT_CRASH = EXIT_USAGE
+
+# Highest precedence first: capacity, runtime, usage, partial, findings, warnings, ok. The one order
+# for any command that folds several outcomes into one exit (`decoy ci check` across checks,
+# `decoy run --all` across pipelines); a capacity refusal is fixed by the host, not by a rerun.
+PRECEDENCE: tuple[int, ...] = (
+    EXIT_CAPACITY,
+    EXIT_RUNTIME,
+    EXIT_USAGE,
+    EXIT_PARTIAL,
+    EXIT_FINDINGS,
+    EXIT_WARNINGS,
+    EXIT_OK,
+)
 
 # Where `decoy run` turns an outcome into an exit integer. The error handler and the
 # `--post-validate-enforce` exits read it now; the remaining early refusals move to it later. The
@@ -292,5 +313,6 @@ __all__ = [
     "EXIT_RUNTIME",
     "EXIT_USAGE",
     "EXIT_WARNINGS",
+    "PRECEDENCE",
     "RUN_EXIT_MAP",
 ]
