@@ -32,7 +32,7 @@ runner = CliRunner()
 MARKER = "kind: decoy-project/v1\n"
 REAL_RUN = subprocess.run
 # The summary exit code is the first of these that any child produced.
-PRIORITY = (3, 5, 1, 4, 2, 0)
+PRIORITY = (5, 3, 1, 6, 4, 2, 0)
 MASTER_KEY = "ab" * 32
 FAN_OUT = Path(__file__).resolve().parents[3] / "src" / "decoy" / "cli" / "project" / "_run_all.py"
 
@@ -257,7 +257,7 @@ def test_a_failing_middle_pipeline_does_not_stop_the_third(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize(
-    ("first", "second"), list(itertools.product(range(6), range(6))), ids=lambda c: str(c)
+    ("first", "second"), list(itertools.product(range(7), range(7))), ids=lambda c: str(c)
 )
 def test_the_exit_code_follows_the_priority_order_for_each_pair(
     tmp_path, monkeypatch, first: int, second: int
@@ -269,13 +269,40 @@ def test_the_exit_code_follows_the_priority_order_for_each_pair(
     assert result.exit_code == expected, result.output
 
 
+def test_a_child_exiting_6_keeps_its_code(tmp_path, monkeypatch) -> None:
+    root = _fake_project(tmp_path, ["alpha", "beta"])
+    _spy(monkeypatch, {"alpha": (6, _ok("alpha")), "beta": (0, _ok("beta"))})
+    result = _run_all(root, "--json")
+    assert result.exit_code == 6, result.output
+    body = json.loads(result.stdout)
+    assert body["exit_code"] == 6
+    assert [p["exit_code"] for p in body["pipelines"]] == [6, 0]
+    assert body["pipelines"][0]["pipeline"]["name"] == "alpha"
+
+
+def test_ctrl_c_during_the_fan_out_exits_130(tmp_path, monkeypatch) -> None:
+    root = _fake_project(tmp_path, ["alpha", "beta", "gamma"])
+    started: list[str] = []
+
+    def interrupting_spy(cmd: list[str], *args: object, **kwargs: object):
+        started.append(Path(str(cmd[cmd.index("run") + 1])).parent.name)
+        if len(started) == 2:
+            raise KeyboardInterrupt
+        return subprocess.CompletedProcess(cmd, 0, stdout=_ok(started[-1]), stderr="")
+
+    monkeypatch.setattr(subprocess, "run", interrupting_spy)
+    result = _run_all(root)
+    assert result.exit_code == 130, result.output
+    assert started == ["alpha", "beta"]
+
+
 @pytest.mark.parametrize(
     ("code", "out"),
     [
         pytest.param(-9, _ok("alpha"), id="killed-by-a-signal"),
         pytest.param(-11, "", id="killed-no-output"),
-        pytest.param(9, _ok("alpha"), id="exit-code-outside-0-to-5"),
-        pytest.param(6, _ok("alpha"), id="partial-code-is-not-a-run-code"),
+        pytest.param(9, _ok("alpha"), id="outside-0-to-6"),
+        pytest.param(130, _ok("alpha"), id="interrupted-child"),
         pytest.param(0, "{not json", id="broken-json"),
         pytest.param(0, "", id="empty-output"),
         pytest.param(0, "[1, 2]", id="json-that-is-not-an-object"),
