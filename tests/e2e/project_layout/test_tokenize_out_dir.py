@@ -203,12 +203,20 @@ def _refused(result: Any, root: Path, before: set[str]) -> None:
 def test_project_route_refuses_two_targets_on_one_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Equal declarations are the engine's schema refusal since 0.26.0 (DUP-DEST E1), which
+    # tokenize reports before its layout check (CL2).
     shared = str(tmp_path / "shared.csv")
     root = _two_table_project(tmp_path, shared, shared)
     _no_source_read(monkeypatch)
     _engine_must_not_run(monkeypatch)
     before = _files(root)
-    _refused(_tokenize(root, monkeypatch, "--vault", "v.db"), root, before)
+    result = _tokenize(root, monkeypatch, "--vault", "v.db")
+    assert result.exit_code == EXIT_USAGE
+    assert "target_shared_destination" in result.output
+    assert "targets.people.path" in result.output and "targets.people_b.path" in result.output
+    assert "layout.output_path_collision" not in result.output
+    assert shared not in result.output
+    assert _files(root) == before
     assert not (tmp_path / "shared.csv").exists()
 
 
