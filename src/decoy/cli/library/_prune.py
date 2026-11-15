@@ -127,8 +127,14 @@ def _plan(
 
 def _locked_rows(library: Library, conn: sqlite3.Connection) -> tuple[list[IndexRow], list[str]]:
     _index.ensure_schema(conn)
-    _index.sync(conn, _index.object_ids(library.library_dir / OBJECTS), library.index_row)
-    refs = [rid for _path, rid in _refs.iter_refs(library.library_dir / REFS) if rid is not None]
+    _index.sync(
+        conn, _index.object_ids(library.root, library.library_dir / OBJECTS), library.index_row
+    )
+    refs = [
+        rid
+        for _entry, _read, rid in _refs.iter_refs(library.root, library.library_dir / REFS)
+        if rid is not None
+    ]
     return _index.all_rows(conn), refs
 
 

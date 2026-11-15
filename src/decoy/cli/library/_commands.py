@@ -11,12 +11,11 @@ from pathlib import Path
 
 import typer
 
-from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE
-from decoy.cli.library._cli import LIBRARY_HELP, SOURCE
+from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK
+from decoy.cli.library._cli import SOURCE, library_option, start
 from decoy.cli.library._destructive import clean_command, prune_command
 from decoy.cli.library._export import export_command
 from decoy.cli.library._read import diff_command, list_command, ref_command, show_command
-from decoy.ui.output import OutputState, setup_output
 from decoy.ui.theme import error, hint, success, warn
 
 __all__ = ["library_app"]
@@ -27,47 +26,16 @@ library_app = typer.Typer(
     no_args_is_help=True,
 )
 
-_LIBRARY_HELP = LIBRARY_HELP
-_SOURCE = SOURCE
-
-
-def _root(state: OutputState, library: Path | None):
-    from decoy.cli.io import LayoutError
-    from decoy.cli.library._paths import resolve_root
-
-    failure: LayoutError | None = None
-    try:
-        return resolve_root(flag=library)
-    except LayoutError as exc:
-        failure = exc
-    state.err_console.print(error("error:"), str(failure))
-    raise typer.Exit(code=EXIT_USAGE)
-
-
-def _usage(state: OutputState, exc: Exception) -> typer.Exit:
-    state.err_console.print(error("error:"), str(exc))
-    return typer.Exit(code=EXIT_USAGE)
-
 
 @library_app.command("path")
-def path_command(
-    library: Path | None = typer.Option(None, "--library", metavar="DIR", help=_LIBRARY_HELP),
-) -> None:
+def path_command(library: Path | None = library_option()) -> None:
     """Print the library root, where it came from, and whether it runs in degraded mode."""
-    from decoy.cli.library._errors import LibraryError
-    from decoy.cli.library._store import open_library
-
-    state = setup_output(False, False, False)
-    root = _root(state, library)
-    caught: LibraryError | None = None
-    try:
-        opened = open_library(root.path)
-    except LibraryError as exc:
-        caught = exc
-    if caught is not None:
-        raise _usage(state, caught)
+    cmd = start("library path")
+    state = cmd.state
+    root = cmd.root(library)
+    opened = cmd.library(root.path)
     state.console.print("root:", str(root.path))
-    state.console.print("from:", _SOURCE[root.source])
+    state.console.print("from:", SOURCE[root.source])
     state.console.print("records:", "on" if root.records else "off (DECOY_LIBRARY=off)")
     if opened.degraded is None:
         state.console.print("mode:", "normal")
@@ -90,29 +58,28 @@ def fsck_command(
             "records and rebuild the index. Never deletes a valid record."
         ),
     ),
-    library: Path | None = typer.Option(None, "--library", metavar="DIR", help=_LIBRARY_HELP),
+    library: Path | None = library_option(),
 ) -> None:
     """Check every record, ref, link, the index, temp files, modes and job logs.
 
     Exit 0 when clean, 4 when there are findings (warnings and notes do not count).
     """
-    from decoy.cli.library import _fsck
-    from decoy.cli.library._errors import LibraryError
-    from decoy.cli.library._paths import check_root_budget
+    from decoy.cli.library import LibraryError, check_root_budget, fsck_check, fsck_repair
 
-    state = setup_output(False, False, False)
-    root = _root(state, library)
+    cmd = start("library fsck")
+    state = cmd.state
+    root = cmd.root(library)
     caught: LibraryError | None = None
     try:
         check_root_budget(root.path)
         if repair:
-            actions, report = _fsck.repair(root.path)
+            actions, report = fsck_repair(root.path)
         else:
-            actions, report = (), _fsck.check(root.path)
+            actions, report = (), fsck_check(root.path)
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        raise _usage(state, caught)
+        cmd.fail_library(caught)
     state.console.print("library:", str(root.path))
     for action in actions:
         state.console.print(success("repaired"), action.code, action.target)

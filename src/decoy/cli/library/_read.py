@@ -19,8 +19,8 @@ import typer
 
 from decoy.cli.exit_codes import EXIT_OK, EXIT_USAGE
 from decoy.cli.io import PipelineRef, pipeline_option, resolve_pipeline
-from decoy.cli.library._cli import fail, fail_library, library_option, open_or_fail, root_or_fail
-from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
+from decoy.cli.library._cli import LibraryCommand, library_option, start
+from decoy.ui.output import OutputMode, OutputState, emit_json
 
 __all__ = ["diff_command", "list_command", "ref_command", "show_command"]
 
@@ -57,7 +57,7 @@ def _row_json(row: Any) -> dict:
     }
 
 
-def _pipeline_label(state: OutputState, ref: PipelineRef) -> str:
+def _pipeline_label(cmd: LibraryCommand, ref: PipelineRef) -> str:
     """The `pipeline` label a run of this pipeline puts on its records (plan 4.3): the YAML's
     path relative to its project root, so a name, a path and a path typed from a subfolder all
     select the same records."""
@@ -69,7 +69,7 @@ def _pipeline_label(state: OutputState, ref: PipelineRef) -> str:
         return project_relative_posix(project.root, ref.yaml)
     except LayoutError as exc:
         failure = exc
-    fail(state, str(failure))
+    cmd.fail(str(failure), code=getattr(failure, "code", None))
 
 
 def list_command(
@@ -98,7 +98,8 @@ def list_command(
     library: Path | None = library_option(),
 ) -> None:
     """List stored records, oldest first, from the index (no record file is opened)."""
-    state = setup_output(json_, False, False)
+    cmd = start("library list", json_)
+    state = cmd.state
     ref = resolve_pipeline(pipeline, state, "library list")
     cutoff: datetime | None = None
     if since is not None:
@@ -107,9 +108,9 @@ def list_command(
         except ValueError:
             cutoff = None
         if cutoff is None:
-            fail(state, "--since takes a date (YYYY-MM-DD) or an ISO time")
-    label = None if ref is None else _pipeline_label(state, ref)
-    opened = open_or_fail(state, root_or_fail(state, library, ref).path)
+            cmd.fail("--since takes a date (YYYY-MM-DD) or an ISO time")
+    label = None if ref is None else _pipeline_label(cmd, ref)
+    opened = cmd.library(cmd.root(library, ref).path)
     rows = [
         r
         for r in opened.rows(kind=kind, pipeline=label, table=table)
@@ -128,26 +129,31 @@ def list_command(
     raise typer.Exit(code=EXIT_OK)
 
 
-def _target(state: OutputState, opened: Any, text: str) -> str:
-    from decoy.cli.library._resolve import TargetError, resolve_target
+def _target(cmd: LibraryCommand, opened: Any, text: str) -> str:
+    from decoy.cli.library import LibraryError, TargetError, resolve_target
 
     problem: str | None = None
+    caught: LibraryError | None = None
     try:
         return resolve_target(opened, text)
     except TargetError as exc:
         problem = str(exc)
-    fail(state, problem or "no record")
+    except LibraryError as exc:
+        caught = exc
+    if caught is not None:
+        cmd.fail_library(caught)
+    cmd.fail(problem or "no record")
 
 
-def _read(state: OutputState, opened: Any, record_id: str) -> Any:
-    from decoy.cli.library._errors import LibraryError
+def _read(cmd: LibraryCommand, opened: Any, record_id: str) -> Any:
+    from decoy.cli.library import LibraryError
 
     caught: LibraryError | None = None
     try:
         return opened.get(record_id)
     except LibraryError as exc:
         caught = exc
-    fail_library(state, caught)  # type: ignore[arg-type]
+    cmd.fail_library(caught)
 
 
 def _status(record: Any) -> str:
@@ -155,7 +161,9 @@ def _status(record: Any) -> str:
 
     if isinstance(record, records.DecodedRecord):
         return "known"
-    return "opaque" if isinstance(record, records.OpaqueRecord) else "needs_newer"
+    from decoy.cli.library import NEEDS_NEWER
+
+    return "opaque" if isinstance(record, records.OpaqueRecord) else NEEDS_NEWER.code
 
 
 def show_command(
@@ -166,9 +174,10 @@ def show_command(
     library: Path | None = library_option(),
 ) -> None:
     """Show one record: its envelope and, when this version can read it, its payload."""
-    state = setup_output(json_, False, False)
-    opened = open_or_fail(state, root_or_fail(state, library).path)
-    record = _read(state, opened, _target(state, opened, target))
+    cmd = start("library show", json_)
+    state = cmd.state
+    opened = cmd.library(cmd.root(library).path)
+    record = _read(cmd, opened, _target(cmd, opened, target))
     status = _status(record)
     raw = dict(record.raw)
     shown = raw if status == "known" else {k: v for k, v in raw.items() if k != "payload"}
@@ -205,16 +214,17 @@ def diff_command(
     """Compare two records of the same kind (scan-set, evidence and run-result have their own rules)."""
     from decoy_engine.records import kind_spec
 
-    from decoy.cli.library._diff import diff_payloads
+    from decoy.cli.library import diff_payloads
 
-    state = setup_output(json_, False, False)
-    opened = open_or_fail(state, root_or_fail(state, library).path)
-    ids = [_target(state, opened, text) for text in (a, b)]
-    old, new = (_read(state, opened, rid) for rid in ids)
+    cmd = start("library diff", json_)
+    state = cmd.state
+    opened = cmd.library(cmd.root(library).path)
+    ids = [_target(cmd, opened, text) for text in (a, b)]
+    old, new = (_read(cmd, opened, rid) for rid in ids)
     if _status(old) != "known" or _status(new) != "known":
-        fail(state, "cannot diff a record of a kind or version this Decoy cannot read")
+        cmd.fail("cannot diff a record of a kind or version this Decoy cannot read")
     if old.kind != new.kind:
-        fail(state, f"cannot diff records of different kinds ({old.kind} and {new.kind})")
+        cmd.fail(f"cannot diff records of different kinds ({old.kind} and {new.kind})")
     spec = kind_spec(old.kind)
     rule, found = diff_payloads(
         spec.diff_rule if spec else None, old.raw["payload"], new.raw["payload"]
@@ -245,26 +255,27 @@ def ref_command(
     library: Path | None = library_option(),
 ) -> None:
     """Show a stored ref, or set it to a record (under the library lock)."""
-    from decoy.cli.library._errors import LibraryError
+    from decoy.cli.library import LibraryError
 
-    state = setup_output(False, False, False)
+    cmd = start("library ref")
+    state = cmd.state
     kind, _, rest = name.partition("/")
     if not rest:
-        fail(state, "a ref name is KIND/NAME, for example scan-set/baseline")
-    opened = open_or_fail(state, root_or_fail(state, library).path)
+        cmd.fail("a ref name is KIND/NAME, for example scan-set/baseline")
+    opened = cmd.library(cmd.root(library).path)
     caught: LibraryError | None = None
     current: str | None = None
     try:
         if record is None:
             current = opened.read_ref(kind, rest)
         else:
-            current = _target(state, opened, record)
+            current = _target(cmd, opened, record)
             opened.set_ref(kind, rest, current)
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        fail_library(state, caught)
+        cmd.fail_library(caught)
     if current is None:
-        fail(state, "no ref of that name is set", EXIT_USAGE)
+        cmd.fail("no ref of that name is set", EXIT_USAGE)
     _say(state, current)
     raise typer.Exit(code=EXIT_OK)

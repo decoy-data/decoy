@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Any
 import typer
 
 from decoy.cli.exit_codes import EXIT_OK
-from decoy.cli.library._cli import fail, fail_library, library_option, open_or_fail, root_or_fail
-from decoy.ui.output import OutputMode, OutputState, setup_output
+from decoy.cli.library._cli import library_option, start
+from decoy.ui.output import OutputMode, OutputState
 from decoy.ui.theme import warn
 
 if TYPE_CHECKING:
@@ -42,8 +42,8 @@ def _refs_by_name(library: Library) -> dict[str, str]:
 
     refs_dir = library.library_dir / REFS
     return {
-        path.relative_to(refs_dir).as_posix(): rid
-        for path, rid in iter_refs(refs_dir)
+        entry.path.relative_to(refs_dir).as_posix(): rid
+        for entry, _read, rid in iter_refs(library.root, refs_dir)
         if rid is not None
     }
 
@@ -186,7 +186,8 @@ def export_command(
     from decoy.cli.library._read import _instant as parse_instant
     from decoy.cli.library._resolve import TargetError, resolve_target
 
-    state = setup_output(False, False, False)
+    cmd = start("library export")
+    state = cmd.state
     cutoff: datetime | None = None
     if since is not None:
         try:
@@ -194,11 +195,11 @@ def export_command(
         except ValueError:
             cutoff = None
         if cutoff is None:
-            fail(state, "--since takes a date (YYYY-MM-DD) or an ISO time")
-    root = root_or_fail(state, library)
-    opened = open_or_fail(state, root.path)
+            cmd.fail("--since takes a date (YYYY-MM-DD) or an ISO time")
+    root = cmd.root(library)
+    opened = cmd.library(root.path)
     if not (root.path / LIBRARY).is_dir():
-        fail(state, "there is no library to export here")
+        cmd.fail("there is no library to export here")
     target: str | None = None
     if ref is not None:
         problem: str | None = None
@@ -207,7 +208,7 @@ def export_command(
         except TargetError as exc:
             problem = str(exc)
         if problem is not None:
-            fail(state, problem)
+            cmd.fail(problem)
     ids, refs = select(opened, kind=kind, since=cutoff, ref=ref, target=target)
     caught: Exception | None = None
     lines: list[bytes] = []
@@ -219,7 +220,7 @@ def export_command(
     except (LibraryError, RecordError) as exc:
         caught = exc
     if caught is not None:
-        fail_library(state, caught)
+        cmd.fail_library(caught)
     header = json.loads(lines[0])
     withheld = header.get("withheld_records") or []
     if withheld:

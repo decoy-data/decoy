@@ -16,8 +16,8 @@ from pathlib import Path
 import typer
 
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK
-from decoy.cli.library._cli import fail, fail_library, library_option, open_or_fail, root_or_fail
-from decoy.ui.output import OutputMode, OutputState, setup_output
+from decoy.cli.library._cli import LibraryCommand, library_option, start
+from decoy.ui.output import OutputMode, OutputState
 
 __all__ = ["clean_command", "prune_command"]
 
@@ -30,10 +30,10 @@ def _say(state: OutputState, *parts: object) -> None:
         state.console.print(*parts, soft_wrap=True, markup=False, highlight=False)
 
 
-def _duration(state: OutputState, text: str) -> timedelta:
+def _duration(cmd: LibraryCommand, text: str) -> timedelta:
     found = _DURATION.fullmatch(text)
     if found is None:
-        fail(state, "--older-than takes a number and d, h or m, for example 90d")
+        cmd.fail("--older-than takes a number and d, h or m, for example 90d")
     return timedelta(**{_UNIT[found.group(2)]: int(found.group(1))})
 
 
@@ -57,12 +57,13 @@ def prune_command(
     from decoy.cli.library._errors import LibraryError
     from decoy.cli.library._paths import LIBRARY
 
-    state = setup_output(False, False, False)
+    cmd = start("library prune")
+    state = cmd.state
     if keep_last is not None and keep_last < 0:
-        fail(state, "--keep-last takes 0 or more")
-    age = None if older_than is None else _duration(state, older_than)
-    root = root_or_fail(state, library)
-    opened = open_or_fail(state, root.path)
+        cmd.fail("--keep-last takes 0 or more")
+    age = None if older_than is None else _duration(cmd, older_than)
+    root = cmd.root(library)
+    opened = cmd.library(root.path)
     if not (root.path / LIBRARY).is_dir():
         _say(state, "no library at", str(root.path))
         raise typer.Exit(code=EXIT_OK)
@@ -76,7 +77,7 @@ def prune_command(
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        fail_library(state, caught)
+        cmd.fail_library(caught)
     if not rules:
         _say(state, "nothing to prune: the policy keeps every record")
         raise typer.Exit(code=EXIT_OK)
@@ -89,7 +90,7 @@ def prune_command(
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        fail_library(state, caught)
+        cmd.fail_library(caught)
     if not yes:
         for rid in plan.delete:
             _say(state, "would delete", rid)
@@ -119,16 +120,17 @@ def clean_command(
     from decoy.cli.library._paths import SCRATCH
     from decoy.cli.library._scratch import clean_all
 
-    state = setup_output(False, False, False)
-    root = root_or_fail(state, library)
-    opened = open_or_fail(state, root.path)
+    cmd = start("library clean")
+    state = cmd.state
+    root = cmd.root(library)
+    opened = cmd.library(root.path)
     scratch = root.path / SCRATCH
     entries = sorted(scratch.iterdir()) if scratch.is_dir() else []
     if not entries:
         _say(state, "scratch is empty")
         raise typer.Exit(code=EXIT_OK)
     if opened.degraded is not None:
-        fail_library(state, LibraryError(LIBRARY_LOCK_UNAVAILABLE))
+        cmd.fail_library(LibraryError(LIBRARY_LOCK_UNAVAILABLE))
     if not yes:
         for entry in entries:
             _say(state, "would delete", f"{SCRATCH}/{entry.name}")
@@ -141,7 +143,7 @@ def clean_command(
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        fail_library(state, caught)
+        cmd.fail_library(caught)
     left = 0
     for name, report in results:
         _say(state, "deleted", f"{SCRATCH}/{name}", f"({report.removed} files)")

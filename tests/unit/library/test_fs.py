@@ -14,7 +14,12 @@ from tests.unit.library._helpers import envelope, mode, object_files, object_pat
 
 from decoy.cli.io import DECOY_DIR
 from decoy.cli.library import LibraryError, open_library
-from decoy.cli.library._errors import LIBRARY_READ_FAILED, LIBRARY_WRITE_FAILED, library_error
+from decoy.cli.library._errors import (
+    LIBRARY_PATH_UNSAFE,
+    LIBRARY_READ_FAILED,
+    LIBRARY_WRITE_FAILED,
+    library_error,
+)
 
 posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
 
@@ -106,21 +111,45 @@ def test_a_read_failure_whose_os_text_names_the_path_keeps_it_out(tmp_path: Path
     assert err.__cause__ is None and err.__context__ is None
 
 
-def test_a_listing_failure_whose_os_text_names_the_path_keeps_it_out(tmp_path: Path) -> None:
-    """`resolve` lists a fan-out folder; a file in its place gives `NotADirectoryError`, whose
-    text names the path. MB1-exc (`library_error` adds `str(exc)`) turns this red."""
+def test_a_listing_failure_whose_os_text_names_the_path_keeps_it_out(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`resolve` lists a fan-out folder; the listing fails with an OS error whose text names
+    the path. MB1-exc (`library_error` adds `str(exc)`) turns this red."""
     root = tmp_path / "secret-folder-name" / DECOY_DIR
     root.parent.mkdir()
     library = open_library(root)
     library.put(envelope())
     fan_out = root / "library" / "objects" / "ab"
-    fan_out.write_bytes(b"")  # a file where a fan-out folder would be
+    fan_out.mkdir()
+    real = os.scandir
+
+    def scandir(path: object = ".") -> object:
+        if Path(str(path)) == fan_out:
+            raise PermissionError(13, "Permission denied", str(fan_out))
+        return real(path)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "scandir", scandir)
     with pytest.raises(LibraryError) as caught:
         library.resolve("sha256:ab" + "0" * 8)
     err = caught.value
-    assert (err.code, err.error_class) == (LIBRARY_READ_FAILED, "NotADirectoryError")
+    assert (err.code, err.error_class) == (LIBRARY_READ_FAILED, "PermissionError")
     assert "secret-folder-name" not in str(err) and "secret-folder-name" not in repr(err)
     assert err.__cause__ is None and err.__context__ is None
+
+
+def test_a_file_where_a_fan_out_folder_would_be_is_refused_without_its_path(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "secret-folder-name" / DECOY_DIR
+    root.parent.mkdir()
+    library = open_library(root)
+    library.put(envelope())
+    (root / "library" / "objects" / "ab").write_bytes(b"")
+    with pytest.raises(LibraryError) as caught:
+        library.resolve("sha256:ab" + "0" * 8)
+    assert caught.value.code == LIBRARY_PATH_UNSAFE
+    assert "secret-folder-name" not in str(caught.value)
 
 
 def test_library_error_keeps_only_code_and_class() -> None:
@@ -157,10 +186,13 @@ def test_existing_git_files_are_never_edited(tmp_path: Path) -> None:
     assert (root / ".gitattributes").read_text(encoding="utf-8") == "* text=auto\n"
 
 
-def test_a_root_not_named_decoy_gets_no_git_files(tmp_path: Path) -> None:
-    """A `--library` folder outside the project (a mounted volume) is not a git work tree."""
+def test_a_root_not_named_decoy_gets_its_own_git_files_and_no_project_folder(
+    tmp_path: Path,
+) -> None:
+    """A `--library` folder (plan amendment 49a2d45): `DIR/.gitignore` and `DIR/.gitattributes`
+    once, if absent, so scratch rows under it are never committed; no `.decoy/` beside it."""
     root = tmp_path / "volume"
     open_library(root).put(envelope())
     assert len(object_files(root)) == 1
-    assert not (root / ".gitignore").exists() and not (root / ".gitattributes").exists()
+    assert (root / ".gitignore").is_file() and (root / ".gitattributes").is_file()
     assert not (tmp_path / DECOY_DIR).exists()

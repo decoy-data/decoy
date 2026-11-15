@@ -32,13 +32,12 @@ from pathlib import Path
 
 from decoy_engine import records
 
-from decoy.cli.io import LayoutWarning, ensure_decoy_dir
+from decoy.cli.io import LayoutWarning, ensure_decoy_dir, write_decoy_gitignore
 from decoy.cli.library import _index
 from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
     LIBRARY_LAYOUT_NEWER,
     LIBRARY_LOCK_UNAVAILABLE,
-    LIBRARY_READ_FAILED,
     LIBRARY_WRITE_FAILED,
     RECORD_CORRUPT,
     RECORD_INVALID,
@@ -47,7 +46,13 @@ from decoy.cli.library._errors import (
     LibraryError,
     library_error,
 )
-from decoy.cli.library._fs import ensure_private_dir, read_capped, write_dotfile_once, write_once
+from decoy.cli.library._fs import (
+    ensure_private_dir,
+    entries,
+    read_capped,
+    write_dotfile_once,
+    write_once,
+)
 from decoy.cli.library._index import IndexRow
 from decoy.cli.library._paths import (
     GITATTRIBUTES,
@@ -60,7 +65,9 @@ from decoy.cli.library._paths import (
     SCRATCH,
     TMP,
     check_root_budget,
+    id_from_name,
     is_project_folder,
+    object_path,
     record_digest,
     record_prefix,
 )
@@ -70,7 +77,6 @@ from decoy.cli.library._scratch import DeleteReport, ScratchAllocation, allocate
 
 __all__ = ["Library", "PutResult", "open_library"]
 
-_SUFFIX = ".json"
 # Records hold names, counts and digests only; 16 MiB is far above any real one and keeps a
 # planted file from being read whole. `put` refuses a record it could not read back.
 MAX_RECORD_BYTES = 16 * 1024 * 1024
@@ -107,6 +113,7 @@ class Library:
         self._objects = self._library / OBJECTS
         self._tmp = self._library / TMP
         self._ready = False
+        self.layout_warnings: tuple[LayoutWarning, ...] = ()
         self.degraded: str | None = None
         self.filesystem: str | None = None
         self.stale = False
@@ -141,13 +148,13 @@ class Library:
 
     def _sync_all(self, conn: sqlite3.Connection) -> None:
         _index.ensure_schema(conn)
-        _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+        _index.sync(conn, _index.object_ids(self.root, self._objects), self._index_row)
 
     def _ready_index(self, conn: sqlite3.Connection) -> None:
         """The schema in place; a schema just (re)built is filled from the objects at once, so
         a rebuild in the middle of a process never answers with an empty index."""
         if _index.ensure_schema(conn):
-            _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+            _index.sync(conn, _index.object_ids(self.root, self._objects), self._index_row)
 
     def _index_row(self, record_id: str) -> IndexRow | None:
         """The row for a stored object, or None when it is corrupt or of an unreadable major
@@ -190,11 +197,11 @@ class Library:
 
     def delete_scratch(self, path: Path) -> DeleteReport:
         """Best-effort delete of a folder inside `scratch/`; held-open files are reported."""
-        scratch = (self.root / SCRATCH).resolve()
-        target = path.resolve()
-        if scratch not in target.parents:
+        scratch = Path(os.path.normpath(self.root / SCRATCH))
+        target = Path(os.path.normpath(path))
+        if scratch not in target.parents:  # by text: a link is judged by `_fs`, never resolved
             raise ValueError("only a folder inside scratch/ can be deleted here")
-        return delete_tree(target)
+        return delete_tree(self.root, target)
 
     def has(self, record_id: str) -> bool:
         """Whether an object file exists for this full id (no read)."""
@@ -207,7 +214,7 @@ class Library:
 
         def work(conn: sqlite3.Connection) -> None:
             _index.rebuild(conn)
-            _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+            _index.sync(conn, _index.object_ids(self.root, self._objects), self._index_row)
 
         _index.run_locked(self._library, work)
         self.stale = False
@@ -241,11 +248,11 @@ class Library:
                 rows = None
             if rows is not None:
                 return rows
-        loaded = (self._index_row(i) for i in sorted(_index.object_ids(self._objects)))
+        loaded = (self._index_row(i) for i in sorted(_index.object_ids(self.root, self._objects)))
         return [row for row in loaded if row is not None]
 
     def _object(self, digest: str) -> Path:
-        return self._objects / digest[:2] / f"{digest[2:]}{_SUFFIX}"
+        return object_path(self._objects, digest)
 
     def put(self, envelope: records.RecordEnvelope) -> PutResult:
         """Store a built envelope; storing it again is success. Raises `LibraryError`."""
@@ -262,11 +269,11 @@ class Library:
         data = records.encode(envelope)
         if len(data) > MAX_RECORD_BYTES:
             raise LibraryError(LIBRARY_FILE_TOO_LARGE)
-        folder = self._objects / digest[:2]
-        ensure_private_dir(folder)
-        created = write_once(folder, f"{digest[2:]}{_SUFFIX}", data, tmp_dir=self._tmp)
+        stored = self._object(digest)
+        ensure_private_dir(self.root, stored.parent)
+        created = write_once(self.root, stored.parent, stored.name, data, tmp_dir=self._tmp)
         if not created:
-            self._verify(self._object(digest), envelope.id)
+            self._verify(self.root, stored, envelope.id)
         self._index_put(_index.row_from(envelope.to_dict(), len(data), True))
         return PutResult(envelope.id, created, warnings)
 
@@ -280,7 +287,11 @@ class Library:
         `RecordNeedsNewer`. This is the one library read (G-ONE-SCAN-READER exempts this file).
         """
         digest = record_digest(record_id)
-        data = None if digest is None else read_capped(self._object(digest), MAX_RECORD_BYTES)
+        data = (
+            None
+            if digest is None
+            else read_capped(self.root, self._object(digest), MAX_RECORD_BYTES)
+        )
         if data is None:
             raise LibraryError(RECORD_NOT_FOUND)
         failure: records.RecordError | None = None
@@ -303,26 +314,11 @@ class Library:
         digest = record_prefix(text)
         if digest is None:
             return ()
-        failure: OSError | None = None
-        names: list[str] = []
-        try:
-            names = os.listdir(self._objects / digest[:2])
-        except FileNotFoundError:
-            return ()
-        except OSError as exc:
-            failure = exc
-        if failure is not None:
-            raise library_error(LIBRARY_READ_FAILED, failure)
-        rest = digest[2:]
-        found = (f"{ID_PREFIX}{digest[:2]}{name.removesuffix(_SUFFIX)}" for name in names)
+        fan = self._objects / digest[:2]
+        listed = entries(self.root, fan) or []
+        found = (id_from_name(fan.name, e.name) for e in listed if e.kind == "file")
         return tuple(
-            sorted(
-                record_id
-                for record_id, name in zip(found, names)
-                if name.endswith(_SUFFIX)
-                and name.startswith(rest)
-                and record_digest(record_id) is not None
-            )
+            sorted(i for i in found if i is not None and i[len(ID_PREFIX) :].startswith(digest))
         )
 
     @property
@@ -346,7 +342,7 @@ class Library:
         if self._ready:
             return ()
         warnings: tuple[LayoutWarning, ...] = ()
-        ensure_private_dir(self.root)
+        ensure_private_dir(self.root, self.root)
         if is_project_folder(self.root):
             failure: OSError | None = None
             try:
@@ -355,23 +351,26 @@ class Library:
                 failure = exc
             if failure is not None:
                 raise library_error(LIBRARY_WRITE_FAILED, failure)
-            write_dotfile_once(self.root / GITATTRIBUTES, GITATTRIBUTES_TEXT.encode("utf-8"))
-        ensure_private_dir(self._library)
-        ensure_private_dir(self._tmp)
+        else:  # a `--library DIR` or `DECOY_LIBRARY` root: the same git files, once, if absent
+            warnings = write_decoy_gitignore(self.root)
+        write_dotfile_once(self.root, self.root / GITATTRIBUTES, GITATTRIBUTES_TEXT.encode("utf-8"))
+        ensure_private_dir(self.root, self._library)
+        ensure_private_dir(self.root, self._tmp)
         self._check_layout()
-        ensure_private_dir(self._objects)
+        ensure_private_dir(self.root, self._objects)
         self._ready = True
+        self.layout_warnings = warnings
         return warnings
 
     def _check_layout(self) -> None:
         """Write `LAYOUT` once; refuse a library whose layout this version does not write."""
         layout = records.canonical_bytes({"layout": LAYOUT_VERSION})
-        if write_once(self._library, LAYOUT_FILE, layout, tmp_dir=self._tmp):
+        if write_once(self.root, self._library, LAYOUT_FILE, layout, tmp_dir=self._tmp):
             return
         found: object = None
         try:
             found = json.loads(
-                read_capped(self._library / LAYOUT_FILE, MAX_LAYOUT_BYTES) or b"null"
+                read_capped(self.root, self._library / LAYOUT_FILE, MAX_LAYOUT_BYTES) or b"null"
             )
         except ValueError:
             found = None
@@ -380,13 +379,13 @@ class Library:
             raise LibraryError(LIBRARY_LAYOUT_NEWER)
 
     @staticmethod
-    def _verify(path: Path, record_id: str) -> None:
+    def _verify(root: Path, path: Path, record_id: str) -> None:
         """An existing object is the same record only if its parsed content has this id.
 
         Parsing first means a CRLF or re-indented copy keeps its id. Only the id is checked: a
         record of a kind or major this version cannot read is still the same bytes.
         """
-        data = read_capped(path, MAX_RECORD_BYTES)
+        data = read_capped(root, path, MAX_RECORD_BYTES)
         parsed: object = None
         try:
             parsed = json.loads(data) if data is not None else None

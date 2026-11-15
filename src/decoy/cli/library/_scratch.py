@@ -12,7 +12,8 @@ owner's block never runs, so no row is written. The CLI has no `mkdir`, `chmod` 
 A fresh allocation is named by the engine: `<owner>-<invocation_id>-` plus 16 hex digits (the
 engine adds a random token to every fresh directory), not the plan's bare `<owner>-<invocation_id>`.
 
-Deletes are best effort, file by file (plan 4.7): a file another program holds open (a sample
+Deletes are best effort, file by file (plan 4.7), through `_fs.clear_tree`: a linked `scratch/`
+or folder is refused and a link inside is removed, never entered: a file another program holds open (a sample
 open in Excel on Windows raises `PermissionError`) is skipped and reported under the engine's
 `library_delete_skipped` warning code, never raised; the next cleanup removes it. `.decoy/.gitignore`
 ignores `scratch/` (written by `Library.prepare` before `scratch/` exists).
@@ -32,8 +33,14 @@ from typing import TYPE_CHECKING
 from decoy_engine import DecoyError, open_protected_dir, protected_scratch_dir
 from decoy_engine.reasons import runtime, warning
 
-from decoy.cli.library._errors import LIBRARY_WRITE_FAILED, LibraryError, library_error
-from decoy.cli.library._fs import replace_file
+from decoy.cli.io import LayoutWarning
+from decoy.cli.library._errors import (
+    LIBRARY_PATH_UNSAFE,
+    LIBRARY_WRITE_FAILED,
+    LibraryError,
+    library_error,
+)
+from decoy.cli.library._fs import clear_tree, kind_of, replace_file
 from decoy.cli.library._paths import SCRATCH
 
 if TYPE_CHECKING:
@@ -64,7 +71,11 @@ class ScratchAllocation:
 
     path: Path
     kept: bool
+    root: Path
     report: DeleteReport | None = field(default=None)
+    # Layout warnings from preparing the library (a `.gitignore` it could not write), for the
+    # caller to print: the allocation is the first thing a scratch user holds.
+    warnings: tuple[LayoutWarning, ...] = ()
 
     @property
     def skipped(self) -> tuple[str, ...]:
@@ -72,49 +83,19 @@ class ScratchAllocation:
 
     def write(self, name: str, data: bytes) -> None:
         """Write one file in the allocation, 0600 through the atomic writer."""
-        replace_file(self.path, name, data, tmp_dir=self.path)
+        replace_file(self.root, self.path, name, data, tmp_dir=self.path)
 
 
-def delete_tree(folder: Path) -> DeleteReport:
-    """Remove `folder` file by file; skip and report what cannot be removed. Never raises for a
-    file that is held open."""
-    removed = 0
-    skipped: list[str] = []
-    if folder.is_symlink() or folder.is_file():
-        try:
-            os.unlink(folder)
-        except FileNotFoundError:
-            return DeleteReport(0, ())
-        except PermissionError:
-            return DeleteReport(0, (folder.name,))
-        return DeleteReport(1, ())
-    if not folder.exists():
-        return DeleteReport(0, ())
-    for current, dirs, files in os.walk(folder, topdown=False):
-        base = Path(current)
-        for name in files:
-            try:
-                os.unlink(base / name)
-                removed += 1
-            except FileNotFoundError:
-                pass
-            except PermissionError:
-                skipped.append((base / name).relative_to(folder).as_posix())
-        for name in dirs:
-            try:
-                os.rmdir(base / name)
-            except OSError:
-                pass  # still holds a skipped file
-    try:
-        os.rmdir(folder)
-    except OSError:
-        pass
-    return DeleteReport(removed, tuple(sorted(skipped)))
+def delete_tree(root: Path, folder: Path) -> DeleteReport:
+    """Remove `folder` file by file through `_fs.clear_tree`; skip and report what cannot be
+    removed. Never raises for a file that is held open; a linked folder is refused."""
+    removed, skipped = clear_tree(root, folder)
+    return DeleteReport(removed, skipped)
 
 
 def _scratch_root(library: Library) -> Path:
     library.prepare()  # the root and its .gitignore come first, so scratch/ is never committed
-    return _opened(library.root / SCRATCH)
+    return _opened(library.root, library.root / SCRATCH)
 
 
 def _engine_failure(exc: BaseException) -> LibraryError:
@@ -124,7 +105,11 @@ def _engine_failure(exc: BaseException) -> LibraryError:
     return library_error(LIBRARY_WRITE_FAILED, exc)
 
 
-def _opened(path: Path) -> Path:
+def _opened(root: Path, path: Path) -> Path:
+    """The engine's protected folder at `path`, after `_fs` judged every folder up to it: a
+    link or non-folder there is `library_path_unsafe` before the engine opens anything."""
+    if kind_of(root, path) not in (None, "dir"):
+        raise LibraryError(LIBRARY_PATH_UNSAFE)
     failure: BaseException | None = None
     try:
         return open_protected_dir(path, create=True)
@@ -143,7 +128,10 @@ def allocate(
     scratch = _scratch_root(library)
     name = f"{owner}-{invocation_id}"
     if ttl is not None:
-        yield ScratchAllocation(_opened(scratch / name), kept=True)
+        yield ScratchAllocation(
+            _opened(library.root, scratch / name), kept=True, root=library.root,
+            warnings=library.layout_warnings,
+        )  # fmt: skip
         return
     failure: BaseException | None = None
     fresh = None
@@ -154,11 +142,11 @@ def allocate(
         failure = exc
     if failure is not None or fresh is None:
         raise _engine_failure(failure or OSError())
-    alloc = ScratchAllocation(path, kept=False)
+    alloc = ScratchAllocation(path, kept=False, root=library.root, warnings=library.layout_warnings)
     try:
         yield alloc
     finally:
-        alloc.report = delete_tree(path)  # reports what is held open, then the engine removes
+        alloc.report = delete_tree(library.root, path)  # held-open files, then the engine
         fresh.__exit__(None, None, None)
 
 
