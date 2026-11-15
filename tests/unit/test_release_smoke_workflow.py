@@ -23,6 +23,7 @@ from __future__ import annotations
 import base64
 import json
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -141,8 +142,12 @@ def _sign(key: Ed25519PrivateKey, data: bytes) -> str:
     return base64.b64encode(key.sign(data)).decode("ascii") + "\n"
 
 
-def _write_document(dist: Path, key: Ed25519PrivateKey, artifacts: dict, latest: str = VERSION):
-    payload = vd.build_document(latest=latest, min_supported=VERSION, artifacts=artifacts, serial=1)
+def _write_document(
+    dist: Path, key: Ed25519PrivateKey, artifacts: dict, latest: str = VERSION, **document
+):
+    payload = vd.build_document(
+        latest=latest, min_supported=VERSION, artifacts=artifacts, serial=1, **document
+    )
     data = vd.canonical_document_bytes(payload)
     (dist / "version.json").write_bytes(data)
     (dist / "version.json.sig").write_text(_sign(key, data))
@@ -338,11 +343,24 @@ def test_placeholder_key_or_env_override_is_refused(candidate_set, capsys, monke
         installer.write_text(original, encoding="utf-8")
     _seal(candidate_set.dist)
 
-    monkeypatch.setattr(smoke._Candidate, "install", lambda self: None)
     other = Ed25519PrivateKey.generate().public_key()
     other_pem = other.public_bytes(
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
     ).decode()
+    other_body = "".join(other_pem.strip().splitlines()[1:-1])
+    for name in cand.INSTALLERS:
+        installer = candidate_set.dist / name
+        original = installer.read_text(encoding="utf-8")
+        shipped = (ROOT / "packaging_tools" / "install" / name).read_text(encoding="utf-8")
+        installer.write_text(shipped.replace(PLACEHOLDER_MARKER, other_body), encoding="utf-8")
+        _seal(candidate_set.dist)
+        rc, summary, err = _run(candidate_set.argv, capsys)
+        assert (rc, summary["steps"]["installer_key"]) == (1, "fail"), name
+        assert "smoke_placeholder_key" in err
+        installer.write_text(original, encoding="utf-8")
+    _seal(candidate_set.dist)
+
+    monkeypatch.setattr(smoke._Candidate, "install", lambda self: None)
     monkeypatch.setattr(smoke._Candidate, "_bundle_python", lambda self, code: other_pem)
     rc, summary, err = _run(candidate_set.argv, capsys)
     assert (rc, summary["steps"]["bundle_key"]) == (1, "fail")
@@ -373,6 +391,20 @@ def test_version_document_whose_sha256_disagrees_with_the_tarball_is_refused(
     rc, summary, _ = _run(candidate_set.argv, capsys)
     assert (rc, summary["steps"]["version_document"]) == (1, "fail")
 
+    # A local-bundle install never reads the document, so the smoke is the only check that
+    # real installs will not refuse it as expired or the version as yanked.
+    for document in (
+        {"generated": "2026-01-01T00:00:00Z", "expires": "2026-01-02T00:00:00Z"},
+        {"yanked": [VERSION]},
+    ):
+        _write_document(
+            candidate_set.dist, candidate_set.key, _artifacts(candidate_set.dist), **document
+        )
+        _seal(candidate_set.dist)
+        rc, summary, err = _run(candidate_set.argv, capsys)
+        assert (rc, summary["steps"]["version_document"]) == (1, "fail"), document
+        assert "smoke_version_document_invalid" in err
+
 
 @needs_host
 def test_green_summary_names_every_step_and_the_candidate(
@@ -393,3 +425,88 @@ def test_green_summary_names_every_step_and_the_candidate(
     assert (summary["platform"], summary["engine_version"]) == (HOST, "0.27.0")
     assert summary["sha256sums_sha256"] == record["sha256sums_sha256"]
     assert not candidate_set.temp_roots[0].exists()
+
+
+def _done(rc: int, stdout: str) -> subprocess.CompletedProcess:
+    return subprocess.CompletedProcess([], rc, stdout, "")
+
+
+def _fake_decoy(seen: list[dict], **bad):
+    """Canned answers for the installed `decoy`; ``bad`` swaps one answer for a wrong one."""
+
+    def fake(self, *args, cwd=None):
+        seen.append(self._env())
+        if args[0] == "--version":
+            return _done(*bad.get("version", (0, f"decoy {VERSION}\n")))
+        if args[0] == "doctor":
+            return _done(*bad.get("doctor", (0, "{}")))
+        if args[0] == "show":
+            return _done(*bad.get("show", (0, "version: 2\n")))
+        written = cwd / "out" / "run-1" / "out.csv"
+        if not bad.get("no_output"):
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_text("id\n1\n")
+        payload = {"status": "ok", "outputs": [{"table": "t", "path": str(written)}]}
+        if "--native" in args:
+            payload["native_route"] = {"applicable": True, "state": bad.get("state", "native")}
+            return _done(bad.get("native_rc", 0), json.dumps(payload))
+        return _done(bad.get("template_rc", 0), json.dumps(payload))
+
+    return fake
+
+
+@needs_host
+def test_steps_after_install_fail_on_a_wrong_answer(candidate_set, capsys, monkeypatch) -> None:
+    monkeypatch.setattr(smoke._Candidate, "install", lambda self: None)
+    pem = candidate_set.pubkey.read_text()
+    monkeypatch.setattr(
+        smoke._Candidate,
+        "_bundle_python",
+        lambda self, code: pem if "release_key" in code else "0.27.0\n",
+    )
+    cases = [
+        ({"version": (0, "decoy 1.0.1\n")}, "version", "smoke_version_mismatch"),
+        ({"version": (1, f"decoy {VERSION}\n")}, "version", "smoke_version_mismatch"),
+        ({"doctor": (1, "{}")}, "doctor", "smoke_doctor_failed"),
+        ({"doctor": (0, "doctor: ok")}, "doctor", "smoke_doctor_failed"),
+        ({"state": "unified_slice"}, "native", "smoke_native_route"),
+        ({"native_rc": 1}, "native", "smoke_native_route"),
+        ({"no_output": True}, "native", "smoke_native_route"),
+        ({"show": (1, "")}, "template", "smoke_template_failed"),
+        ({"template_rc": 1}, "template", "smoke_template_failed"),
+    ]
+    for bad, step, code in cases:
+        monkeypatch.setattr(smoke._Candidate, "_decoy", _fake_decoy([], **bad))
+        rc, summary, err = _run(candidate_set.argv, capsys)
+        assert (rc, summary["steps"][step], err.split()[-1]) == (1, "fail", code), bad
+        assert not candidate_set.temp_roots[-1].exists()
+
+    seen: list[dict] = []
+    monkeypatch.setattr(smoke._Candidate, "_decoy", _fake_decoy(seen))
+    assert _run(candidate_set.argv, capsys)[0] == 0
+    assert seen
+
+
+@needs_host
+def test_installed_decoy_gets_none_of_the_callers_decoy_settings(
+    candidate_set, capsys, monkeypatch
+) -> None:
+    # A caller's library, project or telemetry endpoint would send the smoke's records
+    # outside its temp root.
+    for name in ("DECOY_LIBRARY", "DECOY_PROJECT", "DECOY_OTEL_ENDPOINT", "XDG_CONFIG_HOME"):
+        monkeypatch.setenv(name, "/elsewhere")
+    monkeypatch.setattr(smoke._Candidate, "install", lambda self: None)
+    pem = candidate_set.pubkey.read_text()
+    monkeypatch.setattr(
+        smoke._Candidate,
+        "_bundle_python",
+        lambda self, code: pem if "release_key" in code else "0.27.0\n",
+    )
+    seen: list[dict] = []
+    monkeypatch.setattr(smoke._Candidate, "_decoy", _fake_decoy(seen))
+    assert _run(candidate_set.argv, capsys)[0] == 0
+    root = str(candidate_set.temp_roots[-1])
+    for env in seen:
+        settings = {k: v for k, v in env.items() if k.startswith(("DECOY_", "XDG_"))}
+        assert set(settings) == {"DECOY_HOME", "DECOY_BIN_DIR", "DECOY_NO_UPDATE_CHECK"}
+        assert settings["DECOY_HOME"].startswith(root)

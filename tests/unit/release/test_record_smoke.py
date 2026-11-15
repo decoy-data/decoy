@@ -160,6 +160,8 @@ def test_unknown_schema_major_and_loose_types_refused(repo, capsys) -> None:
             _summary(seconds=-1),
             _summary(engine_version=27),
             _summary(platform="/Users/someone"),
+            _summary(platform="camkeep-macmini"),
+            _summary(platform="windows-x86_64"),
             _summary(steps={**dict.fromkeys(cand.SMOKE_STEPS, "pass"), "native": True}),
             {**_summary(), "host": "box"},
         ],
@@ -181,3 +183,4 @@ def test_run_and_note_cells_are_usage_checked(repo, capsys) -> None:
          "--log", str(repo / "smoke-log.md")]
     )  # fmt: skip
     assert rc == 2
+    assert _record(repo, _summary(), capsys, "--base-ref=--output=x")[0] == 2

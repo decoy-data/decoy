@@ -46,6 +46,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -348,10 +349,14 @@ def _run_upgrade_cases(bindir: Path, doc_url: str, pub: Path, check) -> None:
 # --- candidate mode (REL-GATE 5.4) ----------------------------------------------------------
 
 NATIVE_PIPELINE = REPO_ROOT / "packaging_tools" / "smoke" / "native.yaml"
-_GATED_TARGETS = {
-    "windows-x86_64": "Windows is gated off this cycle (decoy.distribution.targets) and "
-    "install.ps1 has no local-bundle input; REL-GATE Q5 decides when it is smoked",
-}
+
+
+_PEM_BLOCK = re.compile(r"-----BEGIN PUBLIC KEY-----[^-]*-----END PUBLIC KEY-----")
+
+
+def _pem_body(pem: str) -> str:
+    return "".join(pem.replace("-----BEGIN PUBLIC KEY-----", "")
+                   .replace("-----END PUBLIC KEY-----", "").split())  # fmt: skip
 
 
 class StepFailed(Exception):
@@ -373,8 +378,10 @@ def _usage_problem(args: argparse.Namespace, host: str | None) -> str | None:
         return "--python, --wheels and --work belong to the build smoke, not candidate mode"
     if not (args.from_dist and args.candidate and args.pubkey and args.target):
         return "candidate mode needs --from-dist, --candidate, --pubkey and --target"
-    if args.target in _GATED_TARGETS:
-        return f"{args.target}: {_GATED_TARGETS[args.target]}"
+    from packaging_tools.candidate import GATED_TARGETS
+
+    if args.target in GATED_TARGETS:
+        return f"{args.target}: {GATED_TARGETS[args.target]}"
     from decoy.distribution.targets import SUPPORTED_TARGETS
 
     if args.target not in SUPPORTED_TARGETS:
@@ -474,9 +481,14 @@ class _Candidate:
             if not vd.verify_document(data, signature.strip(), expected_public_pem=self.pub_pem):
                 raise ValueError("signature")
             payload = vd.parse_document(data)
+            # A local-bundle install skips the document, so this is the only check that a
+            # real install would not refuse it as expired.
+            vd.check_fresh(payload)
         except (OSError, ValueError):
             raise StepFailed("smoke_version_document_invalid")
         version = self.record["cli_version"]
+        if vd.is_yanked(payload, version):
+            raise StepFailed("smoke_version_document_invalid")
         artifacts = payload.get("artifacts")
         tarballs = {n for n in self.listing if n.endswith(".tar.gz")}
         if payload.get("latest") != version or not isinstance(artifacts, dict):
@@ -503,10 +515,14 @@ class _Candidate:
 
         if "install.sh" not in self.listing:
             raise StepFailed("smoke_candidate_mismatch")
+        # An installer pinning another key installs the local bundle signed with that key but
+        # refuses the version document every real install reads, so its key must be --pubkey.
+        want = {_pem_body(self.pub_pem)}
         for name in INSTALLERS:
             if name in self.listing:
                 text = (self.copy / name).read_text(encoding="utf-8")
-                if PLACEHOLDER_MARKER in text:
+                pinned = {_pem_body(block) for block in _PEM_BLOCK.findall(text)}
+                if PLACEHOLDER_MARKER in text or pinned != want:
                     raise StepFailed("smoke_placeholder_key")
 
     def install(self) -> None:
@@ -593,14 +609,16 @@ class _Candidate:
             raise StepFailed("smoke_template_failed")
 
     def _env(self, **extra: str) -> dict:
-        env = _bundle_env(
+        # No DECOY_* or XDG_* setting of the caller's reaches the installed decoy: a library,
+        # project or telemetry endpoint would send its records outside the temp root.
+        env = {k: v for k, v in _bundle_env().items() if not k.startswith(("DECOY_", "XDG_"))}
+        env.update(
             DECOY_HOME=str(self.root / "home"),
             DECOY_BIN_DIR=str(self.root / "bin"),
             HOME=str(self.root / "user"),
             DECOY_NO_UPDATE_CHECK="1",
             **extra,
         )
-        env.pop("DECOY_RELEASE_PUBKEY_FILE", None)
         return env
 
     def _workdir(self, name: str) -> Path:
