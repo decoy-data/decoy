@@ -53,6 +53,7 @@ KINDS = frozenset(
         "Task-oriented user guides (one folder per topic, with a `README.md` index)",
         "Root legal files (license text, notice, licensing FAQ, trademark policy)",
         "Roadmap, plans, records",
+        "QA checklists and run templates",
     }
 )
 # Paths the map marks `(target)`. A new or misspelled target is red. None is open since C3
