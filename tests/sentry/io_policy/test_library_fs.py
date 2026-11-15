@@ -230,3 +230,76 @@ def test_a_seeded_module_at_any_depth_fails_the_rule() -> None:
     assert found.get("sub/_seeded.py") == [(2, "Path.replace")]
     assert found.get("_seeded2.py") == [(2, "shutil.copy2")]
     assert found.get("_seeded3.py") == [(2, "open_private")]
+
+
+# Review round 2 on #210 (fix 1): the round-1 seeds that were dropped, and one seed per spelling
+# added in round 2. Each line in `bad` must be a hit; nothing in `fine` may be.
+SEEDED_ROUND2 = """
+import io
+import os
+import tempfile
+from pathlib import Path
+
+def bad(p: Path, q: Path, flags: int, fd: int) -> None:
+    p.rmdir()
+    p.rename(q)
+    p.write_bytes(b"x")
+    open(p, mode="ab")
+    os.open(p, os.O_WRONLY | os.O_CREAT)
+    os.open(p, os.O_RDWR)
+    os.open(p, flags)
+    os.mkdir(p)
+    os.makedirs(p)
+    os.chmod(p, 0o600)
+    os.symlink(p, q)
+    os.link(p, q)
+    os.truncate(p, 0)
+    os.utime(p)
+    p.chmod(0o600)
+    p.symlink_to(q)
+    p.hardlink_to(q)
+    tempfile.mkstemp()
+    tempfile.mkdtemp()
+    tempfile.NamedTemporaryFile()
+    tempfile.TemporaryFile()
+    io.open(p, "w")
+    os.fdopen(fd, "wb")
+    Path.replace(p, q)
+
+def fine(p: Path, fd: int) -> None:
+    open(p, "rb")
+    p.read_bytes()
+    os.open(p, os.O_RDONLY)
+    io.open(p)
+    os.fdopen(fd, "rb")
+"""
+
+
+def test_the_scan_fires_on_every_round2_seed() -> None:
+    found = [spelling for _line, spelling in offenders(SEEDED_ROUND2)]
+    assert found == [
+        "Path.rmdir",
+        "Path.rename",
+        "Path.write_bytes",
+        "open(write)",
+        "os.open(write)",
+        "os.open(write)",
+        "os.open(write)",
+        "os.mkdir",
+        "os.makedirs",
+        "os.chmod",
+        "os.symlink",
+        "os.link",
+        "os.truncate",
+        "os.utime",
+        "Path.chmod",
+        "Path.symlink_to",
+        "Path.hardlink_to",
+        "tempfile.mkstemp",
+        "tempfile.mkdtemp",
+        "tempfile.NamedTemporaryFile",
+        "tempfile.TemporaryFile",
+        "io.open(write)",
+        "os.fdopen(write)",
+        "Path.replace",
+    ]
