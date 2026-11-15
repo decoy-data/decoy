@@ -186,10 +186,13 @@ def test_existing_git_files_are_never_edited(tmp_path: Path) -> None:
     assert (root / ".gitattributes").read_text(encoding="utf-8") == "* text=auto\n"
 
 
-def test_a_root_not_named_decoy_gets_no_git_files(tmp_path: Path) -> None:
-    """A `--library` folder outside the project (a mounted volume) is not a git work tree."""
+def test_a_root_not_named_decoy_gets_its_own_git_files_and_no_project_folder(
+    tmp_path: Path,
+) -> None:
+    """A `--library` folder (plan amendment 49a2d45): `DIR/.gitignore` and `DIR/.gitattributes`
+    once, if absent, so scratch rows under it are never committed; no `.decoy/` beside it."""
     root = tmp_path / "volume"
     open_library(root).put(envelope())
     assert len(object_files(root)) == 1
-    assert not (root / ".gitignore").exists() and not (root / ".gitattributes").exists()
+    assert (root / ".gitignore").is_file() and (root / ".gitattributes").is_file()
     assert not (tmp_path / DECOY_DIR).exists()

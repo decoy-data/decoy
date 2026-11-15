@@ -53,6 +53,7 @@ from decoy.cli.library._errors import (
 __all__ = [
     "Entry",
     "Kind",
+    "clear_tree",
     "ensure_private_dir",
     "entries",
     "kind_of",
@@ -423,6 +424,49 @@ def remove_tree(root: Path, path: Path) -> bool:
     if failure is not None:
         raise library_error(LIBRARY_WRITE_FAILED, failure)
     return True
+
+
+def clear_tree(root: Path, folder: Path) -> tuple[int, tuple[str, ...]]:
+    """Remove the real folder `folder` file by file, best effort: (files removed, files left).
+
+    A file the OS will not remove (held open by another program on Windows: `PermissionError`)
+    is left and named in the result, relative to `folder`, and never raises; the next cleanup
+    removes it. A link inside is removed as an entry and never entered. A link or non-folder at
+    `folder` or above it is `library_path_unsafe` and nothing is removed.
+    """
+    present = _require_parent(root, folder)[1]
+    info = _lstat(folder) if present else None
+    if info is None:
+        return 0, ()
+    if _kind(info) != "dir":
+        raise _unsafe()
+    removed = 0
+    skipped: list[str] = []
+    pending = [Path(folder)]
+    order: list[Path] = []
+    while pending:
+        current = pending.pop()
+        order.append(current)
+        for item in entries(root, current) or []:
+            if item.kind == "dir":
+                pending.append(item.path)
+                continue
+            try:
+                if item.kind == "link" and stat.S_ISDIR(os.lstat(item.path).st_mode):
+                    os.rmdir(item.path)  # a Windows junction: rmdir drops the link only
+                else:
+                    os.unlink(item.path)
+                removed += 1
+            except FileNotFoundError:
+                pass
+            except PermissionError:
+                skipped.append(item.path.relative_to(folder).as_posix())
+    for current in reversed(order):
+        try:
+            os.rmdir(current)
+        except OSError:
+            pass  # still holds a skipped file
+    return removed, tuple(sorted(skipped))
 
 
 def _swapped(root: Path, parts: tuple[str, ...]) -> bool:
