@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import get_args
 
@@ -9,6 +10,7 @@ from decoy.ci import contracts
 from decoy.cli import exit_codes
 
 ROOT = Path(__file__).resolve().parents[2]
+RUN_ALL = ROOT / "src" / "decoy" / "cli" / "project" / "_run_all.py"
 
 
 def test_taxonomy() -> None:
@@ -59,3 +61,35 @@ def test_unknown_gate_exit_is_refused() -> None:
     # A gate exit with no category must stop the run, not fold into exit 1.
     with pytest.raises(RuntimeError, match="no category"):
         fail(object.__new__(RunContext), exc)
+
+
+def _is_exit_code(node: ast.AST) -> bool:
+    if isinstance(node, ast.Constant):
+        return type(node.value) is int
+    name = node.id if isinstance(node, ast.Name) else getattr(node, "attr", "")
+    return name.startswith("EXIT_")
+
+
+def _names_precedence(node: ast.AST) -> bool:
+    return any(
+        (isinstance(n, ast.Name) and n.id == "PRECEDENCE")
+        or (isinstance(n, ast.Attribute) and n.attr == "PRECEDENCE")
+        for n in ast.walk(node)
+    )
+
+
+def test_run_all_and_ci_share_one_precedence() -> None:
+    # `is`, not `==`: a copy would let the two orders drift apart again.
+    assert contracts.EXIT_PRECEDENCE is exit_codes.PRECEDENCE
+    tree = ast.parse(RUN_ALL.read_text(encoding="utf-8"))
+    # Any depth, and named constants too: `(EXIT_RUNTIME, EXIT_CAPACITY, ...)` in a function is
+    # the same private order as a tuple of int literals at module level.
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Tuple, ast.List)) and len(node.elts) > 1:
+            assert not all(_is_exit_code(e) for e in node.elts), (
+                "run --all keeps its own exit order"
+            )
+    summary = next(
+        n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_summary_code"
+    )
+    assert _names_precedence(summary)
