@@ -2,8 +2,10 @@
 
 A shape keeps key paths and JSON types and never a cell value. Object keys can carry data (a map
 keyed by table or column name), so each command declares those maps in ``DYNAMIC`` and their keys
-collapse to ``*``. ``OPTIONAL`` lists keys that appear only on some paths or hosts; they are left
-out of the shape, so the snapshot covers the listed paths only.
+collapse to ``*``. Two lists keep "content varies by host" apart from "key may be absent":
+``OPAQUE`` names keys that are always present but whose content varies, and the shape keeps their
+declared type only, so the key cannot vanish unseen. ``OPTIONAL`` names keys that appear only on some
+paths; they are left out of the shape, so the snapshot covers the listed paths only.
 
 A person regenerates the snapshot and reviews the diff:
 
@@ -40,8 +42,9 @@ EXEMPT: dict[str, str] = {
     "upgrade": "manages a bundled install and refuses a pip or dev install",
 }
 
-# Per command: pointers of maps whose keys are data (table, column or file names), and pointers of
-# keys present on some paths or hosts only. A pointer is the object keys from the root, joined by
+# Per command: pointers of maps whose keys are data (table, column or file names), pointers of keys
+# that are always present with host-varying content (kept as a declared type), and pointers of keys
+# present on some paths only (left out). A pointer is the object keys from the root, joined by
 # `/`; arrays are walked without a segment.
 DYNAMIC: dict[str, list[str]] = {
     "fit": ["/columns", "/null_rates"],
@@ -51,19 +54,38 @@ DYNAMIC: dict[str, list[str]] = {
         "/manifest/row_counts",
     ],
 }
+OPAQUE: dict[str, dict[str, str]] = {
+    "info": {"/native_companion": "null|object"},
+    "run": {"/warnings": "array"},
+}
 OPTIONAL: dict[str, list[str]] = {
-    "info": ["/native_companion"],
-    "run": ["/native_route", "/warnings"],
+    # `_render.py` adds each of these only when the run used the feature.
+    "run": ["/native_route", "/notify", "/report", "/subset"],
 }
 
 _TYPES = {bool: "boolean", int: "integer", float: "number", str: "string", type(None): "null"}
 
 
+def _kind(value: Any) -> str:
+    """The top-level JSON kind of ``value``: `object`, `array` or a scalar type."""
+    if isinstance(value, dict):
+        return "object"
+    return "array" if isinstance(value, list) else _TYPES[type(value)]
+
+
 def shape_of(
-    value: Any, dynamic: list[str] | None = None, optional: list[str] | None = None, _at: str = ""
+    value: Any,
+    dynamic: list[str] | None = None,
+    optional: list[str] | None = None,
+    opaque: dict[str, str] | None = None,
+    _at: str = "",
 ) -> Any:
-    """Reduce ``value`` to key paths and JSON types; never copy a cell value."""
-    dynamic, optional = dynamic or [], optional or []
+    """Reduce ``value`` to key paths and JSON types; never copy a cell value.
+
+    A key in ``opaque`` keeps its declared type string and nothing below it; a value of a kind the
+    declaration does not list raises, so the declaration cannot go stale unseen.
+    """
+    dynamic, optional, opaque = dynamic or [], optional or [], opaque or {}
     if isinstance(value, dict):
         collapse = _at in dynamic
         out: dict[str, Any] = {}
@@ -71,7 +93,12 @@ def shape_of(
             at = f"{_at}/{key}"
             if at in optional:
                 continue
-            child = shape_of(sub, dynamic, optional, f"{_at}/*" if collapse else at)
+            if at in opaque:
+                if _kind(sub) not in opaque[at].split("|"):
+                    raise ValueError(f"{at} is {_kind(sub)}, declared {opaque[at]}")
+                out[key] = opaque[at]
+                continue
+            child = shape_of(sub, dynamic, optional, opaque, f"{_at}/*" if collapse else at)
             if collapse:
                 out["*"] = _merge(out.get("*"), child)
             else:
@@ -80,7 +107,7 @@ def shape_of(
     if isinstance(value, list):
         merged: Any = None
         for item in value:
-            merged = _merge(merged, shape_of(item, dynamic, optional, _at))
+            merged = _merge(merged, shape_of(item, dynamic, optional, opaque, _at))
         return [] if merged is None else [merged]
     return _TYPES[type(value)]
 
@@ -88,8 +115,16 @@ def shape_of(
 def flatten(shape: Any, at: str = "") -> dict[str, str]:
     """One line per key path, so a snapshot diff names the path that changed.
 
-    An array adds `[]` to its path; an empty array or object is a leaf of its own.
+    An array adds `[]` to its path; an empty array or object is a leaf of its own. A key seen as
+    several kinds (`null|object`) is a leaf of its own and keeps the sub-paths of its object.
     """
+    if isinstance(shape, dict) and "|" in shape:
+        out = {at or "/": shape["|"]}
+        if shape.get("{}"):
+            out.update(flatten(shape["{}"], at))
+        if shape.get("[]") is not None:
+            out.update(flatten(shape["[]"], f"{at}[]"))
+        return out
     if isinstance(shape, dict) and shape:
         return {k: v for key, sub in shape.items() for k, v in flatten(sub, f"{at}/{key}").items()}
     if isinstance(shape, list) and shape:
@@ -97,24 +132,52 @@ def flatten(shape: Any, at: str = "") -> dict[str, str]:
     return {at or "/": "[]" if isinstance(shape, list) else "{}" if shape == {} else shape}
 
 
+def _parts(shape: Any) -> tuple[set[str], Any, Any]:
+    """Split a shape into its kinds, its object shape and its array item shape."""
+    if isinstance(shape, dict) and "|" in shape:
+        return set(shape["|"].split("|")), shape.get("{}"), shape.get("[]")
+    if isinstance(shape, dict):
+        return {"object"}, shape, None
+    if isinstance(shape, list):
+        return {"array"}, None, shape[0] if shape else None
+    return set(shape.split("|")), None, None
+
+
+def _union_objects(a: dict | None, b: dict | None) -> dict | None:
+    if a is None or b is None:
+        return a if b is None else b
+    return {k: _merge(a.get(k), b.get(k)) for k in sorted({*a, *b})}
+
+
+def _join(a: Any, b: Any) -> Any:
+    return b if a is None else a if b is None else _merge(a, b)
+
+
 def _merge(a: Any, b: Any) -> Any:
-    """Union of two shapes: object keys unioned, differing scalar types joined with `|`."""
+    """Union of two shapes, the same in either order.
+
+    Object keys are unioned and differing kinds are joined with `|`. An object seen beside a scalar
+    keeps its sub-paths: the result is ``{"|": "null|object", "{}": {...}}``.
+    """
     if a is None:
         return b
-    if isinstance(a, dict) and isinstance(b, dict):
-        merged = dict(a)
-        for key, sub in b.items():
-            merged[key] = _merge(merged.get(key), sub)
-        return dict(sorted(merged.items()))
-    if isinstance(a, list) and isinstance(b, list):
-        if not a or not b:
-            return a or b
-        return [_merge(a[0], b[0])]
-    if a == b:
+    if b is None:
         return a
-    if isinstance(a, str) and isinstance(b, str):
-        return "|".join(sorted({*a.split("|"), *b.split("|")}))
-    return a
+    (ka, oa, ia), (kb, ob, ib) = _parts(a), _parts(b)
+    kinds, obj, item = ka | kb, _union_objects(oa, ob), _join(ia, ib)
+    if kinds == {"object"} and obj is not None:
+        return obj
+    if kinds == {"array"}:
+        return [] if item is None else [item]
+    joined = "|".join(sorted(kinds))
+    if obj is None and item is None:
+        return joined
+    out: dict[str, Any] = {"|": joined}
+    if obj is not None:
+        out["{}"] = obj
+    if item is not None:
+        out["[]"] = item
+    return out
 
 
 _PIPELINE = """version: 2
@@ -326,9 +389,12 @@ def snapshot() -> dict[str, Any]:
     out: dict[str, Any] = {name: {"exempt": why} for name, why in EXEMPT.items()}
     for name, doc in docs.items():
         dynamic, optional = DYNAMIC.get(name, []), OPTIONAL.get(name, [])
-        entry: dict[str, Any] = {"paths": flatten(shape_of(doc, dynamic, optional))}
+        opaque = OPAQUE.get(name, {})
+        entry: dict[str, Any] = {"paths": flatten(shape_of(doc, dynamic, optional, opaque))}
         if dynamic:
             entry["dynamic_maps"] = dynamic
+        if opaque:
+            entry["opaque_values"] = opaque
         if optional:
             entry["optional_keys"] = optional
         out[name] = entry

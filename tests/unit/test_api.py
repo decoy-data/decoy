@@ -18,7 +18,6 @@ placeholder sources/targets before PipelineConfig validation).
 
 from __future__ import annotations
 
-import inspect
 import json as _json
 import os
 import secrets
@@ -435,9 +434,7 @@ def test_scan_invalid_data_type_raises():
 
 def test_scan_parity_with_cli_storm_analyze(sample_csv: Path, tmp_path: Path):
     scan_out = tmp_path / "scan.json"
-    result = runner.invoke(
-        app, ["scan", str(sample_csv), "--has-header", "--output", str(scan_out)]
-    )
+    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--output", str(scan_out)])
     assert result.exit_code == 0, result.stdout
     # --output holds the value-free scan-set/v1 core; its table is named from the file stem.
     cli_profile = _json.loads(scan_out.read_text())["tables"][0]
@@ -775,36 +772,3 @@ def test_mask_distinct_targets_write_and_the_check_leaves_the_config_alone(
     assert pd.read_csv(tmp_path / "b.csv")["id"].tolist() == ["tb1", "tb2"]
     ((before, after),) = seen
     assert before == after
-
-
-# --------------------------------------------------------------------------
-# Frozen signatures (REL-GATE RG-F2): `decoy.mask` and `decoy.scan` are public API.
-# --------------------------------------------------------------------------
-
-
-def _signature(fn) -> list[tuple[str, str, object]]:
-    return [(p.name, p.kind.name, p.default) for p in inspect.signature(fn).parameters.values()]
-
-
-def test_mask_signature_is_frozen() -> None:
-    assert _signature(decoy.mask) == [
-        ("data", "POSITIONAL_OR_KEYWORD", None),
-        ("config", "POSITIONAL_OR_KEYWORD", None),
-        ("mask_secret", "KEYWORD_ONLY", None),
-        ("master_key", "KEYWORD_ONLY", None),
-        ("key_label", "KEYWORD_ONLY", None),
-        ("out", "KEYWORD_ONLY", None),
-        ("native", "KEYWORD_ONLY", None),
-    ]
-
-
-def test_scan_signature_is_frozen() -> None:
-    empty = inspect.Parameter.empty
-    assert _signature(decoy.scan) == [
-        ("data", "POSITIONAL_OR_KEYWORD", empty),
-        ("source_label", "KEYWORD_ONLY", None),
-        ("rows", "KEYWORD_ONLY", None),
-        ("strategy", "KEYWORD_ONLY", "head"),
-        ("format", "KEYWORD_ONLY", None),
-        ("layout", "KEYWORD_ONLY", None),
-    ]

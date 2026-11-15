@@ -61,11 +61,12 @@
     }
   },
   "info": {
-    "optional_keys": [
-      "/native_companion"
-    ],
+    "opaque_values": {
+      "/native_companion": "null|object"
+    },
     "paths": {
       "/command": "string",
+      "/native_companion": "null|object",
       "/status": "string",
       "/templates[]": "string",
       "/topics[]": "string",
@@ -303,9 +304,14 @@
     }
   },
   "run": {
+    "opaque_values": {
+      "/warnings": "array"
+    },
     "optional_keys": [
       "/native_route",
-      "/warnings"
+      "/notify",
+      "/report",
+      "/subset"
     ],
     "paths": {
       "/command": "string",
@@ -328,7 +334,8 @@
       "/status": "string",
       "/tables[]/name": "string",
       "/tables[]/path": "string",
-      "/tables[]/rows": "integer"
+      "/tables[]/rows": "integer",
+      "/warnings": "array"
     }
   },
   "scan diff": {

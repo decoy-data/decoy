@@ -68,3 +68,10 @@ def test_a_change_elsewhere_passes(repo: tuple[Path, str]) -> None:
     path, base = repo
     _commit(path, {"other.txt": "x\n"})
     assert _run(path, base).returncode == 0
+
+
+def test_an_unknown_base_exits_nonzero(repo: tuple[Path, str]) -> None:
+    path, _ = repo
+    done = _run(path, "0" * 40)
+    assert done.returncode != 0
+    assert "failed" in done.stderr
