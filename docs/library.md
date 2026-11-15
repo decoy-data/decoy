@@ -46,8 +46,9 @@ Use `--library` with a shorter path.
   scratch/              the only place Decoy keeps rows (sample output, staging); never committed
 ```
 
-Decoy never edits an existing `.gitignore` or `.gitattributes`. A library root not named
-`.decoy` (a `--library` folder on a mounted volume, for example) gets neither file.
+Decoy never edits an existing `.gitignore` or `.gitattributes`. A library root with another name
+(a `--library` folder, for example) gets the same two files in that folder, also only if absent,
+so scratch rows under it are never committed. A `.gitignore` Decoy cannot write is a warning.
 
 A record id is `sha256:` plus the SHA-256 of the record's canonical JSON without its `id` field.
 The check parses the file before hashing, so a copy with CRLF line endings or different
@@ -200,9 +201,11 @@ the protection cannot be applied, the command stops before it writes any row
   `retention.scratch.sample_ttl_hours`); removing expired output arrives with `decoy run --sample`.
 - Deletes go file by file. A file another program has open (on Windows, a sample open in Excel)
   is skipped and reported with `library_delete_skipped`, and the next cleanup removes it.
+- A `scratch/` that is a link, or a link on the way to the folder being deleted, is refused with
+  `library_path_unsafe` and nothing is deleted. A link inside a scratch folder is removed as an
+  entry; whatever it points at is never touched.
 
-`.decoy/.gitignore` ignores `scratch/`. A `--library` folder with another name gets no
-`.gitignore`; keep such a folder outside any git work tree.
+The library's `.gitignore` ignores `scratch/`, in `.decoy/` and in any `--library` folder.
 
 ## File modes
 

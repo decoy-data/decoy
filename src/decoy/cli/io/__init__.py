@@ -100,12 +100,14 @@ from decoy.cli.io._placement import (
 )
 from decoy.cli.io._project import (
     DECOY_DIR,
+    DECOY_DIR_GITIGNORE,
     OwnedYaml,
     OwnedYamlError,
     Project,
     ensure_decoy_dir,
     find_project,
     read_owned_yaml,
+    write_decoy_gitignore,
     write_project_marker,
 )
 from decoy.cli.io._scan_set import (
@@ -136,6 +138,7 @@ from decoy.cli.io._targets import (
 # as a copy.
 __all__ = [
     "DECOY_DIR",
+    "DECOY_DIR_GITIGNORE",
     "GATE_CODES",
     "GATE_DESCRIPTORS",
     "OUTPUT_DIR_UNUSABLE",
@@ -233,6 +236,7 @@ __all__ = [
     "target_parent_writable",
     "write_chunked_output",
     "write_claim",
+    "write_decoy_gitignore",
     "write_private_table",
     "write_project_marker",
     "write_table",

@@ -32,7 +32,7 @@ from pathlib import Path
 
 from decoy_engine import records
 
-from decoy.cli.io import LayoutWarning, ensure_decoy_dir
+from decoy.cli.io import LayoutWarning, ensure_decoy_dir, write_decoy_gitignore
 from decoy.cli.library import _index
 from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
@@ -113,6 +113,7 @@ class Library:
         self._objects = self._library / OBJECTS
         self._tmp = self._library / TMP
         self._ready = False
+        self.layout_warnings: tuple[LayoutWarning, ...] = ()
         self.degraded: str | None = None
         self.filesystem: str | None = None
         self.stale = False
@@ -187,11 +188,11 @@ class Library:
 
     def delete_scratch(self, path: Path) -> DeleteReport:
         """Best-effort delete of a folder inside `scratch/`; held-open files are reported."""
-        scratch = (self.root / SCRATCH).resolve()
-        target = path.resolve()
-        if scratch not in target.parents:
+        scratch = Path(os.path.normpath(self.root / SCRATCH))
+        target = Path(os.path.normpath(path))
+        if scratch not in target.parents:  # by text: a link is judged by `_fs`, never resolved
             raise ValueError("only a folder inside scratch/ can be deleted here")
-        return delete_tree(target)
+        return delete_tree(self.root, target)
 
     def has(self, record_id: str) -> bool:
         """Whether an object file exists for this full id (no read)."""
@@ -341,14 +342,15 @@ class Library:
                 failure = exc
             if failure is not None:
                 raise library_error(LIBRARY_WRITE_FAILED, failure)
-            write_dotfile_once(
-                self.root, self.root / GITATTRIBUTES, GITATTRIBUTES_TEXT.encode("utf-8")
-            )
+        else:  # a `--library DIR` or `DECOY_LIBRARY` root: the same git files, once, if absent
+            warnings = write_decoy_gitignore(self.root)
+        write_dotfile_once(self.root, self.root / GITATTRIBUTES, GITATTRIBUTES_TEXT.encode("utf-8"))
         ensure_private_dir(self.root, self._library)
         ensure_private_dir(self.root, self._tmp)
         self._check_layout()
         ensure_private_dir(self.root, self._objects)
         self._ready = True
+        self.layout_warnings = warnings
         return warnings
 
     def _check_layout(self) -> None:
