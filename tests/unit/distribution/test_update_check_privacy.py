@@ -71,7 +71,7 @@ def serve(request: pytest.FixtureRequest):
 @pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """No CI, no opt-out, no proxy, and a private cache home."""
-    for name in ("CI", "DECOY_NO_UPDATE_CHECK", "http_proxy", "HTTP_PROXY", "https_proxy",
+    for name in ("CI", "DECOY_NO_UPDATE_CHECK", "NO_PROXY", "http_proxy", "HTTP_PROXY", "https_proxy",
                  "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("no_proxy", "*")
@@ -96,7 +96,7 @@ def _cache() -> dict:
     return json.loads(_update_check._cache_path().read_text(encoding="utf-8"))
 
 
-# AT-C1 (P1): four headers, no query, no body; AT-C3 (P3): one request in 24 hours ----
+# AT-C1 (P1), AT-C3 (P3: one request in 24 hours), AT-C4 (P4: two cache keys) -----------
 
 
 def test_one_request_with_exactly_the_p1_headers(monkeypatch, home, serve) -> None:
@@ -105,6 +105,9 @@ def test_one_request_with_exactly_the_p1_headers(monkeypatch, home, serve) -> No
     assert "99.0.0" in _start()
     _start()
     assert len(server.requests) == 1
+    cache = _cache()
+    assert set(cache) == {"checked_at", "latest"} and cache["latest"] == "99.0.0"
+    assert isinstance(cache["checked_at"], int) and not isinstance(cache["checked_at"], bool)
     line, headers = server.requests[0]
     assert line == f"GET {DOC_PATH} HTTP/1.1"
     assert len(headers) == 4, headers
@@ -122,21 +125,17 @@ def test_a_redirect_is_not_followed(monkeypatch, home, serve) -> None:
     origin = serve(status=302, headers={"Location": target.url})
     monkeypatch.setenv("DECOY_VERSION_URL", origin.url)
     assert _start() == ""
-    assert len(origin.requests) == 1
-    assert target.requests == []
+    assert len(origin.requests) == 1 and target.requests == []
     assert _cache()["latest"] is None
 
 
 # AT-C3 (P3): no request when the start is not interactive --------------------------------
 
 
-class _Stream(io.StringIO):
-    def __init__(self, tty: bool):
-        super().__init__()
-        self._tty = tty
-
-    def isatty(self) -> bool:
-        return self._tty
+def _stream(tty: bool) -> io.StringIO:
+    stream = io.StringIO()
+    stream.isatty = lambda: tty
+    return stream
 
 
 @pytest.mark.parametrize(
@@ -159,8 +158,8 @@ def test_requests_only_on_an_interactive_start(
         monkeypatch.setenv("CI", ci)
     if opt_out is not None:
         monkeypatch.setenv("DECOY_NO_UPDATE_CHECK", opt_out)
-    monkeypatch.setattr("sys.stdout", _Stream(stdout_tty))
-    monkeypatch.setattr("sys.stderr", _Stream(stderr_tty))
+    monkeypatch.setattr("sys.stdout", _stream(stdout_tty))
+    monkeypatch.setattr("sys.stderr", _stream(stderr_tty))
     _update_check.maybe_print_notice(stream=io.StringIO())
     assert len(server.requests) == requests
 
@@ -177,16 +176,13 @@ def test_the_no_update_check_flag_stops_the_request(monkeypatch, home, serve, fl
     assert len(server.requests) == requests
 
 
-# AT-C4 (P4): the cache holds exactly two keys ----------------------------------------------
-
-
-def test_the_cache_holds_only_checked_at_and_latest(monkeypatch, home, serve) -> None:
-    # A failed check writes the same two keys; AT-C5 below checks that case.
-    monkeypatch.setenv("DECOY_VERSION_URL", serve(body=_document("99.0.0")).url)
-    _start()
-    cache = _cache()
-    assert set(cache) == {"checked_at", "latest"} and cache["latest"] == "99.0.0"
-    assert isinstance(cache["checked_at"], int) and not isinstance(cache["checked_at"], bool)
+def test_a_configured_proxy_still_carries_the_check(monkeypatch, home, serve) -> None:
+    proxy = serve(body=_document("99.0.0"))
+    monkeypatch.delenv("no_proxy")
+    monkeypatch.setenv("http_proxy", f"http://127.0.0.1:{proxy.port}")
+    monkeypatch.setenv("DECOY_VERSION_URL", "http://update.invalid/cli/version.json")
+    assert "99.0.0" in _start()
+    assert proxy.requests[0][0] == "GET http://update.invalid/cli/version.json HTTP/1.1"
 
 
 # AT-C5 (P5): a bad response is cached as null, prints nothing, and costs one request a day -
@@ -203,27 +199,28 @@ def _closed_port_url() -> str:
     "case", ["oversize", "redirect", "escape-code", "not-a-version", "refused"]
 )
 def test_a_bad_response_is_cached_as_null_and_prints_nothing(monkeypatch, home, serve, case) -> None:
-    if case == "refused":
-        server, url = None, _closed_port_url()
-    else:
-        server = {
-            # A valid document, so only the size cap can refuse it.
-            "oversize": lambda: serve(body=_document("99.0.0", message="x" * (1 << 20))),
-            "redirect": lambda: serve(status=302, headers={"Location": "http://127.0.0.1:9/"}),
-            "escape-code": lambda: serve(body=_document("\x1b[2J")),
-            "not-a-version": lambda: serve(body=_document("latest, trust me")),
-        }[case]()
-        url = server.url
-    monkeypatch.setenv("DECOY_VERSION_URL", url)
-    before = int(time.time())
+    server = {
+        # A valid document, so only the size cap can refuse it.
+        "oversize": lambda: serve(body=_document("99.0.0", message="x" * (1 << 20))),
+        "redirect": lambda: serve(status=302, headers={"Location": "http://127.0.0.1:9/"}),
+        "escape-code": lambda: serve(body=_document("\x1b[2J")),
+        "not-a-version": lambda: serve(body=_document("latest, trust me")),
+        "refused": lambda: None,
+    }[case]()
+    monkeypatch.setenv("DECOY_VERSION_URL", server.url if server else _closed_port_url())
     assert _start() == ""
-    after = int(time.time())
-    cache = _cache()
-    assert cache["latest"] is None and before <= cache["checked_at"] <= after
-    assert set(cache) == {"checked_at", "latest"}
+    assert set(_cache()) == {"checked_at", "latest"} and _cache()["latest"] is None
     _start()
     if server is not None:
         assert len(server.requests) == 1
+
+
+def test_a_failure_is_cached_at_the_cadence_clock(home, serve) -> None:
+    server = serve(status=500)
+    assert _update_check.check_latest(url=server.url, now=1000) is None
+    assert _cache() == {"checked_at": 1000, "latest": None}
+    _update_check.check_latest(url=server.url, now=1000 + 86399)
+    assert len(server.requests) == 1
 
 
 def test_the_notice_prints_the_canonical_version(monkeypatch, home, serve) -> None:
@@ -235,9 +232,7 @@ def test_the_notice_prints_the_canonical_version(monkeypatch, home, serve) -> No
 
 
 def test_a_raw_value_already_in_the_cache_is_not_shown(monkeypatch, home) -> None:
-    path = _update_check._cache_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"checked_at": int(time.time()), "latest": "\x1b[2J"}), encoding="utf-8")
+    _update_check._write_cache("\x1b[2J", int(time.time()))  # as an older build could have
     monkeypatch.setenv("DECOY_VERSION_URL", _closed_port_url())
     assert _update_check.check_latest() is None
     assert _start() == ""

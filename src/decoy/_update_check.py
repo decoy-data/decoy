@@ -6,8 +6,7 @@ window, cache the result, and print ONE non-blocking line when a newer version e
 with the exact upgrade command. It never blocks or slows a run and fails silent on any
 error.
 
-Privacy contract (REL-WEB plan section 5.2; tests in
-`tests/unit/distribution/test_update_check_privacy.py`):
+Privacy contract (REL-WEB plan section 5.2, tested in `tests/unit/distribution/`):
   - P1: the request is ``GET <path>`` with no query string and no body, and exactly the
     headers ``Host``, ``User-Agent: decoy-update-check``, ``Accept-Encoding: identity`` and
     ``Connection: close``. A proxy the user configured still applies.
@@ -34,7 +33,7 @@ import sys
 import time
 from pathlib import Path
 
-from packaging.version import InvalidVersion, Version
+from packaging.version import Version
 
 from decoy._env_flags import is_ci, safe_env_flag
 from decoy._version import __version__
@@ -71,9 +70,10 @@ def _canonical(value: object) -> str | None:
     if not isinstance(value, str):
         return None
     try:
-        return str(Version(value))
-    except InvalidVersion:
+        text = str(Version(value))
+    except ValueError:  # InvalidVersion, and int() past Python's digit limit
         return None
+    return text if len(text) <= 64 else None
 
 
 def _opted_out() -> bool:
