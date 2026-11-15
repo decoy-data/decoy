@@ -19,18 +19,29 @@ Signatures are DETACHED and over the EXACT on-disk bytes of the file being signe
 the identical signature verifies three ways: `openssl pkeyutl -verify -rawin` in the
 shell installer, `decoy.distribution.signing.verify_detached` in `decoy upgrade`, and the
 platform primitive on an auditor's host.
+
+A second sidecar, ``<file>.sshsig``, carries the same key's signature in the SSHSIG format
+(PROTOCOL.sshsig, OpenSSH 8.1+), made by the established ``ssh-keygen -Y sign`` and checked by
+``ssh-keygen -Y verify``. It exists for hosts that ship ``ssh-keygen`` but an OpenSSL too old for
+``pkeyutl -rawin`` (stock macOS). ``pubkeys``/``inject-keys``/``check-keys`` keep the two pinned
+forms of the public key in ``install.sh`` as one key; ``sshsig`` writes the sidecar.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import json
 import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 # Single source of truth for the public key: the one shipped in the CLI package
 # (also what `decoy upgrade` pins). install.sh embeds a copy of the same key.
@@ -56,6 +67,15 @@ def load_private_key() -> Ed25519PrivateKey:
     if not isinstance(key, Ed25519PrivateKey):
         raise ValueError("release key is not an Ed25519 private key")
     return key
+
+
+_PEM_PLACEHOLDER = "__DECOY_RELEASE_PUBLIC_KEY__"
+_SSH_PLACEHOLDER = "__DECOY_RELEASE_SSH_PUBLIC_KEY__"
+_SSHSIG_NAMESPACE = "decoy-release"
+_PEM_RE = re.compile(r"^PINNED_PUBKEY='-----BEGIN PUBLIC KEY-----\n(.*?)\n-----END PUBLIC KEY-----'", re.M | re.S)
+_SSH_RE = re.compile(r"^PINNED_SSH_PUBKEY='([^'\n]*)'", re.M)
+# One fixed line per failure: key material or tool output must never reach a CI log.
+_KEYS_BAD = "release keys in install.sh are not one valid key"
 
 
 def public_key_pem(key: Ed25519PrivateKey) -> str:
@@ -85,6 +105,97 @@ def sign_file(path: str | Path, key: Ed25519PrivateKey) -> Path:
     sig_path = path.with_name(path.name + ".sig")
     sig_path.write_text(sig + "\n", encoding="utf-8")
     return sig_path
+
+
+def pinned_forms(key: Ed25519PrivateKey) -> tuple[str, str]:
+    """The two forms install.sh pins for one key: the PEM body line and the base64 ssh-ed25519 blob."""
+    pem_body = "".join(public_key_pem(key).splitlines()[1:-1])
+    ssh = key.public_key().public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
+    return pem_body, ssh.decode("ascii").split()[1]
+
+
+def check_keys(text: str) -> None:
+    """Raise ValueError unless install.sh pins one valid Ed25519 key in both forms. A placeholder
+    is checked by name because lenient base64 decoders would swallow its underscores."""
+    pem, ssh = _PEM_RE.search(text), _SSH_RE.search(text)
+    if not pem or not ssh or _PEM_PLACEHOLDER in pem.group(1) or _SSH_PLACEHOLDER in ssh.group(1):
+        raise ValueError(_KEYS_BAD)
+    try:
+        a = serialization.load_pem_public_key(f"-----BEGIN PUBLIC KEY-----\n{pem.group(1)}\n-----END PUBLIC KEY-----\n".encode())
+        b = serialization.load_ssh_public_key(b"ssh-ed25519 " + ssh.group(1).encode())
+    except Exception as exc:
+        raise ValueError(_KEYS_BAD) from exc
+    if not isinstance(a, Ed25519PublicKey) or a.public_bytes_raw() != b.public_bytes_raw():
+        raise ValueError(_KEYS_BAD)
+
+
+def sshsig_file(path: str | Path, out: str | Path, key: Ed25519PrivateKey) -> None:
+    """Write the SSHSIG over ``path`` to ``out`` via ``ssh-keygen -Y sign`` (stdin form, so it
+    never writes ``<path>.sig``). The output is a 0600 temp file beside ``out`` and is renamed
+    over it only after a clean exit, so a failed run leaves an existing ``out`` untouched."""
+    out = Path(out)
+    keydir = Path(tempfile.mkdtemp(prefix="decoy-sshsig-"))
+    tmpout: str | None = None
+    try:
+        keyfile = keydir / "key"
+        fd = os.open(keyfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(
+                key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.OpenSSH,
+                    serialization.NoEncryption(),
+                )
+            )
+        fd, tmpout = tempfile.mkstemp(dir=out.parent, prefix=out.name + ".", suffix=".tmp")
+        with open(path, "rb") as fin, os.fdopen(fd, "wb") as fout:
+            r = subprocess.run(
+                ["ssh-keygen", "-Y", "sign", "-f", str(keyfile), "-n", _SSHSIG_NAMESPACE],
+                stdin=fin, stdout=fout, stderr=subprocess.DEVNULL, check=False,
+            )
+        if r.returncode != 0:
+            raise RuntimeError("ssh-keygen failed")
+        os.replace(tmpout, out)
+        tmpout = None
+    finally:
+        shutil.rmtree(keydir, ignore_errors=True)
+        if tmpout:
+            Path(tmpout).unlink(missing_ok=True)
+
+
+def _key_file(path: str) -> Ed25519PrivateKey:
+    key = serialization.load_pem_private_key(Path(path).read_bytes(), password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("not an Ed25519 key")
+    return key
+
+
+def _cmd_pubkeys(args: argparse.Namespace) -> int:
+    pem, ssh = pinned_forms(_key_file(args.key))
+    sys.stdout.write(json.dumps({"pem": pem, "ssh": ssh}) + "\n")
+    return 0
+
+
+def _cmd_inject_keys(args: argparse.Namespace) -> int:
+    text = Path(args.infile).read_text(encoding="utf-8")
+    if _PEM_PLACEHOLDER not in text or _SSH_PLACEHOLDER not in text:
+        raise ValueError("placeholder missing")
+    pem, ssh = pinned_forms(_key_file(args.key))
+    text = text.replace(_PEM_PLACEHOLDER, pem).replace(_SSH_PLACEHOLDER, ssh)
+    check_keys(text)
+    Path(args.out).write_text(text, encoding="utf-8")
+    return 0
+
+
+def _cmd_check_keys(args: argparse.Namespace) -> int:
+    check_keys(Path(args.installer).read_text(encoding="utf-8"))
+    sys.stdout.write("release keys ok\n")
+    return 0
+
+
+def _cmd_sshsig(args: argparse.Namespace) -> int:
+    sshsig_file(args.infile, args.out, load_private_key())
+    return 0
 
 
 def _cmd_keygen(args: argparse.Namespace) -> int:
@@ -140,7 +251,30 @@ def main(argv: list[str] | None = None) -> int:
         help="refuse unless the loaded key matches the committed public key",
     )
     sg.set_defaults(func=_cmd_sign)
+    for name, func, helptext in (
+        ("pubkeys", _cmd_pubkeys, "print both public forms of a key as JSON"),
+        ("inject-keys", _cmd_inject_keys, "fill both key placeholders in install.sh"),
+    ):
+        p = sub.add_parser(name, help=helptext)
+        p.add_argument("--key", required=True, help="private key PEM")
+        if name == "inject-keys":
+            p.add_argument("--in", dest="infile", required=True)
+            p.add_argument("--out", required=True)
+        p.set_defaults(func=func)
+    ck = sub.add_parser("check-keys", help="fail unless install.sh pins one key in both forms")
+    ck.add_argument("installer")
+    ck.set_defaults(func=_cmd_check_keys)
+    ss = sub.add_parser("sshsig", help="write an SSHSIG sidecar (key from the sign env vars)")
+    ss.add_argument("--in", dest="infile", required=True)
+    ss.add_argument("--out", required=True)
+    ss.set_defaults(func=_cmd_sshsig)
     args = ap.parse_args(argv)
+    if args.cmd in {"pubkeys", "inject-keys", "check-keys", "sshsig"}:
+        try:
+            return args.func(args)
+        except Exception:
+            sys.stderr.write(f"{args.cmd}: failed\n" if args.cmd != "check-keys" else _KEYS_BAD + "\n")
+            return 1
     return args.func(args)
 
 
