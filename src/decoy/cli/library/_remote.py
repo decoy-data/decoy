@@ -30,6 +30,8 @@ import os
 import sys
 from pathlib import Path
 
+from decoy.cli.library._fs import nearest_existing
+
 __all__ = ["linux_remote", "macos_remote", "remote_filesystem", "windows_remote"]
 
 _PLATFORM = sys.platform  # a module attribute so tests can dispatch to each branch
@@ -96,16 +98,9 @@ def _windows_drive_type(path: Path) -> int:
     return int(kernel32.GetDriveTypeW(ctypes.c_wchar_p(root)))
 
 
-def _existing(path: Path) -> Path:
-    for candidate in (path, *path.parents):
-        if candidate.exists():
-            return candidate
-    return path
-
-
 def remote_filesystem(path: Path) -> str | None:
     """The remote filesystem name under `path` (its nearest existing folder), or None."""
-    target = _existing(path)
+    target = nearest_existing(path)
     try:
         if _PLATFORM.startswith("linux"):
             return linux_remote(_linux_magic(target))

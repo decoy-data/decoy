@@ -16,7 +16,6 @@ cannot remove it in between.
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -37,6 +36,7 @@ from decoy.cli.library._fs import (
     Entry,
     ensure_private_dir,
     entries,
+    entry_of,
     read_capped,
     remove_file,
     replace_file,
@@ -146,7 +146,7 @@ def iter_refs(root: Path, refs_dir: Path) -> Iterator[tuple[Entry, bool, str | N
         except LibraryError as exc:
             if exc.code == LIBRARY_PATH_UNSAFE and folder == refs_dir:
                 raise
-            info = _folder_entry(folder)
+            info = _folder_entry(root, folder)
             if info is not None:
                 yield info, False, None
             continue
@@ -160,12 +160,11 @@ def iter_refs(root: Path, refs_dir: Path) -> Iterator[tuple[Entry, bool, str | N
                 yield entry, False, None
 
 
-def _folder_entry(folder: Path) -> Entry | None:
+def _folder_entry(root: Path, folder: Path) -> Entry | None:
     try:
-        info = os.lstat(folder)
-    except OSError:
+        return entry_of(root, folder)
+    except LibraryError:
         return None
-    return Entry(folder.name, folder, "dir", (info.st_dev, info.st_ino), 0, 0.0, 0)
 
 
 def remove_refs(library: Library, entries_: list[Entry]) -> list[Path]:

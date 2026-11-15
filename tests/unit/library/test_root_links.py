@@ -56,3 +56,19 @@ def test_a_linked_object_file_is_not_stored(tmp_path: Path) -> None:
         library.put(envelope(2, links=[base.id]))
     assert caught.value.code == RECORD_LINK_MISSING
     assert outside.read_bytes() == copy
+
+
+def test_the_index_lock_never_opens_through_a_linked_library_folder(tmp_path: Path) -> None:
+    """The SQLite seam on its own: `_index.locked` judges the index path through `_fs`."""
+    from decoy.cli.library import _index
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "index.sqlite").write_bytes(b"0123456789")
+    root = tmp_path / "proj" / DECOY_DIR
+    root.mkdir(parents=True)
+    (root / "library").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(LibraryError) as caught, _index.locked(root / "library"):
+        pass
+    assert caught.value.code == LIBRARY_PATH_UNSAFE
+    assert (outside / "index.sqlite").read_bytes() == b"0123456789"

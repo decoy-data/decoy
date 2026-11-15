@@ -24,9 +24,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-import os
 import sqlite3
-import stat
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -49,7 +47,9 @@ from decoy.cli.library._fs import (
     Entry,
     ensure_private_dir,
     entries,
+    entry_of,
     kind_of,
+    open_database_readonly,
     read_capped,
     remove_file,
     walk_tree,
@@ -242,7 +242,7 @@ class _Walk:
         if found_kind != "file":
             self.add(C.INDEX_NOT_FILE, path)  # a FIFO would block the open
             return
-        found = _indexed_ids(path)
+        found = _indexed_ids(self.root, path)
         if found is None:
             self.add(C.INDEX_CORRUPT, path)
             return
@@ -305,15 +305,15 @@ def _mode_entries(root: Path, path: Path) -> list[Entry]:
         return []
     if found == "dir":
         return walk_tree(root, path, unreadable=[])  # unlistable folders are reported elsewhere
-    info = os.lstat(path)
-    return [Entry(path.name, path, found, (0, 0), 0, 0.0, stat.S_IMODE(info.st_mode))]
+    entry = entry_of(root, path)
+    return [] if entry is None else [entry]
 
 
-def _indexed_ids(path: Path) -> tuple[int, set[str]] | None:
+def _indexed_ids(root: Path, path: Path) -> tuple[int, set[str]] | None:
     """The index's schema version and ids, read-only; None when it is not a readable index."""
     conn: sqlite3.Connection | None = None
     try:
-        conn = sqlite3.connect(f"{Path(os.path.abspath(path)).as_uri()}?mode=ro", uri=True)
+        conn = open_database_readonly(root, path)
         version = int(conn.execute("PRAGMA user_version").fetchone()[0])
         if version != _index.SCHEMA_VERSION:
             return version, set()
