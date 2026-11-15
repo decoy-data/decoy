@@ -123,19 +123,24 @@ def check_keys(text: str) -> None:
     string must equal the form re-derived from the PEM key, character for character: a lenient
     base64 decoder would accept a stray character that ssh-keygen rejects. A placeholder is
     checked by name for the same reason."""
-    pem, ssh = _PEM_RE.search(text), _SSH_RE.search(text)
-    if not pem or not ssh or _PEM_PLACEHOLDER in pem.group(1) or _SSH_PLACEHOLDER in ssh.group(1):
+    # Exactly one assignment of each: the shell runs the last one, so a validated first
+    # assignment would say nothing about the key the installer really uses.
+    pems, sshs = _PEM_RE.findall(text), _SSH_RE.findall(text)
+    if len(pems) != 1 or len(sshs) != 1 or text.count("PINNED_PUBKEY=") != 1 or text.count("PINNED_SSH_PUBKEY=") != 1:
+        raise ValueError(_KEYS_BAD)
+    pem_body, ssh_body = pems[0], sshs[0]
+    if _PEM_PLACEHOLDER in pem_body or _SSH_PLACEHOLDER in ssh_body:
         raise ValueError(_KEYS_BAD)
     try:
         key = serialization.load_pem_public_key(
-            f"-----BEGIN PUBLIC KEY-----\n{pem.group(1)}\n-----END PUBLIC KEY-----\n".encode()
+            f"-----BEGIN PUBLIC KEY-----\n{pem_body}\n-----END PUBLIC KEY-----\n".encode()
         )
-    except Exception as exc:
-        raise ValueError(_KEYS_BAD) from exc
+    except Exception:
+        raise ValueError(_KEYS_BAD) from None
     if not isinstance(key, Ed25519PublicKey):
         raise ValueError(_KEYS_BAD)
     pem_form, ssh_form = _public_forms(key)
-    if (pem.group(1), ssh.group(1)) != (pem_form, ssh_form):
+    if (pem_body, ssh_body) != (pem_form, ssh_form):
         raise ValueError(_KEYS_BAD)
 
 
