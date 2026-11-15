@@ -31,7 +31,6 @@ ROW_IDS = tuple(str(i) for i in range(1, 19))
 # or the worker-bootstrap gates today).
 MANUAL_ROWS = frozenset({"12", "14"})
 RESULTS = ("pass", "fail", "accepted-known-limit")
-RELEASE_VERSION = "1.0.0"
 CANDIDATE_SCHEMA = "decoy-release-candidate/v1"
 IDENTITY_FIELDS = {
     "cli_sha": re.compile(r"[0-9a-f]{40}"),
@@ -56,7 +55,17 @@ MAX_BYTES = 2_000_000
 _KEY_LINE = re.compile(r"^- ([a-z0-9_.]+):[ \t]*(.*?)[ \t]*$")
 _MARKER_LINE = re.compile(r"^- (cli|engine):(\S+) (TODO\S*) => (release-blocking|carry-forward)$")
 _MARKER = re.compile(r"TODO(?:\([^)\s]*\)|:)?")
-_LICENSOR_LINE = re.compile(r"^(?:Copyright(?: \(c\))? \d{4}(?:-\d{4})?|Licensor:)\s+(\S.*?)\s*$")
+# Leading whitespace, quote marks and markdown emphasis, the (c) and the copyright sign are all
+# forms a license file may use; a form this misses would let a stale licensor pass.
+_LICENSOR_LINE = re.compile(
+    r"^[\s>*_]*(?:(?:Copyright\b\s*(?:\([cC]\)|\u00a9)?|\u00a9|\([cC]\))\s*\d{4}(?:\s*-\s*\d{4})?[\s*_]*,?"
+    r"|Licensor[\s*_]*:[\s*_]*)\s*(\S.*?)[\s*_]*$",
+    re.IGNORECASE,
+)
+# The placeholder family in the license files: a sentence naming the entity, not only a
+# copyright line, must follow the licensor value.
+_ENTITY = re.compile(r"Decoy Labs,?\s+(?:L\.?L\.?C\.?|Inc\.?|Ltd\.?|Corp\.?|GmbH|Co\.)")
+_VERSION_LINE = re.compile(r'^__version__ = "([^"]+)"$', re.MULTILINE)
 _URL = re.compile(r"https://\S+")
 _PATH = re.compile(r"[\w.-]+(?:/[\w.-]+)+")
 _SHA = re.compile(r"[0-9a-f]{7,64}")
@@ -134,7 +143,7 @@ def check_rows(rows: list[dict[str, str]], release: bool) -> tuple[list[tuple[st
     for row in rows:
         rid = row["id"]
         if rid not in ROW_IDS:
-            found.append((f"row {rid or '?'}", "readiness_row_unknown"))
+            found.append(("row ?", "readiness_row_unknown"))  # never echo an unvetted id
             continue
         if rid in seen:
             found.append((f"row {rid}", "readiness_row_duplicate"))
@@ -178,9 +187,9 @@ def check_identity(keys: dict[str, str], release: bool) -> list[tuple[str, str]]
 
 
 def check_signoff(keys: dict[str, str]) -> list[tuple[str, str]]:
+    owner = keys.get("signoff.owner", "")
     ok = {
-        "signoff.owner": bool(keys.get("signoff.owner"))
-        and not keys["signoff.owner"].startswith("<"),
+        "signoff.owner": bool(owner) and not owner.startswith("<") and owner.upper() != "TBD",
         "signoff.date": bool(_DATE.fullmatch(keys.get("signoff.date", ""))),
         "signoff.decision": keys.get("signoff.decision") == "go",
     }
@@ -210,13 +219,45 @@ def load_candidate(path: Path) -> dict[str, str]:
     return doc
 
 
-def check_candidate(keys: dict[str, str], cand: dict[str, str]) -> list[tuple[str, str]]:
+def read_version(cli_root: Path) -> str:
+    """The version the candidate must carry: the CLI's own literal, not a constant here."""
+    text = _read(
+        cli_root / "src" / "decoy" / "_version.py", "version", "readiness_version_unreadable"
+    )
+    m = _VERSION_LINE.search(text)
+    if not m:
+        raise Refusal("version", "readiness_version_unreadable")
+    return m.group(1)
+
+
+def check_row_text(rows: list[dict[str, str]], cli_root: Path) -> list[tuple[str, str]]:
+    """Result and evidence are the filler's; every other cell must equal the template's."""
+    try:
+        template = _read(
+            cli_root / "docs" / "release" / "release-readiness.md",
+            "template",
+            "readiness_template_unreadable",
+        )
+    except Refusal as exc:
+        return [(exc.step, exc.code)]
+    want = {r["id"]: r for r in parse_rows(template)}
+    cols = ("gate", "command", "criterion", "owner")
+    return [
+        (f"row {r['id']}", "readiness_row_text_changed")
+        for r in rows
+        if r["id"] in want and any(r[c] != want[r["id"]][c] for c in cols)
+    ]
+
+
+def check_candidate(
+    keys: dict[str, str], cand: dict[str, str], version: str
+) -> list[tuple[str, str]]:
     found = [
         (f"g7.{f}", "readiness_candidate_mismatch")
         for f in IDENTITY_FIELDS
         if keys.get(f"g7.{f}", "") != cand[f]
     ]
-    if cand["cli_version"] != RELEASE_VERSION:
+    if cand["cli_version"] != version:
         found.append(("candidate.cli_version", "readiness_candidate_mismatch"))
     return found
 
@@ -230,9 +271,10 @@ def _map_limits(path: Path, label: str) -> tuple[set[str], list[tuple[str, str]]
     ids: set[str] = set()
     for line in text.splitlines():
         cells = _cells(line) if line.startswith("|") else []
-        if len(cells) < 4 or "accepted-known-limit" not in cells[-1]:
+        hit = next((c for c in cells if "accepted-known-limit" in c), None)
+        if len(cells) < 4 or hit is None:
             continue
-        m = _LIMIT_CELL.search(cells[-1].replace("`", ""))
+        m = _LIMIT_CELL.search(hit.replace("`", ""))
         limit = m.group(1).strip() if m else ""
         if not _LIMIT_ID.fullmatch(limit):
             return set(), [(step, "readiness_map_malformed")]
@@ -286,6 +328,7 @@ def check_legal(keys: dict[str, str], text: str, roots: dict[str, Path]) -> list
                     found.append((step, "readiness_marker_blocking"))
             names = [m.group(1) for m in map(_LICENSOR_LINE.match, body.splitlines()) if m]
             lines_seen += len(names)
+            names += [e for e in _ENTITY.findall(body) if licensor and e not in licensor]
             if licensor and any(n != licensor for n in names):
                 found.append((step, "readiness_licensor_mismatch"))
     if not lines_seen:
@@ -301,8 +344,11 @@ def run(args: argparse.Namespace) -> list[tuple[str, str]]:
     keys = parse_keys(text)
     found, listed = check_rows(parse_rows(text), args.release)
     found += check_identity(keys, args.release)
+    found += check_row_text(parse_rows(text), Path(args.cli_root))
     if args.candidate:
-        found += check_candidate(keys, load_candidate(Path(args.candidate)))
+        found += check_candidate(
+            keys, load_candidate(Path(args.candidate)), read_version(Path(args.cli_root))
+        )
     cli_root = Path(args.cli_root)
     if args.engine_repo:
         found += check_known_limits(cli_root, Path(args.engine_repo), listed)

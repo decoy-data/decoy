@@ -116,6 +116,10 @@ def env(tmp_path):
     cli, engine = tmp_path / "cli", tmp_path / "engine"
     _legal_tree(cli, "cli")
     _legal_tree(engine, "engine")
+    (cli / "docs/release").mkdir(parents=True, exist_ok=True)
+    (cli / "docs/release/release-readiness.md").write_text(TEMPLATE.read_text(encoding="utf-8"))
+    (cli / "src/decoy").mkdir(parents=True)
+    (cli / "src/decoy/_version.py").write_text('"""v."""\n\n__version__ = "1.0.0"\n')
     _map(cli / "docs/release/frozen-surfaces.md", f"accepted-known-limit: {CLI_LIMIT}", "`t.py`")
     _map(engine / "docs/frozen-surfaces.md", f"accepted-known-limit: {ENGINE_LIMIT}")
     cand = _candidate(tmp_path / "candidate.json")
@@ -419,3 +423,104 @@ def test_output_never_echoes_file_content(capsys, env):
     assert code == 1 and secret not in out
     code, out = _release(capsys, env, _fill(rows={"3": (secret, PASS_EVIDENCE)}))
     assert secret not in out
+    text = _fill().replace("| 9 |", f"| {secret} |", 1)
+    code, out = _release(capsys, env, text)
+    assert code == 1 and secret not in out and "row ?: readiness_row_unknown" in out
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "  Copyright 2026 {n}",
+        "Copyright (c) 2026 {n}",
+        "Copyright (C) 2026 {n}",
+        "Copyright \u00a9 2026 {n}",
+        "\u00a9 2026 {n}",
+        "**Copyright 2026 {n}**",
+        "_Copyright 2026-2027 {n}_",
+        "> Copyright 2026, {n}",
+        "COPYRIGHT 2026 {n}",
+        "**Licensor:** {n}",
+        "  Licensor: {n}",
+    ],
+)
+def test_licensor_line_forms_are_all_compared(capsys, env, line):
+    _, cli, _, _ = env
+    good = line.format(n=LICENSOR)
+    (cli / "NOTICE").write_text(good + "\n")
+    code, out = _release(capsys, env)
+    assert code == 0, (good, out)
+    (cli / "NOTICE").write_text(line.format(n="Old Entity Corp") + "\n")
+    code, out = _release(capsys, env)
+    assert code == 1 and "file cli:NOTICE: readiness_licensor_mismatch" in out, line
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "This product includes software developed by Decoy Labs LLC.",
+        "You must obtain written permission from Decoy Labs, Inc. to do that.",
+        "marks of Decoy Labs Inc.",
+    ],
+)
+def test_a_sentence_naming_the_old_entity_is_refused(capsys, env, sentence):
+    _, cli, _, _ = env
+    # the copyright lines are already updated; only the prose still names the old entity
+    (cli / "TRADEMARKS.md").write_text(f"Copyright 2026 {LICENSOR}\n{sentence}\n")
+    code, out = _release(capsys, env)
+    assert code == 1 and "file cli:TRADEMARKS.md: readiness_licensor_mismatch" in out
+    # a sentence that names the current licensor is fine
+    (cli / "TRADEMARKS.md").write_text(f"Copyright 2026 {LICENSOR}\nOwned by {LICENSOR}.\n")
+    code, out = _release(capsys, env)
+    assert code == 0, out
+
+
+def test_known_limit_marker_in_a_middle_cell_is_found(capsys, env):
+    _, cli, _, _ = env
+    (cli / "docs/release/frozen-surfaces.md").write_text(
+        "| s | src | accepted-known-limit: V2-LOG cli-9 | `t.py` |\n"
+    )
+    code, out = _release(capsys, env)  # rows list only cli-1 and eng-7
+    assert code == 1 and "map cli: readiness_known_limit_missing" in out
+
+
+def test_row_text_changed_from_the_template_is_refused(capsys, env):
+    text = _fill(rows=_known_limit_rows())
+    weaker = text.replace("Green. Every accepted-known-limit", "Green. Some accepted-known-limit")
+    assert weaker != text
+    code, out = _release(capsys, env, weaker)
+    assert code == 1 and "row 4: readiness_row_text_changed" in out
+    assert "Some" not in out
+    for old, new in (("| G3 |", "| G9 |"), ("`scripts/release/launch_pin_check.py`", "`true`")):
+        code, out = _release(capsys, env, text.replace(old, new, 1))
+        assert code == 1 and "readiness_row_text_changed" in out, old
+    owner = text.replace("| orchestrator |", "| nobody |", 1)
+    code, out = _release(capsys, env, owner)
+    assert code == 1 and "readiness_row_text_changed" in out
+    (env[1] / "docs/release/release-readiness.md").unlink()
+    code, out = _release(capsys, env)
+    assert code == 1 and "readiness_template_unreadable" in out
+
+
+def test_the_release_version_comes_from_the_cli_version_file(capsys, env):
+    version_file = env[1] / "src/decoy/_version.py"
+    version_file.write_text('__version__ = "1.2.0"\n')
+    code, out = _release(capsys, env)  # candidate says 1.0.0
+    assert code == 1 and "candidate.cli_version: readiness_candidate_mismatch" in out
+    _candidate(env[3], cli_version="1.2.0")
+    code, out = _release(capsys, env)
+    assert code == 0, out
+    for bad in ("no version here\n", ""):
+        version_file.write_text(bad)
+        code, out = _release(capsys, env)
+        assert code == 1 and "version: readiness_version_unreadable" in out
+    version_file.unlink()
+    code, out = _release(capsys, env)
+    assert code == 1 and "readiness_version_unreadable" in out and "Traceback" not in out
+
+
+@pytest.mark.parametrize("owner", ["", "TBD", "tbd", "<owner>"])
+def test_a_placeholder_signoff_owner_is_refused(capsys, env, owner):
+    text = _fill(rows=_known_limit_rows(), keys={"signoff.owner": owner})
+    code, out = _release(capsys, env, text)
+    assert code == 1 and "signoff.owner: readiness_signoff_missing" in out
