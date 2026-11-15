@@ -22,6 +22,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from decoy.distribution.manifest import sha256_file
+
 SCHEMA = "decoy-release-candidate/v1"
 SUMS_NAME = "SHA256SUMS"
 CANDIDATE_NAME = "candidate.json"
@@ -31,6 +33,11 @@ VERSION_DOCUMENT = "version.json"
 SUMMARY_SCHEMA = "decoy-release-smoke/v1"
 SMOKE_STEPS = ("candidate", "version_document", "installer_key", "install", "bundle_key",
                "version", "doctor", "native", "template")  # fmt: skip
+# Targets the smoke refuses and the log never takes this cycle, with the reason (5.4, Q5).
+GATED_TARGETS = {
+    "windows-x86_64": "Windows is gated off this cycle (decoy.distribution.targets) and "
+    "install.ps1 has no local-bundle input; REL-GATE Q5 decides when it is smoked",
+}
 FIELDS = ("cli_version", "cli_sha", "engine_tag", "engine_commit", "sha256sums_sha256")
 _PATTERNS = {
     "cli_version": re.compile(r"\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?"),
@@ -44,14 +51,6 @@ _SUMS_LINE = re.compile(r"([0-9a-f]{64})  ([A-Za-z0-9][A-Za-z0-9._+-]*)")
 
 def listed(name: str) -> bool:
     return name.endswith((".tar.gz", ".sig")) or name in INSTALLERS or name == VERSION_DOCUMENT
-
-
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def sums_text(dist: Path) -> str:

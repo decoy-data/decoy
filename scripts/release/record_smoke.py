@@ -28,11 +28,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from packaging_tools.candidate import (  # noqa: E402
+    GATED_TARGETS,
     SMOKE_STEPS,
     SUMMARY_SCHEMA,
     read_candidate,
     strict_json,
 )
+
+from decoy.distribution.targets import SUPPORTED_TARGETS  # noqa: E402
 
 LOG = ROOT / "docs" / "release" / "smoke-log.md"
 CANONICAL_HEADING = "## Release candidate smoke"
@@ -50,8 +53,9 @@ _SUMMARY_KEYS = {
 _LABEL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
 _URL = re.compile(r"https://[A-Za-z0-9.-]+(?:/[A-Za-z0-9._~%/-]*)?")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
-# The log is public: a platform cell is a target tag, never a host name or path.
-_PLATFORM = re.compile(r"[a-z0-9]+(?:-[a-z0-9_]+)+")
+# The log is public and a summary is untrusted input: a platform cell is a supported,
+# ungated target tag, never a host or user name.
+PLATFORMS = frozenset(SUPPORTED_TARGETS) - frozenset(GATED_TARGETS)
 
 
 class Refused(Exception):
@@ -78,7 +82,7 @@ def check_summary(summary: Any) -> dict[str, Any]:
     steps = summary["steps"]
     if type(steps) is not dict or any(v not in ("pass", "fail") for v in steps.values()):
         raise Refused("smoke_field_type", "steps")
-    if not _PLATFORM.fullmatch(summary["platform"]):
+    if summary["platform"] not in PLATFORMS:
         raise Refused("smoke_field_type", "platform")
     return summary
 
@@ -152,6 +156,8 @@ def _usage(args: argparse.Namespace) -> str | None:
         return "--note must be one line of at most 200 characters with no '|'"
     if args.date is not None and not _DATE.fullmatch(args.date):
         return "--date must be YYYY-MM-DD"
+    if args.base_ref.startswith("-"):
+        return "--base-ref must be a commit, not an option"
     return None
 
 
