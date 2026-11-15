@@ -127,7 +127,7 @@ def test_a_newer_layout_is_a_finding_and_repair_refuses(root: Path) -> None:
     (root / "library" / "LAYOUT").write_text('{"layout":2}', encoding="utf-8")
     result = _fsck("--repair")
     assert result.exit_code == EXIT_FINDINGS, result.output
-    assert "layout_newer" in result.output
+    assert "library_layout_newer" in result.output
 
 
 def test_registering_the_group_keeps_the_engine_out_of_startup() -> None:
