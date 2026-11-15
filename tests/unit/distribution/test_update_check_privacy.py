@@ -21,7 +21,9 @@ DOC_PATH = "/cli/version.json"
 
 
 def _document(latest: str, *, message: str = "") -> bytes:
-    doc = vd.build_document(latest=latest, min_supported="0.1", artifacts={}, serial=1, message=message)
+    doc = vd.build_document(
+        latest=latest, min_supported="0.1", artifacts={}, serial=1, message=message
+    )
     return vd.canonical_document_bytes(doc)
 
 
@@ -71,8 +73,17 @@ def serve(request: pytest.FixtureRequest):
 @pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     """No CI, no opt-out, no proxy, and a private cache home."""
-    for name in ("CI", "DECOY_NO_UPDATE_CHECK", "NO_PROXY", "http_proxy", "HTTP_PROXY", "https_proxy",
-                 "HTTPS_PROXY", "all_proxy", "ALL_PROXY"):
+    for name in (
+        "CI",
+        "DECOY_NO_UPDATE_CHECK",
+        "NO_PROXY",
+        "http_proxy",
+        "HTTP_PROXY",
+        "https_proxy",
+        "HTTPS_PROXY",
+        "all_proxy",
+        "ALL_PROXY",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("no_proxy", "*")
     monkeypatch.setenv("DECOY_HOME", str(tmp_path / "home"))
@@ -112,8 +123,10 @@ def test_one_request_with_exactly_the_p1_headers(monkeypatch, home, serve) -> No
     assert line == f"GET {DOC_PATH} HTTP/1.1"
     assert len(headers) == 4, headers
     assert {name.lower(): value for name, value in headers} == {
-        "host": f"127.0.0.1:{server.port}", "user-agent": "decoy-update-check",
-        "accept-encoding": "identity", "connection": "close",
+        "host": f"127.0.0.1:{server.port}",
+        "user-agent": "decoy-update-check",
+        "accept-encoding": "identity",
+        "connection": "close",
     }
 
 
@@ -165,7 +178,9 @@ def test_requests_only_on_an_interactive_start(
 
 
 @pytest.mark.parametrize(("flag", "requests"), [([], 1), (["--no-update-check"], 0)])
-def test_the_no_update_check_flag_stops_the_request(monkeypatch, home, serve, flag, requests) -> None:
+def test_the_no_update_check_flag_stops_the_request(
+    monkeypatch, home, serve, flag, requests
+) -> None:
     import decoy.__main__ as main
 
     server = serve(body=_document("99.0.0"))
@@ -198,7 +213,9 @@ def _closed_port_url() -> str:
 @pytest.mark.parametrize(
     "case", ["oversize", "redirect", "escape-code", "not-a-version", "too-long", "refused"]
 )
-def test_a_bad_response_is_cached_as_null_and_prints_nothing(monkeypatch, home, serve, case) -> None:
+def test_a_bad_response_is_cached_as_null_and_prints_nothing(
+    monkeypatch, home, serve, case
+) -> None:
     server = {
         # A valid document, so only the size cap can refuse it.
         "oversize": lambda: serve(body=_document("99.0.0", message="x" * (1 << 20))),
