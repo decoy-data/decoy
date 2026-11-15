@@ -51,7 +51,7 @@ from decoy.distribution import signing
 
 VERSION_DOCUMENT_SCHEMA_VERSION = "cli-version-document/v1"
 # The one default endpoint for the signed document. install.sh and install.ps1 carry the
-# same literal (they run before Python exists); a sentry keeps them equal.
+# same literal (they run before Python exists); tests/unit/distribution/test_bundle_base.py keeps them equal.
 DEFAULT_URL = "https://trydecoy.com/cli/version.json"
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DEFAULT_VALIDITY_DAYS = 30

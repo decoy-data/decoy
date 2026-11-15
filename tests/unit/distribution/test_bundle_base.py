@@ -123,9 +123,7 @@ def test_at_c6_upgrade_pin_requests_the_release_asset_path(monkeypatch, tmp_path
     bundles.close()
     # The Python installer reads the .sha256 sidecar first, then the bundle itself.
     assert f"/v{PINNED}/decoy-{PINNED}-{served.target}.tar.gz" in bundles.paths
-    assert served.paths and all(p.startswith("/doc/") for p in served.paths), (
-        "bundle left the bundle base"
-    )
+    assert not [p for p in served.paths if p.startswith("/v")], "bundle left the bundle base"
 
 
 def test_default_bundle_base_is_the_github_release_download_root():
@@ -196,3 +194,26 @@ def test_default_url_is_the_owner_chosen_host_and_one_resolver_serves_both_calle
     assert not hasattr(_update_check, "_DEFAULT_VERSION_URL") and not hasattr(
         upg, "_DEFAULT_VERSION_URL"
     )
+
+
+SCRIPTS = {
+    name: (REPO_ROOT / "packaging_tools" / "install" / name).read_text(encoding="utf-8")
+    for name in ("install.sh", "install.ps1")
+}
+
+
+def test_installer_scripts_carry_the_same_defaults_as_python():
+    for name, text in SCRIPTS.items():
+        assert installer.DEFAULT_BUNDLE_BASE in text, name
+        assert vd.DEFAULT_URL in text, name
+        assert "decoy.dev" not in text, name
+
+
+def test_install_ps1_pinned_path_uses_the_v_prefixed_release_layout():
+    assert "$baseUrl/v$ver/decoy-$ver-$target.tar.gz" in SCRIPTS["install.ps1"]
+    assert "$BundleBase.TrimEnd('/')" in SCRIPTS["install.ps1"]
+    assert (
+        "DECOY_BUNDLE_BASE" in SCRIPTS["install.ps1"]
+        and "DECOY_BUNDLE_BASE" in SCRIPTS["install.sh"]
+    )
+    assert "/v$VERSION/decoy-$VERSION-$TARGET.tar.gz" in SCRIPTS["install.sh"]

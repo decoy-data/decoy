@@ -161,14 +161,12 @@ def upgrade(
     try:
         # A pinned non-latest version resolves <bundle base>/v<version>/decoy-<version>-<target>.tar.gz
         # (install.sh scheme), not under the document's own base.
-        base_url = installer.resolve_bundle_base()
         outcome = installer.install_version(
             version_doc_bytes=doc_bytes,
             version_doc_sig_b64=doc_sig,
             expected_public_pem=pubkey,
             home=home,
             pin_version=version,
-            base_url=base_url,
             download=_fetch,
             post_swap_validate=_post_swap,
         )
