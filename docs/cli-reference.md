@@ -97,7 +97,7 @@ $ decoy run [OPTIONS] [CONFIG]
 
 **Options**:
 
-* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the worst child&#x27;s (3, then 5, 1, 4, 2, 0). Takes no pipeline name and refuses --evidence-out, --vault and --out-dir.
+* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the first of 5 &gt; 3 &gt; 1 &gt; 6 &gt; 4 &gt; 2 &gt; 0 that any child produced. Takes no pipeline name and refuses --evidence-out, --vault and --out-dir.
 * `-m, --mode [mask|generate]`: Operation: mask existing data or generate synthetic data.  [default: mask]
 * `--json`: Emit a structured JSON result on stdout. Progress goes to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries success.
