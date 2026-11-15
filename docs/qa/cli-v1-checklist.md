@@ -45,7 +45,7 @@ Sixteen groups, 204 checks.
 | 2 | [Projects, init and layout](#2-projects-init-and-layout) | PROJ-01 to PROJ-18 | 24, 24e, 24o, 24t, 32b |
 | 3 | [Validate and the pre-run gate](#3-validate-and-the-pre-run-gate) | GATE-01 to GATE-19 | 19, 20, 20b, 22, 23, 24a, 24b, 24e, 24k, 24o, 24zf |
 | 4 | [Scan](#4-scan) | SCAN-01 to SCAN-17 | 22, 24c, 24e, 27, 29, 30, 31, 32, 32a, 36, 56, 80, 81 |
-| 5 | [Mask run](#5-mask-run) | RUN-01 to RUN-20 | 19, 20, 21b, 24e, 24zb, 24zd, 24zh, 38, 57, 61a, 62, 63, 63a, 90, 95 |
+| 5 | [Mask run](#5-mask-run) | RUN-01 to RUN-20 | 19, 20, 21b, 24d, 24e, 24zb, 24zd, 24zh, 38, 57, 61a, 62, 63, 63a, 90, 95 |
 | 6 | [Delivery, run result, resume and connectors](#6-delivery-run-result-resume-and-connectors) | DLV-01 to DLV-12 | 24t, 61, 62, 64, 64b, 66, 85, 86, 87 |
 | 7 | [Keys and secrets](#7-keys-and-secrets) | KEY-01 to KEY-09 | 24zb, 65, 73, 79, 83 |
 | 8 | [Unmask, tokenize and the vault](#8-unmask-tokenize-and-the-vault) | REV-01 to REV-12 | 21, 24e, 24zh, 79 |
@@ -80,6 +80,21 @@ it, and the rows no check covers.
 - Run each determinism check twice in separate processes and compare output bytes.
 - Run each install and file-mode check on every launch platform: `linux-x86_64`, `linux-aarch64`,
   `macos-arm64`, and `windows-x86_64` only once rows 6 and 89 allow it.
+- Group 1 before the candidate exists. INST-01, INST-03, INST-04, INST-06 to INST-09 and INST-15 need
+  a signed bundle and a signed version document, and a build still carrying the placeholder release
+  key has none: `decoy upgrade` refuses with `NoPinnedKeyError` and `_key_unresolved()` silently
+  suppresses the INST-15 notice (`src/decoy/__main__.py:196-205`, `:263`). A pre-RC pass therefore
+  uses a test key: `packaging_tools/sign_release.py keygen` for a throwaway pair, `sign` for the
+  bundle and a test version document served from a local HTTP server, then
+  `DECOY_RELEASE_PUBKEY_FILE=<test public key>` for the installer and the CLI
+  (`src/decoy/distribution/release_key.py:37-62`, `packaging_tools/install/install.sh:218-223`),
+  `DECOY_VERSION_URL=<local document>` for `install.sh` and the notice
+  (`install.sh:41`, `src/decoy/_update_check.py:102`), and the hidden `decoy upgrade --url
+  <local document>` (`src/decoy/cli/upgrade.py:65`). The override is honored only while the committed
+  key is the placeholder, and warns when used. Once REL-GATE G2 commits the owner's key, a bundle
+  built from that head ignores it, so on such a head these eight checks run on the signed candidate
+  at G6 and are recorded as RC there. The throwaway private key is deleted after the pass and never
+  committed.
 - The Pass/fail column stays blank in this file. A run record copies the group's table and fills it.
 
 ### Fixture project
@@ -109,6 +124,21 @@ marker and every `code` value (the digits `fpe` reverses carry no text marker). 
 pass; exit 0 is a finding unless the match is in a `passthrough` column of a masked output; exit 2
 (missing file) means the check did not run.
 
+Services: the checks that reach an external service get it from a local container where a faithful
+one exists, and otherwise from test credentials the owner provides for a throwaway account. Every
+service holds only fixture data, credentials go in by environment or secret reference and never into
+a run record, and each record names the service and its version.
+
+| Check | Service | How it is provided |
+|---|---|---|
+| KEY-08 | HashiCorp Vault | `vault server -dev` in a local container |
+| KEY-08 | AWS Secrets Manager | a LocalStack container |
+| KEY-08 | GCP Secret Manager, Azure Key Vault | owner-provided test credentials (no faithful local emulator) |
+| DLV-08 | `s3://` and `gs://` targets | MinIO for S3 and `fake-gcs-server` for GCS, in local containers |
+| DLV-09, DLV-10 | PostgreSQL source and target | a local `postgres` container at the version row 64b and row 86 support |
+| DLV-11 | SFTP target; cloud source scan and subset | an SFTP server container; MinIO as the cloud source |
+| INST-16 | container runtime and the image registry | local Docker; registry pull access per row 90a |
+
 ## 1. Install, version and upgrade
 
 What it covers: the signed per-platform bundle, `install.sh`, the offline path, `decoy upgrade`,
@@ -118,7 +148,7 @@ row 94 after publication.
 
 | Id | Command | Expected | Rows | Pass/fail |
 |---|---|---|---|---|
-| INST-01 | `DECOY_LOCAL_BUNDLE=<bundle> sh install.sh` with the bundle's `.sha256` and `.sig` sidecars beside it, on each launch platform; then `decoy --version` | Installs; prints `decoy 1.0.0`; exit 0 | 90 | |
+| INST-01 | `DECOY_LOCAL_BUNDLE=<bundle> sh install.sh` with the bundle's `.sha256` and `.sig` sidecars beside it, on each launch platform; then `decoy --version` | Installs; prints `decoy` and the bundle's version string (the version the bundle was built at; the 1.0.0 literal is checked only in INST-11); exit 0 | 90 | |
 | INST-02 | The same installer on macOS x86_64; on Windows, the PowerShell installer | Refuses with a message naming the platform; nothing under `DECOY_HOME`; non-zero exit. Windows cell per rows 6 and 89 | 89, 90 | |
 | INST-03 | Flip one byte of the bundle, then install it | Refused before extract; nothing under `DECOY_HOME` | 88, 90 | |
 | INST-04 | INST-01 without the `.sha256` sidecar; then without the `.sig` sidecar | Both refused | 90 | |
@@ -136,7 +166,7 @@ row 94 after publication.
 | INST-16 | Container image: `docker run <image>:1.0.0 --version` with no license variable, then with it; `id -u` inside; the `-ner` tag | **Not built.** Refuses without the license acceptance; runs with it; non-root user; the `-ner` tag carries the NER model; the image is pinned by digest | 90a | |
 | INST-17 | INST-01 to INST-06 and INST-14 on the build that carries the `installer.py` split | Same results as before the split | 47 | |
 | INST-18 | The CLI environment report from F10 on two hosts | **Not built.** Prints engine compatibility, seed protocol, provider and pool digests; comparing two hosts names each difference | 78 | |
-| INST-19 | `decoy doctor`, then `decoy doctor --json`, on a healthy install; again after removing the native companion | Exit 0 with each requirement listed; exit 3 naming the missing companion | 88, 90 | |
+| INST-19 | `decoy doctor`, then `decoy doctor --json`, on a healthy install; again after removing the native companion | Exit 0 with each requirement listed. After the removal both forms are refused by the runtime guard before `doctor` runs: exit 3, a plain-text `decoy: native companion check FAILED ...` line on stderr naming `decoy upgrade --force`, and nothing on stdout, `--json` included (`src/decoy/distribution/runtime_guard.py:23,38-42`, `src/decoy/__main__.py:252-255`). See the EXIT-04 open point | 88, 90 | |
 
 Open points:
 
@@ -217,7 +247,7 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 | SCAN-10 | Opt-in distribution capture, then a run whose output drifts past the set percentage, in strict mode | **Not built.** The breach blocks publication; outside strict mode it warns | 31 | |
 | SCAN-11 | `on_drift: fail` with a source that drifted from the baseline; then `on_drift: warn` | **Not built.** The run refuses at start; with `warn` it warns and runs | 32 | |
 | SCAN-12 | Scan with defaults; enable the classifier, then NER, per pipeline; remove spaCy and scan with NER on | **Not built.** Default is regex only and says so; the scan report and run result name each detector, model and version; without spaCy, an install line for the `ner` extra and a non-zero exit | 32a | |
-| SCAN-13 | Read every scan, report and help text for STORM wording | V1 names only, as row 56 sets them | 56 | |
+| SCAN-13 | Read every scan, report and help text for STORM wording | **Not built.** V1 names only, as row 56 sets them | 56 | |
 | SCAN-14 | A run with strict-drift publication blocking configured and a drifted source | **Not built.** No output is published; the reason is named | 80 | |
 | SCAN-15 | `decoy list disguises`; then every id `decoy list templates` prints, given to `decoy init --preset ... --json` | The disguise tip points at `decoy list templates`, not at disguise ids; every template id is accepted | 24e | |
 | SCAN-16 | A pipeline that applies a disguise from `decoy list disguises` | **Not built.** The engine applies it, with the selector precedence row 81 sets | 81 | |
@@ -243,7 +273,7 @@ sections 02, 11 and 15 own the routes. Every run below passes `--mask-secret env
 | RUN-02 | A source with `has_header: false`, `column_names` and `delimiter: ";"` | Read as declared; output columns match | 19 | |
 | RUN-03 | Make an existing target's folder read-only, then rerun with `--out-dir` pointing at it | Non-zero exit; the old target is whole (staged write, one replace) | 21b | |
 | RUN-04 | `decoy run mask-basic --chunked`, failing after the first chunk (source truncated mid-run) | No partial target | 61a | |
-| RUN-05 | Run `mask-fk` twice in separate processes with the same seed and secret | Output bytes equal, every strategy including `shuffle` | 24zd | |
+| RUN-05 | Run `mask-fk` twice in separate processes with the same seed and secret | Output bytes equal, every strategy including `shuffle` | 24d | |
 | RUN-06 | `--chunked` on `mask-basic`; on a fixed-width target; on a config with an ineligible strategy | Byte-identical to a plain run; the other two exit 1 with the reason | 20, 63a | |
 | RUN-07 | `decoy run mask-big --max-memory 512MiB --explain-plan` | Streams by itself; the summary names the route and why | 63a | |
 | RUN-08 | `mask-fk` scaled past memory, with `--max-memory` and `--threads 2`; then a budget too small to finish | Out-of-core route with the given settings; the too-small budget exits 5 | 63a | |
@@ -397,6 +427,11 @@ Open points:
   `tests/sentry/cli_text/test_no_traceback_escape.py` pins 1. EXIT-03 grades the code as built.
 - Both docs say every command returns "one of seven" codes. Ctrl-C exits 130
   (`RUN_EXIT_MAP`, `exit_code_for`), which neither lists.
+- EXIT-04 and the runtime guard. On a managed install whose native companion was removed or is
+  ABI-mismatched, every command except `upgrade` is refused before it runs, in plain text on stderr
+  with exit 3, and `--json` prints no error object (`src/decoy/distribution/runtime_guard.py:38-42`,
+  `src/decoy/__main__.py:252-255`). EXIT-04 runs on a healthy install; INST-19 records the guarded
+  case as built. Whether the guard should honor `--json` is open.
 
 ## 12. Local record library and job logs
 
@@ -509,6 +544,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 24a | VALUE-FREE-ERRORS | GATE-11, EXIT-08 |
 | 24b | QA-GATE | GATE-05 to GATE-07 |
 | 24c | QA-SCAN-REDACT | SCAN-04 |
+| 24d | QA-SHUFFLE-DET | RUN-05 |
 | 24e | CLI-QA1 | PROJ-15, GATE-12, GATE-13, GATE-19, SCAN-01, SCAN-15, RUN-20, REV-08, GEN-16, EVD-05, EVD-06, EVD-12, EVD-13, CI-01, DOC-02, DOC-04, DOC-09, DOC-10 |
 | 24f | QA-FIT-REDACT | GEN-01, GEN-02 |
 | 24g | QA-DP-GATED | GEN-04 |
@@ -524,7 +560,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 24y | GEN-FORMULA-SEQ | GEN-08 |
 | 24zb | DATE-SHIFT-UNKEYED | RUN-14, KEY-05 |
 | 24zc | CERT-PIN-CVES | GEN-05 |
-| 24zd | DUP-DEFECTS | RUN-05, RUN-19 |
+| 24zd | DUP-DEFECTS | RUN-19 |
 | 24ze | DUP-GUARDS | BLD-04 |
 | 24zf | DUP-FREEZE | GATE-11, GATE-17, GATE-18, EXIT-03 to EXIT-06 |
 | 24zh | DUP-DEST | RUN-13, REV-06, REV-07 |
