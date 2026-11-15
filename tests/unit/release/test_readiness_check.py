@@ -28,8 +28,8 @@ SHA2 = "b" * 40
 DIGEST = "c" * 64
 DIGEST2 = "d" * 64
 LICENSOR = "Example Licensor GmbH"
-CLI_LIMIT = "V2-LOG cli-1"
-ENGINE_LIMIT = "V2-LOG eng-7"
+CLI_LIMIT = "RG-F1-KL-1"
+ENGINE_LIMIT = "RG-F1-KL-2"
 
 IDENTITY = {
     "g3.cli_sha": SHA,
@@ -478,9 +478,9 @@ def test_a_sentence_naming_the_old_entity_is_refused(capsys, env, sentence):
 def test_known_limit_marker_in_a_middle_cell_is_found(capsys, env):
     _, cli, _, _ = env
     (cli / "docs/release/frozen-surfaces.md").write_text(
-        "| s | src | accepted-known-limit: V2-LOG cli-9 | `t.py` |\n"
+        "| s | src | accepted-known-limit: RG-F1-KL-9 | `t.py` |\n"
     )
-    code, out = _release(capsys, env)  # rows list only cli-1 and eng-7
+    code, out = _release(capsys, env)  # rows list only KL-1 and KL-2
     assert code == 1 and "map cli: readiness_known_limit_missing" in out
 
 
@@ -588,3 +588,37 @@ def test_more_placeholder_signoff_owners_are_refused(capsys, env, owner):
     text = _fill(rows=_known_limit_rows(), keys={"signoff.owner": owner})
     code, out = _release(capsys, env, text)
     assert code == 1 and "signoff.owner: readiness_signoff_missing" in out
+
+
+def test_known_limit_id_must_match_grammar(capsys, tmp_path):
+    for good in ("RG-F1-KL-1", "RG-F1-KL-1; X9-KL-12"):
+        code, out = _run(capsys, tmp_path, _fill(rows={"4": ("accepted-known-limit", good)}))
+        assert "readiness_known_limit_id_missing" not in out, good
+    for bad in ("V1 defect-1", "RGF1 KL 1", "RG-F1-KL-0", "x-KL-1"):
+        code, out = _run(capsys, tmp_path, _fill(rows={"4": ("accepted-known-limit", bad)}))
+        assert code == 1, bad
+        assert "row 4: readiness_known_limit_id_missing" in out, bad
+
+
+def test_duplicate_legal_marker_classification_refused(capsys, env):
+    _, cli, _, _ = env
+    name = rc.LEGAL_FILES["cli"][0]
+    (cli / name).write_text(f"Copyright 2026 {LICENSOR}\nTODO:\n", encoding="utf-8")
+    for first, second in (
+        ("release-blocking", "carry-forward"),
+        ("carry-forward", "release-blocking"),
+    ):
+        marks = [f"cli:{name} TODO: => {first}", f"cli:{name} TODO: => {second}"]
+        code, out = _release(capsys, env, markers=marks)
+        assert code == 1 and f"file cli:{name}: readiness_legal_marker_duplicate" in out, first
+
+
+def test_unsigned_complete_instance_reports_only_signoff(capsys, env):
+    blank = {k: "" for k in SIGNOFF}
+    code, out = _release(capsys, env, _fill(rows=_known_limit_rows(), keys=blank))
+    lines = [x for x in out.splitlines() if "readiness_" in x]
+    assert code == 1 and len(lines) == 3, out
+    for key in SIGNOFF:
+        assert f"{key}: readiness_signoff_missing" in out
+    code, out = _release(capsys, env)
+    assert code == 0, out

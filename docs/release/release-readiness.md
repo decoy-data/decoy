@@ -8,7 +8,7 @@ structure and the identity of the copy, not whether a criterion was met: that co
 in each row. The gates G0 to G8 are in `docs/plans/2026-11-15-rel-gate.md` section 4.
 
 Result values: `pass`, `fail`, `accepted-known-limit`. A `pass` row cites evidence: an https run URL, a
-repo-relative record path or a commit SHA. An `accepted-known-limit` row lists the V2-LOG ids of its cells,
+repo-relative record path or a commit SHA. An `accepted-known-limit` row lists the known-limit ids (such as `RG-F1-KL-1`) of its cells,
 separated by `;`. Rows 12 and 14 are manual: their evidence names the reviewer, the commit read (7 or more
 hex digits) and the date (YYYY-MM-DD).
 
