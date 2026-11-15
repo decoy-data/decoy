@@ -13,9 +13,10 @@ exit code. Nothing is added to an event: consumers get the engine's own value-fr
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable
 from typing import Any
+
+from decoy import _native_gate
 
 __all__ = ["Consumer", "ProgressFanout", "build", "run_pipeline_kwargs"]
 
@@ -50,10 +51,10 @@ def build() -> ProgressFanout:
 def run_pipeline_kwargs(run_pipeline: Callable[..., Any], fanout: ProgressFanout | None) -> dict:
     """`{"progress": fanout}` when this engine's `run_pipeline` takes a sink, else nothing.
 
-    The same capability check `_native_gate.run_pipeline_kwargs` uses: the pinned engine (0.22.0)
-    takes `progress`, and an older one still runs, with no events, instead of failing on the
-    keyword (tests/e2e/test_run_native.py holds that contract).
+    Asks `_native_gate.run_pipeline_accepts`, the one capability check: an engine without the
+    keyword still runs, with no events, instead of failing on it (tests/e2e/test_run_native.py
+    holds that contract).
     """
-    if fanout is None or "progress" not in inspect.signature(run_pipeline).parameters:
+    if fanout is None or not _native_gate.run_pipeline_accepts("progress", run_pipeline):
         return {}
     return {"progress": fanout}
