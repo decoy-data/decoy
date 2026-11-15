@@ -46,11 +46,20 @@ from typing import Any
 
 from packaging.version import InvalidVersion, Version
 
+from decoy._env_flags import env_str
 from decoy.distribution import signing
 
 VERSION_DOCUMENT_SCHEMA_VERSION = "cli-version-document/v1"
+# The one default endpoint for the signed document. install.sh and install.ps1 carry the
+# same literal (they run before Python exists); a sentry keeps them equal.
+DEFAULT_URL = "https://trydecoy.com/cli/version.json"
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 DEFAULT_VALIDITY_DAYS = 30
+
+
+def resolve_version_url(override: str | None = None) -> str:
+    """The version-document URL: an explicit override (`--url`), else `DECOY_VERSION_URL`, else `DEFAULT_URL`."""
+    return override or env_str("DECOY_VERSION_URL", DEFAULT_URL)
 
 
 def build_document(

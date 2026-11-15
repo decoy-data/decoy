@@ -29,13 +29,16 @@
 #   DECOY_HOME            install root (default: ~/.decoy)
 #   DECOY_BIN_DIR         launcher dir on PATH (default: ~/.local/bin)
 #   DECOY_VERSION_URL     version document URL (default: the hosted endpoint)
+#   DECOY_BUNDLE_BASE     base for pinned (non-latest) bundles: <base>/v<version>/decoy-<version>-<target>.tar.gz
+#                         (default: the GitHub release downloads of louiskeep/decoy)
 #   DECOY_RELEASE_PUBKEY_FILE  override the pinned key (dev/test builds ONLY: honored solely
 #                         while PINNED_PUBKEY below is still the placeholder, with a loud
 #                         warning; ignored with a warning once a release injects the real key)
 #   DECOY_LOCAL_BUNDLE    install from a local tarball instead of downloading (offline)
 set -eu
 
-DEFAULT_VERSION_URL="https://decoy.dev/cli/version.json"
+DEFAULT_VERSION_URL="https://trydecoy.com/cli/version.json"
+DEFAULT_BUNDLE_BASE="https://github.com/louiskeep/decoy/releases/download"
 DECOY_HOME="${DECOY_HOME:-$HOME/.decoy}"
 DECOY_BIN_DIR="${DECOY_BIN_DIR:-$HOME/.local/bin}"
 DECOY_VERSION_URL="${DECOY_VERSION_URL:-$DEFAULT_VERSION_URL}"
@@ -225,8 +228,8 @@ else
   printf '%s\n' "$PINNED_PUBKEY" > "$PUBKEY"
 fi
 
-# Base URL for per-version bundles = the version-doc URL minus its filename.
-BASE_URL=$(printf '%s' "$DECOY_VERSION_URL" | sed 's#/[^/]*$##')
+# Base URL for pinned bundles: release assets, independent of where the version document is served.
+BASE_URL="${DECOY_BUNDLE_BASE:-$DEFAULT_BUNDLE_BASE}"
 
 if [ -n "${DECOY_LOCAL_BUNDLE:-}" ]; then
   # Offline / air-gapped: install from a local tarball + its .sig + .sha256 sidecars.
@@ -306,7 +309,7 @@ else
     # Likewise the offline DECOY_LOCAL_BUNDLE path has no version document: its mandatory
     # .sha256 sidecar is unsigned corruption detection only, and yank status cannot be
     # checked (no network by design) -- the pinned-key signature is still enforced.
-    URL="$BASE_URL/$VERSION/decoy-$VERSION-$TARGET.tar.gz"
+    URL="${BASE_URL%/}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"
     SIGURL="$URL.sig"
     EXPECT_SHA=""
   fi
