@@ -165,21 +165,26 @@ decoy ci check .decoy-ci.yaml --format sarif --output decoy.sarif
 
 ## Exit codes
 
-`decoy` returns one of these seven codes. Scripts, Make recipes, and CI
+`decoy` returns these codes. Scripts, Make recipes, and CI
 pipelines can switch on the integer; the contract is stable across releases.
 
 | Code | Name                   | Meaning                                                                                    |
 |------|------------------------|--------------------------------------------------------------------------------------------|
 | 0    | `EXIT_OK`              | Success.                                                                                   |
-| 1    | `EXIT_USAGE`           | Usage error: config did not validate, path did not exist, flag combination was invalid, or a `unique` generate column the data cannot satisfy (`uniqueness_impossible`). |
+| 1    | `EXIT_USAGE`           | Usage error: config did not validate, path did not exist, flag combination was invalid, or a `unique` generate column the data cannot satisfy (`uniqueness_impossible`). Also an internal error that escaped a command (`error: internal error (<Type>)`; `--verbose` prints the traceback, `DECOY_DEBUG=1` re-raises it; a traceback can hold row data). |
 | 2    | `EXIT_WARNINGS`        | The command ran clean except for advisory warnings, and `--fail-on-warning` was set. Also the code for a Click usage error and a bad `--master-key` or `--key-label` on `decoy run`. Returned by `decoy validate config` / `validate preflight` (and the `validate` aggregate). Without `--fail-on-warning` the same run exits 0. |
-| 3    | `EXIT_RUNTIME`         | The CLI itself failed mid-run (engine error, output write failure, transient I/O problem). |
+| 3    | `EXIT_RUNTIME`         | A command caught a run-time failure: the engine raised an unexpected error, an output write failed, or a transient I/O problem happened. |
 | 4    | `EXIT_FINDINGS`        | The CLI ran cleanly but found data issues (e.g. `decoy report integrity` flagged residual PII or FK preservation failures, or the post-scan gate withheld a run's output). The fix is in the data being checked, not in the CLI invocation. |
 | 5    | `EXIT_CAPACITY`        | `decoy run` or `decoy validate preflight` refused the job: it needs more memory than the host/budget has. The engine decides which refusals count: the out-of-core-FK fan-in and memory gate, a faker pool or reorder budget that is too small, a pool over its cache budget, generated output that cannot fit the machine's memory (`generation_budget_exceeded`), and a process or worker that ran out of memory. A rejected budget setting, a disk or quota limit and a routing refusal keep their usual exit. The fix is a bigger host/cgroup ceiling or a smaller job. `decoy validate preflight`'s v1 check does not cover the ingestion peak. Generated tables whose output cannot fit exit 5 at `decoy validate` and before `decoy run` writes anything; a missing or unreadable source file exits 1 first, so this needs readable sources; a run that runs out of memory exits 5 as well. |
 | 6    | `EXIT_PARTIAL`         | `decoy run` delivered some tables and withheld the rest. Reserved for best-effort delivery; no run exits 6 yet. |
+| 130  | -                      | Interrupted (Ctrl-C while a command runs), 128 plus SIGINT. Ctrl-C at a confirmation prompt exits 1. Not part of the `decoy ci` taxonomy. |
 
-Constants live in `decoy.cli.exit_codes`. `decoy explain exit-codes` prints
-the same table from the CLI.
+A command that reports several outcomes (`decoy ci check` across checks,
+`decoy run --all` across pipelines) exits with the first of
+**5 > 3 > 1 > 6 > 4 > 2 > 0** that occurred; a child's 6 is kept.
+
+Constants and the order (`PRECEDENCE`) live in `decoy.cli.exit_codes`.
+`decoy explain exit-codes` prints the same table from the CLI.
 
 ## Where to go next
 
