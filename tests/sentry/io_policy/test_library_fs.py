@@ -11,13 +11,13 @@ Banned outside `_fs.py`, by any spelling the AST shows:
 
 - removes, renames and writes: `os.unlink`, `os.remove`, `os.rmdir`, `os.rename`, `os.replace`,
   `shutil.rmtree`, `shutil.move`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`,
-  `shutil.copytree`, `Path.unlink`, `Path.rmdir`, `Path.rename`, `Path.replace` (one argument;
-  `str.replace` takes two), `Path.write_text`, `Path.write_bytes`, `Path.touch`, `Path.mkdir`,
+  `shutil.copytree`, `Path.unlink`, `Path.rmdir`, `Path.rename`, `Path.replace` (one positional
+  argument; `str.replace` takes two, `datetime.replace` keywords), `Path.write_text`, `Path.write_bytes`, `Path.touch`, `Path.mkdir`,
   and `open(...)` or `Path.open(...)` with a mode that writes;
 - inspection, which follows links: `os.stat`, `os.lstat`, `os.scandir`, `os.listdir`,
   `os.walk`, `os.path.exists`, `isdir`, `isfile`, `islink`, `lexists`, `realpath`, `getsize`,
   and `Path.exists`, `is_dir`, `is_file`, `is_symlink`, `stat`, `lstat`, `iterdir`, `glob`,
-  `rglob`, `resolve`;
+  `rglob`, `resolve` (with no positional argument; `Library.resolve(text)` is an id lookup);
 - the repo's own file helpers: `write_atomic`, `write_local_target`, `open_private`,
   `create_private_directory`, `create_exclusive`, `read_small_file`, `sqlite3.connect`.
 
@@ -124,9 +124,11 @@ def offenders(source: str) -> list[tuple[int, str]]:
             continue
         elif func.attr in _HELPERS:
             found.append((node.lineno, func.attr))
+        elif func.attr == "resolve" and node.args:
+            continue  # `Path.resolve` takes no positional argument (`Library.resolve(text)` does)
         elif func.attr in _METHODS:
             found.append((node.lineno, f"Path.{func.attr}"))
-        elif func.attr == "replace" and len(node.args) + len(node.keywords) == 1:
+        elif func.attr == "replace" and len(node.args) == 1 and not node.keywords:
             found.append((node.lineno, "Path.replace"))
         elif func.attr == "open" and _writes_mode(node, 0):
             found.append((node.lineno, "Path.open(write)"))
@@ -189,7 +191,9 @@ def bad(p: Path, q: Path) -> None:
     os.stat(p)
     sqlite3.connect(str(p))
 
-def fine(p: Path) -> None:
+def fine(p: Path, when: object, library: object) -> None:
+    when.replace(tzinfo=None)
+    library.resolve("abcd1234")
     open(p)
     p.open()
     "a".replace("a", "b")
