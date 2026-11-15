@@ -10,21 +10,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from decoy.cli.io import DECOY_DIR
 from decoy.cli.library import open_library
 from tests.e2e.library._canary import CANARY, CASES, kinds_written, leaks
 from tests.unit.library._helpers import envelope
 
 
-@pytest.mark.parametrize("kind", sorted(CASES))
-def test_a_canary_run_writes_its_kind_and_no_canary(kind: str, tmp_path: Path) -> None:
-    project = tmp_path / "proj"
-    project.mkdir()
-    CASES[kind].produce(project)
-    assert kind in kinds_written(project / DECOY_DIR)  # positive: the producer wrote the kind
-    assert leaks(project / DECOY_DIR) == []  # negative: the canary reached no library file
+def test_every_canary_case_writes_its_kind_and_no_canary(tmp_path: Path) -> None:
+    """One test over the whole registry (an empty parameter set would be a skip). Until L2 and
+    L3a add producers, `CASES` is empty and every writable kind is a pending row in the sentry."""
+    for kind, case in sorted(CASES.items()):
+        project = tmp_path / kind
+        project.mkdir()
+        case.produce(project)
+        assert kind in kinds_written(project / DECOY_DIR), kind  # positive
+        assert leaks(project / DECOY_DIR) == [], kind  # negative
 
 
 def test_the_negative_check_sees_a_planted_canary(tmp_path: Path) -> None:
