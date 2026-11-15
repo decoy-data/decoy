@@ -10,6 +10,7 @@ count first, so a regex that matches nothing cannot pass.
 from __future__ import annotations
 
 import inspect
+import json
 import re
 from pathlib import Path
 
@@ -55,9 +56,11 @@ def _readme_rows(text: str) -> dict[int, str]:
 
 
 def _explain_text() -> str:
-    result = runner.invoke(app, ["explain", "exit-codes"])
+    # The `--json` body is the topic text the panel shows, without the panel's borders and
+    # wrapping, so the entry regex sees the same lines at any terminal width.
+    result = runner.invoke(app, ["explain", "exit-codes", "--json"])
     assert result.exit_code == 0, result.output
-    return result.output
+    return json.loads(result.stdout)["body"]
 
 
 def _explain_entries(text: str) -> dict[int, str]:
