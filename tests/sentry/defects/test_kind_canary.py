@@ -6,15 +6,17 @@ appear in no file under `.decoy/library/` or `.decoy/logs/` (plan 3, choke point
 comes from `decoy_engine.records.registered_kinds()`, so a kind the engine adds cannot skip it. A
 kind is writable when it has a write model; reserved kinds are not.
 
-A fixture is `tests/e2e/library/test_canary_<fixture id>.py` (the kind's `canary_fixture`, `-` as
-`_`). Kinds whose producer is not built yet sit in PENDING_ALLOWLIST with the slice that adds the
-fixture. The list only shrinks (tests/sentry/baselines/kind-canary-pending.json): L2 removes
+A kind is covered by a runnable case in `tests/e2e/library/_canary.py` (`CASES`), which
+`tests/e2e/library/test_canary.py` runs with both its positive and negative checks; a file name
+covers nothing. Kinds whose producer is not built yet sit in PENDING_ALLOWLIST with the slice that
+adds the case. The list only shrinks (tests/sentry/baselines/kind-canary-pending.json): L2 removes
 `scan-set`, L3a `evidence` and `run-result`, L3b `sample-run`.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -23,9 +25,7 @@ from decoy_engine import records
 from tests.e2e.library._canary import CASES, CanaryCase
 
 ROOT = Path(__file__).resolve().parents[3]
-FIXTURES = ROOT / "tests" / "e2e" / "library"
 BASELINE = ROOT / "tests" / "sentry" / "baselines" / "kind-canary-pending.json"
-_PREFIX = "test_canary_"
 
 
 @dataclass(frozen=True)
@@ -42,27 +42,21 @@ PENDING_ALLOWLIST: tuple[PendingKind, ...] = (
 )
 
 
-def fixture_ids(folder: Path = FIXTURES) -> set[str]:
-    return {
-        p.stem[len(_PREFIX) :].replace("_", "-")
-        for p in folder.glob(f"{_PREFIX}*.py")
-        if p.is_file()
-    }
-
-
-def findings(specs: Any, pending: tuple[PendingKind, ...], fixtures: set[str]) -> list[str]:
+def findings(
+    specs: Any, pending: tuple[PendingKind, ...], cases: Mapping[str, CanaryCase]
+) -> list[str]:
     writable = {s.kind: s.canary_fixture for s in specs if s.write_model is not None}
     waiting = {p.kind for p in pending}
     out: list[str] = []
     for kind, fixture in sorted(writable.items()):
-        has = fixture is not None and fixture in fixtures
+        case = cases.get(kind)
+        has = case is not None and case.kind == kind and callable(case.produce)
         if fixture is None:
             out.append(f"{kind}: writable kind with no canary_fixture id in the engine registry")
         elif not has and kind not in waiting:
-            out.append(f"{kind}: no canary fixture {_PREFIX}{fixture.replace('-', '_')}.py "
-                       "and no pending row")  # fmt: skip
+            out.append(f"{kind}: no runnable canary case and no pending row")
         elif has and kind in waiting:
-            out.append(f"{kind}: canary fixture exists; remove its pending row")
+            out.append(f"{kind}: canary case exists; remove its pending row")
     out += [
         f"{kind}: pending row for a kind that is not writable (remove it)"
         for kind in sorted(waiting - set(writable))
