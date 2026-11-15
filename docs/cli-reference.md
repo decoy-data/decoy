@@ -1436,7 +1436,7 @@ Examples:
     Print field-, PII-, QI-, and risk-level differences between two scans.
 
   decoy scan diff baseline.json new.json --strict
-    Same, but exit 1 on drift (PII bucket bumped up, new high-PII field, or
+    Same, but exit 4 on drift (PII bucket bumped up, new high-PII field, or
     new quasi-identifier group). Wire this into CI.
 
   decoy scan diff baseline.json new.json --json | jq '.drift'
