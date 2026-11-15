@@ -25,7 +25,7 @@ operation ran cleanly, but the data being checked has issues the integrity
 runner flagged. Adding a new constant is a MINOR-eligible additive change per
 docs/release/versioning.md (existing integers 0-3 do not move). Source
 pattern: semgrep's exit-code split (0 pass, 1 findings, 2 error); the analog
-here is 0 clean / 4 findings / 3 runtime crash.
+here is 0 clean / 4 findings / 3 runtime failure.
 
 The OOM checker v1 (2026-07-24) added EXIT_CAPACITY=5: `decoy run` and
 `decoy validate preflight` both need a way to say "this job needs more memory
