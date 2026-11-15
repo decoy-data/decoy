@@ -17,12 +17,24 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_USAGE
+from tests.csv_sources import csv_source
 from tests.keyed_secret import TEST_MASK_SECRET_REF
 
 # Keyed strategies need an admitted mask secret (engine 0.17.0); see tests/keyed_secret.py.
 pytestmark = pytest.mark.usefixtures("mask_secret")
 
 runner = CliRunner()
+
+
+_SOURCE_COLUMNS = ("ssn", "email")
+
+
+def _undeclared_passthrough(columns: list[dict]) -> list[dict]:
+    """The engine refuses a source column the config does not list; list the rest as passthrough."""
+    declared = {c["name"] for c in columns}
+    return [
+        {"name": n, "strategy": "passthrough"} for n in _SOURCE_COLUMNS if n not in declared
+    ]
 
 
 def _pipeline(tmp_path: Path, columns: list[dict], rows: int = 200) -> Path:
@@ -36,8 +48,8 @@ def _pipeline(tmp_path: Path, columns: list[dict], rows: int = 200) -> Path:
     cfg = {
         "version": 2,
         "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
-        "sources": {"accounts": {"type": "file", "format": "csv", "path": str(src)}},
-        "tables": [{"name": "accounts", "columns": columns}],
+        "sources": {"accounts": csv_source(src)},
+        "tables": [{"name": "accounts", "columns": [*columns, *_undeclared_passthrough(columns)]}],
         "targets": {
             "accounts": {
                 "type": "file",

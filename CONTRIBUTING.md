@@ -37,7 +37,7 @@ A green local run on Python 3.10, 3.11, and 3.12 is the bar before requesting re
 
 - `scripts/dev/bootstrap.sh` makes `.venv` match `requirements-dev.lock` exactly (`uv pip sync`, hashes verified), then installs the CLI editable with `--no-deps`. It fails if the lock is missing, stale against `pyproject.toml`/`ci.yml`, or any installed version differs from it, and prints the fix. `--check` verifies without installing.
 - `requirements-dev.lock` is the dev/test closure `ci.yml`'s pytest and ruff jobs install (`.[dev]`, the engine's pinned git tag locked to its commit, the ruff pin) for CPython 3.10 on x86_64 Linux. Only `scripts/dev/lock.sh` writes it; `lock.sh --check` is the staleness test. It is unrelated to `requirements-certified.txt`, the frozen runtime-only closure of the certified DP stack: different purpose and package set, and the two may pin the same package differently. Never derive one from the other.
-- `scripts/dev/gates.sh [paths...]` runs the env check, ruff check, `tests/sentry`, then the given tests (default: tests touching files changed against `origin/main`), stopping at the first failure unless `--keep-going`. `ci.yml` has no mypy or format gate, so those steps report SKIP.
+- `scripts/dev/gates.sh [paths...]` runs the env check, ruff check, `tests/sentry`, the `layers` step (the import-layer contract in `.importlinter`, run in its own `.venv-layers`; `--steps layers` runs it alone), then the given tests (default: tests touching files changed against `origin/main`), stopping at the first failure unless `--keep-going`. `ci.yml` has no mypy or format gate, so those steps report SKIP.
 - It ends with an EVIDENCE block (commands, tool versions, per-step counts, failing test ids). Paste that block into evidence files instead of summarizing.
 - `--full` runs the whole `tests` directory (same as passing `tests`).
 - `--baseline` reruns the same steps on `origin/main` in a temporary detached worktree with the same venv and labels each failing id BOTH, BRANCH-ONLY or BASELINE-ONLY. It always keeps going, and it fails only on a branch-only step, so a `tests` or `sentry` failure that `origin/main` shares gives exit 0. An unparsed failure (the default-format `ruff check` output, for example) still fails.
@@ -47,7 +47,7 @@ A green local run on Python 3.10, 3.11, and 3.12 is the bar before requesting re
 ## Pull requests
 
 - One topic per PR. Smaller diffs land faster.
-- Use `git commit -s` to sign off (Developer Certificate of Origin). The project is licensed under BUSL-1.1, which auto-converts to Apache-2.0 on the Change Date (2030-05-10). Contributions are accepted under the project license.
+- Use `git commit -s` to sign off (Developer Certificate of Origin). The project is licensed under FSL-1.1-ALv2 (see `LICENSE.md`); each release converts to Apache-2.0 two years after it ships. Contributions are accepted under the project license. TODO(counsel): add a contributor license agreement before accepting outside contributions, so the licensor can keep offering commercial licenses.
 - User-visible changes (new command, new flag, exit-code semantics, output format) need a `CHANGELOG.md` entry under `[Unreleased]`.
 - Command/flag changes must regenerate the CLI reference: run `python -m typer decoy.__main__ utils docs --name decoy --output docs/cli-reference.md` and commit it. The `tests/unit/test_cli_surface.py` guard fails CI if you forget, so the command surface cannot change without its docs.
 - If a change is more than one PR, file an Issue describing the plan first.

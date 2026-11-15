@@ -4,7 +4,7 @@ Decoy -- data masking and synthetic generation CLI.
 
 Try one of:
   decoy demo                       30-second end-to-end walkthrough.
-  decoy scan data.csv              Profile a dataset for PII and re-id risk (candidates as suggestions).
+  decoy scan data.csv --has-header Profile a dataset for PII and re-id risk (candidates as suggestions).
   decoy validate pipeline.yaml     Run the whole pre-run gate (config + compile + preflight).
   decoy validate compile pipeline.yaml --explain  Explain per-column strategy and compile decisions.
   decoy run pipeline.yaml          Run a masking or generation pipeline.
@@ -13,7 +13,9 @@ Try one of:
   decoy tokenize pipeline.yaml --vault tokens.db   Reversible tokenization: mask tokenize columns + write a local vault.
   decoy detokenize pipeline.yaml tokenized.csv --vault tokens.db   Reverse a tokenized file from the local vault.
   decoy fit source.csv             Fit a distribution snapshot for statistical generation.
-  decoy init                       Scaffold a starter pipeline interactively.
+  decoy init &lt;name&gt;                Scaffold a pipeline in the current project.
+  decoy setup                      Set this box&#x27;s max memory and threads for `decoy run`.
+  decoy project new acme           Make a project folder for one client&#x27;s pipelines and outputs.
   decoy list templates             Browse bundled pipeline templates.
   decoy show template hipaa        Dump one bundled template to stdout.
   decoy explain modes              Plain-English topic help. `explain` lists topics.
@@ -35,9 +37,12 @@ $ decoy [OPTIONS] COMMAND [ARGS]...
 
 * `--version`: Show the decoy CLI version and exit.
 * `--no-update-check`: Suppress the &#x27;new version available&#x27; startup notice.
+* `--project PATH`: Project folder for pipeline names (default: DECOY_PROJECT, else the nearest decoy.yaml above the current folder).
 * `--install-completion`: Install completion for the current shell.
 * `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
 * `--help`: Show this message and exit.
+
+Generate synthetic data: decoy fit source.csv, then decoy run pipeline.yaml, then decoy report fidelity <source.csv> <synthetic.csv> --generate. Details: decoy explain generation.
 
 **Commands**:
 
@@ -46,7 +51,7 @@ $ decoy [OPTIONS] COMMAND [ARGS]...
 * `tokenize`: Run a tokenize masking job, writing the...
 * `detokenize`: Restore tokenized columns from a local...
 * `fit`: Fit a distribution-snapshot/v1 artifact...
-* `init`: Scaffold a starter pipeline YAML through a...
+* `init`: Scaffold a starter pipeline in the current...
 * `demo`: Walk through scan -&gt; mask on a bundled...
 * `explain`: Explain a Decoy concept in plain English.
 * `info`: Print the Decoy CLI banner with...
@@ -54,9 +59,11 @@ $ decoy [OPTIONS] COMMAND [ARGS]...
 * `list`: List the contents of one engine registry.
 * `show`: Show detail for one reference item.
 * `doctor`: Check engine and dependency health.
+* `setup`: Set this box&#x27;s max memory and threads for...
 * `subset`: Cut a referentially-complete FK-aware...
 * `upgrade`: Upgrade (or pin) the managed Decoy runtime...
 * `validate`: Pre-run validation gate.
+* `project`: Make and inspect projects: one folder per...
 * `scan`: Profile a dataset for PII and...
 * `report`: The post-run surface: show / render /...
 * `ci`: CI integration: portable checks, SARIF,...
@@ -79,26 +86,30 @@ counted on stderr and never stop it. There is no flag to skip the check.
 **Usage**:
 
 ```console
-$ decoy run [OPTIONS] CONFIG
+$ decoy run [OPTIONS] [CONFIG]
 ```
 
 **Arguments**:
 
-* `CONFIG`: Path to the YAML pipeline config.  [required]
+* `[CONFIG]`: Path or name of the YAML pipeline config (a name is looked up in the project). Optional when the project has exactly one pipeline.
 
 **Options**:
 
+* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the worst child&#x27;s (3, then 5, 1, 4, 2, 0). Takes no pipeline name and refuses --evidence-out, --vault and --out-dir.
 * `-m, --mode [mask|generate]`: Operation: mask existing data or generate synthetic data.  [default: mask]
 * `--json`: Emit a structured JSON result on stdout. Progress goes to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries success.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
-* `--master-key TEXT`: 64-char hex master key for keyed deterministic SYNTHETIC GENERATION only (generate_columns:). Same key + same --key-label always yield bitwise-identical generated output across runs and machines. Reads DECOY_MASTER_KEY env var when omitted; without either, generation falls back to the legacy seeded path (per-input deterministic but not portable). This flag does NOT affect masking -- masking&#x27;s keyed determinism is configured separately via &#x27;--mask-secret&#x27; (or the pipeline YAML&#x27;s &#x27;global_settings.mask_secret_ref&#x27;), never this flag or its env var. See: decoy explain keys.  [env var: DECOY_MASTER_KEY]
+* `--master-key TEXT`: 64-char hex master key for keyed deterministic SYNTHETIC GENERATION only (generate_columns:). Same key + same --key-label always yield bitwise-identical generated output across runs and machines. Reads DECOY_MASTER_KEY env var when omitted; without either, generation falls back to the legacy seeded path (per-input deterministic but not portable). With a key, global_settings.seed is not used for generated tables (masked tables still use it). This flag does NOT affect masking -- masking&#x27;s keyed determinism is configured separately via &#x27;--mask-secret&#x27; (or the pipeline YAML&#x27;s &#x27;global_settings.mask_secret_ref&#x27;), never this flag or its env var. See: decoy explain keys.  [env var: DECOY_MASTER_KEY]
 * `--mask-secret TEXT`: env:NAME or file:/PATH pointing at a &gt;=32-byte mask secret for keyed masking (mask: strategies -- fpe, hash, date_shift, and others). Independent of --master-key (which is generation-only). Sets &#x27;global_settings.mask_secret_ref&#x27; for this run; an error if the YAML already sets it. Explicit flag only -- it deliberately has NO env var, because the ref it carries (e.g. &#x27;env:DECOY_MASK_SECRET&#x27;) already indirects through the environment; a second env layer would absorb the raw exported secret as this flag&#x27;s value. See: decoy explain keys.
 * `--chunked`: Stream the source through the engine chunk-by-chunk, for inputs too large to load whole. Works for mask configs whose every strategy is value-keyed (hash, fpe, redact, truncate, text_redact, date_shift, bucketize), plus faker/categorical when deterministic with an explicit pool_size / categories declared in config; output is byte-identical to a plain run. Sources and targets use their declared format (csv or parquet; fixed_width and CSV in a zip or tar archive are not supported with --chunked). See: decoy explain chunked.
-* `--chunk-size INTEGER RANGE`: Rows per chunk in --chunked mode.  [default: 100000; x&gt;=1]
+* `--chunk-size INTEGER RANGE`: Rows per chunk in --chunked mode (default 100000).  [x&gt;=1]
+* `--max-memory SIZE`: Memory budget for the out-of-core route, such as 8GiB, or auto. Overrides DECOY_MAX_MEMORY and settings.json. Default auto: 25% of the memory ceiling. Ignored by --chunked.
+* `--threads N`: Worker threads for the native and out-of-core routes, or auto. Overrides DECOY_THREADS and settings.json. Default auto: the usable CPUs. Ignored by --chunked.
 * `--vault PATH`: Write the token vault (encrypted source-to-masked map for vault: true columns) to this path. The vault plus the config re-identify every vaulted value: store them separately and never alongside the masked output. Needs the engine&#x27;s vault extra (cryptography). Not supported with --chunked.
 * `--key-label TEXT`: Stable namespace string for the --master-key generation key hierarchy (synthetic generation only, not masking). Required when --master-key is set. Pick something durable (e.g. &#x27;customers_q4&#x27;); changing it produces different generated output. CLI flag only -- PipelineConfig forbids unknown top-level keys, so there is no YAML equivalent.
-* `--evidence-out PATH`: Write a local evidence manifest (JSON) to this path after a successful run. The manifest records pipeline hash, input/output file fingerprints, run metadata, and row counts/timings/warnings where available (these are omitted for --chunked runs). It does NOT contain raw data values. Use `decoy report verify` to check the manifest against current files. See: decoy explain evidence (when available).
+* `--evidence-out PATH`: Write a local evidence manifest (JSON) to this path after a successful run. The manifest records pipeline hash, input/output file fingerprints, run metadata, and row counts/timings/warnings where available (these are omitted for --chunked runs). It does NOT contain raw data values. Use `decoy report verify` to check the manifest against current files. See: decoy report show.
+* `--out-dir DIR`: Write relative output paths into DIR instead of a new run folder under out/&lt;pipeline&gt;/. DIR is relative to the current folder and is made owner-only if missing. No run id, LATEST or current link; files there are overwritten. Absolute output paths are unchanged.
 * `--notify TEXT`: Notify a channel after the run reaches its terminal state. Repeatable. Spec is &#x27;kind:target&#x27;: webhook:&lt;url&gt;, slack:&lt;url&gt;, email:&lt;address&gt;. Best-effort: a channel failure never changes the run&#x27;s exit code. Webhook signing key from DECOY_NOTIFY_WEBHOOK_SECRET (unsigned if unset); SMTP from DECOY_NOTIFY_SMTP_HOST/_PORT/_USER/_PASS/_FROM. Nothing is persisted to .decoy/workspace.json -- targets and secrets are flags/env only, never written to disk.
 * `--notify-on [success|failure|always]`: Which terminal outcome(s) to notify on: success, failure, or always.  [default: always]
 * `--native`: Require that a compiled native kernel actually executed. Refuses up front (no run) on --chunked or a generate/mixed config, or on an absent/broken decoy-engine-native companion. Refuses AFTER the run, before any output is written, if the job finished without positive compiled-kernel evidence (e.g. an FK table or a table masked only with passthrough/redact/truncate). Mutually exclusive with --no-native. See: decoy explain native.
@@ -108,6 +119,8 @@ $ decoy run [OPTIONS] CONFIG
 * `--post-validate`: After the run, run the post-execution validator suite over the masked output and show its results (findings + quality summary), from the result&#x27;s quality metrics. Warn-only: findings are reported but the run still exits 0. Use --post-validate-enforce to exit with findings. Default off. Not supported with --chunked.
 * `--post-validate-enforce`: Like --post-validate, but exit EXIT_FINDINGS (4) when the validator reports any hard-failed check. The masked output is still written (the mask succeeded; the findings are a data-quality signal). Implies --post-validate. Default off. Not supported with --chunked.
 * `--duckdb-source TEXT`: Read a pipeline input table from a DuckDB database file instead of a CSV/Parquet/fixed-width file. Repeatable; spec is &#x27;TABLE=DB_PATH&#x27;, where TABLE names a table in the pipeline&#x27;s `tables:` and the relation of the same name in the DuckDB file. The relation is acquired read-only (the database is never written) to a temporary Parquet file, which is then masked on the normal parquet path (native-on and --chunked apply unchanged). A flag entry overrides any `sources:` entry the YAML declares for TABLE. Not supported with --evidence-out yet. Needs no raw SQL: the relation name is the handle.
+* `--no-subset`: Mask every source row even when the pipeline has a `subset:` block. The YAML file is not changed. The summary then prints `subset: not applied (--no-subset)` and --json shows `applied: false`. A pipeline with `subset:` is refused under --chunked, with or without this flag.
+* `--rows N`: Preview a generate pipeline: run it at a small size, print each table&#x27;s rows and write nothing. N is 1 to 1000 rows for the largest table; every other table is scaled by the same ratio, so parent and child sizes keep their proportions. Refused with a mask table, --chunked, --chunk-size, --evidence-out, --notify, --vault, --fidelity, --explain-plan, --post-validate, --post-validate-enforce, --native, --duckdb-source and --out-dir.
 * `--otel-endpoint TEXT`: Export OpenTelemetry traces of this run to the OTLP/HTTP traces URL of a collector you run (also DECOY_OTEL_ENDPOINT). Headers come only from DECOY_OTEL_HEADERS (name=value,...), which needs https unless the host is loopback. Standard OTEL_* variables are ignored. Needs decoy-cli[otel].
 * `--help`: Show this message and exit.
 
@@ -115,6 +128,16 @@ Examples:
 
   decoy run pipeline.yaml
     Run with default mode (mask).
+
+  decoy run
+    In a project with exactly one pipeline, run it.
+
+  decoy run --all
+    Run every pipeline of the project, one process each, in name order.
+
+  decoy run generate.yaml --rows 5
+    Preview a generate pipeline: the largest table at 5 rows, the others in proportion.
+    Prints the rows and writes nothing.
 
   decoy run pipeline.yaml --json
     Suppress chrome and emit a structured result for scripting.
@@ -221,7 +244,7 @@ config's global_settings.mask_secret_ref) must name the secret the mask
 run used; the vault file is a re-identification map, store it separately from the
 masked output.
 
-See also: decoy run, decoy explain strategies.
+See also: decoy run, decoy explain transforms.
 
 
 ## `decoy tokenize`
@@ -244,11 +267,12 @@ $ decoy tokenize [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path to the YAML pipeline config (with `strategy: tokenize` columns).  [required]
+* `CONFIG`: Path or name of the YAML pipeline config (with `strategy: tokenize` columns).  [required]
 
 **Options**:
 
 * `--vault PATH`: Local token vault file to write the (namespace, plaintext) -&gt; token mapping to (created if absent). Required: tokenize fails closed without a vault. Store it separately from the output; it re-identifies every tokenized value.  [required]
+* `--out-dir DIR`: Write relative output paths into DIR instead of a new run folder under out/&lt;pipeline&gt;/. DIR is relative to the current folder and is made owner-only if missing. No run id, LATEST or current link; files there are overwritten. Absolute output paths are unchanged.
 * `--mask-secret TEXT`: env:NAME or file:/PATH pointing at a &gt;=32-byte mask secret to key the tokens from. REQUIRED unless the YAML sets global_settings.mask_secret_ref: tokenize fails closed without an effective secret, because seed-derived tokens are forgeable offline from the public pipeline seed. Sets &#x27;global_settings.mask_secret_ref&#x27; for this run; an error if the YAML already sets it. Explicit flag only (no env var).
 * `--json`: Emit a structured JSON result on stdout. Errors still go to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries the result.
@@ -359,9 +383,12 @@ datetime year bins) plus any requested pairwise contingency tables, and
 writes the JSON artifact `type: statistical` generate columns reference
 via `snapshot_file`.
 
+A file over the row limit (--rows, else the fit.max_rows setting, default
+1,000,000) is fitted on a seeded random sample spread across the whole file.
+
 With --epsilon: fits a `dps-marginal/v3` artifact instead, releasing
 ONLY the columns declared via --dp-number/--dp-flag/--dp-text under one
-(epsilon, delta) budget. Exits 0 on success, 1 on bad input, 3 if the
+(epsilon, delta) budget. DP runs only on a certified install. Exits 0 on success, 1 on bad input, 3 if the
 engine&#x27;s DP fit refuses at run time (an uncertified proof stack, or an
 internal schedule invariant).
 
@@ -380,15 +407,19 @@ $ decoy fit [OPTIONS] SOURCE
 * `-o, --output PATH`: Where to write the snapshot JSON. Default: &lt;source&gt;.snapshot.json.
 * `--parse-dates TEXT`: Column(s) to parse as datetimes (repeatable). CSV carries no dtype, so date columns must be named explicitly. Not supported with --epsilon.
 * `--joint TEXT`: Column pair &#x27;a,b&#x27; whose contingency table to capture (repeatable). Needed for `condition_on`. Not supported with --epsilon.
-* `--epsilon FLOAT`: Select DP mode: fit a dps-marginal/v3 artifact via the engine&#x27;s fit_dp_snapshot instead of the exact snapshot. Requires --delta and at least one carrier declaration (--dp-number/--dp-flag/--dp-text). This is the ONLY DP-mode selector -- every DP-only option is a usage error without it, so a forgotten --epsilon never silently falls back to the exact release.
+* `--joint-max-cells N`: Keep up to N combinations per --joint pair (default 25, at most 1000); the rest fall into one count. Rare combinations can point at one person, so without --include-values a raised cap works only on pairs of plain categorical columns. Needs --joint.
+* `--rows N`: Fit on at most N rows. A larger file is cut to a random sample of N rows spread across the whole file, never the first N (fixed seed 42: the same file gives the same sample). Sensitive-column detection and the snapshot use the same sampled rows. Default: the fit.max_rows setting in settings.json, else 1000000. A whole number of 1 or more. Not supported with --epsilon (a DP fit uses every row and ignores the setting).
+* `--epsilon FLOAT`: Select DP mode: fit a dps-marginal/v3 artifact via the engine&#x27;s fit_dp_snapshot instead of the exact snapshot. Requires --delta and at least one carrier declaration (--dp-number/--dp-flag/--dp-text). This is the ONLY DP-mode selector -- every DP-only option is a usage error without it, so a forgotten --epsilon never silently falls back to the exact release. Runs only on a certified DP install; see decoy explain differential-privacy.
 * `--delta FLOAT`: DP failure probability, required with --epsilon (no default: a silent delta would set an unchosen privacy level). Finite, in (0, 1).
 * `--dp-number TEXT`: &#x27;COL:LO:HI&#x27; -- declare COL as a DP numeric carrier with a data-independent domain (repeatable). Requires --epsilon.
 * `--dp-flag TEXT`: Declare COL as a DP boolean/flag carrier (repeatable). Requires --epsilon.
 * `--dp-text TEXT`: Declare COL as a DP categorical text carrier (repeatable). Requires --epsilon.
 * `--numeric-bins INTEGER`: Bin count per DP numeric column (engine default if omitted). Requires --epsilon.
 * `--dp-allow-omit`: Allow the DP release to omit source columns nobody declared with --dp-number/--dp-flag/--dp-text (default: omission is a usage error listing the columns). Requires --epsilon.
+* `--fanout COLUMN`: Record how many rows each key of COLUMN has (repeatable): the child-side key of a foreign key. A generate reference column with `distribution: fitted` then gives each generated parent about as many children as the source parents had. Counts only, never a key value. Not supported with --epsilon.
+* `--include-values`: Keep real values of sensitive columns in the snapshot. The file then holds real data. Not supported with --epsilon.
 * `--json`: Emit a structured JSON result on stdout.
-* `-q, --quiet`: Suppress stdout. Exit code carries the result.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries the result.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
 * `--help`: Show this message and exit.
 
@@ -404,41 +435,63 @@ Examples:
     Capture the (state, tier) contingency table so a statistical column
     can use `condition_on`.
 
+  decoy fit customers.csv --joint state,tier --joint-max-cells 100
+    Keep up to 100 (state, tier) combinations instead of 25. When the
+    cap drops combinations, fit warns on stderr and in --json. Without
+    --include-values a raised cap needs both columns to be plain
+    categories.
+
+  decoy fit customers.csv --rows 100000
+    Fit on a seeded random sample of 100,000 rows spread across the whole
+    file (never the first 100,000). Without --rows the limit is the
+    `fit.max_rows` setting in settings.json, default 1,000,000. A file at
+    or under the limit uses every row. The summary and --json say how many
+    rows were used out of how many.
+
+  decoy fit visits.csv --fanout patient_id
+    Record how many visits each patient_id has (counts only). A reference
+    column with `distribution: fitted` and this snapshot then gives each
+    generated patient a visit count drawn from that shape. Not supported
+    with --epsilon.
+
   decoy fit customers.csv --epsilon 1.0 --delta 1e-6 \
       --dp-number amount:0:500 --dp-text state --dp-flag is_active
-    Differentially private release (dps-marginal/v3): every declared
+    Differentially private release (dps-marginal/v3), certified installs
+    only (see decoy explain differential-privacy): every declared
     column is released under one (epsilon, delta) budget through OpenDP.
     Every column MUST be declared with a carrier (--dp-number for a
     numeric column plus its data-independent domain, --dp-text for a
     categorical column, --dp-flag for a boolean column); an undeclared
     source column is a usage error unless --dp-allow-omit is passed.
     --epsilon requires --delta and is incompatible with --joint and
-    --parse-dates.
+    --parse-dates. A DP fit never samples: it uses every row, ignores the
+    `fit.max_rows` setting, and refuses --rows.
 
 See also: decoy run, decoy validate, decoy explain differential-privacy.
 
 
 ## `decoy init`
 
-Scaffold a starter pipeline YAML through a short Q&amp;A.
+Scaffold a starter pipeline in the current project.
 
-Use this on a fresh project to get a working pipeline you can run end to
-end, then edit the rules and paths to match your data. The wizard is the
-only interactive prompt in the CLI -- every other command is one-shot.
+Use this inside a project (`decoy project new DIR`) to get a working pipeline you can run
+end to end, then edit the rules to match your data. The wizard is the only interactive
+prompt in the CLI -- every other command is one-shot.
 
 **Usage**:
 
 ```console
-$ decoy init [OPTIONS] [INPUT_FILE]
+$ decoy init [OPTIONS] [NAME|FILE]
 ```
 
 **Arguments**:
 
-* `[INPUT_FILE]`: Optional input file (.csv/.tsv/.parquet). When given without --preset, runs STORM against the file and scaffolds a column-aware pipeline.yaml with `# REVIEW:` comments above every auto-inferred column.
+* `[NAME|FILE]`: A short name, or a .csv, .tsv or .parquet data file to take the name from. With a data file and no --preset, STORM scans it and scaffolds a column-aware pipeline with `# REVIEW:` comments above every auto-inferred column.
 
 **Options**:
 
-* `-o, --output PATH`: Where to write the pipeline YAML. Use `-` to write to stdout.  [default: pipeline.yaml]
+* `--source PATH`: The data to scaffold from (.csv/.tsv/.parquet), when NAME is given.
+* `-o, --output PATH`: Write the pipeline YAML here instead of pipelines/NAME/pipeline.yaml, in or outside a project. Use `-` to write to stdout.
 * `--preset TEXT`: Skip the preset prompt and use this template directly.
 * `-y, --yes`: Skip overwrite confirmation.
 * `--json`: Skip the wizard; emit a JSON record of what was written.
@@ -448,22 +501,32 @@ $ decoy init [OPTIONS] [INPUT_FILE]
 
 Examples:
 
-  decoy init
-    Interactive Q&A; writes pipeline.yaml in the current directory.
+  decoy init members-mask --source data/members.csv
+    STORM reads the file, picks a starter strategy per column, and writes
+    pipelines/members-mask/pipeline.yaml with `# REVIEW:` comments above every inferred entry.
+    Read and edit before running. `decoy init members.csv` names it `members`.
 
-  decoy init --preset hipaa --output hipaa_pipeline.yaml
-    Skip the wizard; scaffold from the HIPAA template.
+  decoy init orders --preset hipaa
+    Scaffold pipelines/orders/pipeline.yaml from the HIPAA template.
 
-  decoy init customers.csv --output pipeline.yaml
-    Column-aware scaffolding (OSS.4c, 2026-06-02). Runs STORM against
-    the file, picks a starter strategy per column from the inference
-    table, writes the YAML with `# REVIEW:` comments above every
-    inferred entry. The user must read + edit before running.
+  decoy init customers.csv -o pipeline.yaml
+    Write the YAML to a file of your choice, in or outside a project. Its source path is written
+    relative to that file.
 
-  decoy init --yes
-    Skip confirmation when overwriting an existing file.
+  decoy init --preset generate -o -
+    Print the generate template on stdout and nothing else there.
 
-See also: decoy validate config, decoy run, decoy scan, decoy list templates.
+  decoy init people.csv --preset generate -o gen/pipeline.yaml
+    Fit people.csv, then write gen/people.snapshot.json and a generate config
+    that names it. Both files are written together or not at all.
+
+  decoy init orders --preset minimal --yes
+    Skip confirmation when overwriting an existing pipeline.
+
+Outside a project, `init` needs -o: run `decoy project new .` first to make the folder a project.
+Pick another project with `decoy --project DIR init ...`.
+
+See also: decoy project new, decoy validate config, decoy run, decoy scan, decoy list templates.
 
 
 ## `decoy demo`
@@ -503,8 +566,8 @@ See also: decoy scan, decoy run.
 
 Explain a Decoy concept in plain English.
 
-Built-in topics: modes, transforms, disguises, output, pipeline, yaml,
-storm, keys, vault, chunked, substrate, differential-privacy, security,
+Built-in topics: modes, transforms, generation, disguises, output, pipeline,
+yaml, storm, keys, vault, chunked, substrate, differential-privacy, security,
 completion. Run with no topic to see the full list.
 
 **Usage**:
@@ -720,6 +783,38 @@ Examples:
 See also: decoy --version, decoy info.
 
 
+## `decoy setup`
+
+Set this box&#x27;s max memory and threads for `decoy run`.
+
+Shows what this host reports, asks you to confirm or change it, and writes
+$DECOY_HOME/settings.json (default ~/.decoy/settings.json). Other sections and keys
+already in the file are kept. A flag or environment variable on a single run still
+wins over the file.
+
+**Usage**:
+
+```console
+$ decoy setup [OPTIONS]
+```
+
+**Options**:
+
+* `-y, --yes`: Accept the detected or stored values; do not prompt.
+* `--json`: Emit a JSON result instead of text.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
+* `-v, --verbose`: Enable debug logs on stderr.
+* `--help`: Show this message and exit.
+
+Examples:
+
+  decoy setup                 Confirm each value, then write the settings file.
+
+  decoy setup --yes           Write this host's detected values without asking.
+
+  decoy setup --yes --json    Same, with a machine-readable result.
+
+
 ## `decoy subset`
 
 Cut a referentially-complete FK-aware subset of a relational dataset.
@@ -742,7 +837,7 @@ $ decoy subset [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path to the YAML pipeline config (must declare a subset: block).  [required]
+* `CONFIG`: Path or name of the YAML pipeline config (must declare a subset: block).  [required]
 
 **Options**:
 
@@ -801,7 +896,7 @@ $ decoy upgrade [OPTIONS]
 * `--check`: Only report if a newer version exists.
 * `--force`: Reinstall even if already current.
 * `--json`: Emit a JSON result.
-* `-q, --quiet`: Suppress stdout.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Debug logs on stderr.
 * `--help`: Show this message and exit.
 
@@ -878,7 +973,7 @@ $ decoy validate config [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path to the YAML pipeline config to validate.  [required]
+* `CONFIG`: Path or name of the YAML pipeline config to validate.  [required]
 
 **Options**:
 
@@ -925,7 +1020,7 @@ $ decoy validate compile [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path to the pipeline YAML config to compile.  [required]
+* `CONFIG`: Path or name of the pipeline YAML config to compile.  [required]
 
 **Options**:
 
@@ -935,7 +1030,7 @@ $ decoy validate compile [OPTIONS] CONFIG
 * `-o, --output PATH`: Also write the frozen plan artifact to this path (absorbs the old `plan` command).
 * `--format TEXT`: On-disk format for the --output artifact: yaml (default) or json.  [default: yaml]
 * `--json`: Emit structured JSON instead of the styled table output.
-* `-q, --quiet`: Suppress stdout. Exit code carries success or failure.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries success or failure.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
 * `--help`: Show this message and exit.
 
@@ -974,16 +1069,16 @@ Checks file existence, file readability, YAML syntax, schema validity,
 and (v1) the engine&#x27;s out-of-core-FK memory feasibility. The build-floor
 estimate is advisory: an over-budget prediction reports a WARNING with a
 recommended size, not a refusal (`--fail-on-warning` makes it exit
-nonzero). Only a fan-in impossibility exits EXIT_CAPACITY (see `decoy
-explain exit-codes`), distinct from a config problem (EXIT_USAGE). Reports
+nonzero). A fan-in impossibility, and generated tables whose output
+cannot fit the machine&#x27;s memory, exit EXIT_CAPACITY (see `decoy explain
+exit-codes`), distinct from a config problem (EXIT_USAGE). Reports
 findings as pass/warn/fail with structured output available via --json.
 
 This is a LOCAL check only. It does NOT check platform server-side
 conditions, most engine run-time constraints, data quality, vault
 access, secrets availability, or network connectivity. The capacity
-check covers the out-of-core-FK route only -- it does not cover the
-ingestion peak `decoy run` pays before the engine&#x27;s gate runs, or the
-generate path. Use `decoy validate` for pure schema-only checks; use
+check does not cover the ingestion peak `decoy run` pays before the
+engine&#x27;s gate runs. Use `decoy validate` for pure schema-only checks; use
 this command when you want to confirm source files are present and check
 the job&#x27;s capacity feasibility before starting a run.
 
@@ -995,7 +1090,7 @@ $ decoy validate preflight [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path to the YAML pipeline config to check.  [required]
+* `CONFIG`: Path or name of the YAML pipeline config to check.  [required]
 
 **Options**:
 
@@ -1024,8 +1119,9 @@ What preflight checks:
   - YAML syntax and schema (same as `decoy validate`)
   - Source file existence and readability
   - Target overwrite risk (advisory warning)
-  - Out-of-core-FK memory capacity (v1; build-floor is advisory, only a fan-in
+  - Out-of-core-FK memory capacity (v1; build-floor is advisory, a fan-in
     impossibility exits EXIT_CAPACITY -- see: decoy explain exit-codes)
+  - Generated tables whose output cannot fit memory (exit EXIT_CAPACITY)
   - Native companion health, plus a STATIC (config-shape-only) native
     eligibility possibility -- see: decoy explain native
 
@@ -1033,17 +1129,138 @@ What preflight does NOT check:
   - Platform server-side conditions (secrets, RBAC, schedules, network targets)
   - Engine run-time constraints beyond out-of-core-FK capacity (row counts,
     provider limits)
-  - The ingestion peak `decoy run` pays before the engine's capacity gate runs,
-    or the generate path (both out of the v1 capacity check's scope)
+  - The ingestion peak `decoy run` pays before the engine's capacity gate runs
+    (out of the v1 capacity check's scope)
   - Data validity or masking quality
   - Vault or secrets accessibility
 
 See also: decoy validate, decoy run, decoy report verify, decoy explain exit-codes.
 
 
+## `decoy project`
+
+Make and inspect projects: one folder per client, holding pipelines, outputs and records.
+
+**Usage**:
+
+```console
+$ decoy project [OPTIONS] COMMAND [ARGS]...
+```
+
+**Options**:
+
+* `--help`: Show this message and exit.
+
+**Commands**:
+
+* `new`: Make a Decoy project: a decoy.yaml marker,...
+* `show`: Show the selected project: its root,...
+* `list`: List the projects in DIR and in each...
+
+### `decoy project new`
+
+Make a Decoy project: a decoy.yaml marker, pipelines/, out/ and .decoy/.
+
+**Usage**:
+
+```console
+$ decoy project new [OPTIONS] DIR
+```
+
+**Arguments**:
+
+* `DIR`: Folder to make the project in. `.` is the current folder.  [required]
+
+**Options**:
+
+* `--json`: Emit a JSON record instead of text.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
+* `-v, --verbose`: Enable debug-level CLI logs on stderr.
+* `--help`: Show this message and exit.
+
+Examples:
+
+  decoy project new acme
+
+    Make ./acme as a project: decoy.yaml, pipelines/, out/ and .decoy/.
+
+  decoy project new .
+
+    Make the current folder a project. Run it again later to fill in anything missing.
+
+Exit codes: 0 made, or already a project; 1 refused (an invalid decoy.yaml, your home folder,
+a parent of it, or `/`); 3 a folder could not be made. Next: decoy init <name> --source <file>.
+
+
+### `decoy project show`
+
+Show the selected project: its root, marker and pipelines with their last runs.
+
+**Usage**:
+
+```console
+$ decoy project show [OPTIONS]
+```
+
+**Options**:
+
+* `--json`: Emit a JSON record instead of a table.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
+* `-v, --verbose`: Enable debug-level CLI logs on stderr.
+* `--help`: Show this message and exit.
+
+Examples:
+
+  decoy project show
+
+    The project around the current folder, with each pipeline's newest run and last clean run.
+
+  decoy --project acme project show --json
+
+    The same for the project in ./acme, as JSON.
+
+Exit codes: 0 shown; 1 no project here (make one with `decoy project new <dir>`) or an invalid
+marker. Status is `-` until run records exist.
+
+
+### `decoy project list`
+
+List the projects in DIR and in each folder directly under it.
+
+**Usage**:
+
+```console
+$ decoy project list [OPTIONS] [DIR]
+```
+
+**Arguments**:
+
+* `[DIR]`: Folder to look in (default: the current folder).  [default: .]
+
+**Options**:
+
+* `--json`: Emit a JSON record instead of a table.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
+* `-v, --verbose`: Enable debug-level CLI logs on stderr.
+* `--help`: Show this message and exit.
+
+Examples:
+
+  decoy project list
+
+    The current folder if it is a project, and each folder directly inside it that is one.
+
+  decoy project list ~/clients --json
+
+    The projects under ~/clients, as JSON.
+
+Exit codes: 0 listed (nothing found is not an error); 2 DIR does not exist. A folder with an
+unusable decoy.yaml is skipped and reported as a warning.
+
+
 ## `decoy scan`
 
-Profile a dataset for PII and re-identification risk. `decoy scan SOURCE` scans a CSV/Parquet/fixed-width file (shape, field stats, PII candidates as suggestions, quasi-identifiers, reid risk) and, with `--output scan.json`, saves the scan. Subcommands operate on a saved scan: list fields (`fields`), per-field detail (`show`), compare two scans (`diff`).
+Profile a dataset for PII and re-identification risk. `decoy scan SOURCES...` scans CSV/Parquet/fixed-width files, one table each (shape, field stats, PII candidates as suggestions, quasi-identifiers, reid risk) and, with `--output scan.json`, saves the value-free scan. Subcommands operate on a saved scan: list fields (`fields`), per-field detail (`show`), compare two scans (`diff`).
 
 **Usage**:
 
@@ -1057,20 +1274,27 @@ $ decoy scan [OPTIONS] COMMAND [ARGS]...
 
 Examples:
 
-  decoy scan data.csv
+  decoy scan data.csv --has-header
     Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
+    A CSV always needs --has-header or --no-header: scan never guesses.
     Reads the first 10 000 rows by default (--rows 0 for a full scan).
 
-  decoy scan data.csv --show-fields
+  decoy scan customers.csv orders.csv --has-header
+    Scan several files in one run: one table each, named from the file stem.
+
+  decoy scan raw.csv --no-header --column-names id,name,email
+    A headerless CSV: row 1 is data, the names come from you.
+
+  decoy scan data.csv --has-header --show-fields
     Per-field detail: dtype, null_rate, distinct_count, PII candidate flag.
 
-  decoy scan data.csv --rows 50000 --strategy random
+  decoy scan data.csv --has-header --rows 50000 --strategy random
     Sample 50K random rows instead of the first 10 000.
 
-  decoy scan data.csv --output scan.json
-    Save the scan to scan.json, then: decoy scan fields scan.json
+  decoy scan data.csv --has-header --output scan.json
+    Save the value-free scan to scan.json, then: decoy scan fields scan.json
 
-  decoy scan data.csv --output -
+  decoy scan data.csv --has-header --output -
     Stream the scan JSON to stdout for downstream tooling.
 
   decoy scan records.fwf --layout layout.yaml
@@ -1081,8 +1305,8 @@ HONESTY: PII candidates are SUGGESTIONS based on STORM pattern matching. They
 are NOT authoritative classifications. You review each flagged field and decide
 what masking to apply. Decoy never auto-classifies PII.
 
-No raw cell values appear in the inline output. Field stats include dtype,
-null_rate, distinct_count only.
+No raw cell values appear in the inline output or in --output. Field stats
+include dtype, null_rate, distinct_count only.
 
 See also: decoy scan fields, decoy scan show, decoy scan diff,
   decoy explain storm, decoy validate.
@@ -1116,6 +1340,7 @@ $ decoy scan fields [OPTIONS] SCAN
 
 * `--pii [high|med|low|none]`: Filter to fields whose PII score falls in this bucket.
 * `--quasi`: Only fields that participate in any quasi-identifier group.
+* `--table TEXT`: Table to read when the saved scan holds more than one.
 * `--json`: Emit the filtered field list as JSON to stdout.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
@@ -1139,8 +1364,9 @@ See also: decoy scan, decoy scan show.
 
 Per-field detail from a saved scan.
 
-The drill-down view of one field: PII score + bucket, detector matches,
-sentinel hits, top values, quasi-identifier membership. Read-only.
+The drill-down view of one field: PII score + bucket, detector hits,
+quasi-identifier membership. Read-only. Counts and labels only: the top
+values and sentinel values of a legacy scan are never printed.
 
 **Usage**:
 
@@ -1155,6 +1381,7 @@ $ decoy scan show [OPTIONS] SCAN FIELD
 
 **Options**:
 
+* `--table TEXT`: Table to read when the saved scan holds more than one.
 * `--json`: Emit the full field detail as JSON to stdout.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
@@ -1163,12 +1390,12 @@ $ decoy scan show [OPTIONS] SCAN FIELD
 Examples:
 
   decoy scan show scan.json ssn
-    Per-field detail card -- PII score, detectors, sentinels, top values, QI.
+    Per-field detail card -- type, PII score, detectors, QI. No cell values.
 
   decoy scan show scan.json email --json
     Same data as a structured JSON envelope.
 
-  decoy scan data.csv --output - | decoy scan show - ssn
+  decoy scan data.csv --has-header --output - | decoy scan show - ssn
     Pipe a fresh scan straight in.
 
 See also: decoy scan, decoy scan fields.
@@ -1197,6 +1424,7 @@ $ decoy scan diff [OPTIONS] OLD NEW
 **Options**:
 
 * `--strict`: Exit 1 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
+* `--table TEXT`: Table to read when the saved scan holds more than one.
 * `--json`: Emit the categorized diff as JSON to stdout.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
@@ -1268,7 +1496,7 @@ $ decoy report show [OPTIONS] EVIDENCE_FILE
 * `--format TEXT`: Output format when --output is given: &#x27;html&#x27; or &#x27;markdown&#x27;. Without --output, prints a terminal summary.
 * `-o, --output PATH`: Write the report to this file path (requires --format).
 * `--json`: Emit the evidence manifest as JSON.
-* `-q, --quiet`: Suppress stdout.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug-level logs.
 * `--help`: Show this message and exit.
 
@@ -1374,8 +1602,9 @@ $ decoy report verify [OPTIONS] EVIDENCE_FILE
 **Options**:
 
 * `--json`: Emit a structured JSON result instead of human-readable output.
-* `-q, --quiet`: Suppress stdout. Exit code carries the result.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries the result.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
+* `--project PATH`: Project root for a manifest&#x27;s project-relative paths.
 * `--help`: Show this message and exit.
 
 Examples:
@@ -1442,7 +1671,7 @@ $ decoy report fidelity [OPTIONS] SOURCE OUTPUT
 
 * `--joint TEXT`: Column pair &#x27;a,b&#x27; to also score jointly (repeatable).
 * `--generate`: Output is synthetic generation, not masking: row counts may legitimately differ (sets expect_row_parity=False). Default assumes masking (row parity expected).
-* `--config FILE`: Pipeline YAML naming each column&#x27;s strategy, so intentional loss (hash, bucketize, faker, ...) is not flagged as accidental drift. Without it, per-column policy checks run on defaults only.
+* `--config TEXT`: Pipeline YAML naming each column&#x27;s strategy, so intentional loss (hash, bucketize, faker, ...) is not flagged as accidental drift. Without it, per-column policy checks run on defaults only.
 * `--policy FILE`: A quality-policy config (YAML or JSON: mode / thresholds / strategy_expectations) overriding --mode / --min-grade / --min-score.
 * `--mode TEXT`: report (record only, verdict always pass) | warn (violations promote verdict to warn) | fail (violations promote verdict to fail). Ignored when --policy sets its own mode.  [default: report]
 * `--min-grade TEXT`: Shorthand: minimum letter grade (A/B/C/D) the overall score must reach.
@@ -1450,7 +1679,7 @@ $ decoy report fidelity [OPTIONS] SOURCE OUTPUT
 * `--fail-on-warning`: Also exit non-zero (EXIT_FINDINGS) when the policy verdict is &#x27;warn&#x27;.
 * `--report-out PATH`: Write the full quality-report/v1 + policy JSON to this path.
 * `--json`: Emit the full quality-report/v1 + policy result as JSON.
-* `-q, --quiet`: Suppress stdout. Exit code carries the result.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries the result.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
 * `--help`: Show this message and exit.
 
@@ -1514,7 +1743,7 @@ $ decoy report integrity [OPTIONS] MASKED
 **Options**:
 
 * `--source FILE`: Pre-mask source CSV (ground truth for the integrity check).  [required]
-* `--config FILE`: Optional pipeline.yaml. When passed, policy_validation can compare against the configured masks. Without it the runner still produces residual_pii + fk_preservation findings.
+* `--config TEXT`: Optional pipeline.yaml, or a pipeline name. When passed, policy_validation can compare against the configured masks. Without it the runner still produces residual_pii + fk_preservation findings.
 * `-o, --output PATH`: Write the JobStormReport JSON to this path. The Rich table still renders to stderr.
 * `--allow-source-mismatch`: Suppress the stderr warning when --source does not match the pipeline&#x27;s declared sources block.
 * `--json`: Emit the full JobStormReport JSON to stdout. No card.
@@ -1578,7 +1807,7 @@ $ decoy report diff [OPTIONS] EVIDENCE_FILE_A EVIDENCE_FILE_B
 
 * `--require-data`: Hard-fail (EXIT_USAGE) when a referenced output file is missing, instead of degrading to manifest-level only.
 * `--json`: Emit structured JSON.
-* `-q, --quiet`: Suppress stdout.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug-level logs.
 * `--help`: Show this message and exit.
 
@@ -1642,7 +1871,7 @@ $ decoy report vault [OPTIONS] VAULT
 
 **Options**:
 
-* `--config FILE`: The pipeline config the mask run used. The vault opens only under the mask secret that run used (--mask-secret or global_settings.mask_secret_ref).  [required]
+* `--config TEXT`: The pipeline config the mask run used. The vault opens only under the mask secret that run used (--mask-secret or global_settings.mask_secret_ref).  [required]
 * `--mask-secret TEXT`: Reference to the mask secret the run used: &#x27;env:NAME&#x27; or &#x27;file:/PATH&#x27; (a &gt;=32-byte secret; an owner-only file, never the raw value). Sets global_settings.mask_secret_ref for this command; an error if the YAML also sets it. See: decoy explain keys.
 * `--json`: Emit a structured JSON result on stdout. Errors still go to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries the result.
@@ -1709,7 +1938,7 @@ $ decoy ci check [OPTIONS] [MANIFEST]
 * `--format [json|sarif|markdown]`: Report format: json (decoy-ci-report/v1), sarif (2.1.0), or markdown.  [default: json]
 * `-o, --output TEXT`: Write the report to this file inside the repository, or `-` for stdout.  [default: -]
 * `--context [ci|pre-commit]`: `pre-commit` narrows to config-only validation plus the staged scan.  [default: ci]
-* `-q, --quiet`: Suppress stderr notes and summary.
+* `-q, --quiet`: Suppress stderr notes and summary. Errors still print.
 * `-v, --verbose`: Print one value-free line per check on stderr.
 * `--help`: Show this message and exit.
 

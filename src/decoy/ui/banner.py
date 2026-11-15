@@ -11,7 +11,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from decoy import __version__
+from decoy._version import __version__
 from decoy.ui.output import OutputState
 from decoy.ui.theme import code
 
@@ -48,9 +48,9 @@ def render_banner(state: OutputState) -> None:
     quickstart = Table.grid(padding=(0, 1))
     quickstart.add_column(style="hint", no_wrap=True)
     quickstart.add_column()
-    quickstart.add_row("First scan:", code("decoy scan data.csv"))
+    quickstart.add_row("First scan:", code("decoy scan data.csv --has-header"))
     quickstart.add_row("First run:", code("decoy demo"))
-    quickstart.add_row("Scaffold:", code("decoy init"))
+    quickstart.add_row("Scaffold:", code("decoy init <name>"))
     quickstart.add_row("Topics:", code("decoy explain modes"))
     quickstart.add_row("Templates:", code("decoy list templates"))
     body.add_row(quickstart)

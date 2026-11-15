@@ -24,6 +24,7 @@ from typer.testing import CliRunner
 from decoy.__main__ import app
 from decoy.cli.evidence import build_manifest, compute_manifest_hash
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from tests.csv_sources import csv_source
 from tests.e2e.cli_fmt.test_target_format_dispatch import _csv_config, _target, _target_layout
 from tests.e2e.test_source_format_dispatch import _COLUMNS, _PEOPLE
 from tests.e2e.test_tokenize_cli import _TOKENIZE_COLS
@@ -152,7 +153,7 @@ def _vault_config(d: Path, target: dict[str, Any]) -> Path:
     cfg = {
         "version": 2,
         "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
-        "sources": {"accounts": {"type": "file", "format": "csv", "path": str(src)}},
+        "sources": {"accounts": csv_source(src)},
         "tables": [
             {
                 "name": "accounts",
@@ -270,7 +271,7 @@ def _people_config(d: Path, target: dict[str, Any], rows: list[tuple] = _PEOPLE)
     cfg = {
         "version": 2,
         "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
-        "sources": {"people": {"type": "file", "format": "csv", "path": str(src)}},
+        "sources": {"people": csv_source(src)},
         "tables": [{"name": "people", "columns": _COLUMNS}],
         "targets": {"people": {"type": "file", **target}},
     }
@@ -493,7 +494,11 @@ def test_unreadable_entries_are_value_free(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 # Recorded on the base tree (A2 head 16e82b1), with the temp folder replaced by <TMP>.
-_INIT_YAML_SHA256 = "bd50b329e465ee4209a490ee97982d05aecc2fa7d65fd3a9105048c123271c0c"
+# The init digest was re-recorded when the scaffold header stopped naming a
+# private engine module; that header line is the only line that changed. Re-recorded again
+# when init began writing the source relative to the YAML and a bare target (PROJECT-LAYOUT P7);
+# only the two path lines changed.
+_INIT_YAML_SHA256 = "f392a49f86f7db96d6dc9b46b2242beb0b9e9dd6c7e4466d7d25bfded55c39c8"
 _SCAN_JSON_SHA256 = "81b904aa55af6552451bd44d1cbec86b3cf9f860f0d4aaa2f56df720f090a476"
 
 
@@ -509,7 +514,7 @@ def test_init_and_scan_parquet_unchanged(tmp_path: Path) -> None:
     out = tmp_path / "pipeline.yaml"
     init = runner.invoke(app, ["init", str(src), "--output", str(out), "--yes"])
     assert init.exit_code == 0, init.output
-    scan = runner.invoke(app, ["scan", str(src), "--json"])
+    scan = runner.invoke(app, ["scan", str(src), "--has-header", "--json"])
     assert scan.exit_code == 0, scan.output
     texts = (out.read_text(encoding="utf-8"), scan.stdout)
     digests = [

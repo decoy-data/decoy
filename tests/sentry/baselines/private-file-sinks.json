@@ -1,0 +1,17 @@
+{
+ "sentry_id": "private-file-sinks",
+ "created_in": "X7c-S3",
+ "entries": {
+  "cli/_duckdb_source.py::acquire_relation::execute.copy_to::1": {
+   "reason": "COPY writes the unmasked source table into the 0700 spill directory run.py makes; the file takes the umask mode inside it.",
+   "exit": "WIN-FEAS"
+  },
+  "cli/run/_prepare.py::prepare::tempfile.mkdtemp::1": {
+   "reason": "DuckDB spill directory; mkdtemp makes it 0700 on POSIX.",
+   "exit": "WIN-FEAS"
+  }
+ },
+ "moved_from": {
+  "cli/run/_prepare.py::prepare::tempfile.mkdtemp::1": "cli/run.py::run::tempfile.mkdtemp::1"
+ }
+}

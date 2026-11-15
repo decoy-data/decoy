@@ -16,11 +16,12 @@ Source patterns: `cli/_sources.py` for the shape, and the platform's
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import math
 import numbers
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,9 +29,15 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pyarrow as pa
 
-from decoy._atomic import staged_local_target, staged_private_target
+from decoy._atomic import (
+    ATOMIC_SYNC_FAILED,
+    AtomicWriteError,
+    staged_local_target,
+    staged_private_target,
+)
 from decoy.cli._sources import resolve_path
 from decoy.cli.io._compression import csv_compression, is_archive_csv, split_compression
+from decoy.cli.io._layout import RunLayout, owning_run, placed_path, same_path
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -199,13 +206,33 @@ def _unreadable(fmt: object, layout: object) -> TargetFormatError | None:
     return None
 
 
+def _is_declared_target(
+    path: Path, raw: str, base_dir: Path, pipeline: tuple[Path, str] | None
+) -> bool:
+    """True when `path` is the target declared as `raw`, at the old place or in a run folder."""
+    if same_path(path, resolve_path(raw, base_dir)):
+        return True
+    if pipeline is None:
+        return False
+    run = owning_run(path, *pipeline)
+    placed = placed_path(run, raw) if run is not None else None
+    return placed is not None and same_path(path, placed)
+
+
 def input_format(
-    config_dict: Mapping[str, Any], table: str, path: Path, base_dir: Path
+    config_dict: Mapping[str, Any],
+    table: str,
+    path: Path,
+    base_dir: Path,
+    pipeline: tuple[Path, str] | None = None,
 ) -> tuple[str, Mapping[str, Any] | None]:
     """The format and layout to read a CLI-written file in, for `detokenize` and `unmask`.
 
     When `path` is the table's file target (both sides fully resolved), the target's declared
     format and layout apply, and an undeclared or unknown format is refused before any read.
+    The target is the file at the old place (declared path against `base_dir`) or, when
+    `pipeline` (project root, pipeline name) is given, the same declared path inside a run
+    folder of that pipeline.
     Any other path has no declaration and takes the suffix rule.
     """
     targets = config_dict.get("targets")
@@ -214,7 +241,7 @@ def input_format(
         isinstance(entry, Mapping)
         and entry.get("type", "file") == "file"
         and isinstance(entry.get("path"), str)
-        and path.resolve() == resolve_path(entry["path"], base_dir).resolve()
+        and _is_declared_target(path, entry["path"], base_dir, pipeline)
     ):
         layout = entry.get("layout")
         error = _unreadable(entry.get("format"), layout)
@@ -225,20 +252,21 @@ def input_format(
     return format_for_path(path), None
 
 
-def entry_format(entry: Mapping[str, Any]) -> tuple[str, Mapping[str, Any] | None]:
-    """The format and layout to read one evidence-manifest output entry in.
+def entry_format(path: Path, recorded: Mapping[str, Any]) -> tuple[str, Mapping[str, Any] | None]:
+    """The format and layout to read one evidence-manifest output in.
 
-    An entry without `format` comes from a manifest written before CLI-FMT and takes the
-    legacy rule. An entry whose format is unknown, or fixed_width without a layout, is refused.
+    `path` is the output already resolved from the manifest (`resolve_manifest_path`), never
+    the stored text. `recorded` holds the entry's `format` and `layout` keys, without its path.
+    No `format` means a manifest written before CLI-FMT: the legacy suffix rule. An unknown
+    format, or fixed_width without a layout, is refused.
     """
-    path = Path(str(entry.get("path", "")))
-    if "format" not in entry:
+    if "format" not in recorded:
         return _legacy_format_for_path(path), None
-    layout = entry.get("layout")
-    error = _unreadable(entry["format"], layout)
+    layout = recorded.get("layout")
+    error = _unreadable(recorded["format"], layout)
     if error is not None:
         raise error
-    fmt = str(entry["format"])
+    fmt = str(recorded["format"])
     return fmt, layout if fmt == "fixed_width" else None
 
 
@@ -328,6 +356,19 @@ def _coerce_int_columns(frame: pd.DataFrame, layout: Mapping[str, Any]) -> pd.Da
     return out
 
 
+def _csv_frame(table: pa.Table) -> pd.DataFrame:
+    """The one Arrow-to-pandas step before a CSV write.
+
+    `Table.to_pandas()` turns an integer column that holds a null into float64, which prints
+    `23.0` and loses `uint64` values above 2**53. The engine converter keeps each integer type
+    as its pandas nullable dtype, so the cell text is the integer. Unlike `_coerce_int_columns`
+    this never reads a layout: it keeps the type the table already has.
+    """
+    from decoy_engine import generated_table_to_pandas
+
+    return generated_table_to_pandas(table)
+
+
 def _write_fixed_width(table: pa.Table, layout: Mapping[str, Any] | None, path: Path) -> None:
     from decoy_engine import write_fixed_width
 
@@ -361,7 +402,7 @@ def _write_table(
     compression = csv_compression(path)
     with stage(path) as tmp:
         if fmt == "csv":
-            (data if frame else data.to_pandas()).to_csv(tmp, index=False, compression=compression)
+            (data if frame else _csv_frame(data)).to_csv(tmp, index=False, compression=compression)
         elif frame:
             data.to_parquet(tmp, index=False)
         else:
@@ -398,17 +439,47 @@ def write_private_table(
     _write_table(data, fmt, path, layout, staged_private_target)
 
 
-def write_targets(config_dict: dict, outputs: Mapping[str, pa.Table], base_dir: Path) -> None:
+@contextlib.contextmanager
+def _publication(ledger: dict[str, Path] | None, key: str, path: Path) -> Iterator[None]:
+    """Enter `path` in the publication ledger once its write has published the file.
+
+    The atomic writer replaces the file and then syncs the directory, so a write that fails
+    with `ATOMIC_SYNC_FAILED` has already published (the code is raised only after the
+    replace). Every other failure published nothing. This is the one place the ledger is
+    filled by a table writer; `ledger` is None for a caller that keeps none.
+    """
+    try:
+        yield
+    except AtomicWriteError as exc:
+        if exc.code == ATOMIC_SYNC_FAILED and ledger is not None:
+            ledger[key] = path
+        raise
+    if ledger is not None:
+        ledger[key] = path
+
+
+def write_targets(
+    config_dict: dict,
+    outputs: Mapping[str, pa.Table],
+    layout: RunLayout,
+    published: dict[str, Path] | None = None,
+) -> dict[str, Path]:
     """Write each declared file target from `outputs`, by its declared format.
 
     Callers run `check_target_formats` first so a contradiction is refused before the
-    first table is written; this resolves each entry as it iterates.
+    first table is written; `layout` places each entry as it iterates. Returns table name to
+    path for the files actually published: `_publication` adds a path once its file is in place.
+    `published` is the caller's publication ledger; it is filled as each file is published, so
+    a later failure keeps the earlier entries, and it is the mapping that comes back.
     """
+    published = {} if published is None else published
     targets = config_dict.get("targets") or {}
     if not isinstance(targets, dict):
-        return
+        return published
     for table_name, entry in targets.items():
         if not isinstance(entry, dict):
+            continue
+        if entry.get("type", "file") not in ("file", None):
             continue
         raw_path = entry.get("path")
         if not isinstance(raw_path, str):
@@ -417,26 +488,37 @@ def write_targets(config_dict: dict, outputs: Mapping[str, pa.Table], base_dir: 
         if table is None:
             continue
         fmt = resolve_target_format(str(table_name), entry)
-        path = resolve_path(raw_path, base_dir)
+        path = layout.place_target(raw_path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_table(table, fmt, path, entry.get("layout"))
+        with _publication(published, str(table_name), path):
+            write_table(table, fmt, path, entry.get("layout"))
+    return published
 
 
 def write_chunked_output(
     masked_iter: Iterable[pa.Table],
     fmt: str,
-    out_path: Path,
+    raw_path: str,
+    layout: RunLayout,
     *,
     empty_schema: Callable[[], pa.Schema] | None,
-) -> None:
-    """Stream masked chunks to `out_path` in `fmt`. The only chunked writer in the CLI.
+    ledger: dict[str, Path] | None = None,
+    name: str = "",
+) -> Path | None:
+    """Stream masked chunks to the placed `raw_path` in `fmt`. The only chunked writer in the CLI.
+
+    `layout` places the declared path (a run folder for a relative one).
 
     The chunks go to a staged temp beside `out_path`, published only after the last one, so
     a failure after chunk one keeps the old output. The first chunk is read before staging:
     an empty source that writes nothing leaves the old output alone and makes no temp.
+    Returns `out_path` once the file is published, or None when nothing was published.
+    `ledger` (the caller's publication ledger) gets `out_path` under `name` as the file is
+    published, including a publication that then failed at the directory sync.
     """
     import pyarrow.parquet as pq
 
+    out_path = layout.place_target(raw_path)
     if fmt not in ("csv", "parquet") or is_archive_csv(fmt, out_path):
         raise TargetFormatError(STREAMING_UNSUPPORTED, _STREAMING_REFUSAL)
     chunks = iter(masked_iter)
@@ -444,24 +526,41 @@ def write_chunked_output(
     schema = None
     if first is _EXHAUSTED:
         if fmt == "csv" or empty_schema is None:
-            return
+            return None
         # Empty parquet source: emit a valid zero-row file with the source schema, matching
         # what a plain run writes. Read before staging so a schema error leaves no temp.
         schema = empty_schema()
     elif fmt == "parquet":
         schema = cast("pa.Table", first).schema
-    with staged_local_target(out_path) as tmp:
+    with _publication(ledger, name, out_path), staged_local_target(out_path) as tmp:
         if fmt == "parquet":
             with pq.ParquetWriter(str(tmp), schema) as writer:
                 for masked in () if first is _EXHAUSTED else itertools.chain((first,), chunks):
                     writer.write_table(masked)
-            return
-        compression = csv_compression(out_path)
-        for index, masked in enumerate(itertools.chain((first,), chunks)):
-            masked.to_pandas().to_csv(
-                tmp,
-                index=False,
-                header=index == 0,
-                mode="a" if index else "w",
-                compression=compression,
-            )
+        else:
+            compression = csv_compression(out_path)
+            for index, masked in enumerate(itertools.chain((first,), chunks)):
+                _csv_frame(masked).to_csv(
+                    tmp,
+                    index=False,
+                    header=index == 0,
+                    mode="a" if index else "w",
+                    compression=compression,
+                )
+    # Reached only after the staging context published the file.
+    return out_path
+
+
+def table_records(
+    rows: Mapping[str, int | None], paths: Mapping[str, Path | None]
+) -> list[dict[str, Any]]:
+    """One `{name, rows, path}` record per table for the run summary.
+
+    `rows` is None when the writer streamed and never counted; `path` is None when no file
+    was published. Neither is ever inferred from the config.
+    """
+    return [
+        {"name": name, "rows": count, "path": str(path) if path is not None else None}
+        for name, count in rows.items()
+        for path in (paths.get(name),)
+    ]

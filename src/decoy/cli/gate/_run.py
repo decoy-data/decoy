@@ -9,7 +9,7 @@ data values); this module only caps their length for the run envelope.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from decoy.cli.exit_codes import EXIT_CAPACITY
 from decoy.cli.gate._layers import (
@@ -20,15 +20,22 @@ from decoy.cli.gate._layers import (
     run_gate_on_config,
 )
 
+if TYPE_CHECKING:
+    from decoy.cli.io import OutputPlacement
+
 # `decoy run` caps every error text it emits (CLI QA F8): an engine exception can quote
 # source-row content verbatim, so the cap bounds what reaches a log aggregator.
 ERROR_TEXT_CAP = 500
 
-# The engine's two capacity-refusal codes: the out-of-core-FK memory gate raises
-# `ExecutionError` with exactly one of them, and the preflight capacity check carries the same
-# code on its finding. `out_of_core_insufficient_memory` is legacy-engine compat (a current
-# engine's build-floor gate is advisory and never raises it).
-CAPACITY_CODES = frozenset({"out_of_core_insufficient_memory", "out_of_core_fanin_exceeds_budget"})
+
+def capacity_codes() -> frozenset[str]:
+    """The engine's capacity-refusal codes, from its one public registry.
+
+    Imported on call so the engine stays off the `--help` path.
+    """
+    from decoy_engine.errors import CAPACITY_REASON_CODES
+
+    return CAPACITY_REASON_CODES
 
 
 def cap_error_text(text: str) -> str:
@@ -76,7 +83,7 @@ class PreRunCheckError(Exception):
         first = errors[0]
         if exit_code == EXIT_CAPACITY:
             error_kind = "capacity"
-            capacity = next((f for f in errors if f.code in CAPACITY_CODES), None)
+            capacity = next((f for f in errors if f.code in capacity_codes()), None)
             if capacity is not None:
                 code, first = capacity.code, capacity
         else:
@@ -120,13 +127,22 @@ def _message(f: GateFinding) -> dict[str, Any]:
     }
 
 
-def check_before_run(raw: Any, config_path: Path, route: GateRoute, state: Any) -> dict[str, Any]:
+def check_before_run(
+    raw: Any,
+    config_path: Path,
+    route: GateRoute,
+    state: Any,
+    placement: OutputPlacement | None = None,
+    *,
+    skip_subset: bool = False,
+) -> dict[str, Any]:
     """Run the gate on the parsed YAML; return the validated config or raise.
 
     Warnings never stop a run. In human mode one stderr line gives their count and the
-    command that lists them; `--quiet` and `--json` print nothing extra.
+    command that lists them; `--quiet` and `--json` print nothing extra. `skip_subset` is
+    `--no-subset`: the capacity estimate then prices the full sources.
     """
-    result = run_gate_on_config(raw, config_path, route)
+    result = run_gate_on_config(raw, config_path, route, placement, skip_subset=skip_subset)
     if gate_exit_code(result, fail_on_warning=False) != 0:
         raise PreRunCheckError.from_result(result)
     warnings = sum(1 for f in result.findings if f.severity == "warning")

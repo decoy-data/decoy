@@ -17,6 +17,7 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.csv_sources import csv_source
 from tests.keyed_secret import TEST_MASK_SECRET, TEST_MASK_SECRET_REF
 
 pytest.importorskip("cryptography")
@@ -49,7 +50,7 @@ def _pipeline(tmp_path: Path, ref: str, *, tables: tuple[str, ...] = ("a",), vau
         pd.DataFrame({"email": [f"u{i}@{name}.example" for i in range(12)]}).to_csv(
             src, index=False
         )
-        sources[name] = {"type": "file", "format": "csv", "path": str(src)}
+        sources[name] = csv_source(src)
         targets[name] = {"type": "file", "format": "csv", "path": str(tmp_path / f"{name}.out.csv")}
         column = {"name": "email", "strategy": "hash", "namespace": "em", "vault": vault}
         entries.append({"name": name, "columns": [column]})
@@ -117,7 +118,9 @@ def test_owner_only_file_secret_works(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
-@pytest.mark.parametrize("case", ["chunk_incompatible", "missing_source", "cloud_target"])
+@pytest.mark.parametrize(
+    "case", ["chunk_incompatible", "missing_source", "cloud_target", "gcs_gate"]
+)
 def test_usage_and_source_refusals_come_before_the_secret_read(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reads: list[str], case: str
 ) -> None:
@@ -127,18 +130,27 @@ def test_usage_and_source_refusals_come_before_the_secret_read(
     cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
     argv = ["run", str(cfg_path)]
     if case == "chunk_incompatible":
-        cfg["tables"][0]["columns"].append({"name": "email2", "strategy": "shuffle"})
+        cfg["tables"][0]["columns"] = [{"name": "email", "strategy": "shuffle"}]
         argv.append("--chunked")
     elif case == "missing_source":
         cfg["sources"]["a"]["path"] = str(tmp_path / "absent.csv")
+    elif case == "cloud_target":
+        cfg["targets"]["a"] = {
+            "type": "s3",
+            "format": "csv",
+            "bucket": "b",
+            "region": "us-east-1",
+            "key": "d/a.csv",
+        }
     else:
-        cfg["targets"]["a"] = {"type": "gcs", "format": "csv", "bucket": "b", "object": "a.csv"}
+        cfg["targets"]["a"] = {"type": "gcs", "format": "csv", "bucket": "b", "object": "d/a.csv"}
     cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
     result = runner.invoke(app, argv)
     expected = {
         "chunk_incompatible": "value-keyed",
         "missing_source": "absent.csv",
         "cloud_target": "cannot run through",
+        "gcs_gate": "Cloud delivery does not support type",
     }[case]
     assert expected in " ".join(result.output.split()), result.output
     assert reads == [], (case, result.output)

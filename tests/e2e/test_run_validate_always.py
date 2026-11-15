@@ -31,6 +31,7 @@ from decoy.cli.gate import (
     run_gate,
 )
 from decoy.ui.output import OutputMode
+from tests.csv_sources import csv_source
 from tests.e2e.test_run_preflight_capacity_parity import _fanin_config
 from tests.keyed_secret import TEST_MASK_SECRET_REF
 
@@ -50,8 +51,16 @@ def _cfg(tmp_path: Path, **over: Any) -> dict[str, Any]:
     cfg: dict[str, Any] = {
         "version": 2,
         "global_settings": {"seed": 42},
-        "sources": {"customers": {"type": "file", "format": "csv", "path": str(src)}},
-        "tables": [{"name": "customers", "columns": [{"name": "email", "strategy": "redact"}]}],
+        "sources": {"customers": csv_source(src)},
+        "tables": [
+            {
+                "name": "customers",
+                "columns": [
+                    {"name": "email", "strategy": "redact"},
+                    {"name": "id", "strategy": "passthrough"},
+                ],
+            }
+        ],
         "targets": {
             "customers": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}
         },
@@ -78,8 +87,8 @@ def spies(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
         return _called
 
-    monkeypatch.setattr("decoy.cli.run.read_source", _spy("read_source"))
-    monkeypatch.setattr("decoy.cli.run.iter_source_chunks", _spy("iter_source_chunks"))
+    monkeypatch.setattr("decoy.cli.run._execute.read_source", _spy("read_source"))
+    monkeypatch.setattr("decoy.cli.run._execute.iter_source_chunks", _spy("iter_source_chunks"))
     monkeypatch.setattr("decoy_engine.run_pipeline", _spy("run_pipeline"))
     monkeypatch.setattr("decoy_engine.run_mask_pipeline_chunked", _spy("run_mask_pipeline_chunked"))
     return calls
@@ -362,7 +371,8 @@ def _unique_cfg(tmp_path: Path) -> Path:
             "strategy": "faker",
             "provider": "person_email",
             "cardinality_mode": "unique",
-        }
+        },
+        {"name": "id", "strategy": "passthrough"},
     ]
     return _write(tmp_path, cfg)
 
@@ -417,7 +427,10 @@ def test_bad_mask_secret_ref_stays_behind_the_de02_guard(tmp_path: Path) -> None
 
 def test_keyed_config_passes_the_gate_with_only_the_flag(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
-    cfg["tables"][0]["columns"] = [{"name": "email", "strategy": "hash", "namespace": "n"}]
+    cfg["tables"][0]["columns"] = [
+        {"name": "email", "strategy": "hash", "namespace": "n"},
+        {"name": "id", "strategy": "passthrough"},
+    ]
     result = runner.invoke(
         app, ["run", str(_write(tmp_path, cfg)), "--mask-secret", TEST_MASK_SECRET_REF]
     )
@@ -468,7 +481,7 @@ def _duckdb_cfg(tmp_path: Path) -> tuple[Path, Path]:
     db = tmp_path / "in.duckdb"
     con = duckdb.connect(str(db))
     try:
-        con.execute("CREATE TABLE customers AS SELECT 'a@b.com' AS email")
+        con.execute("CREATE TABLE customers AS SELECT 'a@b.com' AS email, 1 AS id")
     finally:
         con.close()
     cfg = _cfg(tmp_path)
@@ -549,6 +562,7 @@ def test_headerless_dialect_csv_passes_validate_and_run(tmp_path: Path) -> None:
         "column_names": ["id", "email", "age"],
         "delimiter": "|",
     }
+    cfg["tables"][0]["columns"].append({"name": "age", "strategy": "passthrough"})
     path = _write(tmp_path, cfg)
     assert runner.invoke(app, ["validate", str(path)]).exit_code == EXIT_OK
     assert runner.invoke(app, ["run", str(path)]).exit_code == EXIT_OK

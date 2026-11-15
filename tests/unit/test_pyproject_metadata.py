@@ -109,7 +109,22 @@ def test_engine_dependency_pinned() -> None:
 
     req = Requirement(engine_deps[0])
     floors = [s for s in req.specifier if s.operator in (">=", "==")]
-    assert [str(s) for s in floors] == ["==0.19.0"], (
-        f"decoy-engine must be pinned exactly ==0.19.0 (engine release 0.19.0); "
+    assert [str(s) for s in floors] == ["==0.26.0"], (
+        f"decoy-engine must be pinned exactly ==0.26.0 (engine release 0.26.0); "
         f"got specifier {str(req.specifier)!r}"
     )
+
+
+ROOT = PYPROJECT.parent
+
+
+def test_license_contract_is_fsl_with_both_files_shipped() -> None:
+    """One guard for the license contract: SPDX id, the two files the wheel and sdist carry,
+    and the license text naming the same id. A drift in any one breaks the legal metadata."""
+    project = _load()["project"]
+    assert project["license"] == "FSL-1.1-ALv2"
+    assert project["license-files"] == ["LICENSE.md", "NOTICE"]
+    for name in project["license-files"]:
+        assert (ROOT / name).is_file(), f"{name} is listed in license-files but missing"
+    first_lines = (ROOT / "LICENSE.md").read_text(encoding="utf-8").splitlines()[:8]
+    assert any("FSL-1.1-ALv2" in line for line in first_lines)

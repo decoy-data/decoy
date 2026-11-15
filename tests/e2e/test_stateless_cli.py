@@ -20,6 +20,7 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.csv_sources import csv_source
 
 runner = CliRunner()
 
@@ -44,7 +45,7 @@ def mask_config(tmp_path: Path) -> Path:
         "version": 2,
         "global_settings": {"seed": 42},
         "sources": {
-            "customers": {"type": "file", "format": "csv", "path": str(src)},
+            "customers": csv_source(src),
         },
         "tables": [
             {
@@ -93,7 +94,7 @@ def test_run_evidence_out_writes_no_catalog(mask_config: Path, tmp_path: Path) -
     assert str(evidence_out.relative_to(work)) in created
 
 
-@pytest.mark.parametrize("sub", ["project", "catalog", "jobs"])
+@pytest.mark.parametrize("sub", ["catalog", "jobs"])
 def test_removed_subapp_is_no_such_command(sub: str) -> None:
     """The deleted top-level sub-apps report 'No such command'."""
     result = runner.invoke(app, [sub], catch_exceptions=False)

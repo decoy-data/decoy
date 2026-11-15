@@ -26,6 +26,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from tests.csv_sources import csv_source
 
 runner = CliRunner()
 
@@ -67,7 +68,7 @@ def _pipeline(
     cfg = {
         "version": 2,
         "global_settings": global_settings,
-        "sources": {"people": {"type": "file", "format": "csv", "path": str(src)}},
+        "sources": {"people": csv_source(src)},
         "tables": [{"name": "people", "columns": columns}],
         "targets": {
             "people": {"type": "file", "format": out_format, "path": str(tmp_path / out_name)}
@@ -158,21 +159,19 @@ class TestTokenizeRoundTrip:
 
 
 class TestDeterminism:
-    def test_same_plaintext_namespace_yields_same_token_across_runs(
-        self, tmp_path: Path
-    ) -> None:
-        """Two independent tokenize runs (fresh vault each) over the same
-        plaintext + namespace produce identical tokens -- the derivation is
-        deterministic, and the vault makes it stable thereafter."""
+    def test_two_vaults_tokenize_the_same_plaintext_apart(self, tmp_path: Path) -> None:
+        """Engine 0.24.0 derives tokens under a per-vault scope, so two fresh vaults over the
+        same plaintext and namespace mint different tokens: tokens cannot be joined across
+        vaults. The same vault still reuses its tokens (see the next test)."""
         cfg1 = _pipeline(tmp_path, _TOKENIZE_COLS, out_name="t1.csv")
         v1 = tmp_path / "v1.db"
-        runner.invoke(app, ["tokenize", str(cfg1), "--vault", str(v1)])
+        assert runner.invoke(app, ["tokenize", str(cfg1), "--vault", str(v1)]).exit_code == 0
         cfg2 = _pipeline(tmp_path, _TOKENIZE_COLS, out_name="t2.csv")
         v2 = tmp_path / "v2.db"
-        runner.invoke(app, ["tokenize", str(cfg2), "--vault", str(v2)])
+        assert runner.invoke(app, ["tokenize", str(cfg2), "--vault", str(v2)]).exit_code == 0
         a = pd.read_csv(tmp_path / "t1.csv", dtype=str)["email"]
         b = pd.read_csv(tmp_path / "t2.csv", dtype=str)["email"]
-        assert list(a) == list(b)
+        assert set(a).isdisjoint(set(b))
 
     def test_rerun_against_same_vault_reuses_tokens(self, tmp_path: Path) -> None:
         vault = tmp_path / "tokens.db"
@@ -209,7 +208,7 @@ class TestNamespaceDistinctness:
         cfg = {
             "version": 2,
             "global_settings": {"seed": 42, "mask_secret_ref": _mask_secret_ref(tmp_path)},
-            "sources": {"people": {"type": "file", "format": "csv", "path": str(src)}},
+            "sources": {"people": csv_source(src)},
             "tables": [{"name": "people", "columns": cols}],
             "targets": {
                 "people": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}
@@ -355,16 +354,39 @@ class TestFailClosed:
         assert "weak_mask_secret" in result.output
         assert "unexpected" not in result.output
 
-    def test_failed_run_leaves_no_empty_vault(self, tmp_path: Path) -> None:
-        """LOW: the vault file is created before run_pipeline, so a run that fails
-        after creation (here a tokenize column absent from the source) must not
-        leave an empty vault on disk to be mistaken for output. The catch-all
-        message no longer claims 'no output was written' it cannot guarantee."""
+    def test_undeclared_or_missing_column_is_refused_before_the_vault_exists(
+        self, tmp_path: Path
+    ) -> None:
+        """A tokenize column absent from the source is refused up front (engine 0.23.0
+        CONFIG-EXPLICIT), so no vault is created."""
         cols = [
             {"name": "id", "strategy": "passthrough"},
+            {"name": "email", "strategy": "passthrough"},
             {"name": "ghost", "strategy": "tokenize", "namespace": "people.ghost"},
         ]
         cfg = _pipeline(tmp_path, cols)
+        vault = tmp_path / "tokens.db"
+        result = runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
+        # Engine 0.23.0 refuses a declared column the source lacks before any run starts,
+        # so this is a usage error with the engine code, not a runtime failure.
+        assert result.exit_code == EXIT_USAGE, result.output
+        assert "source_file.declared_column_missing" in result.output
+        assert not vault.exists()  # no vault is left behind
+
+    def test_failed_run_leaves_no_empty_vault(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
+        """LOW: the vault file is created before run_pipeline, so a run that fails
+        after creation must not leave an empty vault on disk to be mistaken for
+        output. The catch-all message no longer claims 'no output was written' it
+        cannot guarantee."""
+        import decoy_engine
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("engine blew up")
+
+        monkeypatch.setattr(decoy_engine, "run_pipeline", _boom)
+        cfg = _pipeline(tmp_path, _TOKENIZE_COLS)
         vault = tmp_path / "tokens.db"
         result = runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
         assert result.exit_code == EXIT_RUNTIME, result.output
@@ -547,7 +569,7 @@ def _tokenize_two_columns(tmp_path: Path) -> tuple[Path, Path]:
     cfg = {
         "version": 2,
         "global_settings": {"seed": 42, "mask_secret_ref": _mask_secret_ref(tmp_path)},
-        "sources": {"people": {"type": "file", "format": "csv", "path": str(src)}},
+        "sources": {"people": csv_source(src)},
         "tables": [{"name": "people", "columns": cols}],
         "targets": {
             "people": {"type": "file", "format": "csv", "path": str(tmp_path / "tokenized.csv")}

@@ -18,6 +18,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.ui.output import _make_console
+from tests.csv_sources import csv_source
 
 runner = CliRunner()
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -34,7 +35,7 @@ def good_config(tmp_path: Path) -> Path:
         "version": 2,
         "global_settings": {"seed": 42},
         "sources": {
-            "people": {"type": "file", "format": "csv", "path": str(sample)},
+            "people": csv_source(sample),
         },
         "tables": [
             {
@@ -176,7 +177,7 @@ def _missing_source_config(tmp_path: Path) -> tuple[Path, Path]:
     cfg = {
         "version": 2,
         "global_settings": {"seed": 42},
-        "sources": {"customers": {"type": "file", "format": "csv", "path": str(absent)}},
+        "sources": {"customers": csv_source(absent)},
         "tables": [
             {
                 "name": "customers",
@@ -220,12 +221,16 @@ def test_compile_bad_profile_path_is_printed_whole(tmp_path: Path, good_config: 
     assert str(profile) in result.stderr, result.stderr
 
 
-def test_compile_non_mapping_config_path_is_printed_whole(tmp_path: Path, monkeypatch):
+def test_compile_non_mapping_config_error_is_printed_whole(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("COLUMNS", "80")
     cfg = _non_mapping_config(tmp_path)
     result = runner.invoke(app, ["validate", "compile", str(cfg)])
     assert result.exit_code != 0
-    assert str(cfg) in result.stderr, result.stderr
+    # The config loader's text carries no path (the user named the file); it prints whole.
+    assert (
+        "error: [yaml.not_mapping] Pipeline YAML must be a YAML mapping (object), not list."
+        in result.stderr
+    ), result.stderr
 
 
 # JSON contract guards: green on the base by design. Layout work must not touch stdout JSON.
@@ -262,15 +267,18 @@ def test_compile_json_envelopes_are_unchanged(tmp_path: Path, good_config: Path,
     )
     payload = _json.loads(bad.stdout)
     assert set(payload) == {"command", "config", "error", "status"}
-    assert payload["command"] == "compile explain"
+    assert payload["command"] == "validate compile"
     assert str(profile) in payload["error"]
 
     cfg = _non_mapping_config(tmp_path)
     flat = runner.invoke(app, ["validate", "compile", str(cfg), "--json"])
     payload = _json.loads(flat.stdout)
-    assert set(payload) == {"command", "config", "error", "status"}
-    assert payload["command"] == "compile explain"
-    assert str(cfg) in payload["config"] and str(cfg) in payload["error"]
+    # A loader refusal also carries its code, `yaml.not_mapping`.
+    assert set(payload) == {"command", "config", "error", "status", "code"}
+    assert payload["command"] == "validate compile"
+    assert payload["code"] == "yaml.not_mapping"
+    assert str(cfg) in payload["config"]
+    assert payload["error"] == "Pipeline YAML must be a YAML mapping (object), not list."
 
 
 @pytest.mark.parametrize("pad", range(40, 200, 3))

@@ -20,6 +20,7 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.csv_sources import csv_source
 
 runner = CliRunner()
 
@@ -33,16 +34,14 @@ def _minimal_config() -> dict:
     return {
         "version": 2,
         "global_settings": {"seed": 42},
-        "sources": {
-            "customers": {"type": "file", "format": "csv", "path": "/tmp/x.csv"}
-        },
+        "sources": {"customers": csv_source("/tmp/x.csv")},
         "tables": [
             {
                 "name": "customers",
                 "columns": [
                     {"name": "email", "strategy": "faker", "provider": "person_email"},
                     {"name": "ssn", "strategy": "redact"},
-                    {"name": "account_number", "strategy": "hash"},
+                    {"name": "account_number", "strategy": "hash", "namespace": "acct"},
                 ],
             }
         ],
@@ -166,7 +165,7 @@ def test_compile_explain_json_structure(tmp_path: Path) -> None:
     result = runner.invoke(app, ["validate", "compile", str(config_path), "--explain", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
-    assert payload["command"] == "compile explain"
+    assert payload["command"] == "validate compile"
     assert payload["status"] == "ok"
     assert "tables" in payload
     assert len(payload["tables"]) == 1
@@ -278,9 +277,7 @@ def _config_with_undeclared_column() -> dict:
     return {
         "version": 2,
         "global_settings": {"seed": 42},
-        "sources": {
-            "customers": {"type": "file", "format": "csv", "path": "/tmp/x.csv"}
-        },
+        "sources": {"customers": csv_source("/tmp/x.csv")},
         "tables": [
             {
                 "name": "customers",
@@ -331,7 +328,7 @@ def test_compile_explain_undeclared_column_rationale(tmp_path: Path) -> None:
 
 
 def test_compile_non_utf8_config_errors_cleanly(tmp_path: Path) -> None:
-    """A non-UTF-8 config fails with a clean read error, not an uncaught
+    """A non-UTF-8 config fails with the loader's `yaml.not_utf8`, not an uncaught
     UnicodeDecodeError traceback, and --json still emits an error envelope.
 
     Regression: narrowing the parse handler from `except Exception` to
@@ -345,5 +342,6 @@ def test_compile_non_utf8_config_errors_cleanly(tmp_path: Path) -> None:
     assert result.exit_code == 1  # EXIT_USAGE, not a crash
     payload = _json.loads(result.stdout)  # the --json envelope must still emit
     assert payload["status"] == "error"
-    # Type-only message: no decoded byte value, no traceback.
-    assert "could not read" in _json.dumps(payload).lower()
+    # The config loader's one refusal: its code and fixed text, no decoded byte, no traceback.
+    assert payload["code"] == "yaml.not_utf8"
+    assert payload["error"] == "Pipeline YAML is not UTF-8 text."

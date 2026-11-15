@@ -6,11 +6,11 @@ it at a YAML pipeline that describes your sources, your tables, and the
 strategy for each column, and it produces a masked or synthesized copy of
 your data with deterministic, repeatable output.
 
-The CLI is source-available under the Business Source License 1.1 (BUSL-1.1):
-source is readable, non-commercial and internal-business use is permitted by
-the Additional Use Grant, and commercial competing-service use is restricted.
-The license auto-converts to Apache-2.0 on the Change Date (2030-05-10). See
-`LICENSE.md` for the full terms. The CLI runs locally: there is no server,
+The CLI is source-available under the Functional Source License
+(FSL-1.1-ALv2): use it for anything, including production at your company,
+except building a competing product. Each release becomes Apache-2.0 two
+years after it ships. See `LICENSE.md` for the full terms and
+[`LICENSING.md`](LICENSING.md) for a plain-English FAQ. The CLI runs locally: there is no server,
 no account, no telemetry phone-home. Input data and output data stay on your
 machine.
 
@@ -107,12 +107,15 @@ declared under `targets:` in the YAML.
 | Command                          | What it does                                                                  |
 |-----------------------------------|-------------------------------------------------------------------------------|
 | `decoy demo`                     | Run a packaged end-to-end mask on synthetic input. Good first call.           |
-| `decoy init [file]`              | Scaffold a starter `pipeline.yaml`. With a file: column-aware via STORM. Without: prompt for preset (`minimal`, `gdpr`, ...). |
+| `decoy init [name\|file]`        | Scaffold `pipelines/<name>/pipeline.yaml` in the current project (`decoy project new DIR` makes one). With a file: column-aware via STORM. Without: prompt for name and preset (`minimal`, `gdpr`, ...). `-o FILE` writes anywhere. |
 | `decoy validate <path>`          | Run the whole pre-run gate (config + compile + preflight): one report, one exit code. |
 | `decoy run <path>`               | Execute a pipeline: read sources, mask, write targets.                        |
+| `decoy project new <dir>`        | Make a project folder (`decoy.yaml`, `pipelines/`, `out/`). `decoy project show` and `list` inspect them. |
+| `decoy setup`                    | Set this box's max memory and threads (`~/.decoy/settings.json`); `--max-memory` and `--threads` override per run. |
 | `decoy tokenize <path>`          | Run the pipeline, replace each `strategy: tokenize` column with a deterministic surrogate, and record the mapping in a local vault. Needs a mask secret. |
 | `decoy detokenize <path> <file>` | Reverse a tokenized file from its vault. Fails closed on a missing/wrong vault or namespace. |
-| `decoy scan <path>`              | Profile a source file: distributions, PII candidates, cardinality hints.      |
+| `decoy fit <source.csv>`         | Fit a distribution snapshot of a CSV for `statistical` generate columns. Sensitive columns keep no cell values. |
+| `decoy scan <path>...`           | Profile source files, one table each: distributions, PII candidates, cardinality hints. A CSV needs `--has-header` or `--no-header`. |
 | `decoy report show <evidence.json>` | The post-run surface: show / verify / fidelity / integrity / diff / vault over run artifacts. |
 | `decoy ci check [manifest]`      | Run the checks in a `decoy-ci/v1` manifest and emit one value-free JSON, SARIF 2.1.0, or Markdown report. See [CI integration](#ci-integration). |
 | `decoy list templates`           | List the bundled pipeline templates.                                         |
@@ -121,6 +124,25 @@ declared under `targets:` in the YAML.
 
 Run `decoy --help` for the full surface, or `decoy <command> --help` for
 any subcommand.
+
+## Generate synthetic data
+
+A generate table builds rows from column types, with no source rows in the output.
+
+```console
+$ decoy init source.csv --preset generate -o pipeline.yaml   # fit the CSV, write config + snapshot
+$ decoy run pipeline.yaml --rows 5                            # preview a few rows, writes nothing
+$ decoy run pipeline.yaml                                     # generate and write the targets
+$ decoy report fidelity source.csv synthetic.csv --generate   # score the output against the source
+```
+
+A relative path in the YAML (sources, targets, `snapshot_file`) is read from the folder that holds
+the YAML file, whatever the working directory. `global_settings.seed` fixes a plain run; with
+`--master-key` the key drives generation and the seed is not used for generated tables. `decoy run`
+warns when a generated table scores below `fidelity_warn_threshold`, overall or on any one column.
+`decoy explain generation` lists every column type and option the installed engine supports, and
+`decoy validate compile pipeline.yaml --explain` shows each generate table, its references and the
+order the tables are built in.
 
 ## CI integration
 
@@ -143,17 +165,18 @@ decoy ci check .decoy-ci.yaml --format sarif --output decoy.sarif
 
 ## Exit codes
 
-`decoy` returns one of these six codes. Scripts, Make recipes, and CI
+`decoy` returns one of these seven codes. Scripts, Make recipes, and CI
 pipelines can switch on the integer; the contract is stable across releases.
 
 | Code | Name                   | Meaning                                                                                    |
 |------|------------------------|--------------------------------------------------------------------------------------------|
 | 0    | `EXIT_OK`              | Success.                                                                                   |
-| 1    | `EXIT_USAGE`           | Usage error: config did not validate, path did not exist, flag combination was invalid.    |
-| 2    | `EXIT_WARNINGS`        | The command ran clean except for advisory warnings, and `--fail-on-warning` was set. Returned by `decoy validate config` / `validate preflight` (and the `validate` aggregate). Without `--fail-on-warning` the same run exits 0. |
+| 1    | `EXIT_USAGE`           | Usage error: config did not validate, path did not exist, flag combination was invalid, or a `unique` generate column the data cannot satisfy (`uniqueness_impossible`). |
+| 2    | `EXIT_WARNINGS`        | The command ran clean except for advisory warnings, and `--fail-on-warning` was set. Also the code for a Click usage error and a bad `--master-key` or `--key-label` on `decoy run`. Returned by `decoy validate config` / `validate preflight` (and the `validate` aggregate). Without `--fail-on-warning` the same run exits 0. |
 | 3    | `EXIT_RUNTIME`         | The CLI itself failed mid-run (engine error, output write failure, transient I/O problem). |
-| 4    | `EXIT_FINDINGS`        | The CLI ran cleanly but found data issues (e.g. `decoy report integrity` flagged residual PII or FK preservation failures). The fix is in the data being checked, not in the CLI invocation. |
-| 5    | `EXIT_CAPACITY`        | `decoy run` or `decoy validate preflight` refused the job: it needs more memory than the host/budget has (the engine's out-of-core-FK memory gate). The fix is a bigger host/cgroup ceiling or a smaller job. `decoy validate preflight`'s v1 check covers the out-of-core-FK route only, not the ingestion peak or the generate path. |
+| 4    | `EXIT_FINDINGS`        | The CLI ran cleanly but found data issues (e.g. `decoy report integrity` flagged residual PII or FK preservation failures, or the post-scan gate withheld a run's output). The fix is in the data being checked, not in the CLI invocation. |
+| 5    | `EXIT_CAPACITY`        | `decoy run` or `decoy validate preflight` refused the job: it needs more memory than the host/budget has. The engine decides which refusals count: the out-of-core-FK fan-in and memory gate, a faker pool or reorder budget that is too small, a pool over its cache budget, generated output that cannot fit the machine's memory (`generation_budget_exceeded`), and a process or worker that ran out of memory. A rejected budget setting, a disk or quota limit and a routing refusal keep their usual exit. The fix is a bigger host/cgroup ceiling or a smaller job. `decoy validate preflight`'s v1 check does not cover the ingestion peak. Generated tables whose output cannot fit exit 5 at `decoy validate` and before `decoy run` writes anything; a missing or unreadable source file exits 1 first, so this needs readable sources; a run that runs out of memory exits 5 as well. |
+| 6    | `EXIT_PARTIAL`         | `decoy run` delivered some tables and withheld the rest. Reserved for best-effort delivery; no run exits 6 yet. |
 
 Constants live in `decoy.cli.exit_codes`. `decoy explain exit-codes` prints
 the same table from the CLI.
@@ -161,6 +184,11 @@ the same table from the CLI.
 ## Where to go next
 
 - `examples/` -- runnable mask and generate YAML configs.
+- `docs/guides/shape-and-privacy/` -- user guide: check what shape masking
+  kept, fit and generate look-alike data, read fidelity reports, and use the
+  differential-privacy fit.
+- `docs/guides/telemetry/README.md` -- opt-in trace export to your collector: what is
+  sent, the closed attribute set and the limits (DP fits, lost spans).
 - `src/decoy/templates/` -- the starter templates `decoy init` ships.
 - `CHANGELOG.md` -- release notes and the versioning policy.
 - `SECURITY.md` -- how to report a vulnerability privately.
@@ -171,9 +199,14 @@ the same table from the CLI.
 
 ## License
 
-Business Source License 1.1 (BUSL-1.1). The source is readable, internal and
-non-commercial use is permitted, and competing-service use is restricted by
-the Additional Use Grant. The license auto-converts to Apache License 2.0
-on the Change Date (2030-05-10). BUSL-1.1 is source-available, not OSI
-open-source. See `LICENSE.md` for the full terms and `TRADEMARKS.md` for
-the trademark policy.
+Functional Source License, Version 1.1, Apache 2.0 Future License
+(FSL-1.1-ALv2). `decoy-engine` moves to the same license from its first FSL
+release onward; engine 0.22.0 and earlier stay Apache-2.0; 0.23.0 and later, including the 0.26.0 this CLI pins
+today, are FSL-1.1-ALv2. You may use, modify and
+redistribute Decoy for any purpose except a Competing Use: offering it, or
+something substantially similar built from it, to others as a commercial
+product or service. Internal production use is allowed. Each release
+converts to the Apache License 2.0 on the second anniversary of its
+release. FSL is source-available, not OSI open source. See `LICENSE.md` for
+the full terms, [`LICENSING.md`](LICENSING.md) for a plain-English FAQ, and
+`TRADEMARKS.md` for the trademark policy.

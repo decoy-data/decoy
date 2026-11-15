@@ -29,20 +29,32 @@ import typer
 
 from decoy import _mask_secret, _mask_secret_guidance
 from decoy._atomic import AtomicWriteError, describe
-from decoy.cli._sources import read_file
+from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
+from decoy.cli._sources import read_file, resolved_source_config
 from decoy.cli._token_vault import LocalTokenVault, TokenVaultError, iter_tokenize_columns
-from decoy.cli._yaml_errors import sanitize_yaml_error
-from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE, exit_code_for
+from decoy.cli.gate import PreRunCheckError, layout_findings
 from decoy.cli.io import (
+    LayoutError,
+    OutputPlacement,
+    RunLayout,
     TargetFormatError,
     check_output_path,
     format_for_path,
     input_format,
+    mint_invocation_id,
+    open_out_dir,
+    open_run_layout,
+    out_dir_option,
+    owning_pipeline,
+    pipeline_argument,
+    resolve_pipeline,
+    side_file_default,
     write_private_table,
 )
-from decoy.ui.output import OutputMode, emit_json, setup_output
+from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.progress import spinner
-from decoy.ui.theme import code, error, hint, success, warn
+from decoy.ui.theme import code, hint, success, warn
 
 _TOKENIZE_EPILOG = """\
 Examples:
@@ -109,16 +121,9 @@ See also: decoy tokenize, decoy explain tokenize.
 """
 
 
-_is_valid_mask_secret_ref = _mask_secret.is_valid_mask_secret_ref
-
-
 def tokenize(
-    config: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
-        help="Path to the YAML pipeline config (with `strategy: tokenize` columns).",
+    config: str = pipeline_argument(
+        help="Path or name of the YAML pipeline config (with `strategy: tokenize` columns).",
     ),
     vault: Path = typer.Option(
         ...,
@@ -130,6 +135,7 @@ def tokenize(
             "re-identifies every tokenized value."
         ),
     ),
+    out_dir: Path = out_dir_option(),
     mask_secret: str = typer.Option(
         None,
         "--mask-secret",
@@ -172,36 +178,19 @@ def tokenize(
     Exits 0 on success, 1 on a config/usage error, 3 on a runtime failure.
     """
     state = setup_output(json_, quiet, verbose)
+    config_path = resolve_pipeline(config, state, "tokenize").yaml
     config_str = str(config)
 
-    def _emit_error(message: str, *, hint_text: str | None = None) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "tokenize",
-                    "status": "error",
-                    "config": config_str,
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            # markup=False: engine/vault text can carry `[...]` (e.g. an install
-            # hint) that Rich would otherwise parse as markup and drop.
-            state.err_console.print(error("error:"), message, markup=False)
-            if hint_text:
-                state.err_console.print(" ", hint("hint:"), hint_text)
-
-    import yaml as _yaml
+    def _emit_error(message: str, *, hint_text: str | None = None, code: str | None = None) -> None:
+        emit_error(
+            state, "tokenize", message, code=code, hint=hint_text, context={"config": config_str}
+        )
 
     try:
-        raw = _yaml.safe_load(config.read_text(encoding="utf-8"))
-    except _yaml.YAMLError as exc:
-        _emit_error(sanitize_yaml_error(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-    if not isinstance(raw, dict):
-        _emit_error(f"Pipeline YAML must be a YAML mapping (object), not {type(raw).__name__}.")
-        raise typer.Exit(code=EXIT_USAGE)
+        raw = load_config_mapping(config_path)
+    except (ConfigFileError, OSError) as exc:
+        _emit_error(**config_refusal(exc))
+        raise typer.Exit(code=exit_code_for(exc))
 
     # DE-02 secret-disclosure ROOT guard (mirrors decoy.cli.run): validate the
     # RAW YAML global_settings / mask_secret_ref BEFORE PipelineConfig.model_validate.
@@ -216,12 +205,9 @@ def tokenize(
         )
         raise typer.Exit(code=EXIT_USAGE)
     _raw_ref = _raw_gs.get("mask_secret_ref") if isinstance(_raw_gs, dict) else None
-    if _raw_ref is not None and not _is_valid_mask_secret_ref(_raw_ref):
-        _emit_error(
-            "Invalid global_settings.mask_secret_ref: expected an 'env:NAME' or "
-            "'file:/PATH' reference to a >=32-byte secret. It is a REFERENCE, "
-            "never the raw secret. See: decoy explain keys."
-        )
+    _ref_problem = None if _raw_ref is None else _mask_secret.mask_secret_ref_problem(_raw_ref)
+    if _ref_problem is not None:
+        _emit_error(_ref_problem)
         raise typer.Exit(code=EXIT_USAGE)
 
     # --mask-secret injects the same global_settings.mask_secret_ref slot the
@@ -229,11 +215,9 @@ def tokenize(
     # PRESENCE so a YAML `mask_secret_ref: ""` is still "configured" and the
     # flag must not silently override it.
     if mask_secret is not None:
-        if not _is_valid_mask_secret_ref(mask_secret):
-            _emit_error(
-                "Invalid --mask-secret: expected an 'env:NAME' or 'file:/PATH' "
-                "reference to a >=32-byte secret. It is a REFERENCE, never the raw secret."
-            )
+        _flag_problem = _mask_secret.mask_secret_ref_problem(mask_secret)
+        if _flag_problem is not None:
+            _emit_error(_flag_problem)
             raise typer.Exit(code=EXIT_USAGE)
         gs = raw.get("global_settings")
         if isinstance(gs, dict) and gs.get("mask_secret_ref") is not None:
@@ -244,18 +228,17 @@ def tokenize(
             )
             raise typer.Exit(code=EXIT_USAGE)
 
-    from decoy_engine import PipelineConfig, run_pipeline
     from decoy_engine import __version__ as engine_version
+    from decoy_engine import parse_pipeline_config, run_pipeline
+    from decoy_engine.config import PipelineConfigError
     from decoy_engine.errors import ConfigError
     from decoy_engine.execution import ExecutionError
     from decoy_engine.plan import PlanCompileError
 
     try:
-        from pydantic import ValidationError as _PydanticValidationError
-
-        config_dict = PipelineConfig.model_validate(raw).model_dump()
-    except _PydanticValidationError as exc:
-        _emit_error(str(exc)[:500])
+        config_dict = parse_pipeline_config(raw).model_dump()
+    except PipelineConfigError as exc:
+        _emit_error(str(exc))
         raise typer.Exit(code=EXIT_USAGE)
 
     if mask_secret is not None:
@@ -321,36 +304,61 @@ def tokenize(
         # clean coded usage error instead of the catch-all.
         from decoy_engine.keyprovider import MaskSecretError
     except ImportError as exc:
-        _emit_error(
-            "a mask secret is configured but the installed decoy-engine is too old "
-            "to honor it (no DE-02 keyprovider); it would silently emit UNKEYED "
-            "(forgeable) tokens. Upgrade decoy-engine."
-        )
+        _emit_error(_mask_secret_guidance.OLD_ENGINE_TOKENIZE)
         raise typer.Exit(code=EXIT_USAGE) from exc
+
+    # The gate's layout check, before any folder or source: the same one `run` makes. The vault
+    # is a typed side file, so no target can replace it.
+    typed = (("--vault", vault),)
+    placement = (
+        OutputPlacement.fixed(out_dir, typed)
+        if out_dir is not None
+        else OutputPlacement(typed=typed)
+    )
+    findings = layout_findings(config_path, raw, placement)
+    if findings:
+        # The renderer `run` uses: the summary, the first code and every finding.
+        refusal = PreRunCheckError.from_findings(findings)
+        members = {"config": config_str, **refusal.json_members()}
+        members.pop("code", None)
+        emit_error(state, "tokenize", str(refusal), code=findings[0].code, context=members)
+        raise typer.Exit(code=refusal.exit_code)
 
     from decoy.cli.run import _load_sources_from_config, _write_mask_outputs
 
-    # Whether the vault file already existed: a failed run only removes a file
-    # THIS run created (see the finally), never a re-run's pre-existing vault.
-    vault_preexisted = vault.exists()
     token_vault: LocalTokenVault | None = None
     committed = False
+    layout: RunLayout | None = None
+    ok = False
     try:
         with spinner(state, "Tokenizing..."):
-            sources = _load_sources_from_config(config_dict, config.parent)
+            # The claim is checked before any source is read.
+            if out_dir is not None:
+                layout = open_out_dir(out_dir)
+            else:
+                layout = open_run_layout(config_path, config_dict, mint_invocation_id())
+            sources = _load_sources_from_config(config_dict, config_path.parent)
             instance_locale = (config_dict.get("global_settings") or {}).get("default_locale")
             # The CLI admits the secret (an owner-only `file:` is checked on its open
             # descriptor) and hands the engine the provider, so the engine never reads the
             # ref itself.
             with _mask_secret.admitted_key_provider(config_dict) as key_provider:
-                token_vault = LocalTokenVault(vault, create=True)
+                try:
+                    token_vault = LocalTokenVault(vault, create=True)
+                except BaseException as open_exc:
+                    discard = getattr(open_exc, "vault_discard", None)
+                    if discard is not None:
+                        discard()
+                    raise
                 result = run_pipeline(
-                    config_dict,
+                    resolved_source_config(config_dict, config_path.parent),
                     sources,
                     engine_version=engine_version,
                     instance_default_locale=instance_locale,
                     token_vault_writer=token_vault,
                     key_provider=key_provider,
+                    base_dir=config_path.parent,
+                    quarantine_path=layout.place_quarantine(config_dict),
                 )
             vault_count = token_vault.count()
             row_count = sum(len(tbl) for tbl in result.outputs.values())
@@ -360,7 +368,8 @@ def tokenize(
             # for the finally's cleanup.
             token_vault.commit()
             committed = True
-            _write_mask_outputs(config_dict, result, config.parent)
+            _write_mask_outputs(config_dict, result, layout)
+            ok = True
     except TokenVaultError as exc:
         _emit_error(f"{exc.code}: {exc.message}")
         raise typer.Exit(code=EXIT_USAGE)
@@ -368,7 +377,7 @@ def tokenize(
         # A fixable operator problem; dispatched on the code before the classes below.
         _emit_error(_mask_secret_guidance.secret_error_text(exc, _mask_secret_guidance.TOKENIZE))
         raise typer.Exit(code=EXIT_USAGE)
-    except (PlanCompileError, ExecutionError, ConfigError, TargetFormatError) as exc:
+    except (PlanCompileError, ExecutionError, ConfigError, TargetFormatError, LayoutError) as exc:
         _emit_error(f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}")
         raise typer.Exit(code=EXIT_USAGE)
     except AtomicWriteError as exc:
@@ -395,17 +404,23 @@ def tokenize(
             )
         raise typer.Exit(code=EXIT_RUNTIME) from exc
     finally:
+        if layout is not None and not ok:
+            layout.abandon()
+        if token_vault is not None and token_vault.created and not committed:
+            token_vault.discard_unwritten()
         if token_vault is not None:
             token_vault.close()
-        # LocalTokenVault(create=True) writes the file + schema up front, so a
-        # run that fails before commit leaves an empty vault on disk even though
-        # its rows were discarded. Remove that file when THIS run created it and
-        # nothing was committed, so a failed tokenize leaves no empty vault to
-        # mistake for output. A pre-existing vault (a re-run) is kept: its prior
-        # mappings are intact and only this run's uncommitted rows were dropped.
-        if not committed and not vault_preexisted and vault.exists():
-            vault.unlink(missing_ok=True)
+        # LocalTokenVault(create=True) writes the file + schema up front, so a run that fails
+        # before commit leaves an empty vault on disk even though its rows were discarded.
+        # `discard_unwritten` (above, under the writer lock) removes it only when THIS run
+        # created it, holds the lock and never committed; a re-run's vault is kept.
 
+    if layout is not None:
+        for item in layout.commit_latest():
+            if state.mode is not OutputMode.quiet:
+                state.err_console.print(
+                    warn("warning:"), f"{item.code}: {item.message}", markup=False
+                )
     columns = [{"table": t, "column": c, "namespace": ns} for (t, c, ns) in tok_cols]
     if state.mode is OutputMode.json:
         emit_json(
@@ -435,18 +450,14 @@ def tokenize(
         " ",
         hint("hint:"),
         "reverse with: decoy detokenize",
-        code(config.name),
+        code(config_path.name),
         "<output> --vault",
         code(str(vault)),
     )
 
 
 def detokenize(
-    config: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
+    config: str = pipeline_argument(
         help="The pipeline config the tokenize run used (carries each column's namespace).",
     ),
     tokenized: Path = typer.Argument(
@@ -505,34 +516,20 @@ def detokenize(
     a runtime failure.
     """
     state = setup_output(json_, quiet, verbose)
+    ref = resolve_pipeline(config, state, "detokenize")
+    config_path = ref.yaml
     config_str = str(config)
 
-    def _emit_error(message: str, *, hint_text: str | None = None) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "detokenize",
-                    "status": "error",
-                    "config": config_str,
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), message, markup=False)
-            if hint_text:
-                state.err_console.print(" ", hint("hint:"), hint_text)
-
-    import yaml as _yaml
+    def _emit_error(message: str, *, hint_text: str | None = None, code: str | None = None) -> None:
+        emit_error(
+            state, "detokenize", message, code=code, hint=hint_text, context={"config": config_str}
+        )
 
     try:
-        raw = _yaml.safe_load(config.read_text(encoding="utf-8"))
-    except _yaml.YAMLError as exc:
-        _emit_error(sanitize_yaml_error(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-    if not isinstance(raw, dict):
-        _emit_error(f"Pipeline YAML must be a YAML mapping (object), not {type(raw).__name__}.")
-        raise typer.Exit(code=EXIT_USAGE)
+        raw = load_config_mapping(config_path)
+    except (ConfigFileError, OSError) as exc:
+        _emit_error(**config_refusal(exc))
+        raise typer.Exit(code=exit_code_for(exc))
 
     # Same raw secret-reference guard as tokenize: a wrong-type mask_secret_ref
     # must not ride a Pydantic ValidationError (which echoes input_value) into
@@ -545,24 +542,20 @@ def detokenize(
         )
         raise typer.Exit(code=EXIT_USAGE)
     _raw_ref = _raw_gs.get("mask_secret_ref") if isinstance(_raw_gs, dict) else None
-    if _raw_ref is not None and not _is_valid_mask_secret_ref(_raw_ref):
-        _emit_error(
-            "Invalid global_settings.mask_secret_ref: expected an 'env:NAME' or "
-            "'file:/PATH' reference to a >=32-byte secret. It is a REFERENCE, "
-            "never the raw secret. See: decoy explain keys."
-        )
+    _ref_problem = None if _raw_ref is None else _mask_secret.mask_secret_ref_problem(_raw_ref)
+    if _ref_problem is not None:
+        _emit_error(_ref_problem)
         raise typer.Exit(code=EXIT_USAGE)
 
-    from decoy_engine import PipelineConfig
+    from decoy_engine import parse_pipeline_config
+    from decoy_engine.config import PipelineConfigError
     from decoy_engine.errors import ConfigError
     from decoy_engine.plan import PlanCompileError
 
     try:
-        from pydantic import ValidationError as _PydanticValidationError
-
-        config_dict = PipelineConfig.model_validate(raw).model_dump()
-    except _PydanticValidationError as exc:
-        _emit_error(str(exc)[:500])
+        config_dict = parse_pipeline_config(raw).model_dump()
+    except PipelineConfigError as exc:
+        _emit_error(str(exc))
         raise typer.Exit(code=EXIT_USAGE)
     except (PlanCompileError, ConfigError) as exc:
         _emit_error(f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}")
@@ -601,16 +594,20 @@ def detokenize(
         raise typer.Exit(code=EXIT_USAGE)
 
     try:
-        in_format, in_layout = input_format(config_dict, target_table, tokenized, config.parent)
+        in_format, in_layout = input_format(
+            config_dict,
+            target_table,
+            tokenized,
+            config_path.parent,
+            owning_pipeline(config_path, config_dict.get("name"), ref.project),
+        )
     except TargetFormatError as exc:
         _emit_error(f"{exc.code}: {exc}")
         raise typer.Exit(code=EXIT_USAGE)
     out_path = (
         output
         if output is not None
-        else tokenized.with_suffix(
-            ".detokenized.parquet" if in_format == "parquet" else ".detokenized.csv"
-        )
+        else side_file_default("detokenized", tokenized, parquet=in_format == "parquet")
     )
     try:
         check_output_path(out_path)

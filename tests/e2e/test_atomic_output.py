@@ -22,6 +22,7 @@ from typer.testing import CliRunner
 
 import decoy
 from decoy.__main__ import app
+from tests.csv_sources import file_source
 from tests.keyed_secret import TEST_MASK_SECRET_REF
 
 pytestmark = pytest.mark.usefixtures("mask_secret")
@@ -42,6 +43,7 @@ _COLUMNS = [
 ]
 _TOKEN_COLUMNS = [
     {"name": "id", "strategy": "passthrough"},
+    {"name": "ssn", "strategy": "passthrough"},
     {"name": "email", "strategy": "tokenize", "namespace": "people.email"},
 ]
 _PRIOR = b"previous,good\n1,2\n"
@@ -75,9 +77,7 @@ def _config(
     cfg = {
         "version": 2,
         "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
-        "sources": {
-            "people": {"type": "file", "format": src.suffix.lstrip(".") or "csv", "path": str(src)}
-        },
+        "sources": {"people": file_source(src, src.suffix.lstrip(".") or "csv")},
         "tables": [{"name": "people", "columns": columns or _COLUMNS}],
         "targets": {"people": {"type": "file", "format": fmt, "path": str(tmp_path / out)}},
     }
@@ -233,7 +233,7 @@ _BASE_SHA: dict[str, str] = {
     "mask_api": "f9987e148964006181da8b39f71723fc5f85bc3dd73768ad9f9d6d50d177a9b8",
     "run_csv": "f9987e148964006181da8b39f71723fc5f85bc3dd73768ad9f9d6d50d177a9b8",
     "run_parquet": "fbaa202d72c0db74793d4b068ae984abe3919d95062cc7ca0e7ead23c0f74f1a",
-    "tokenize": "a43f8eb615952715b2d7c6c836e4516efb66e87d5b8f008be14a236039dc71aa",
+    "tokenize": "6b6fe58a12176fcd25252857e4d053033f62521684f3c741a03e3d2be81651de",
     "unmask": "f02d2dca5c249826e217b8aaa531146f8d99a4dff1e6cae2555efdbcb55b5ed1",
 }
 
@@ -283,8 +283,14 @@ def _success_outputs(tmp_path: Path) -> dict[str, str]:
     return got
 
 
-def test_success_outputs_are_byte_identical_to_the_base(tmp_path: Path) -> None:
+def test_success_outputs_are_byte_identical_to_the_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Pin: green on the base and on head."""
+    # Tokens depend on a per-vault scope the CLI mints at random; fix it so bytes compare.
+    from decoy.cli import _token_vault
+
+    monkeypatch.setattr(_token_vault, "_mint_scope", lambda: b"\x07" * 32)
     got = _success_outputs(tmp_path)
     assert got == _BASE_SHA, got
 
@@ -399,7 +405,7 @@ def _artifact_cases(tmp_path: Path) -> dict[str, tuple[list[str], int]]:
     )
     return {
         "fit": (["fit", src, "-o", art], 3),
-        "scan": (["scan", src, "-o", art], 3),
+        "scan": (["scan", src, "--has-header", "-o", art], 3),
         "evidence": (["run", str(cfg), "--evidence-out", art], 3),
         "report_render": (["report", "render", str(ev), "-o", art], 1),
         "report_show": (["report", "show", str(ev), "--format", "markdown", "-o", art], 1),

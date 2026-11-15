@@ -9,9 +9,9 @@ reason; its text goes to the unsafe debug sink and nowhere else.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from decoy._config_file import ConfigFileError, read_config_text
 from decoy.ci.contracts import (
     CheckOutcome,
     DriftCheck,
@@ -65,6 +65,7 @@ def not_applicable(check_id: str, kind: str) -> CheckOutcome:
 # Validation (full / config) over the existing pre-run gate
 # ---------------------------------------------------------------------------
 
+
 def validation_outcome(
     loaded: LoadedManifest,
     ref: PipelineRef,
@@ -81,13 +82,12 @@ def validation_outcome(
         rel = loaded.repo_relative(path)
         if rel is None or not path.is_file():
             return refused(check_id, "validation", "ci.input_missing")
-        data = path.read_bytes()
         try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            # The direct gate would crash here; report it as the parse error it is.
+            text = read_config_text(path)  # the one read; its text feeds the index and the gate
+        except ConfigFileError:
+            # Only the decode step can fail here: the loader's `yaml.not_utf8`, as `validate`.
             finding = SafeFinding.create(
-                rule_id="validate.yaml.parse_error",
+                rule_id="validate.yaml.not_utf8",
                 level="error",
                 safe_message_id="ci.validation_failed",
                 check_id=check_id,
@@ -147,12 +147,9 @@ def validation_outcome(
 
 def _load_scan(path: Path) -> dict:
     # An absolute path always: the shared loader treats the literal "-" as stdin.
-    from decoy.cli.scan import _load_scan_dict
+    from decoy.cli.io import load_scan_set, select_table
 
-    data = _load_scan_dict(str(path))
-    if not isinstance(data, dict):
-        raise ValueError("scan is not a mapping")
-    return data
+    return select_table(load_scan_set(str(path)), None)
 
 
 def drift_outcome(loaded: LoadedManifest, check: DriftCheck, sink: DebugSink) -> CheckOutcome:
@@ -228,19 +225,19 @@ def drift_outcome(loaded: LoadedManifest, check: DriftCheck, sink: DebugSink) ->
 def evidence_outcome(loaded: LoadedManifest, check: EvidenceCheck, sink: DebugSink) -> CheckOutcome:
     check_id = f"evidence.{check.id}"
     try:
-        from decoy.cli.evidence import verify_manifest_issues
+        from decoy.cli.evidence import ManifestError, read_manifest, verify_manifest_issues
 
         path = loaded.resolve(check.manifest)
-        if not path.is_file():
-            return refused(check_id, "evidence", "ci.input_missing")
         try:
-            manifest = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            sink.add(check_id, f"unreadable evidence manifest: {exc!r}")
-            return refused(check_id, "evidence", "ci.evidence_unreadable")
-        if not isinstance(manifest, dict):
-            return refused(check_id, "evidence", "ci.evidence_unreadable")
-        issues = verify_manifest_issues(manifest, regular_files_only=True)
+            # The shared reader owns every check of the file and its object; a project-relative
+            # manifest reads from the marker above its own file, never the working directory or
+            # DECOY_PROJECT, so the check passes from any folder.
+            manifest = read_manifest(path)
+            issues = verify_manifest_issues(manifest, manifest_file=path, regular_files_only=True)
+        except ManifestError as exc:
+            sink.add(check_id, exc.message)
+            reason = "ci.input_missing" if exc.kind == "missing" else "ci.evidence_unreadable"
+            return refused(check_id, "evidence", reason)
         for issue in issues:
             sink.add(check_id, issue.message)
         rel = loaded.repo_relative(path)

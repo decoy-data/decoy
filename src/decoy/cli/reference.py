@@ -40,7 +40,7 @@ from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.schema import schema as _schema
 from decoy.cli.templates import _list as _templates_list
 from decoy.cli.templates import _show as _templates_show
-from decoy.ui.output import OutputMode, emit_json, setup_output
+from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.table import make_table
 from decoy.ui.theme import accent, code, error, hint
 
@@ -88,10 +88,14 @@ def _disguises_list(json_: bool, quiet: bool, verbose: bool) -> None:
         table.add_row(e["id"], e["name"], str(e["rules"]))
     state.console.print(table)
     state.console.print()
+    # `init --preset` takes template names, not disguise ids; the two sets differ.
     state.console.print(
         hint("Tip:"),
-        "scaffold a pipeline from one with",
-        code("decoy init --preset <id>") + ".",
+        code("decoy init --preset"),
+        "takes a name from",
+        code("decoy list templates") + ";",
+        code("decoy explain disguises"),
+        "shows how a disguise id is used.",
     )
 
 
@@ -254,31 +258,22 @@ def show(
         if name is not None:
             state = setup_output(json_, quiet, verbose)
             msg = f"`show schema` takes no NAME (got {name!r}); use `show schema [--output FILE]`."
-            if state.mode is OutputMode.json:
-                emit_json(state, {"command": "show schema", "status": "error", "error": msg})
-            else:
-                state.err_console.print(error("error:"), msg)
+            emit_error(state, "show schema", msg)
             raise typer.Exit(code=EXIT_USAGE)
         _schema(output=output, json_=json_, quiet=quiet, verbose=verbose)
         return
 
     if kind in _SHOW_NO_DETAIL:
         state = setup_output(json_, quiet, verbose)
-        msg = (
-            f"no detail view for {kind}; detail exists for "
-            "strategy/provider/template/schema"
+        msg = f"no detail view for {kind}; detail exists for strategy/provider/template/schema."
+        plural = _SINGULAR_TO_PLURAL[kind]
+        emit_error(
+            state,
+            "show",
+            msg,
+            hint=f"list them with decoy list {plural}.",
+            context={"kind": kind},
         )
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {"command": "show", "status": "error", "kind": kind, "error": msg},
-            )
-        elif state.mode is not OutputMode.quiet:
-            plural = _SINGULAR_TO_PLURAL[kind]
-            state.err_console.print(error("error:"), msg + ".")
-            state.err_console.print(
-                " ", hint("hint:"), "list them with", code(f"decoy list {plural}") + "."
-            )
         raise typer.Exit(code=EXIT_USAGE)
 
     inspector = _SHOW_DETAIL.get(kind)
@@ -294,21 +289,15 @@ def show(
 
     if name is None:
         state = setup_output(json_, quiet, verbose)
-        msg = f"show {kind} requires a NAME"
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {"command": "show", "status": "error", "kind": kind, "error": msg},
-            )
-        elif state.mode is not OutputMode.quiet:
-            plural = _SINGULAR_TO_PLURAL[kind]
-            state.err_console.print(error("error:"), msg + ".")
-            state.err_console.print(
-                " ",
-                hint("hint:"),
-                "list the available ones with",
-                code(f"decoy list {plural}") + ".",
-            )
+        msg = f"show {kind} requires a NAME."
+        plural = _SINGULAR_TO_PLURAL[kind]
+        emit_error(
+            state,
+            "show",
+            msg,
+            hint=f"list the available ones with decoy list {plural}.",
+            context={"kind": kind},
+        )
         raise typer.Exit(code=EXIT_USAGE)
 
     # Concrete bools: the inspectors' own defaults are typer.OptionInfo.
@@ -373,7 +362,7 @@ def _reject_kind(
                 "did_you_mean": suggestion,
             },
         )
-    elif state.mode is not OutputMode.quiet:
+    else:
         state.err_console.print(error("error:"), f"unknown kind {kind!r}.")
         if suggestion is not None:
             state.err_console.print(

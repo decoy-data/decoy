@@ -51,6 +51,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_USAGE
+from tests.csv_sources import csv_source
 from tests.keyed_secret import TEST_MASK_SECRET_REF
 
 # Keyed strategies need an admitted mask secret (engine 0.17.0); see tests/keyed_secret.py.
@@ -166,7 +167,7 @@ def _csv_hash_config(tmp_path: Path) -> Path:
     config = {
         "version": 2,
         "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
-        "sources": {"customers": {"type": "file", "format": "csv", "path": str(src)}},
+        "sources": {"customers": csv_source(src)},
         "tables": [
             {
                 "name": "customers",
@@ -402,6 +403,14 @@ def test_no_native_stays_compatible_with_an_older_engine(
         vault_writer=None,
         # DE-02 (engine 0.4.0, the floor) predates the slice; a real old engine has it.
         key_provider=None,
+        base_dir=None,
+        quarantine_path=None,
+        # The pinned engine (0.24.0 or later) has the resource keywords every run sends.
+        native_threads=1,
+        out_of_core_threads=None,
+        out_of_core_budget_bytes=None,
+        # The same pin has `subset_request`, which every run sends.
+        subset_request="config",
     ):
         return real_run_pipeline(
             config,
@@ -412,6 +421,12 @@ def test_no_native_stays_compatible_with_an_older_engine(
             instance_default_locale=instance_default_locale,
             vault_writer=vault_writer,
             key_provider=key_provider,
+            base_dir=base_dir,
+            quarantine_path=quarantine_path,
+            native_threads=native_threads,
+            out_of_core_threads=out_of_core_threads,
+            out_of_core_budget_bytes=out_of_core_budget_bytes,
+            subset_request=subset_request,
         )
 
     monkeypatch.setattr("decoy_engine.run_pipeline", _old_engine_run_pipeline)
