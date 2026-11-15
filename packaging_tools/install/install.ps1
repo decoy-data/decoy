@@ -120,12 +120,17 @@ try {
   $ver = if ($Version) { $Version } else { $doc.latest }
   if (-not $ver) { Die "version document has no 'latest'" }
 
+  $convUrl = "$baseUrl/v$ver/decoy-$ver-$target.tar.gz"
   if ($ver -eq $doc.latest) {
     $art = $doc.artifacts.$target
     if (-not $art) { Die "version document lists no bundle for $target" }
     $url = $art.url; $expectSha = $art.sha256; $sigUrl = $art.sig
+    if ($env:DECOY_BUNDLE_BASE) {
+      # A configured base (mirror, allowlist) wins for latest too; the signed sha256 still applies.
+      $url = $convUrl; $sigUrl = "$url.sig"
+    }
   } else {
-    $url = "$baseUrl/v$ver/decoy-$ver-$target.tar.gz"; $sigUrl = "$url.sig"; $expectSha = ""
+    $url = $convUrl; $sigUrl = "$url.sig"; $expectSha = ""
   }
 
   $tarball = Join-Path $work "decoy-$ver-$target.tar.gz"

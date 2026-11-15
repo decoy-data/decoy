@@ -217,3 +217,69 @@ def test_install_ps1_pinned_path_uses_the_v_prefixed_release_layout():
         and "DECOY_BUNDLE_BASE" in SCRIPTS["install.sh"]
     )
     assert "/v$VERSION/decoy-$VERSION-$TARGET.tar.gz" in SCRIPTS["install.sh"]
+
+
+def _latest_install(key_pair, monkeypatch, *, base_env=None):
+    """Run install_version for the document's own latest with a recording downloader. The
+    bytes are junk, so the install stops at the checksum compare, after both fetches."""
+    key, pub = key_pair
+    for name in ("DECOY_BUNDLE_BASE",):
+        monkeypatch.delenv(name, raising=False)
+    if base_env:
+        monkeypatch.setenv("DECOY_BUNDLE_BASE", base_env)
+    sha = "ab" * 32
+    doc = vd.canonical_document_bytes(
+        vd.build_document(
+            latest=LATEST,
+            min_supported="1.0.0",
+            serial=1,
+            artifacts={
+                "linux-x86_64": {
+                    "url": "https://doc.example/x.tar.gz",
+                    "sha256": sha,
+                    "sig": "https://doc.example/x.sig",
+                }
+            },
+        )
+    )
+    sig = base64.b64encode(key.sign(doc)).decode()
+    seen: list[str] = []
+
+    def download(url: str) -> bytes:
+        seen.append(url)
+        return b"AAAA"
+
+    with pytest.raises(installer.InstallError) as err:
+        installer.install_version(
+            version_doc_bytes=doc,
+            version_doc_sig_b64=sig,
+            expected_public_pem=pub,
+            target="linux-x86_64",
+            download=download,
+        )
+    return seen, str(err.value), sha
+
+
+def test_latest_with_bundle_base_override_uses_the_mirror_and_keeps_the_signed_sha(
+    key_pair, monkeypatch
+):
+    seen, msg, sha = _latest_install(key_pair, monkeypatch, base_env="https://mirror.example/rel//")
+    mirror = f"https://mirror.example/rel/v{LATEST}/decoy-{LATEST}-linux-x86_64.tar.gz"
+    assert seen == [mirror, mirror + ".sig"]
+    assert f"expected {sha}" in msg
+
+
+def test_latest_without_override_uses_the_document_url(key_pair, monkeypatch):
+    seen, msg, sha = _latest_install(key_pair, monkeypatch)
+    assert seen == ["https://doc.example/x.tar.gz", "https://doc.example/x.sig"]
+    assert f"expected {sha}" in msg
+
+
+def test_install_scripts_apply_the_base_override_to_the_latest_bundle_too():
+    sh, ps1 = SCRIPTS["install.sh"], SCRIPTS["install.ps1"]
+    latest_sh = sh.split('if [ "$VERSION" = "$LATEST" ]; then', 1)[1].split("  else", 1)[0]
+    assert 'if [ -n "$BASE_SET" ]; then' in latest_sh and "URL=$(conv_url)" in latest_sh
+    assert """conv_url() { printf '%s' "${BASE_URL%"${BASE_URL##*[!/]}"}/v$VERSION/""" in sh
+    latest_ps1 = ps1.split("if ($ver -eq $doc.latest) {", 1)[1].split("} else {", 1)[0]
+    assert "if ($env:DECOY_BUNDLE_BASE) {" in latest_ps1 and "$url = $convUrl" in latest_ps1
+    assert '$convUrl = "$baseUrl/v$ver/decoy-$ver-$target.tar.gz"' in ps1

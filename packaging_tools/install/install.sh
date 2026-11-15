@@ -230,6 +230,8 @@ fi
 
 # Base URL for pinned bundles: release assets, independent of where the version document is served.
 BASE_URL="${DECOY_BUNDLE_BASE:-$DEFAULT_BUNDLE_BASE}"
+BASE_SET="${DECOY_BUNDLE_BASE:-}"
+conv_url() { printf '%s' "${BASE_URL%"${BASE_URL##*[!/]}"}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"; }
 
 if [ -n "${DECOY_LOCAL_BUNDLE:-}" ]; then
   # Offline / air-gapped: install from a local tarball + its .sig + .sha256 sidecars.
@@ -298,6 +300,11 @@ else
     EXPECT_SHA=$(json_artifact_field "$VDOC" "$TARGET" sha256)
     SIGURL=$(json_artifact_field "$VDOC" "$TARGET" sig)
     [ -n "$URL" ] && [ -n "$EXPECT_SHA" ] && [ -n "$SIGURL" ] || die "version document lists no bundle for $TARGET"
+    if [ -n "$BASE_SET" ]; then
+      # A configured base (mirror, allowlist) wins for latest too; the signed sha256 still applies.
+      URL=$(conv_url)
+      SIGURL="$URL.sig"
+    fi
   else
     # Pinned to a non-latest version: the signed version document carries only the
     # latest release's checksum, so construct URLs by convention and take the checksum
@@ -309,7 +316,7 @@ else
     # Likewise the offline DECOY_LOCAL_BUNDLE path has no version document: its mandatory
     # .sha256 sidecar is unsigned corruption detection only, and yank status cannot be
     # checked (no network by design) -- the pinned-key signature is still enforced.
-    URL="${BASE_URL%"${BASE_URL##*[!/]}"}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"
+    URL=$(conv_url)
     SIGURL="$URL.sig"
     EXPECT_SHA=""
   fi
