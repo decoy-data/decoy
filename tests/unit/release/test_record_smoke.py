@@ -186,3 +186,13 @@ def test_run_and_note_cells_are_usage_checked(repo, capsys) -> None:
     assert rc == 2
     assert _record(repo, _summary(), capsys, "--base-ref=--output=x")[0] == 2
     assert _record(repo, _summary(), capsys, "--base-ref=")[0] == 2
+
+
+@pytest.mark.parametrize(
+    "sep", ["\n", "\r", "\r\n", "\u2028", "\u2029", "\x85", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e"]
+)
+def test_note_with_any_line_boundary_is_refused(repo, capsys, sep) -> None:
+    before = _log(repo)
+    assert _record(repo, _summary(), capsys, "--note", f"first{sep}second")[0] == 2
+    assert _record(repo, _summary(), capsys, "--note", f"trailing{sep}")[0] == 2
+    assert _log(repo) == before
