@@ -80,6 +80,9 @@ def test_at_k2_check_keys_refuses_bad_installers_and_passes_injected(tmp_path):
         "malformed ssh": re.sub(r"(PINNED_SSH_PUBKEY=')[^']*", r"\1AAAAnotakey", good),
         "malformed pem": good.replace(sign_release.pinned_forms(a)[0], "bm90LXBlbQ=="),
         # cryptography decodes base64 leniently; ssh-keygen does not, so the text must match exactly.
+        # sh runs the last assignment, so a later one with another key must not pass on the first
+        "later ssh assignment with another key": good + f"\nPINNED_SSH_PUBKEY='{_blob(b)}'\n",
+        "later pem assignment": good + "\nPINNED_PUBKEY='x'\n",
         "stray character in ssh blob": good.replace(_blob(a), _blob(a)[:10] + "!" + _blob(a)[10:]),
         "stray character in pem body": good.replace(
             sign_release.pinned_forms(a)[0],
