@@ -40,6 +40,19 @@ def test_shape_writer_emits_types_never_values() -> None:
     }
 
 
+def test_flatten_names_one_path_per_line() -> None:
+    shape = ws.shape_of(
+        {"a": {"b": 1}, "rows": [{"id": 1}], "none": [], "empty": {}, "tags": ["x"]}
+    )
+    assert ws.flatten(shape) == {
+        "/a/b": "integer",
+        "/empty": "{}",
+        "/none": "[]",
+        "/rows[]/id": "integer",
+        "/tags[]": "string",
+    }
+
+
 def test_an_undeclared_map_would_leak_its_keys() -> None:
     """The negative control: without the declaration the marker column name reaches the shape."""
     shape = ws.shape_of({"by_column": {ws.MARKER_COL: 1}})
