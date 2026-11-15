@@ -15,6 +15,7 @@ import re
 from typing import TYPE_CHECKING
 
 from decoy.cli.library._errors import LibraryError
+from decoy.cli.library._paths import record_prefix
 from decoy.cli.library._refs import LATEST
 
 if TYPE_CHECKING:
@@ -23,8 +24,6 @@ if TYPE_CHECKING:
 __all__ = ["TargetError", "resolve_target"]
 
 _LATEST = re.compile(rf"{LATEST}(?:~([0-9]{{1,6}}))?")
-_HEX = frozenset("0123456789abcdef")
-_MIN_PREFIX = 8
 
 
 class TargetError(Exception):
@@ -49,8 +48,7 @@ def resolve_target(library: Library, text: str) -> str:
         if rid is None:
             raise TargetError("no ref of that name is set")
         return rid
-    digest = text.removeprefix("sha256:")
-    if not (_MIN_PREFIX <= len(digest) <= 64 and set(digest) <= _HEX):
+    if record_prefix(text) is None:
         raise TargetError("an id or prefix needs 8 to 64 lower-case hex digits")
     matches = library.resolve(text)
     if not matches:

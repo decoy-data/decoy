@@ -36,9 +36,16 @@ def _command_modules() -> dict[str, str]:
 
 
 def test_command_modules_import_only_the_facade() -> None:
+    """A command module may import another command module (`_cli`, `_read`); every library
+    operation comes from the facade."""
     modules = _command_modules()
     assert "_commands.py" in modules  # non-vacuous: the command module was found
-    hits = {n: f for n, t in modules.items() if (f := private_imports(t))}
+    commands = {f"{PREFIX}.{n.removesuffix('.py')}" for n in modules}
+    hits = {
+        n: found
+        for n, t in modules.items()
+        if (found := [m for m in private_imports(t) if m not in commands])
+    }
     assert hits == {}
 
 

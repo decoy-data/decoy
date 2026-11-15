@@ -132,9 +132,11 @@ listing never opens a record file. It is a cache: the object files are the truth
 
 ## Reading the library
 
-All of these take `--library DIR`. Errors print on stderr with exit 1 for what you typed (an
-unknown or ambiguous id, a bad ref name) and exit 3 for the library's own state (degraded
-mode, a corrupt record).
+All of these take `--library DIR`. Every `decoy library` command (`path` and `fsck` included)
+reports an error the same way: `error: [code] message` on stderr, or one error object on stdout
+under `--json`, with exit 1 for what you typed (an unknown or ambiguous id, a bad ref name, a
+ref to a record of another kind) and exit 3 for the library's own state (degraded mode, a
+corrupt record, a linked folder).
 
 - `decoy library list [--kind K] [--pipeline P] [--table T] [--since D] [--json]` lists records
   oldest first from the index, without opening record files. `--since` takes `YYYY-MM-DD` or an
@@ -156,6 +158,9 @@ mode, a corrupt record).
   were removed (paths only). Records of different kinds, or of a kind or version this Decoy
   cannot read, are refused.
 - `decoy library ref KIND/NAME [ID]` prints a stored ref, or sets it under the library lock.
+  A ref points only at a record of its own kind: setting `scan-set/main` to an evidence record,
+  or reading a committed ref that names one, is `ref_kind_mismatch`. A ref path through a
+  linked folder is refused (`library_path_unsafe`) for reads and writes alike.
 
 Wherever a record is named you can give:
 

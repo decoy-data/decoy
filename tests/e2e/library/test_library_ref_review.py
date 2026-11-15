@@ -24,7 +24,8 @@ from typer.testing import CliRunner
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
 from decoy.cli.io import DECOY_DIR
-from decoy.cli.library import open_library
+from decoy.cli.library import LibraryError, open_library
+from decoy.cli.library._errors import LIBRARY_LOCK_UNAVAILABLE
 from tests.unit.library._helpers import ROOT, envelope
 
 runner = CliRunner()
@@ -129,17 +130,31 @@ def test_a_ref_read_through_a_linked_folder_is_refused(
 # -- DESIGN 4 -------------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("args", [("path",), ("fsck",), ("list",), ("show", "sample-run/latest")])
+@pytest.mark.parametrize(
+    "args",
+    [
+        ("path",),
+        ("fsck",),
+        ("list",),
+        ("show", "sample-run/latest"),
+        ("ref", "sample-run/main"),
+        ("diff", "sample-run/latest", "sample-run/latest~1"),
+    ],
+)
 def test_the_same_library_error_exits_the_same_way_from_every_command(
-    project: Path, stored: list[str], args: tuple[str, ...]
+    project: Path, stored: list[str], monkeypatch: pytest.MonkeyPatch, args: tuple[str, ...]
 ) -> None:
-    (project / DECOY_DIR / "library" / "LAYOUT").write_text(json.dumps({"layout": 99}))
+    """The library cannot be locked: every command says so with the same code and exit."""
+    from decoy.cli.library import _fsck, _store
+
+    def unlockable(*_a: object, **_k: object) -> object:
+        raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)
+
+    monkeypatch.setattr(_store, "open_library", unlockable)
+    monkeypatch.setattr(_fsck, "check", unlockable)
     result = _invoke(*args)
-    if args == ("fsck",):
-        assert result.exit_code == 4  # fsck reports a newer layout as its finding
-        return
     assert result.exit_code == EXIT_RUNTIME, (args, result.output)
-    assert "library_layout_newer" in result.output
+    assert "library_lock_unavailable" in result.output
 
 
 def test_a_bad_library_flag_is_one_usage_error_everywhere(project: Path, tmp_path: Path) -> None:

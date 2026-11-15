@@ -29,6 +29,7 @@ from decoy.cli.library._errors import (
     LIBRARY_LOCK_UNAVAILABLE,
     LIBRARY_PATH_UNSAFE,
     RECORD_CORRUPT,
+    REF_KIND_MISMATCH,
     REF_NAME_INVALID,
     REF_NAME_RESERVED,
     LibraryError,
@@ -80,14 +81,17 @@ def _ref_parts(kind: str, name: str) -> tuple[str, ...]:
 
 def set_ref(library: Library, kind: str, name: str, record_id: str) -> None:
     """Point the ref at `record_id`, which must be stored. Raises `LibraryError`:
-    `ref_name_invalid`, `ref_name_reserved`, `record_not_found`, `record_corrupt`, `library_busy`,
+    `ref_name_invalid`, `ref_name_reserved`, `ref_kind_mismatch` (a record of another kind),
+    `record_not_found`, `record_corrupt`, `library_busy`,
     `library_lock_unavailable` or `library_write_failed`."""
     parts = _ref_parts(kind, name)
     if library.degraded is not None:
         raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)  # a remote or unlockable library (plan 4.8)
     library.prepare()
     with _index.locked(library.library_dir):
-        library.get(record_id)  # exists and is the record its id names
+        target = library.get(record_id)  # exists and is the record its id names
+        if target.kind != kind:
+            raise LibraryError(REF_KIND_MISMATCH)
         folder = library.library_dir / REFS
         ensure_private_dir(library.root, folder)
         for part in parts[:-1]:
@@ -110,7 +114,20 @@ def read_ref(library: Library, kind: str, name: str) -> str | None:
     text = parse_ref(data)
     if text is None:
         raise LibraryError(RECORD_CORRUPT)
+    _require_kind(library, kind, text)
     return text
+
+
+def _require_kind(library: Library, kind: str, record_id: str) -> None:
+    """A committed ref that names a stored record of another kind is refused when read; a ref
+    whose record is missing or unreadable is returned as it is (fsck reports it)."""
+    found: object = None
+    try:
+        found = library.get(record_id)
+    except LibraryError:
+        return
+    if getattr(found, "kind", kind) != kind:
+        raise LibraryError(REF_KIND_MISMATCH)
 
 
 def parse_ref(data: bytes) -> str | None:
