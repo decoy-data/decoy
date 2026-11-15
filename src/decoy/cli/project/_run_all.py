@@ -6,10 +6,13 @@ logger and memory limits never carry from one pipeline to the next and each chil
 keeps its single-run meaning. `--project` goes to each child so it places outputs exactly as
 this process resolved the project. The run goes on after a failure.
 
-The summary exit code is the first of 3, 5, 1, 4, 2, 0 that any child produced: failed to
-finish, refused, then finished with findings or warnings. A child that exits outside 0 to 5, is
-killed by a signal (a negative code), or prints `--json` output that is not one object counts as
-3, so a crashed pipeline never reads as clean.
+The summary exit code is the first of `exit_codes.PRECEDENCE` (5, 3, 1, 6, 4, 2, 0, the order
+`decoy ci check` uses across checks) that any child produced: refused for capacity, failed to
+finish, refused for usage, partly delivered, then finished with findings or warnings. A child that
+exits 6 keeps it. A child that exits outside 0 to 6 (130 included), is killed by a signal (a
+negative code), or prints `--json` output that is not one object counts as 3, so a crashed
+pipeline never reads as clean. Ctrl-C at this process is not caught: it stops the fan-out, starts
+no further child and exits 130.
 
 Nothing here prints a row value: messages name pipelines, folders and exit codes only. This
 module never imports the run package, which calls it.
@@ -28,7 +31,7 @@ from typing import NoReturn
 import typer
 from rich.table import Table
 
-from decoy.cli.exit_codes import EXIT_OK, EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_OK, EXIT_RUNTIME, EXIT_USAGE, PRECEDENCE
 from decoy.cli.io import (
     PROJECT_NOT_FOUND,
     LayoutError,
@@ -42,8 +45,7 @@ from decoy.cli.io import (
 )
 from decoy.ui.output import OutputMode, OutputState, emit_error, emit_json
 
-_PRIORITY = (3, 5, 1, 4, 2, 0)
-_RUN_CODES = range(0, 6)
+_RUN_CODES = frozenset(PRECEDENCE)
 _INIT_HINT = "Make one with `decoy init <name>`."
 
 
@@ -139,7 +141,7 @@ def _record(name: str, returncode: int | None, payload: object) -> tuple[int, di
 
 
 def _summary_code(codes: Sequence[int]) -> int:
-    return next(code for code in _PRIORITY if code in codes)
+    return next(code for code in PRECEDENCE if code in codes)
 
 
 # `-m decoy` would put the current folder first on the import path, so a `decoy.py` or a
