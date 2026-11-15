@@ -1,9 +1,5 @@
-"""REL-WEB RW-C1: the startup update check sends one plain request and keeps nothing else.
-
-Plan `docs/plans/2026-11-15-rel-web.md` section 5.2, assertions P1 to P5, tests AT-C1 to AT-C5.
-Each test drives the real `maybe_print_notice` against a loopback `http.server`, so the
-evidence is what reached a socket, not what the code says it sends.
-"""
+"""REL-WEB RW-C1 (plan section 5.2, P1 to P5; AT-C1 to AT-C5). Each test drives the real
+`maybe_print_notice` against a loopback `http.server`, so the evidence is what reached a socket."""
 
 from __future__ import annotations
 
@@ -22,14 +18,11 @@ from decoy import _update_check
 from decoy.distribution import version_document as vd
 
 DOC_PATH = "/cli/version.json"
-P1_HEADERS = {"user-agent", "accept-encoding", "connection", "host"}
 
 
 def _document(latest: str, *, message: str = "") -> bytes:
-    payload = vd.build_document(
-        latest=latest, min_supported="0.1.0", artifacts={}, serial=1, message=message
-    )
-    return vd.canonical_document_bytes(payload)
+    doc = vd.build_document(latest=latest, min_supported="0.1", artifacts={}, serial=1, message=message)
+    return vd.canonical_document_bytes(doc)
 
 
 class _Loopback:
@@ -66,16 +59,13 @@ class _Loopback:
 
 
 @pytest.fixture
-def serve():
-    servers: list[_Loopback] = []
-
+def serve(request: pytest.FixtureRequest):
     def start(*args, **kwargs) -> _Loopback:
-        servers.append(_Loopback(*args, **kwargs))
-        return servers[-1]
+        server = _Loopback(*args, **kwargs)
+        request.addfinalizer(server.close)
+        return server
 
-    yield start
-    for s in servers:
-        s.close()
+    return start
 
 
 @pytest.fixture
@@ -96,10 +86,6 @@ def home(monkeypatch: pytest.MonkeyPatch, clean_env: Path) -> Path:
     return clean_env
 
 
-def _point_at(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
-    monkeypatch.setenv("DECOY_VERSION_URL", url)
-
-
 def _start() -> str:
     out = io.StringIO()
     _update_check.maybe_print_notice(stream=out)
@@ -110,23 +96,22 @@ def _cache() -> dict:
     return json.loads(_update_check._cache_path().read_text(encoding="utf-8"))
 
 
-# AT-C1 (P1): exactly the four headers, no query string, no body --------------------------
+# AT-C1 (P1): four headers, no query, no body; AT-C3 (P3): one request in 24 hours ----
 
 
-def test_the_request_carries_exactly_the_p1_headers(monkeypatch, home, serve) -> None:
+def test_one_request_with_exactly_the_p1_headers(monkeypatch, home, serve) -> None:
     server = serve(body=_document("99.0.0"))
-    _point_at(monkeypatch, server.url)
+    monkeypatch.setenv("DECOY_VERSION_URL", server.url)
     assert "99.0.0" in _start()
+    _start()
     assert len(server.requests) == 1
     line, headers = server.requests[0]
     assert line == f"GET {DOC_PATH} HTTP/1.1"
-    names = [name.lower() for name, _ in headers]
-    assert sorted(names) == sorted(P1_HEADERS), headers
-    got = {name.lower(): value for name, value in headers}
-    assert got["user-agent"] == "decoy-update-check"
-    assert got["accept-encoding"] == "identity"
-    assert got["connection"] == "close"
-    assert got["host"] == f"127.0.0.1:{server.port}"
+    assert len(headers) == 4, headers
+    assert {name.lower(): value for name, value in headers} == {
+        "host": f"127.0.0.1:{server.port}", "user-agent": "decoy-update-check",
+        "accept-encoding": "identity", "connection": "close",
+    }
 
 
 # AT-C2 (P2): a 3xx ends the check; the redirect target never sees a request ----------------
@@ -135,22 +120,14 @@ def test_the_request_carries_exactly_the_p1_headers(monkeypatch, home, serve) ->
 def test_a_redirect_is_not_followed(monkeypatch, home, serve) -> None:
     target = serve(body=_document("99.0.0"))
     origin = serve(status=302, headers={"Location": target.url})
-    _point_at(monkeypatch, origin.url)
+    monkeypatch.setenv("DECOY_VERSION_URL", origin.url)
     assert _start() == ""
     assert len(origin.requests) == 1
     assert target.requests == []
     assert _cache()["latest"] is None
 
 
-# AT-C3 (P3): at most one request per 24 hours, none when the start is not interactive ------
-
-
-def test_a_second_start_inside_24_hours_sends_nothing(monkeypatch, home, serve) -> None:
-    server = serve(body=_document("99.0.0"))
-    _point_at(monkeypatch, server.url)
-    _start()
-    _start()
-    assert len(server.requests) == 1
+# AT-C3 (P3): no request when the start is not interactive --------------------------------
 
 
 class _Stream(io.StringIO):
@@ -177,7 +154,7 @@ def test_requests_only_on_an_interactive_start(
     monkeypatch, clean_env, serve, ci, stdout_tty, stderr_tty, opt_out, requests
 ) -> None:
     server = serve(body=_document("99.0.0"))
-    _point_at(monkeypatch, server.url)
+    monkeypatch.setenv("DECOY_VERSION_URL", server.url)
     if ci is not None:
         monkeypatch.setenv("CI", ci)
     if opt_out is not None:
@@ -193,7 +170,7 @@ def test_the_no_update_check_flag_stops_the_request(monkeypatch, home, serve, fl
     import decoy.__main__ as main
 
     server = serve(body=_document("99.0.0"))
-    _point_at(monkeypatch, server.url)
+    monkeypatch.setenv("DECOY_VERSION_URL", server.url)
     monkeypatch.setattr(main, "_key_unresolved", lambda: False)
     result = CliRunner().invoke(main.app, [*flag, "info"])
     assert result.exit_code == 0, result.output
@@ -203,15 +180,13 @@ def test_the_no_update_check_flag_stops_the_request(monkeypatch, home, serve, fl
 # AT-C4 (P4): the cache holds exactly two keys ----------------------------------------------
 
 
-@pytest.mark.parametrize("latest", ["99.0.0", None], ids=["found", "failed"])
-def test_the_cache_holds_only_checked_at_and_latest(monkeypatch, home, serve, latest) -> None:
-    server = serve(body=_document(latest)) if latest else serve(status=500)
-    _point_at(monkeypatch, server.url)
+def test_the_cache_holds_only_checked_at_and_latest(monkeypatch, home, serve) -> None:
+    # A failed check writes the same two keys; AT-C5 below checks that case.
+    monkeypatch.setenv("DECOY_VERSION_URL", serve(body=_document("99.0.0")).url)
     _start()
     cache = _cache()
-    assert set(cache) == {"checked_at", "latest"}
+    assert set(cache) == {"checked_at", "latest"} and cache["latest"] == "99.0.0"
     assert isinstance(cache["checked_at"], int) and not isinstance(cache["checked_at"], bool)
-    assert cache["latest"] == latest
 
 
 # AT-C5 (P5): a bad response is cached as null, prints nothing, and costs one request a day -
@@ -239,7 +214,7 @@ def test_a_bad_response_is_cached_as_null_and_prints_nothing(monkeypatch, home, 
             "not-a-version": lambda: serve(body=_document("latest, trust me")),
         }[case]()
         url = server.url
-    _point_at(monkeypatch, url)
+    monkeypatch.setenv("DECOY_VERSION_URL", url)
     before = int(time.time())
     assert _start() == ""
     after = int(time.time())
@@ -253,7 +228,7 @@ def test_a_bad_response_is_cached_as_null_and_prints_nothing(monkeypatch, home, 
 
 def test_the_notice_prints_the_canonical_version(monkeypatch, home, serve) -> None:
     server = serve(body=_document("v99.0"))
-    _point_at(monkeypatch, server.url)
+    monkeypatch.setenv("DECOY_VERSION_URL", server.url)
     notice = _start()
     assert "-> 99.0)" in notice and "v99.0" not in notice
     assert _cache()["latest"] == "99.0"
@@ -263,6 +238,6 @@ def test_a_raw_value_already_in_the_cache_is_not_shown(monkeypatch, home) -> Non
     path = _update_check._cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"checked_at": int(time.time()), "latest": "\x1b[2J"}), encoding="utf-8")
-    _point_at(monkeypatch, _closed_port_url())
+    monkeypatch.setenv("DECOY_VERSION_URL", _closed_port_url())
     assert _update_check.check_latest() is None
     assert _start() == ""

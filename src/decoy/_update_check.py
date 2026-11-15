@@ -10,17 +10,15 @@ Privacy contract (REL-WEB plan section 5.2; tests in
 `tests/unit/distribution/test_update_check_privacy.py`):
   - P1: the request is ``GET <path>`` with no query string and no body, and exactly the
     headers ``Host``, ``User-Agent: decoy-update-check``, ``Accept-Encoding: identity`` and
-    ``Connection: close``. No CLI, Python or OS version, no cookie, no machine name. A proxy
-    the user configured still applies and adds only its own headers.
+    ``Connection: close``. A proxy the user configured still applies.
   - P2: no redirect is followed; any 3xx ends the check with no notice.
   - P3: at most one request per 24 hours per user cache, and none under CI, when stdout or
     stderr is not a TTY (piped ``--json`` output included), with ``--no-update-check`` or
     ``DECOY_NO_UPDATE_CHECK``, or when the caller passes ``suppress=True``.
   - P4: the cache file holds exactly ``checked_at`` and ``latest``; nothing reads or
     creates an identifier (sentry ``tests/sentry/io_policy/test_update_check_no_identifiers.py``).
-  - P5: the body is read up to 64 KiB. ``latest`` is kept and shown only as the canonical
-    form of a valid PEP 440 version; any failure caches ``latest: null``, so a bad response
-    still costs only one request per 24 hours.
+  - P5: the body is read up to 64 KiB, ``latest`` is kept and shown only in canonical PEP 440
+    form, and any failure caches ``latest: null`` (one request per 24 hours still holds).
   - Fail-silent: any network, parse or cache error is swallowed; the notice is advisory.
 
 The notice does NOT trust the document for anything but display: it is advisory text,
