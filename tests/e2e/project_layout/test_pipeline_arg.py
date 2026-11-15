@@ -215,7 +215,10 @@ def _normal(result, *spellings: str) -> dict:
     def scrub(node):
         if isinstance(node, dict):
             return {
-                k: scrub(v) for k, v in node.items() if not _VOLATILE.search(k) and k != "given_as"
+                k: scrub(v)
+                for k, v in node.items()
+                # `evidence` is the run's record id: it hashes the run's own invocation id.
+                if not _VOLATILE.search(k) and k not in ("given_as", "evidence")
             }
         if isinstance(node, list):
             return [scrub(v) for v in node]

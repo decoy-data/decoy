@@ -355,6 +355,14 @@ def run(
             "A pipeline with `subset:` is refused under --chunked, with or without this flag."
         ),
     ),
+    no_library: bool = typer.Option(
+        False,
+        "--no-library",
+        help=(
+            "Do not store this run's evidence record in the project's library "
+            "(.decoy/library/). DECOY_LIBRARY=off does the same for every run."
+        ),
+    ),
     rows: int = typer.Option(
         None,
         "--rows",
@@ -426,6 +434,7 @@ def run(
             post_validate_enforce=post_validate_enforce,
             duckdb_source=duckdb_source,
             no_subset=no_subset,
+            no_library=no_library,
             otel_endpoint=otel_endpoint,
             rows=rows,
         )

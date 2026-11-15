@@ -79,6 +79,7 @@ def _run(cfg: Path, *args: str):
 def _envelope(result) -> dict:
     payload = json.loads(result.stdout)
     payload.pop("elapsed_s", None)
+    payload.get("library", {}).pop("evidence", None)  # the record id hashes the run's own id
     return payload
 
 

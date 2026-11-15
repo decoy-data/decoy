@@ -23,6 +23,7 @@ from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE
 from decoy.cli.io import _layout
 from decoy.cli.run import _flow
+from tests.e2e.library._layout import library_paths
 
 runner = CliRunner()
 WIDE = {"COLUMNS": "1000"}
@@ -116,6 +117,18 @@ def _project_entries(name: str, pipelines: tuple[str, ...]) -> list[str]:
     ]
     for pipeline in pipelines:
         lines += [f"{base}/pipelines/{pipeline}/", f"{base}/pipelines/{pipeline}/pipeline.yaml"]
+    return lines
+
+
+def _library_lines(home: Path, name: str, runs: int) -> list[str]:
+    """The library a project's runs filled (LIB L3a): one evidence record per run, each object
+    file named from its record id; `.decoy/` and `.decoy/.gitignore` are listed already."""
+    project = home / "work" / name
+    lines = []
+    for path in library_paths(project, kinds={"evidence": runs}):
+        rel = path.relative_to(home).as_posix() + ("/" if path.is_dir() else "")
+        if rel not in (f"work/{name}/.decoy/", f"work/{name}/.decoy/.gitignore"):
+            lines.append(rel)
     return lines
 
 
@@ -268,7 +281,9 @@ def test_walkthrough(home: Path, seed: _Seed, monkeypatch: pytest.MonkeyPatch) -
         },
         third,
     )
+    expected += _library_lines(home, "acme", 3)  # members-generate once, members-mask twice
     expected += _project_entries("globex", tuple(stems))
+    expected += _library_lines(home, "globex", len(stems))
     for name, stem in stems.items():
         expected += _pipeline_out("globex", name, {"<RUN>": (f"{stem}.masked.csv",)}, "<RUN>")
     assert _tree(home, (first, second, third)) == sorted(expected)

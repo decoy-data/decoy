@@ -89,7 +89,7 @@ def test_a_successful_run_stores_one_evidence_record(project: Path, pipeline: Pa
     assert doc["library"]["root"] == str(project / DECOY_DIR)
     assert rows[0].pipeline == "pipelines/orders/pipeline.yaml"
     record = open_library(project / DECOY_DIR).get(rows[0].id)
-    assert record.raw["payload"]["run_id"] == record.invocation_id  # the run's one invocation id
+    assert record.raw["payload"]["run_id"] == record.raw["invocation_id"]  # one invocation id
 
 
 def test_the_record_payload_equals_the_evidence_out_file(project: Path, pipeline: Path) -> None:
@@ -116,7 +116,9 @@ def test_without_a_marker_paths_are_stored_relative_to_the_project(
     written = json.loads(out.read_text(encoding="utf-8"))
     assert Path(written["pipeline_path"]).is_absolute()  # the file keeps what it always had
     assert stored["pipeline_path"] == "pipeline.yaml"  # the record: relative to the project
-    assert all(not Path(f["path"]).is_absolute() for f in stored["input_fingerprints"])
+    fingerprints = stored["input_fingerprints"]
+    entries = fingerprints.values() if isinstance(fingerprints, dict) else fingerprints
+    assert entries and all(not Path(f["path"]).is_absolute() for f in entries)
     rest = {k: v for k, v in stored.items() if k not in ("pipeline_path", "input_fingerprints",
                                                          "output_fingerprints")}  # fmt: skip
     assert rest == {k: written[k] for k in rest}
@@ -127,6 +129,21 @@ def test_without_a_marker_paths_are_stored_relative_to_the_project(
 
 def test_a_failed_run_stores_no_evidence(project: Path, pipeline: Path) -> None:
     (pipeline.parent / "in.csv").unlink()  # the source is gone: a runtime failure
+    result = _run(str(pipeline))
+    assert result.exit_code != 0
+    assert _evidence_rows(project / DECOY_DIR) == []
+
+
+def test_a_run_that_fails_in_the_engine_stores_no_evidence(
+    project: Path, pipeline: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The failure comes after the run is prepared (its manifest inputs exist)."""
+    import decoy_engine
+
+    def broken(*_a: object, **_k: object) -> object:
+        raise RuntimeError("engine failure")
+
+    monkeypatch.setattr(decoy_engine, "run_pipeline", broken)
     result = _run(str(pipeline))
     assert result.exit_code != 0
     assert _evidence_rows(project / DECOY_DIR) == []

@@ -80,6 +80,25 @@ A symlink, FIFO, device or a file swapped between the check and the open is refu
 
 Errors name a code and an error class, never a path.
 
+## What `decoy run` stores
+
+A successful `decoy run` stores its evidence manifest as an `evidence` record in the library of
+the project that holds the pipeline (or in `DECOY_LIBRARY`). The manifest is built once: the
+record holds the same manifest `--evidence-out` writes to a file, with its path fields
+(`pipeline_path`, `project_manifest`, the input and output file paths) relative to the project
+folder. Under a `decoy.yaml` project they already are; elsewhere an absolute path inside the
+project is made relative and one outside it stays absolute. The record carries the run's
+invocation id and the pipeline's project-relative path as its `pipeline` label.
+
+The run card shows a `Library` line with the record id and the library root, and `--json` has a
+`library` member: `{"status": "stored", "root": ..., "evidence": <id>}`, `{"status": "off"}`, or
+`{"status": "failed", "code": ..., "root": ...}`.
+
+- `decoy run --no-library` or `DECOY_LIBRARY=off` stores nothing.
+- A failed run, a preview (`--rows`) and a `--duckdb-source` run store no evidence.
+- If the record cannot be stored (a full disk, a read-only folder), the run prints one warning
+  with the code and keeps its exit code: the data outcome decides it, not the library.
+
 ## Refs
 
 A ref is a name for a record: `library/refs/<kind>/<name>` holds one record id. The kind is a

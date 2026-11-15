@@ -2,6 +2,7 @@
 `--post-validate-enforce` exit."""
 
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.text import Text
@@ -82,6 +83,15 @@ def _where_written(ctx: RunContext) -> dict:
     return {**ctx.published_members(), **described}
 
 
+def _library_fact(report: Any) -> str:
+    """The run card's library line (plan 4.16: the record id and the root, always named)."""
+    if report.status == "stored":
+        return f"evidence {report.evidence[:19]} in {shown_path(Path(report.root))}"
+    if report.status == "failed":
+        return f"not stored ({report.code})"
+    return "off"
+
+
 def finish(ctx: RunContext) -> None:
     """Render the success result and apply the `--post-validate-enforce` exit mapping."""
     # S5 enforce mapping (plan P1-2): the engine never fails the job on a
@@ -109,6 +119,8 @@ def finish(ctx: RunContext) -> None:
             **_where_written(ctx),
         }
         payload["resources"] = ctx._resources_record
+        if ctx.library_report is not None:
+            payload["library"] = ctx.library_report.as_json()
         if ctx._subset_metrics is not None:
             payload["subset"] = ctx._subset_metrics
         if ctx.notify_channels:
@@ -153,6 +165,8 @@ def finish(ctx: RunContext) -> None:
     ]
     if ctx.layout is not None:
         facts.extend(ctx.layout.summary_facts())
+    if ctx.library_report is not None:
+        facts.append(("Library", _library_fact(ctx.library_report)))
     if _warnings:
         facts.append(("Warnings", str(len(_warnings))))
     if ctx._native_route is not None:

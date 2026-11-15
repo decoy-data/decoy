@@ -72,6 +72,7 @@ class RunContext:
     post_validate_enforce: bool
     duckdb_source: list[str]
     no_subset: bool
+    no_library: bool
     otel_endpoint: str
     rows: int | None
     state: OutputState
@@ -109,6 +110,8 @@ class RunContext:
 
     # Sentinels for evidence manifest building (set on successful plain run).
     _ev_config_dict: dict | None = field(init=False, default=None)
+    # What happened to the run's library records (LIB L3a); set by `_evidence`.
+    library_report: Any = field(init=False, default=None)
     _ev_engine_version: str | None = field(init=False, default=None)
     _ev_row_counts: dict | None = field(init=False, default=None)
     _ev_timings: tuple = field(init=False, default=())

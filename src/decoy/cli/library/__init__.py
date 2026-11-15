@@ -3,7 +3,7 @@
 Commands import this facade, never a `_` module (G-LIB-WRITER). What exists so far: the root
 rule (`resolve_root`), the store (`open_library`, `Library.put`, `get`, `resolve`), refs
 (`Library.set_ref`, `read_ref`, under the library lock), the retention policy model
-(`load_policy`) and the error type. The index, scratch and logs arrive in later slices. See
+(`load_policy`), the error type, and `store_evidence`, the run's evidence record (L3a). The index, scratch and logs arrive in later slices. See
 docs/library.md.
 """
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 from decoy.cli.library._errors import LibraryError
 from decoy.cli.library._paths import LibraryRoot, resolve_root
 from decoy.cli.library._policy import LibraryPolicy, load_policy
+from decoy.cli.library._records import StoreReport, store_evidence
 from decoy.cli.library._store import Library, PutResult, open_library
 
 __all__ = [
@@ -20,7 +21,9 @@ __all__ = [
     "LibraryPolicy",
     "LibraryRoot",
     "PutResult",
+    "StoreReport",
     "load_policy",
     "open_library",
     "resolve_root",
+    "store_evidence",
 ]

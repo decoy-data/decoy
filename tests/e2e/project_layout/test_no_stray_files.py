@@ -20,6 +20,8 @@ import pandas as pd
 import pytest
 import yaml
 
+from tests.e2e.library._layout import library_paths
+
 CANARY_EMAIL = "zq9canary@canary-host.test"
 CANARY_SSN = "731-55-9042"
 SECRET = "cd" * 32
@@ -181,7 +183,9 @@ def test_each_command_writes_only_where_the_guarantee_allows(world: World) -> No
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
     run = w.run_dir("mask")
-    _assert_exact("run", new, _out_first(w.project) | _run_paths(w.project, "mask", run, "out.csv"))
+    expected = _out_first(w.project) | _run_paths(w.project, "mask", run, "out.csv")
+    expected |= library_paths(w.project, kinds={"evidence": 1})  # the run's record (LIB L3a)
+    _assert_exact("run", new, expected)
     assert json.loads(done.stdout)["output_dir"] == str(run)
     masked = run / "out.csv"
 
@@ -239,6 +243,7 @@ def test_run_all_writes_only_each_pipelines_run_folder(world: World) -> None:
     expected = _out_first(w.project)
     for name in ("alpha", "beta"):
         expected |= _run_paths(w.project, name, w.run_dir(name), "out.csv")
+    expected |= library_paths(w.project, kinds={"evidence": 2})  # one record per run (LIB L3a)
     _assert_exact("run --all", new, expected)
     assert not list(w.home.rglob("*")), "a command wrote into the home folder"
 
