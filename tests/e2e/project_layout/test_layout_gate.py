@@ -72,6 +72,11 @@ def _quarantine(path: str) -> dict:
 @pytest.fixture
 def read_spy(monkeypatch) -> list[str]:
     """Records every source read: the gate's preflight reads and the run's own readers."""
+    return install_read_spy(monkeypatch)
+
+
+def install_read_spy(monkeypatch) -> list[str]:
+    """The `read_spy` body, shared with `test_shared_destination_parity.py`."""
     import decoy.cli.preflight as preflight
     from decoy.cli.run import _execute
 
@@ -521,6 +526,21 @@ def read_spy_empty(spy: list[str]) -> bool:
     return spy == []
 
 
+SHARED = "target_shared_destination"
+
+
+def _assert_shared(result, spy: list[str], *, preflight: bool = False) -> None:
+    """Equal declarations are the engine's schema refusal (DUP-DEST CL2), in run and validate.
+
+    `validate preflight` reports a schema failure as `schema.field` with no code (OQ-5, row 24zf).
+    """
+    assert result.exit_code == EXIT_USAGE, result.output
+    assert ("schema.field" if preflight else SHARED) in result.output
+    assert COLLISION not in result.output
+    assert "targets.a.path" in result.output and "targets.b.path" in result.output
+    assert read_spy_empty(spy)
+
+
 @pytest.mark.parametrize("mode", ["project", "out_dir", "preflight"])
 def test_resolved_output_collisions_refuse_before_source_two_tables(
     tmp_path: Path, read_spy: list[str], mode: str
@@ -534,7 +554,7 @@ def test_resolved_output_collisions_refuse_before_source_two_tables(
         "preflight": ["validate", "preflight", str(cfg), "--json"],
     }[mode]
     result = runner.invoke(app, args)
-    _assert_collision(result, "targets.a.path", "targets.b.path", read_spy)
+    _assert_shared(result, read_spy, preflight=mode == "preflight")
     assert not (root / "out").exists()
     assert not build.exists()
 
@@ -558,7 +578,7 @@ def test_resolved_output_collisions_equal_absolute_targets(
     same = str(tmp_path / "abs.csv")
     cfg = _write(root, "pipelines/orders/pipeline.yaml", _two_tables(root, same, same))
     result = runner.invoke(app, [*command, str(cfg), "--json"])
-    _assert_collision(result, "targets.a.path", "targets.b.path", read_spy)
+    _assert_shared(result, read_spy, preflight=command[0] == "validate")
     assert not (tmp_path / "abs.csv").exists()
     assert same not in result.output
 
@@ -585,6 +605,8 @@ def test_resolved_output_collisions_two_spellings_through_a_symlink(
 def test_resolved_output_collisions_dot_and_separator_spellings(
     tmp_path: Path, read_spy: list[str]
 ) -> None:
+    # A `..` segment keeps its text in the engine identity (a symlink could move it), so the
+    # schema accepts this pair and the layout check refuses it on the resolved paths.
     root = _project(tmp_path)
     first = f"{tmp_path}/out.csv"
     second = f"{tmp_path}//missing/../out.csv/"
