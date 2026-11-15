@@ -1423,7 +1423,7 @@ $ decoy scan diff [OPTIONS] OLD NEW
 
 **Options**:
 
-* `--strict`: Exit 1 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
+* `--strict`: Exit 4 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
 * `--table TEXT`: Table to read when the saved scan holds more than one.
 * `--json`: Emit the categorized diff as JSON to stdout.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.

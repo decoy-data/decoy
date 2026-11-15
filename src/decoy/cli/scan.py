@@ -38,7 +38,7 @@ import typer
 
 from decoy._row_sample import sample_frame
 from decoy.cli._default_group import make_default_group
-from decoy.cli.exit_codes import EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
@@ -949,7 +949,7 @@ def _diff(
     ),
     strict: bool = typer.Option(
         False, "--strict",
-        help="Exit 1 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.",
+        help="Exit 4 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.",
     ),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
     json_: bool = typer.Option(
@@ -1036,12 +1036,12 @@ def _diff(
             },
         )
         if strict and drift:
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=EXIT_FINDINGS)
         return
 
     if state.mode is OutputMode.quiet:
         if strict and drift:
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=EXIT_FINDINGS)
         return
 
     facts: list[tuple[str, str]] = [
@@ -1141,7 +1141,7 @@ def _diff(
         state.console.print(success("No drift detected."))
 
     if strict and drift:
-        raise typer.Exit(code=EXIT_USAGE)
+        raise typer.Exit(code=EXIT_FINDINGS)
 
 
 # The hidden default command: `decoy scan SOURCE` (no subcommand) routes here
