@@ -162,14 +162,24 @@ degraded mode and why. It creates nothing.
 - on Linux and macOS, the index, `tmp/`, `scratch/` and `logs/` are private (a finding);
   records and refs that git checked out 0644 get a note only;
 - job log lines parse (a truncated last line is a warning);
-- no library folder is a link (`path_linked`); fsck reports the link and never looks inside it.
+- no library folder is a link (`path_linked`); fsck reports the link and never looks inside it;
+- the index is a regular file (`index_not_file`: a pipe there is never opened).
+
+An entry fsck cannot read is its own finding and the check goes on: `layout_unreadable` (fsck
+then stops, and repair changes nothing), `object_unreadable` (a record file or fan folder),
+`ref_unreadable` and `log_unreadable`. A ref may start with a byte order mark.
 
 Each problem prints one line: `finding`, `warning` or `note`, a code (`object_corrupt`,
 `payload_invalid`, `ref_dangling`, `index_stale`, `temp_stale`, `mode_open`, ...) and the path
 inside the library. Exit 0 when there are no findings, 4 when there are.
 
 `--repair` copies each corrupt record into `library/quarantine/` and then removes it, deletes
-stale temp files, removes refs to missing records (printing each) and rebuilds the index. It
+stale temp files, removes refs to missing records (printing each) and rebuilds the index. Under
+the library lock it reads each corrupt record again and moves it only if it still does not
+parse or its content is not the record its name says; a record it cannot read is never moved.
+A ref is removed only when it was read, holds a record id, and that record is not stored. If
+one entry cannot be moved or deleted, repair prints `quarantine_failed` or
+`temp_delete_failed` for it and goes on. It
 never deletes a valid record, and it changes nothing in a library whose `LAYOUT` is newer than
 this Decoy, nothing under a linked folder, and no entry that was replaced after the check.
 

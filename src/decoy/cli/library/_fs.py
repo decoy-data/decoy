@@ -178,11 +178,13 @@ def entries(root: Path, folder: Path) -> list[Entry] | None:
     return sorted(found, key=lambda e: e.name)
 
 
-def walk_tree(root: Path, folder: Path) -> list[Entry]:
+def walk_tree(root: Path, folder: Path, *, unreadable: list[Path] | None = None) -> list[Entry]:
     """`folder` and every entry below it, depth first, never descending through a link.
 
     Empty when `folder` is missing; `library_path_unsafe` when it, or a folder above it, is a
     link or not a folder. A link inside the tree is listed as a `link` entry and not entered.
+    With `unreadable`, a folder below `folder` that cannot be listed is added there and skipped
+    instead of failing the walk.
     """
     top = kind_of(root, folder)
     if top is None:
@@ -204,7 +206,14 @@ def walk_tree(root: Path, folder: Path) -> list[Entry]:
     pending = [Path(folder)]
     while pending:
         current = pending.pop()
-        for item in entries(root, current) or []:
+        try:
+            found = entries(root, current) or []
+        except LibraryError:
+            if unreadable is None:
+                raise
+            unreadable.append(current)
+            continue
+        for item in found:
             out.append(item)
             if item.kind == "dir":
                 pending.append(item.path)

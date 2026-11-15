@@ -16,7 +16,7 @@ cannot remove it in between.
 
 from __future__ import annotations
 
-import contextlib
+import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -27,6 +27,7 @@ from decoy_engine import records
 from decoy.cli.library import _index
 from decoy.cli.library._errors import (
     LIBRARY_LOCK_UNAVAILABLE,
+    LIBRARY_PATH_UNSAFE,
     RECORD_CORRUPT,
     REF_NAME_INVALID,
     REF_NAME_RESERVED,
@@ -35,10 +36,10 @@ from decoy.cli.library._errors import (
 from decoy.cli.library._fs import (
     Entry,
     ensure_private_dir,
+    entries,
     read_capped,
     remove_file,
     replace_file,
-    walk_tree,
 )
 from decoy.cli.library._paths import REFS, record_digest
 
@@ -103,45 +104,82 @@ def read_ref(library: Library, kind: str, name: str) -> str | None:
     data = read_capped(library.root, path, _MAX_REF_BYTES)
     if data is None:
         return None
-    text = data.decode("utf-8", errors="replace").strip()
-    if record_digest(text) is None:
+    text = parse_ref(data)
+    if text is None:
         raise LibraryError(RECORD_CORRUPT)
     return text
 
 
-def _ref_id(root: Path, path: Path) -> str | None:
-    """The id a ref file holds, or None when it holds none (an unreadable, oversized or linked
-    ref file included: fsck reports it like any ref without an id)."""
-    data: bytes | None = None
-    with contextlib.suppress(LibraryError):
-        data = read_capped(root, path, _MAX_REF_BYTES)
-    text = (data or b"").decode("utf-8", errors="replace").strip()
+def parse_ref(data: bytes) -> str | None:
+    """The record id a ref file's bytes hold, or None. A leading U+FEFF (an editor's BOM) and
+    surrounding whitespace are not part of the id."""
+    text = data.decode("utf-8", errors="replace").strip().lstrip("\ufeff").strip()
     return text if record_digest(text) is not None else None
 
 
-def iter_refs(root: Path, refs_dir: Path) -> Iterator[tuple[Entry, str | None]]:
-    """Every entry under `refs_dir` that is not a real folder, with the id a ref file holds.
+def ref_target(root: Path, path: Path) -> tuple[bool, str | None]:
+    """(read, id): whether the ref file could be read, and the id it holds when it holds one.
+    An unreadable, oversized or linked ref file is (False, None): it is never treated as one
+    that points nowhere."""
+    data: bytes | None = None
+    try:
+        data = read_capped(root, path, _MAX_REF_BYTES)
+    except LibraryError:
+        return False, None
+    if data is None:
+        return False, None
+    return True, parse_ref(data)
 
-    Never descends through a link: a linked kind folder or ref is yielded as a `link` entry
-    with no id, for fsck to report. `library_path_unsafe` when `refs_dir` itself is linked.
+
+def iter_refs(root: Path, refs_dir: Path) -> Iterator[tuple[Entry, bool, str | None]]:
+    """Every entry under `refs_dir` that is not a real folder: (entry, read, id).
+
+    Never descends through a link: a linked kind folder or ref is yielded as a `link` entry,
+    unread, for fsck to report. A folder that cannot be listed is yielded as itself, unread.
+    `library_path_unsafe` when `refs_dir` itself is linked.
     """
-    for entry in walk_tree(root, refs_dir):
-        if entry.kind == "dir":
+    pending = [refs_dir]
+    while pending:
+        folder = pending.pop(0)
+        try:
+            found = entries(root, folder) or []
+        except LibraryError as exc:
+            if exc.code == LIBRARY_PATH_UNSAFE and folder == refs_dir:
+                raise
+            info = _folder_entry(folder)
+            if info is not None:
+                yield info, False, None
             continue
-        yield entry, _ref_id(root, entry.path) if entry.kind == "file" else None
+        for entry in found:
+            if entry.kind == "dir":
+                pending.append(entry.path)
+            elif entry.kind == "file":
+                read, target = ref_target(root, entry.path)
+                yield entry, read, target
+            else:
+                yield entry, False, None
 
 
-def remove_refs(library: Library, entries: list[Entry]) -> list[Path]:
-    """Remove the given ref files that still point at no stored record, under the library lock
-    (fsck --repair, plan 4.10). Returns the ones removed; a ref set meanwhile is kept, and an
-    entry replaced since fsck judged it (another inode) is left alone."""
+def _folder_entry(folder: Path) -> Entry | None:
+    try:
+        info = os.lstat(folder)
+    except OSError:
+        return None
+    return Entry(folder.name, folder, "dir", (info.st_dev, info.st_ino), 0, 0.0, 0)
+
+
+def remove_refs(library: Library, entries_: list[Entry]) -> list[Path]:
+    """Remove the given ref files under the library lock (fsck --repair, plan 4.10), each only
+    when it is read again, holds a record id and that record is not stored. Returns the ones
+    removed; a ref set meanwhile, one that cannot be read, and an entry replaced since fsck
+    judged it (another inode) are kept."""
     removed: list[Path] = []
-    if not entries:
+    if not entries_:
         return removed
     with _index.locked(library.library_dir):
-        for entry in entries:
-            target = _ref_id(library.root, entry.path)
-            if target is not None and library.has(target):
+        for entry in entries_:
+            read, target = ref_target(library.root, entry.path)
+            if not read or target is None or library.has(target):
                 continue
             if remove_file(library.root, entry.path, inode=entry.inode):
                 removed.append(entry.path)

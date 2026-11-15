@@ -132,13 +132,17 @@ def object_ids(objects_dir: Path) -> set[str]:
     except FileNotFoundError:
         return found
     for fan in fans:
-        with os.scandir(fan.path) as entries:
-            for entry in entries:
-                if not entry.name.endswith(_SUFFIX):
-                    continue
-                candidate = f"sha256:{fan.name}{entry.name[: -len(_SUFFIX)]}"
-                if record_digest(candidate) is not None:
-                    found.add(candidate)
+        try:
+            with os.scandir(fan.path) as entries:
+                names = [e.name for e in entries]
+        except OSError:
+            continue  # a fan folder that cannot be listed: fsck reports it, the index skips it
+        for name in names:
+            if not name.endswith(_SUFFIX):
+                continue
+            candidate = f"sha256:{fan.name}{name[: -len(_SUFFIX)]}"
+            if record_digest(candidate) is not None:
+                found.add(candidate)
     return found
 
 
