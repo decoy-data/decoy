@@ -22,7 +22,7 @@
 # cannot freeze or downgrade a client.
 #
 # Usage:
-#   curl -LsSf https://decoy.dev/cli/install.sh | sh
+#   curl -LsSf https://trydecoy.com/cli/install.sh | sh
 #   sh install.sh [--version X.Y.Z] [uninstall]
 #
 # Env overrides (also used by the test harness):
@@ -309,7 +309,7 @@ else
     # Likewise the offline DECOY_LOCAL_BUNDLE path has no version document: its mandatory
     # .sha256 sidecar is unsigned corruption detection only, and yank status cannot be
     # checked (no network by design) -- the pinned-key signature is still enforced.
-    URL="${BASE_URL%/}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"
+    URL="${BASE_URL%"${BASE_URL##*[!/]}"}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"
     SIGURL="$URL.sig"
     EXPECT_SHA=""
   fi
