@@ -36,7 +36,6 @@ from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
     LIBRARY_LAYOUT_NEWER,
     LIBRARY_LOCK_UNAVAILABLE,
-    LIBRARY_READ_FAILED,
     LIBRARY_WRITE_FAILED,
     RECORD_CORRUPT,
     RECORD_INVALID,
@@ -45,7 +44,13 @@ from decoy.cli.library._errors import (
     LibraryError,
     library_error,
 )
-from decoy.cli.library._fs import ensure_private_dir, read_capped, write_dotfile_once, write_once
+from decoy.cli.library._fs import (
+    ensure_private_dir,
+    entries,
+    read_capped,
+    write_dotfile_once,
+    write_once,
+)
 from decoy.cli.library._index import IndexRow
 from decoy.cli.library._paths import (
     GITATTRIBUTES,
@@ -57,7 +62,9 @@ from decoy.cli.library._paths import (
     OBJECTS,
     TMP,
     check_root_budget,
+    id_from_name,
     is_project_folder,
+    object_path,
     record_digest,
     record_prefix,
 )
@@ -66,7 +73,6 @@ from decoy.cli.library._remote import remote_filesystem
 
 __all__ = ["Library", "PutResult", "open_library"]
 
-_SUFFIX = ".json"
 # Records hold names, counts and digests only; 16 MiB is far above any real one and keeps a
 # planted file from being read whole. `put` refuses a record it could not read back.
 MAX_RECORD_BYTES = 16 * 1024 * 1024
@@ -128,13 +134,13 @@ class Library:
 
     def _sync_all(self, conn: sqlite3.Connection) -> None:
         _index.ensure_schema(conn)
-        _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+        _index.sync(conn, _index.object_ids(self.root, self._objects), self._index_row)
 
     def _ready_index(self, conn: sqlite3.Connection) -> None:
         """The schema in place; a schema just (re)built is filled from the objects at once, so
         a rebuild in the middle of a process never answers with an empty index."""
         if _index.ensure_schema(conn):
-            _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+            _index.sync(conn, _index.object_ids(self.root, self._objects), self._index_row)
 
     def _index_row(self, record_id: str) -> IndexRow | None:
         """The row for a stored object, or None when it is corrupt or of an unreadable major
@@ -173,7 +179,7 @@ class Library:
 
         def work(conn: sqlite3.Connection) -> None:
             _index.rebuild(conn)
-            _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+            _index.sync(conn, _index.object_ids(self.root, self._objects), self._index_row)
 
         _index.run_locked(self._library, work)
         self.stale = False
@@ -207,11 +213,11 @@ class Library:
                 rows = None
             if rows is not None:
                 return rows
-        loaded = (self._index_row(i) for i in sorted(_index.object_ids(self._objects)))
+        loaded = (self._index_row(i) for i in sorted(_index.object_ids(self.root, self._objects)))
         return [row for row in loaded if row is not None]
 
     def _object(self, digest: str) -> Path:
-        return self._objects / digest[:2] / f"{digest[2:]}{_SUFFIX}"
+        return object_path(self._objects, digest)
 
     def put(self, envelope: records.RecordEnvelope) -> PutResult:
         """Store a built envelope; storing it again is success. Raises `LibraryError`."""
@@ -228,11 +234,11 @@ class Library:
         data = records.encode(envelope)
         if len(data) > MAX_RECORD_BYTES:
             raise LibraryError(LIBRARY_FILE_TOO_LARGE)
-        folder = self._objects / digest[:2]
-        ensure_private_dir(self.root, folder)
-        created = write_once(self.root, folder, f"{digest[2:]}{_SUFFIX}", data, tmp_dir=self._tmp)
+        stored = self._object(digest)
+        ensure_private_dir(self.root, stored.parent)
+        created = write_once(self.root, stored.parent, stored.name, data, tmp_dir=self._tmp)
         if not created:
-            self._verify(self.root, self._object(digest), envelope.id)
+            self._verify(self.root, stored, envelope.id)
         self._index_put(_index.row_from(envelope.to_dict(), len(data), True))
         return PutResult(envelope.id, created, warnings)
 
@@ -273,26 +279,11 @@ class Library:
         digest = record_prefix(text)
         if digest is None:
             return ()
-        failure: OSError | None = None
-        names: list[str] = []
-        try:
-            names = os.listdir(self._objects / digest[:2])
-        except FileNotFoundError:
-            return ()
-        except OSError as exc:
-            failure = exc
-        if failure is not None:
-            raise library_error(LIBRARY_READ_FAILED, failure)
-        rest = digest[2:]
-        found = (f"{ID_PREFIX}{digest[:2]}{name.removesuffix(_SUFFIX)}" for name in names)
+        fan = self._objects / digest[:2]
+        listed = entries(self.root, fan) or []
+        found = (id_from_name(fan.name, e.name) for e in listed if e.kind == "file")
         return tuple(
-            sorted(
-                record_id
-                for record_id, name in zip(found, names)
-                if name.endswith(_SUFFIX)
-                and name.startswith(rest)
-                and record_digest(record_id) is not None
-            )
+            sorted(i for i in found if i is not None and i[len(ID_PREFIX) :].startswith(digest))
         )
 
     @property

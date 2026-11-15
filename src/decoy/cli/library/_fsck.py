@@ -29,7 +29,7 @@ import sqlite3
 import stat
 import sys
 import time
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -65,7 +65,8 @@ from decoy.cli.library._paths import (
     REFS,
     SCRATCH,
     TMP,
-    record_digest,
+    id_from_name,
+    object_entries,
 )
 from decoy.cli.library._store import (
     MAX_LAYOUT_BYTES,
@@ -80,7 +81,6 @@ Level = Literal["finding", "warning", "note"]
 STALE_TEMP_SECONDS = 3600  # the git `gc.pruneExpire` idea, scaled to a write's lifetime
 # Job logs are read through the one small-file reader too; a log is one run's value-free events.
 _MAX_LOG_BYTES = 64 * 1024 * 1024
-_SUFFIX = ".json"
 _POSIX = sys.platform != "win32"
 _CORRUPT_CODES = frozenset({"object_corrupt", "object_name_invalid"})
 # A `get` that could not read the file says nothing about its content: never quarantined.
@@ -178,7 +178,8 @@ class _Walk:
         objects = self.lib / OBJECTS
         if not self.folder(objects):
             return
-        for path, record_id, entry in _object_files(self.root, objects):
+        for found in object_entries(self.root, objects):
+            path, record_id, entry = found.path, found.record_id, found.entry
             if entry is None:
                 self.add("finding", "object_unreadable", path)
                 continue
@@ -297,33 +298,6 @@ class _Walk:
                 self.add("warning", "log_truncated", entry.path)
 
 
-def _object_files(root: Path, objects: Path) -> Iterator[tuple[Path, str | None, Entry | None]]:
-    """Every entry under `objects/`, with its record id, or None for a name that is not one.
-
-    A linked fan folder or object is yielded as a `link` entry and never entered; a folder that
-    cannot be listed is yielded with no entry, so the walk reports it and goes on.
-    """
-    try:
-        fans = entries(root, objects) or []
-    except LibraryError:
-        yield objects, None, None
-        return
-    for fan in fans:
-        if fan.kind != "dir":
-            yield fan.path, None, fan
-            continue
-        try:
-            items = entries(root, fan.path) or []
-        except LibraryError:
-            yield fan.path, None, None
-            continue
-        for item in items:
-            stem = item.name[: -len(_SUFFIX)] if item.name.endswith(_SUFFIX) else ""
-            candidate = f"sha256:{fan.name}{stem}"
-            ok = record_digest(candidate) is not None
-            yield item.path, candidate if ok else None, item
-
-
 def _mode_entries(root: Path, path: Path) -> list[Entry]:
     """`path` and, for a real folder, everything below it; nothing through a link."""
     found = kind_of(root, path)
@@ -389,8 +363,8 @@ def _still_corrupt(root: Path, source: Path) -> bool | None:
         return None
     if data is None:
         return None
-    expected = f"sha256:{source.parent.name}{source.name[: -len(_SUFFIX)]}"
-    if record_digest(expected) is None:
+    expected = id_from_name(source.parent.name, source.name)
+    if expected is None:
         return True  # a stray name: no record can live there
     parsed: object = None
     with contextlib.suppress(ValueError):
@@ -419,9 +393,8 @@ def _quarantine(root: Path, source: Path, inode: tuple[int, int] | None) -> Quar
             return "failed"
         folder = lib / QUARANTINE
         ensure_private_dir(root, folder)
-        base = source.parent.name + source.name if source.parent.name != OBJECTS else "stray"
-        if record_digest(f"sha256:{base[: -len(_SUFFIX)]}") is None:
-            base = "stray"
+        named = id_from_name(source.parent.name, source.name)
+        base = source.parent.name + source.name if named is not None else "stray"
         for n in range(1000):
             name = base if n == 0 else f"{base}.{n}"
             if (
