@@ -107,25 +107,35 @@ def sign_file(path: str | Path, key: Ed25519PrivateKey) -> Path:
     return sig_path
 
 
+def _public_forms(pub: Ed25519PublicKey) -> tuple[str, str]:
+    pem = pub.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+    ssh = pub.public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
+    return "".join(pem.decode("ascii").splitlines()[1:-1]), ssh.decode("ascii").split()[1]
+
+
 def pinned_forms(key: Ed25519PrivateKey) -> tuple[str, str]:
     """The two forms install.sh pins for one key: the PEM body line and the base64 ssh-ed25519 blob."""
-    pem_body = "".join(public_key_pem(key).splitlines()[1:-1])
-    ssh = key.public_key().public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
-    return pem_body, ssh.decode("ascii").split()[1]
+    return _public_forms(key.public_key())
 
 
 def check_keys(text: str) -> None:
-    """Raise ValueError unless install.sh pins one valid Ed25519 key in both forms. A placeholder
-    is checked by name because lenient base64 decoders would swallow its underscores."""
+    """Raise ValueError unless install.sh pins one valid Ed25519 key in both forms. Each pinned
+    string must equal the form re-derived from the PEM key, character for character: a lenient
+    base64 decoder would accept a stray character that ssh-keygen rejects. A placeholder is
+    checked by name for the same reason."""
     pem, ssh = _PEM_RE.search(text), _SSH_RE.search(text)
     if not pem or not ssh or _PEM_PLACEHOLDER in pem.group(1) or _SSH_PLACEHOLDER in ssh.group(1):
         raise ValueError(_KEYS_BAD)
     try:
-        a = serialization.load_pem_public_key(f"-----BEGIN PUBLIC KEY-----\n{pem.group(1)}\n-----END PUBLIC KEY-----\n".encode())
-        b = serialization.load_ssh_public_key(b"ssh-ed25519 " + ssh.group(1).encode())
+        key = serialization.load_pem_public_key(
+            f"-----BEGIN PUBLIC KEY-----\n{pem.group(1)}\n-----END PUBLIC KEY-----\n".encode()
+        )
     except Exception as exc:
         raise ValueError(_KEYS_BAD) from exc
-    if not isinstance(a, Ed25519PublicKey) or a.public_bytes_raw() != b.public_bytes_raw():
+    if not isinstance(key, Ed25519PublicKey):
+        raise ValueError(_KEYS_BAD)
+    pem_form, ssh_form = _public_forms(key)
+    if (pem.group(1), ssh.group(1)) != (pem_form, ssh_form):
         raise ValueError(_KEYS_BAD)
 
 
@@ -147,20 +157,38 @@ def sshsig_file(path: str | Path, out: str | Path, key: Ed25519PrivateKey) -> No
                     serialization.NoEncryption(),
                 )
             )
-        fd, tmpout = tempfile.mkstemp(dir=out.parent, prefix=out.name + ".", suffix=".tmp")
-        with open(path, "rb") as fin, os.fdopen(fd, "wb") as fout:
-            r = subprocess.run(
-                ["ssh-keygen", "-Y", "sign", "-f", str(keyfile), "-n", _SSHSIG_NAMESPACE],
-                stdin=fin, stdout=fout, stderr=subprocess.DEVNULL, check=False,
-            )
+        # Open the input first so a missing file cannot leak the temp file's descriptor.
+        with open(path, "rb") as fin:
+            fd, tmpout = tempfile.mkstemp(dir=out.parent, prefix=out.name + ".", suffix=".tmp")
+            with os.fdopen(fd, "wb") as fout:
+                r = subprocess.run(
+                    ["ssh-keygen", "-Y", "sign", "-f", str(keyfile), "-n", _SSHSIG_NAMESPACE],
+                    stdin=fin, stdout=fout, stderr=subprocess.DEVNULL, check=False,
+                )
         if r.returncode != 0:
             raise RuntimeError("ssh-keygen failed")
+        # mkstemp makes 0600; a sidecar is a public download like its .sig, so publish it 0644.
+        os.chmod(tmpout, 0o644)
         os.replace(tmpout, out)
         tmpout = None
     finally:
         shutil.rmtree(keydir, ignore_errors=True)
         if tmpout:
             Path(tmpout).unlink(missing_ok=True)
+
+
+def _write_atomic(out: str | Path, text: str) -> None:
+    """Write ``out`` through a temp file in its directory so a failure leaves nothing behind."""
+    out = Path(out)
+    fd, tmp = tempfile.mkstemp(dir=out.parent, prefix=out.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, out)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def _key_file(path: str) -> Ed25519PrivateKey:
@@ -178,12 +206,14 @@ def _cmd_pubkeys(args: argparse.Namespace) -> int:
 
 def _cmd_inject_keys(args: argparse.Namespace) -> int:
     text = Path(args.infile).read_text(encoding="utf-8")
-    if _PEM_PLACEHOLDER not in text or _SSH_PLACEHOLDER not in text:
-        raise ValueError("placeholder missing")
+    # Exactly one of each: replacing a second copy (a literal in a case pattern, say) would make
+    # the released installer read its own real key as a placeholder.
+    if text.count(_PEM_PLACEHOLDER) != 1 or text.count(_SSH_PLACEHOLDER) != 1:
+        raise ValueError("placeholder missing or repeated")
     pem, ssh = pinned_forms(_key_file(args.key))
     text = text.replace(_PEM_PLACEHOLDER, pem).replace(_SSH_PLACEHOLDER, ssh)
     check_keys(text)
-    Path(args.out).write_text(text, encoding="utf-8")
+    _write_atomic(args.out, text)
     return 0
 
 
