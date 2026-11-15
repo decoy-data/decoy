@@ -26,6 +26,7 @@ Every failure leaves as `LibraryError` with a code and the error class, raised a
 from __future__ import annotations
 
 import os
+import sqlite3
 import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePath
@@ -38,7 +39,12 @@ from decoy._atomic import (
     write_atomic,
     write_local_target,
 )
-from decoy._private_file import PRIVATE_EXISTS, PrivateFileError, create_private_directory
+from decoy._private_file import (
+    PRIVATE_EXISTS,
+    PrivateFileError,
+    create_private_directory,
+    open_private,
+)
 from decoy.cli.io import UnsafeFileError, read_small_file
 from decoy.cli.library._errors import (
     LIBRARY_BUSY,
@@ -53,9 +59,15 @@ from decoy.cli.library._errors import (
 __all__ = [
     "Entry",
     "Kind",
+    "anchor",
+    "checked_file",
     "ensure_private_dir",
     "entries",
+    "entry_of",
     "kind_of",
+    "nearest_existing",
+    "open_database",
+    "open_database_readonly",
     "read_capped",
     "remove_file",
     "remove_tree",
@@ -148,6 +160,66 @@ def require_dirs(root: Path, path: Path) -> bool:
 def _require_parent(root: Path, path: Path) -> tuple[tuple[str, ...], bool]:
     parts = _parts(root, path)
     return parts, _walk(root, parts[:-1])
+
+
+def anchor(path: Path) -> Path:
+    """The library root as an absolute path, links in it resolved. The root is the one path whose
+    links are followed: the user chose it, and every path below it is judged from it."""
+    return Path(path).resolve()
+
+
+def nearest_existing(path: Path) -> Path:
+    """`path`, or its nearest ancestor that exists (a root not made yet): what the filesystem
+    probe asks about. Reads no library file."""
+    for candidate in (Path(path), *Path(path).parents):
+        if os.path.exists(candidate):
+            return candidate
+    return Path(path)
+
+
+def entry_of(root: Path, path: Path) -> Entry | None:
+    """What sits at `path` (never following it), with its inode, size and mode; None when it, or
+    a folder above it, is missing. A link or non-folder above it is `library_path_unsafe`."""
+    if not _require_parent(root, path)[1]:
+        return None
+    info = _lstat(path)
+    if info is None:
+        return None
+    return Entry(
+        Path(path).name,
+        Path(path),
+        _kind(info),
+        (info.st_dev, info.st_ino),
+        info.st_size,
+        info.st_mtime,
+        stat.S_IMODE(info.st_mode),
+    )
+
+
+def checked_file(root: Path, path: Path) -> Path:
+    """`path` for a caller that must open it by name (SQLite opens its database by path): every
+    folder above it is a real folder and what is there, if anything, is a regular file.
+    `library_path_unsafe` otherwise, so the open can neither follow a link nor block on a pipe."""
+    found = entry_of(root, path)
+    if found is not None and found.kind != "file":
+        raise _unsafe()
+    return Path(path)
+
+
+def open_database(root: Path, path: Path, *, truncate: bool, timeout: float) -> sqlite3.Connection:
+    """Open the SQLite file at `path` for the library lock: `checked_file` judges the path, the
+    file is pre-created 0600 with `open_private` (emptied in place when `truncate`, so it stays
+    one inode and one lock), then SQLite opens it. Raises `PrivateFileError` or
+    `sqlite3.Error` for the index to classify, `library_path_unsafe` for a linked path."""
+    checked = checked_file(root, path)
+    open_private(checked, new_parent=False, truncate=truncate)
+    return sqlite3.connect(str(checked), timeout=timeout, isolation_level=None)
+
+
+def open_database_readonly(root: Path, path: Path) -> sqlite3.Connection:
+    """A read-only SQLite connection to the judged file at `path` (fsck never creates one)."""
+    checked = checked_file(root, path)
+    return sqlite3.connect(f"{Path(os.path.abspath(checked)).as_uri()}?mode=ro", uri=True)
 
 
 def kind_of(root: Path, path: Path) -> Kind | None:

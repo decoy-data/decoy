@@ -21,8 +21,8 @@ Banned outside `_fs.py`, by any spelling the AST shows:
 - the repo's own file helpers: `write_atomic`, `write_local_target`, `open_private`,
   `create_private_directory`, `create_exclusive`, `read_small_file`, `sqlite3.connect`.
 
-`ALLOWED` names the one seam `_fs` cannot own: SQLite opens its database by path. `_fs`
-judges that path first (`checked_file`) and the index hands the checked path to SQLite.
+No allowlist: SQLite opens its database by path, so `_fs` owns those opens too
+(`open_database`, `open_database_readonly`), each judging the path first (`checked_file`).
 
 Named limits: a name bound at run time (`getattr(os, "unlink")`) and an alias by assignment
 (`u = os.unlink`) are not seen.
@@ -55,13 +55,6 @@ _HELPERS = {
     "create_exclusive", "read_small_file",
 }  # fmt: skip
 _WRITE_MODES = set("wax+")
-
-# (module, spelling) -> why. Only the SQLite seam: `_fs.checked_file` judges the path first.
-ALLOWED: dict[tuple[str, str], str] = {
-    ("_index.py", "open_private"): "pre-creates the index 0600 at a path _fs.checked_file judged",
-    ("_index.py", "sqlite3.connect"): "SQLite opens the index by path; _fs.checked_file judged it",
-    ("_fsck.py", "sqlite3.connect"): "read-only open of an index _fs.checked_file judged",
-}
 
 
 def _dotted(node: ast.expr) -> str | None:
@@ -152,7 +145,7 @@ def hits(sources: dict[str, str]) -> dict[str, list[tuple[int, str]]]:
     for name, text in sources.items():
         if name == OWNER:
             continue
-        found = [(line, s) for line, s in offenders(text) if (name, s) not in ALLOWED]
+        found = offenders(text)
         if found:
             out[name] = found
     return out
@@ -164,16 +157,10 @@ def test_only_the_fs_module_touches_the_filesystem() -> None:
     assert hits(sources) == {}, "a library module touches the filesystem around _fs.py"
 
 
-def test_every_allowed_seam_is_live() -> None:
-    sources = _package_sources()
-    live = {(name, s) for name, text in sources.items() for _l, s in offenders(text)}
-    assert set(ALLOWED) <= live
-
-
 def test_the_fs_module_is_where_the_calls_live() -> None:
     """Control: the scan sees the owner's own calls, so an empty result elsewhere means none."""
     spellings = {s for _line, s in offenders(_package_sources()[OWNER])}
-    assert {"os.unlink", "os.rmdir", "os.lstat", "write_atomic"} <= spellings
+    assert {"os.unlink", "os.rmdir", "os.lstat", "write_atomic", "sqlite3.connect"} <= spellings
 
 
 SEEDED = """
@@ -232,7 +219,7 @@ def test_the_scan_fires_on_every_seeded_spelling() -> None:
 
 
 def test_a_seeded_module_at_any_depth_fails_the_rule() -> None:
-    """The package rule fires, for a nested module too, and the seam allowance is per module."""
+    """The package rule fires, for a nested module too."""
     sources = {
         **_package_sources(),
         "sub/_seeded.py": "from pathlib import Path\nPath('x').replace(Path('y'))\n",
