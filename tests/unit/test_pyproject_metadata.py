@@ -15,6 +15,7 @@ Three cells:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -128,3 +129,72 @@ def test_license_contract_is_fsl_with_both_files_shipped() -> None:
         assert (ROOT / name).is_file(), f"{name} is listed in license-files but missing"
     first_lines = (ROOT / "LICENSE.md").read_text(encoding="utf-8").splitlines()[:8]
     assert any("FSL-1.1-ALv2" in line for line in first_lines)
+
+
+# RG-L: the license id and the install story must read the same in every doc a user opens.
+LICENSE_DOCS = (
+    "LICENSE.md",
+    "NOTICE",
+    "LICENSING.md",
+    "README.md",
+    "docs/install.md",
+    "docs/release/versioning.md",
+)
+# Other license ids are legal only in a sentence that states history or conversion. LICENSE.md
+# is the verbatim FSL text and NOTICE's third-party table lists dependency licenses, so only
+# the prose files are scanned. Adding an entry is a visible change here, never a silent one.
+HISTORY_SENTENCES = (
+    "Apache 2.0 Future",
+    "stay Apache-2.0",
+    "becomes Apache-2.0",
+    "licensed under Apache-2.0 on the second anniversary",
+    "under Apache-2.0. Newer",
+    "becomes open source (Apache-2.0)",
+    "shipped under Apache-2.0",
+    "converts to the Apache License 2.0",
+)
+OTHER_LICENSE_ID = re.compile(r"Apache|\bMIT\b|GPL|\bBSD|\bMPL|BUSL|\bBSL")
+SCANNED_FOR_OTHER_IDS = (
+    "NOTICE",
+    "LICENSING.md",
+    "README.md",
+    "docs/install.md",
+    "docs/release/versioning.md",
+)
+
+
+def test_one_license_id_across_docs() -> None:
+    """AT-L1: every license doc names FSL-1.1-ALv2, and any other license id sits in an
+    allowlisted history or conversion sentence."""
+    for name in LICENSE_DOCS:
+        text = (ROOT / name).read_text(encoding="utf-8")
+        assert "FSL-1.1-ALv2" in text, f"{name} does not name FSL-1.1-ALv2"
+    assert len(HISTORY_SENTENCES) == 8, "the history allowlist changed; review the new sentence"
+    used: set[str] = set()
+    for name in SCANNED_FOR_OTHER_IDS:
+        in_notice_table = False
+        for number, line in enumerate((ROOT / name).read_text(encoding="utf-8").splitlines(), 1):
+            if name == "NOTICE" and line.startswith("THIRD-PARTY NOTICES"):
+                in_notice_table = True
+            if in_notice_table or not OTHER_LICENSE_ID.search(line):
+                continue
+            hits = [s for s in HISTORY_SENTENCES if s in line]
+            rest = line
+            for sentence in hits:
+                rest = rest.replace(sentence, "")
+            assert hits and not OTHER_LICENSE_ID.search(rest), (
+                f"{name}:{number} names another license outside the allowlist: {line.strip()!r}"
+            )
+            used.update(hits)
+    assert used == set(HISTORY_SENTENCES), (
+        f"unused allowlist entries: {set(HISTORY_SENTENCES) - used}"
+    )
+
+
+def test_versioning_has_no_pypi_or_engine_floor() -> None:
+    """AT-L1: versioning.md describes the bundle release and the exact engine pin, never a
+    PyPI publish or a `>=` engine floor."""
+    text = (ROOT / "docs/release/versioning.md").read_text(encoding="utf-8")
+    assert not re.search(r"pypi|trusted[- ]publishing", text, re.IGNORECASE)
+    assert not re.search(r"decoy-engine\s*>=", text)
+    assert "decoy-engine==" in text
