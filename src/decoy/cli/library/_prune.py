@@ -15,20 +15,18 @@ A degraded library refuses both with `library_lock_unavailable`.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from decoy.cli.library import _index, _refs
-from decoy.cli.library._errors import LIBRARY_LOCK_UNAVAILABLE, LibraryError
-from decoy.cli.library._paths import OBJECTS, REFS
+from decoy.cli.library import _index
+from decoy.cli.library._errors import LIBRARY_LOCK_UNAVAILABLE, LIBRARY_PATH_UNSAFE, LibraryError
+from decoy.cli.library._fs import remove_file
+from decoy.cli.library._inventory import take_inventory
 
 if TYPE_CHECKING:
-    import sqlite3
-
     from decoy.cli.library._index import IndexRow
     from decoy.cli.library._store import Library
 
@@ -60,6 +58,7 @@ class PrunePlan:
     delete: tuple[str, ...]  # oldest first
     protected: tuple[str, ...]  # matched a rule but reachable from a ref or a kept record
     young: tuple[str, ...]  # matched a rule but inside the grace period
+    unexplained: int = 0  # entries prune cannot account for; `--yes` refuses while any exist
 
 
 @dataclass(frozen=True)
@@ -93,19 +92,6 @@ def _matches(rows: Sequence[IndexRow], rule: Rule, now: datetime) -> set[str]:
     return chosen
 
 
-def _reachable(roots: Iterable[str], rows: Sequence[IndexRow]) -> set[str]:
-    edges = {row.id: [dst for _rel, dst in row.links] for row in rows}
-    seen: set[str] = set()
-    stack = list(roots)
-    while stack:
-        rid = stack.pop()
-        if rid in seen:
-            continue
-        seen.add(rid)
-        stack.extend(edges.get(rid, ()))
-    return seen
-
-
 def _plan(
     rows: Sequence[IndexRow], ref_ids: Iterable[str], rules: Sequence[Rule], now: datetime
 ) -> PrunePlan:
@@ -116,7 +102,7 @@ def _plan(
     young = {rid for rid in matched if now - _when(by_id[rid]) < GRACE}
     candidates = matched - young
     kept = set(by_id) - candidates  # opaque, newer, young and unmatched records are roots too
-    reachable = _reachable([*ref_ids, *kept], rows)
+    reachable = _index.reachable([*ref_ids, *kept], rows)
     ordered = sorted((by_id[rid] for rid in candidates), key=_order)
     return PrunePlan(
         delete=tuple(r.id for r in ordered if r.id not in reachable),
@@ -125,49 +111,47 @@ def _plan(
     )
 
 
-def _locked_rows(library: Library, conn: sqlite3.Connection) -> tuple[list[IndexRow], list[str]]:
-    _index.ensure_schema(conn)
-    _index.sync(
-        conn, _index.object_ids(library.root, library.library_dir / OBJECTS), library.index_row
-    )
-    refs = [
-        rid
-        for _entry, _read, rid in _refs.iter_refs(library.root, library.library_dir / REFS)
-        if rid is not None
-    ]
-    return _index.all_rows(conn), refs
-
-
 def _require_lockable(library: Library) -> None:
     if library.degraded is not None:
         raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)
 
 
 def prune_preview(library: Library, rules: Sequence[Rule], *, now: datetime) -> PrunePlan:
-    """The exact records `prune_apply` would delete now; deletes nothing."""
+    """The exact records `prune_apply` would delete now, and how many entries would stop it;
+    deletes nothing."""
     _require_lockable(library)
     with _index.locked(library.library_dir) as conn:
-        rows, refs = _locked_rows(library, conn)
-        return _plan(rows, refs, rules, now)
+        stock = take_inventory(library, conn)
+        plan = _plan(stock.rows, stock.refs.values(), rules, now)
+        return replace(plan, unexplained=stock.unexplained)
 
 
 def prune_apply(library: Library, rules: Sequence[Rule], *, now: datetime) -> PruneReport:
-    """Delete what the plan resolves to under the lock; report what could not be removed."""
+    """Delete what the plan resolves to under the lock; report what could not be removed.
+
+    Refuses with `library_unexplained_entries` while any ref or object cannot be accounted
+    for (a root it cannot see could protect a candidate). Each file goes through `_fs`, so a
+    linked folder on the way is `library_path_unsafe` and nothing outside the root is touched.
+    """
     _require_lockable(library)
     deleted: list[str] = []
     left: list[str] = []
     with _index.locked(library.library_dir) as conn:
-        rows, refs = _locked_rows(library, conn)
-        for rid in _plan(rows, refs, rules, now).delete:
+        stock = take_inventory(library, conn)
+        stock.require_explained()
+        for rid in _plan(stock.rows, stock.refs.values(), rules, now).delete:
             path = library.object_path(rid)
             if path is None:
                 continue
+            gone = True
             try:
-                os.unlink(path)
-            except FileNotFoundError:
-                pass  # already gone: drop the row below
-            except OSError:
-                left.append(rid)  # held open (Windows) or not removable: keep file and row
+                remove_file(library.root, path)
+            except LibraryError as exc:
+                if exc.code == LIBRARY_PATH_UNSAFE:
+                    raise
+                gone = False  # held open (Windows) or not removable: keep file and row
+            if not gone:
+                left.append(rid)
                 continue
             _index.delete_row(conn, rid)
             deleted.append(rid)

@@ -38,6 +38,7 @@ from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
     LIBRARY_LAYOUT_NEWER,
     LIBRARY_LOCK_UNAVAILABLE,
+    LIBRARY_PATH_UNSAFE,
     LIBRARY_WRITE_FAILED,
     RECORD_CORRUPT,
     RECORD_INVALID,
@@ -49,6 +50,7 @@ from decoy.cli.library._errors import (
 from decoy.cli.library._fs import (
     ensure_private_dir,
     entries,
+    kind_of,
     read_capped,
     write_dotfile_once,
     write_once,
@@ -136,6 +138,16 @@ class Library:
             self.degraded = LOCK_UNAVAILABLE
         elif code is not None:
             self.stale = True
+
+    @property
+    def present(self) -> bool:
+        """Whether `library/` exists; `library_path_unsafe` when it is a link or not a folder."""
+        found = kind_of(self.root, self._library)
+        if found is None:
+            return False
+        if found != "dir":
+            raise LibraryError(LIBRARY_PATH_UNSAFE)
+        return True
 
     def object_path(self, record_id: str) -> Path | None:
         """Where the object file for this full id lives (whether or not it exists)."""

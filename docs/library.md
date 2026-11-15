@@ -183,9 +183,19 @@ take `--library DIR`.
   - a record younger than one hour (one a running command may still be linking to);
   - a record of a kind this Decoy does not know, or one written by a newer Decoy; their links
     still protect what they point at.
+
+  Prune first accounts for every ref and record file. If one cannot be read (a ref it cannot
+  parse, a record file with no index row, a link among them), it cannot know what that entry
+  protects: the preview says how many such entries there are and `--yes` refuses with
+  `library_unexplained_entries` (exit 3) until `decoy library fsck` explains or repairs them. A
+  ref may start with a byte order mark.
 - `decoy library clean [--yes]` deletes everything in `.decoy/scratch/` (sample output and
   staging). It never touches records, logs, or anything outside the library: vault files, keys,
-  targets and `out/` run folders stay.
+  targets and `out/` run folders stay. A link in scratch is removed as an entry; a `scratch/`
+  that is itself a link is refused.
+
+Neither command deletes through a linked `library/`, `objects/` or `scratch/` folder: that is
+`library_path_unsafe` (exit 3) and nothing is deleted.
 
 Both work under the library lock and refuse in degraded mode (`library_lock_unavailable`, exit
 3). A file another program holds open (on Windows) is listed as left behind, the rest is
@@ -196,7 +206,11 @@ deleted, and the command exits 4; run it again once the file is closed.
 `decoy library export --output FILE [--kind K] [--since D] [--ref R] [--include-logs] [--keep-paths]`
 writes one self-verifying JSON Lines file (`decoy-library-export/v1`) that the platform can
 import. The file is 0600. `--ref R` exports R (a ref, an id or `KIND/latest`) and every record it
-links to; `--kind` and `--since` narrow the selection. Nothing under `scratch/` is ever exported.
+links to; `--kind` and `--since` narrow a whole-library export and cannot be combined with
+`--ref`. Nothing under `scratch/` is ever exported. The output may not be a file inside
+`library/` or `scratch/`, or a symlink (`export_destination_unsafe`, exit 1). Like prune, export
+refuses with `library_unexplained_entries` while any ref or record file cannot be accounted for
+(for example a record written in a newer envelope format), rather than leave it out silently.
 
 By default an export carries no raw path: each record's declared path fields are reduced to file
 names, which gives that record a new id, and the line names the original id as `source_id`; links

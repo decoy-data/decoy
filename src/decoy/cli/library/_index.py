@@ -357,6 +357,25 @@ def select(
     return sorted(picked, key=lambda r: (r.created_at, r.id))
 
 
+def reachable(roots: Iterable[str], rows: Iterable[IndexRow]) -> set[str]:
+    """Every id reachable from `roots` along record links: git's reachability from refs.
+
+    The one link-closure walk (prune keeps it, export `--ref` writes it). An id with no row is
+    included but has no edges; callers refuse to act while any stored object has no row
+    (`_inventory`), so a missing row never hides a link.
+    """
+    edges = {row.id: [dst for _rel, dst in row.links] for row in rows}
+    seen: set[str] = set()
+    stack = list(roots)
+    while stack:
+        rid = stack.pop()
+        if rid in seen:
+            continue
+        seen.add(rid)
+        stack.extend(edges.get(rid, ()))
+    return seen
+
+
 def latest(rows: Iterable[IndexRow], **filters: str | None) -> str | None:
     """`latest` is virtual (plan 4.5): the largest `(created_at, id)` of the matching rows."""
     picked = select(rows, **filters)

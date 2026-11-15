@@ -53,9 +53,7 @@ def prune_command(
     """Delete records you no longer keep. Never one a ref or a kept record links to, one younger
     than an hour, or one of a kind this Decoy does not know. With no options, applies the
     `keep_last` rules in `.decoy/library.yaml`."""
-    from decoy.cli.library import _prune
-    from decoy.cli.library._errors import LibraryError
-    from decoy.cli.library._paths import LIBRARY
+    from decoy.cli.library import LibraryError, PruneRule, policy_rules, prune_apply, prune_preview
 
     cmd = start("library prune")
     state = cmd.state
@@ -64,16 +62,23 @@ def prune_command(
     age = None if older_than is None else _duration(cmd, older_than)
     root = cmd.root(library)
     opened = cmd.library(root.path)
-    if not (root.path / LIBRARY).is_dir():
+    caught: LibraryError | None = None
+    present = False
+    try:
+        present = opened.present
+    except LibraryError as exc:
+        caught = exc
+    if caught is not None:
+        cmd.fail_library(caught)
+    if not present:
         _say(state, "no library at", str(root.path))
         raise typer.Exit(code=EXIT_OK)
-    caught: LibraryError | None = None
     rules: list = []
     try:
         if kind is None and keep_last is None and age is None:
-            rules = _prune.policy_rules(root.path)
+            rules = policy_rules(root.path)
         else:
-            rules = [_prune.Rule(kind=kind, keep_last=keep_last, older_than=age)]
+            rules = [PruneRule(kind=kind, keep_last=keep_last, older_than=age)]
     except LibraryError as exc:
         caught = exc
     if caught is not None:
@@ -84,9 +89,9 @@ def prune_command(
     now = datetime.now(timezone.utc)
     try:
         if not yes:
-            plan = _prune.prune_preview(opened, rules, now=now)
+            plan = prune_preview(opened, rules, now=now)
         else:
-            report = _prune.prune_apply(opened, rules, now=now)
+            report = prune_apply(opened, rules, now=now)
     except LibraryError as exc:
         caught = exc
     if caught is not None:
@@ -99,6 +104,12 @@ def prune_command(
             f"{len(plan.delete)} to delete, {len(plan.protected)} kept by a ref or a link, "
             f"{len(plan.young)} younger than an hour; rerun with --yes to delete",
         )
+        if plan.unexplained:
+            _say(
+                state,
+                f"{plan.unexplained} entries prune cannot account for; --yes refuses until "
+                "`decoy library fsck` explains or repairs them",
+            )
         raise typer.Exit(code=EXIT_OK)
     for rid in report.deleted:
         _say(state, "deleted", rid)
@@ -116,27 +127,28 @@ def clean_command(
 ) -> None:
     """Delete everything in `.decoy/scratch/` (sample output and staging). Records, logs and
     anything outside the library are never touched."""
-    from decoy.cli.library._errors import LIBRARY_LOCK_UNAVAILABLE, LibraryError
-    from decoy.cli.library._paths import SCRATCH
-    from decoy.cli.library._scratch import clean_all
+    from decoy.cli.library import LibraryError, clean_all, clean_preview
 
     cmd = start("library clean")
     state = cmd.state
     root = cmd.root(library)
     opened = cmd.library(root.path)
-    scratch = root.path / SCRATCH
-    entries = sorted(scratch.iterdir()) if scratch.is_dir() else []
+    caught: LibraryError | None = None
+    entries: list = []
+    try:
+        entries = clean_preview(opened)
+    except LibraryError as exc:
+        caught = exc
+    if caught is not None:
+        cmd.fail_library(caught)
     if not entries:
         _say(state, "scratch is empty")
         raise typer.Exit(code=EXIT_OK)
-    if opened.degraded is not None:
-        cmd.fail_library(LibraryError(LIBRARY_LOCK_UNAVAILABLE))
     if not yes:
         for entry in entries:
-            _say(state, "would delete", f"{SCRATCH}/{entry.name}")
+            _say(state, "would delete", f"scratch/{entry.name}")
         _say(state, f"{len(entries)} to delete; rerun with --yes to delete")
         raise typer.Exit(code=EXIT_OK)
-    caught: LibraryError | None = None
     results: list = []
     try:
         results = clean_all(opened)
@@ -146,8 +158,8 @@ def clean_command(
         cmd.fail_library(caught)
     left = 0
     for name, report in results:
-        _say(state, "deleted", f"{SCRATCH}/{name}", f"({report.removed} files)")
+        _say(state, "deleted", f"scratch/{name}", f"({report.removed} files)")
         for skipped in report.skipped:
             left += 1
-            _say(state, "left behind", f"{SCRATCH}/{name}/{skipped}")
+            _say(state, "left behind", f"scratch/{name}/{skipped}")
     raise typer.Exit(code=EXIT_FINDINGS if left else EXIT_OK)

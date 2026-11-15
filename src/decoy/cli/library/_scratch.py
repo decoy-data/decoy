@@ -40,7 +40,7 @@ from decoy.cli.library._errors import (
     LibraryError,
     library_error,
 )
-from decoy.cli.library._fs import clear_tree, kind_of, replace_file
+from decoy.cli.library._fs import Entry, clear_tree, entries, kind_of, remove_file, replace_file
 from decoy.cli.library._paths import SCRATCH
 
 if TYPE_CHECKING:
@@ -150,20 +150,45 @@ def allocate(
         fresh.__exit__(None, None, None)
 
 
-def clean_all(library: Library) -> list[tuple[str, DeleteReport]]:
-    """Remove everything under `scratch/`, entry by entry, under the library lock
-    (`decoy library clean --yes`). Returns each entry's name and what was left behind. Raises
-    `LibraryError` (`library_lock_unavailable`, `library_busy`)."""
-    from decoy.cli.library import _index
+def clean_preview(library: Library) -> list[Entry]:
+    """Every entry of `scratch/`, judged without following it (`decoy library clean`).
+
+    Empty when there is no `scratch/`; `library_path_unsafe` when `scratch/` is a link or not a
+    folder; `library_lock_unavailable` for a degraded library, which `clean --yes` cannot lock.
+    """
     from decoy.cli.library._errors import LIBRARY_LOCK_UNAVAILABLE
 
-    if library.degraded is not None:
-        raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)
     scratch = library.root / SCRATCH
-    if not scratch.is_dir():
+    if kind_of(library.root, scratch) is None:
         return []
+    found = entries(library.root, scratch) or []
+    if found and library.degraded is not None:
+        raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)
+    return found
+
+
+def clean_all(library: Library) -> list[tuple[str, DeleteReport]]:
+    """Remove everything under `scratch/`, entry by entry, under the library lock
+    (`decoy library clean --yes`). A link is removed as an entry, never followed; a real folder
+    is cleared through `_fs.clear_tree`. Returns each entry's name and what was left behind.
+    Raises `LibraryError` (`library_path_unsafe`, `library_lock_unavailable`, `library_busy`)."""
+    from decoy.cli.library import _index
+
     results: list[tuple[str, DeleteReport]] = []
+    found = clean_preview(library)
+    if not found:
+        return results
     with _index.locked(library.library_dir):
-        for entry in sorted(scratch.iterdir()):
-            results.append((entry.name, library.delete_scratch(entry)))
+        for entry in clean_preview(library):
+            if entry.kind == "dir":
+                results.append((entry.name, delete_tree(library.root, entry.path)))
+                continue
+            report = DeleteReport(0, (entry.name,))
+            try:
+                if remove_file(library.root, entry.path, inode=entry.inode):
+                    report = DeleteReport(1, ())
+            except LibraryError as exc:
+                if exc.code == LIBRARY_PATH_UNSAFE:
+                    raise
+            results.append((entry.name, report))
     return results

@@ -150,11 +150,13 @@ def test_an_unreadable_ref_makes_prune_refuse(root: Path) -> None:
 
 
 def test_an_unreadable_kept_record_makes_prune_refuse(root: Path) -> None:
+    """A record that arrives unreadable (a `git pull` of a damaged file) never gets an index
+    row, so its links are invisible; prune must not take that as "nothing protects the target"."""
     base = _put(root, sample(1, 1))[0]
-    linker = _put(
-        root, run_result(2, "succeeded", [table(0, "orders", 3)], links=[("baseline", base)])
-    )[0]
-    object_path(root, linker).write_bytes(b"{not a record")  # no index row, still a root
+    linker = run_result(2, "succeeded", [table(0, "orders", 3)], links=[("baseline", base)])
+    target = object_path(root, linker.id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(records.encode(linker)[:-40])  # cut short: unreadable, never indexed
     result = _cli("prune", "--kind", "sample-run", "--keep-last", "0", "--yes")
     assert result.exit_code == EXIT_RUNTIME, result.output
     assert "library_unexplained_entries" in result.output

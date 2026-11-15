@@ -292,26 +292,25 @@ def write_dotfile_once(root: Path, path: Path, data: bytes) -> bool:
     present = _require_parent(root, path)[1]
     if not present:
         raise LibraryError(LIBRARY_WRITE_FAILED, "FileNotFoundError")
+    return _write_local(path, data, WriteMode.CREATE_ONCE)
+
+
+def write_user_file(path: Path, data: bytes) -> None:
+    """Write a file at a path the user named (`export --output`), replacing it in one step,
+    0600. The caller checks the destination (`_exporting.check_destination`)."""
+    _write_local(path, data, WriteMode.REPLACE)
+
+
+def _write_local(path: Path, data: bytes, mode: WriteMode) -> bool:
     failure: AtomicWriteError | None = None
     created = False
     try:
-        created = write_local_target(path, data, WriteMode.CREATE_ONCE)
+        created = write_local_target(path, data, mode)
     except AtomicWriteError as exc:
         failure = exc
     if failure is not None:
         raise library_error(LIBRARY_WRITE_FAILED, failure)
     return created
-
-
-def write_user_file(path: Path, data: bytes) -> None:
-    """Write a file at a path the user named (`export --output`), replacing it in one step, 0600."""
-    failure: AtomicWriteError | None = None
-    try:
-        write_local_target(path, data, WriteMode.REPLACE)
-    except AtomicWriteError as exc:
-        failure = exc
-    if failure is not None:
-        raise library_error(LIBRARY_WRITE_FAILED, failure)
 
 
 def read_capped(root: Path, path: Path, max_bytes: int) -> bytes | None:
