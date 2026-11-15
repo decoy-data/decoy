@@ -156,8 +156,9 @@ def _usage(args: argparse.Namespace) -> str | None:
         return "--note must be one line of at most 200 characters with no '|'"
     if args.date is not None and not _DATE.fullmatch(args.date):
         return "--date must be YYYY-MM-DD"
-    if args.base_ref.startswith("-"):
-        return "--base-ref must be a commit, not an option"
+    # Empty would make `git show` read the index, so a staged edit would pass as committed.
+    if not args.base_ref or args.base_ref.startswith("-"):
+        return "--base-ref must be a commit, not an option or empty"
     return None
 
 

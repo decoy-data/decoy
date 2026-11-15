@@ -112,8 +112,9 @@ def test_summary_not_matching_the_candidate_is_refused(repo, capsys) -> None:
 def test_red_or_partial_runs_are_refused(repo, capsys) -> None:
     steps = dict.fromkeys(cand.SMOKE_STEPS, "pass")
     red = {**steps, "native": "fail"}
+    left = {**steps, "cleanup": "fail"}
     partial = dict.fromkeys(cand.SMOKE_STEPS[:4], "pass")
-    for bad in (red, partial):
+    for bad in (red, left, partial):
         rc, err = _record(repo, _summary(steps=bad), capsys)
         assert (rc, err.split()[0]) == (1, "smoke_not_green")
 
@@ -184,3 +185,4 @@ def test_run_and_note_cells_are_usage_checked(repo, capsys) -> None:
     )  # fmt: skip
     assert rc == 2
     assert _record(repo, _summary(), capsys, "--base-ref=--output=x")[0] == 2
+    assert _record(repo, _summary(), capsys, "--base-ref=")[0] == 2

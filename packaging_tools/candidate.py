@@ -31,8 +31,10 @@ INSTALLERS = ("install.sh", "install.ps1")
 VERSION_DOCUMENT = "version.json"
 # The smoke summary `smoke_install.py --from-dist` prints and `record_smoke.py` reads (6.4).
 SUMMARY_SCHEMA = "decoy-release-smoke/v1"
+# `cleanup` is last and set after the run: it passes only when the temp root (and the mask
+# secret in it) is gone, so a run that left it can never be recorded as green.
 SMOKE_STEPS = ("candidate", "version_document", "installer_key", "install", "bundle_key",
-               "version", "doctor", "native", "template")  # fmt: skip
+               "version", "doctor", "native", "template", "cleanup")  # fmt: skip
 # Targets the smoke refuses and the log never takes this cycle, with the reason (5.4, Q5).
 GATED_TARGETS = {
     "windows-x86_64": "Windows is gated off this cycle (decoy.distribution.targets) and "

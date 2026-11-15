@@ -549,7 +549,7 @@ class _Candidate:
             "from decoy.distribution import release_key\n"
             "sys.stdout.write(release_key.pinned_public_pem())"
         )
-        if pem is None or pem.strip() != self.pub_pem.strip():
+        if pem is None or _pem_body(pem) != _pem_body(self.pub_pem):
             raise StepFailed("smoke_placeholder_key")
         engine = self._bundle_python("import decoy_engine; print(decoy_engine.__version__)")
         if not engine:
@@ -669,7 +669,7 @@ def candidate_main(argv: list[str]) -> int:
     root = Path(tempfile.mkdtemp(prefix="decoy-smoke-"))
     run = _Candidate(args, root)
     try:
-        for step in SMOKE_STEPS:
+        for step in SMOKE_STEPS[:-1]:  # the last, cleanup, is decided after the finally
             try:
                 getattr(run, step)()
             except StepFailed as failure:
@@ -685,8 +685,9 @@ def candidate_main(argv: list[str]) -> int:
     finally:
         shutil.rmtree(root, ignore_errors=True)
     removed = not root.exists()
+    steps["cleanup"] = "pass" if removed else "fail"
     if not removed:
-        _err("FAIL smoke_temp_root_left: the temp root (and its secret) could not be removed")
+        _err("cleanup: FAIL smoke_temp_root_left (the temp root and its secret are still there)")
     summary = {
         "schema": SUMMARY_SCHEMA,
         "platform": args.target,
@@ -697,7 +698,7 @@ def candidate_main(argv: list[str]) -> int:
         "seconds": round(time.monotonic() - started, 1),
     }
     print(json.dumps(summary, sort_keys=True))
-    green = list(steps) == list(SMOKE_STEPS) and set(steps.values()) == {"pass"} and removed
+    green = set(steps) == set(SMOKE_STEPS) and set(steps.values()) == {"pass"}
     return 0 if green else 1
 
 
