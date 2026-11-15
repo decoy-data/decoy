@@ -38,6 +38,7 @@ from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
     LIBRARY_LAYOUT_NEWER,
     LIBRARY_LOCK_UNAVAILABLE,
+    LIBRARY_PATH_UNSAFE,
     LIBRARY_WRITE_FAILED,
     RECORD_CORRUPT,
     RECORD_INVALID,
@@ -49,6 +50,8 @@ from decoy.cli.library._errors import (
 from decoy.cli.library._fs import (
     ensure_private_dir,
     entries,
+    entry_of,
+    kind_of,
     read_capped,
     write_dotfile_once,
     write_once,
@@ -122,7 +125,7 @@ class Library:
         self.filesystem = probe(self.root)
         if self.filesystem is not None:
             self.degraded = REMOTE_FILESYSTEM
-        elif self._library.is_dir():
+        elif self.present:
             self._catch_up()
 
     def _catch_up(self) -> None:
@@ -157,7 +160,10 @@ class Library:
         if isinstance(decoded, records.RecordNeedsNewer) and not decoded.verified:
             return None
         digest = record_digest(record_id) or ""
-        size = os.stat(self._object(digest)).st_size
+        found = entry_of(self.root, self._object(digest))
+        if found is None or found.kind != "file":
+            return None
+        size = found.size
         return _index.row_from(decoded.raw, size, isinstance(decoded, records.DecodedRecord))
 
     def _index_put(self, row: IndexRow) -> None:
@@ -197,7 +203,7 @@ class Library:
     def has(self, record_id: str) -> bool:
         """Whether an object file exists for this full id (no read)."""
         digest = record_digest(record_id)
-        return digest is not None and self._object(digest).is_file()
+        return digest is not None and self._stored(digest)
 
     def rebuild_index(self) -> None:
         """Drop the index and rebuild it from the object files, under the lock (fsck --repair).
@@ -224,7 +230,7 @@ class Library:
         return _index.latest(self._all_rows(), kind=kind, pipeline=pipeline, table=table)
 
     def _all_rows(self) -> list[IndexRow]:
-        if not self._library.is_dir():
+        if not self.present:
             return []
         if self.degraded is None and not self.stale:
 
@@ -242,6 +248,23 @@ class Library:
         loaded = (self._index_row(i) for i in sorted(_index.object_ids(self.root, self._objects)))
         return [row for row in loaded if row is not None]
 
+    @property
+    def present(self) -> bool:
+        """Whether `library/` exists; `library_path_unsafe` when it is a link or not a folder,
+        so nothing under an outside folder is read, locked or written."""
+        found = kind_of(self.root, self._library)
+        if found is None:
+            return False
+        if found != "dir":
+            raise LibraryError(LIBRARY_PATH_UNSAFE)
+        return True
+
+    def _stored(self, digest: str) -> bool:
+        """An object file for these digits: a regular file reached through real folders (a
+        linked object or folder is not stored; a link above it is `library_path_unsafe`)."""
+        found = entry_of(self.root, self._object(digest))
+        return found is not None and found.kind == "file"
+
     def _object(self, digest: str) -> Path:
         return object_path(self._objects, digest)
 
@@ -254,7 +277,7 @@ class Library:
             raise LibraryError(RECORD_INVALID)
         for link in envelope.links:
             target = record_digest(link.id)
-            if target is None or not self._object(target).is_file():
+            if target is None or not self._stored(target):
                 raise LibraryError(RECORD_LINK_MISSING)
         warnings = self.prepare()
         data = records.encode(envelope)
