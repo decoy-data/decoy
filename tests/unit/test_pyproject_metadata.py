@@ -15,6 +15,7 @@ Three cells:
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -109,8 +110,16 @@ def test_engine_dependency_pinned() -> None:
 
     req = Requirement(engine_deps[0])
     floors = [s for s in req.specifier if s.operator in (">=", "==")]
-    assert [str(s) for s in floors] == ["==0.26.0"], (
-        f"decoy-engine must be pinned exactly ==0.26.0 (engine release 0.26.0); "
+    # lock_version.sh owns the engine tag, so a repin edits one place and this test follows.
+    spec = subprocess.run(
+        ["bash", str(PYPROJECT.parent / "scripts" / "dev" / "lock_version.sh"), "--engine-spec"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    pinned = spec.rsplit("@v", 1)[1]
+    assert [str(s) for s in floors] == [f"=={pinned}"], (
+        f"decoy-engine must be pinned exactly =={pinned} (the lock_version.sh engine tag); "
         f"got specifier {str(req.specifier)!r}"
     )
 
