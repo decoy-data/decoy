@@ -31,7 +31,7 @@ table or column name) are declared per command and collapse to `*`. Two lists ke
 apart from "key may be absent". An opaque key (`run` `/warnings`, `info` `/native_companion`) is always present
 and only its content varies, so the snapshot pins its declared type (`array`, `null|object`) and a run that loses
 the key changes the snapshot. An optional key (`run` `/native_route`, `/notify`, `/report`, `/subset`) may be
-absent, depending on the flags used, and is left out, so the snapshot covers the listed paths only. Commands with no good input
+absent, depending on the flags used, and is left out, so the snapshot covers the listed paths only. The fixture run also pins `run` `outputs` and `output_dir` (set in `run/_context.py`) and the nullable `project` and `pipeline` (set in `_layout.py`) as present, which is stricter than the CLI's contract. Commands with no good input
 in a test environment (`doctor`, `schema`, `setup`, `upgrade`) carry a stated exemption. Regenerate with
 `python -m tests.e2e.release_freeze.write_shapes`, review the diff, and add a `CHANGELOG.md` entry: the
 `shape-changelog` CI job refuses a pull request that changes the snapshot without one.
