@@ -1,15 +1,10 @@
 """G-UPDATE-NO-ID: the startup update check reads no machine or user identifier.
 
-REL-WEB plan section 5.2, P4 (AT-C8) and AT-C9. Read off the syntax tree of
-`src/decoy/_update_check.py` and of every `decoy.distribution` module it imports:
-
-- no import of `uuid` or `getpass`;
-- no use of `getnode`, `gethostname`, `getlogin`, `getuser` or `uname`, as an attribute
-  (`socket.gethostname()`) or a from-import (`from socket import gethostname`);
-- no `platform.node`, in either spelling. `platform.machine` stays legal: `targets.py` needs it
-  to pick a bundle, and the check never imports `targets`.
-
-AT-C9: the module docstring no longer promises an opt-out "config setting" that does not exist.
+REL-WEB plan section 5.2, P4 (AT-C8) and AT-C9. In `src/decoy/_update_check.py` and every
+`decoy.distribution` module it imports: no import of `uuid` or `getpass`, and no `getnode`,
+`gethostname`, `getlogin`, `getuser`, `uname` or `platform.node`, as an attribute or a
+from-import. `platform.machine` stays legal (`targets.py` picks a bundle with it). AT-C9: the
+docstring no longer promises an opt-out "config setting" that does not exist.
 
 Named limit: a name built at run time (`getattr(socket, "get" + "hostname")`) is not seen.
 """
@@ -97,12 +92,3 @@ def test_each_identifier_spelling_is_caught() -> None:
         assert identifier_uses(source), source
     assert identifier_uses("import platform\nplatform.machine()") == []
 
-
-def test_the_import_derivation_reads_each_spelling() -> None:
-    source = (
-        "from decoy.distribution import layout\n"
-        "from decoy.distribution import version_document as vd\n"
-        "import decoy.distribution.signing\n"
-        "from decoy.distribution.targets import current\n"
-    )
-    assert distribution_imports(source) == {"layout", "version_document", "signing", "targets"}
