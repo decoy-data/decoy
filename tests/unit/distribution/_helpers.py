@@ -30,7 +30,9 @@ def _skip_reason() -> str:
     return ""
 
 
-needs_ssh_keygen = pytest.mark.skipif(bool(_skip_reason()), reason=_skip_reason() or "ssh-keygen ok")
+needs_ssh_keygen = pytest.mark.skipif(
+    bool(_skip_reason()), reason=_skip_reason() or "ssh-keygen ok"
+)
 
 
 def private_pem(key: Ed25519PrivateKey, fmt=serialization.PrivateFormat.PKCS8) -> bytes:
@@ -66,7 +68,12 @@ def _signed_release(tmp_path: Path) -> SimpleNamespace:
         f.write_bytes(body)
         files.append(f)
         assert run_signer("sign", str(f), key_file=key_file).returncode == 0
-        assert run_signer("sshsig", "--in", str(f), "--out", f"{f}.sshsig", key_file=key_file).returncode == 0
+        assert (
+            run_signer(
+                "sshsig", "--in", str(f), "--out", f"{f}.sshsig", key_file=key_file
+            ).returncode
+            == 0
+        )
     return SimpleNamespace(key=key, key_file=key_file, install_sh=install_sh, files=files)
 
 

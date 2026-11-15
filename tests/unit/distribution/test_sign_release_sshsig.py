@@ -79,6 +79,12 @@ def test_at_k2_check_keys_refuses_bad_installers_and_passes_injected(tmp_path):
         "both placeholders left": INSTALL_SH.read_text(),
         "malformed ssh": re.sub(r"(PINNED_SSH_PUBKEY=')[^']*", r"\1AAAAnotakey", good),
         "malformed pem": good.replace(sign_release.pinned_forms(a)[0], "bm90LXBlbQ=="),
+        # cryptography decodes base64 leniently; ssh-keygen does not, so the text must match exactly.
+        "stray character in ssh blob": good.replace(_blob(a), _blob(a)[:10] + "!" + _blob(a)[10:]),
+        "stray character in pem body": good.replace(
+            sign_release.pinned_forms(a)[0],
+            sign_release.pinned_forms(a)[0][:10] + "!" + sign_release.pinned_forms(a)[0][10:],
+        ),
     }
     path = tmp_path / "case.sh"
     for name, text in cases.items():
@@ -175,5 +181,53 @@ def test_at_c1_contract_names_sshsig_urls_namespace_identity_and_command():
 def test_at_c1_version_document_has_no_sshsig_field():
     art = {"linux-x86_64": {"url": "u", "sha256": "0" * 64, "sig": "u.sig"}}
     doc = vd.build_document(latest="1.0.0", min_supported="1.0.0", artifacts=art, serial=1)
-    assert "sshsig" not in json.dumps(doc)
+    assert set(doc) == {
+        "schema_version",
+        "latest",
+        "min_supported",
+        "yanked",
+        "message",
+        "generated",
+        "serial",
+        "expires",
+        "artifacts",
+    }
+    assert set(vd.select_artifact(doc, "linux-x86_64")) == {"url", "sha256", "sig"}
     assert vd.parse_document(vd.canonical_document_bytes(doc)) == doc
+
+
+def test_at_c1_generated_artifacts_carry_no_sshsig_field(tmp_path):
+    """The generator (not only build_document) must leave the artifact entry at url, sha256, sig."""
+    from packaging_tools import make_version_document as mvd
+
+    name = "decoy-1.0.0-linux-x86_64.tar.gz"
+    (tmp_path / name).write_bytes(b"x")
+    import hashlib
+
+    (tmp_path / f"{name}.sig").write_text("c2ln\n")
+    (tmp_path / f"{name}.sha256").write_text(hashlib.sha256(b"x").hexdigest() + f"  {name}\n")
+    art = mvd.collect_artifacts(tmp_path, version="1.0.0", base_url="https://decoy.dev/cli")
+    assert {k for entry in art.values() for k in entry} == {"url", "sha256", "sig"}
+
+
+def test_at_k2_inject_keys_refuses_a_bad_template_and_writes_nothing(tmp_path):
+    key = write_key(tmp_path / "k.pem", Ed25519PrivateKey.generate())
+    text = INSTALL_SH.read_text()
+    templates = {
+        # placeholder removed
+        "no ssh placeholder": text.replace("__DECOY_RELEASE_SSH_PUBLIC_KEY__", "x"),
+        # a second copy, as a literal in a case pattern, must not be rewritten into the real key
+        "repeated ssh placeholder": text + "\n# __DECOY_RELEASE_SSH_PUBLIC_KEY__\n",
+        # one placeholder, but not in the single-quoted assignment check-keys reads
+        "ssh placeholder in a double-quoted line": text.replace(
+            "PINNED_SSH_PUBKEY='__DECOY_RELEASE_SSH_PUBLIC_KEY__'",
+            'PINNED_SSH_PUBKEY="__DECOY_RELEASE_SSH_PUBLIC_KEY__"',
+        ),
+    }
+    for name, body in templates.items():
+        src, out = tmp_path / "in.sh", tmp_path / "out.sh"
+        out.unlink(missing_ok=True)
+        src.write_text(body)
+        r = run_signer("inject-keys", "--key", str(key), "--in", str(src), "--out", str(out))
+        assert r.returncode == 1 and r.stderr.strip() == "inject-keys: failed", name
+        assert not out.exists() and not list(tmp_path.glob("out.sh.*")), name
