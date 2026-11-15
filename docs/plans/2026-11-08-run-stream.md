@@ -2,7 +2,7 @@ Status: plan
 
 # RUN-STREAM: one fast run path for `decoy run` (roadmap row 63a)
 
-Owner: Cam. Author: claudeworkerbee (Opus). Date: 2026-11-08. Scope: engine and CLI, V1. Revision 6.2 (Codex plan-gate remediation after Dennis rounds 1 and 2; dispositions in section 0).
+Owner: Cam. Author: claudeworkerbee (Opus). Date: 2026-11-08. Scope: engine and CLI, V1. Revision 6.3 (owner call 2026-11-15 on E5's lazy-input pre-check, after the Codex plan gate on revision 6.1; dispositions in section 0).
 
 Rules consulted: `dev-rules/README.md`, `00-universal.md`, `risk-and-exceptions.md`, `development-loop.md`
 (PLAN: choke point, Placement, Design notes, Established solutions), `feature-dev.md`, `architecture.md`
@@ -25,6 +25,12 @@ threads, set in the setup step, with per-run flag and config overrides; defaults
 run summary says which route ran and why. Step 1 of the row is a measurement; section 1 holds it.
 
 ## 0. Review dispositions
+
+Revision 6.3 (owner call 2026-11-15, "redesign the pre-check"; option D, recommended):
+
+| Finding | Disposition | Sections |
+|---|---|---|
+| OWNER 2026-11-15: the E5 pre-check `lazy_input_tables(config, ...)` added an entry to the post-scan route sentry's EXEMPT list, and an early `refuse_unchecked_route` call was rejected. No honest compiled-input form exists: the run's Profile needs the execution-only declared prep (`execution/_guards.py:235`), so any public builder is a new config-taking execution entry | Option D, recommended: the run decides. `lazy_input_tables` and its public export are removed. `run_pipeline` gains the keyword `resident_fallback: bool = False`; when true, a private pre-pass in `execution/pipeline/_lazy_input.py` asks the existing owners which caller `LazySource` inputs the run cannot keep lazy and reads each of them whole through `_pipeline_sources.materialize_source` before `build_run_context`. The CLI passes every candidate lazy with the keyword set. No EXEMPT entry, no guard call, no copied rule; the platform's isolated worker keeps the default and today's behavior | 4, 5.1, 6.2, 6.4, 7, 8, 11-16 |
 
 Revision 6.2 (Codex plan gate on revision 6.1, remediated in place):
 
@@ -299,9 +305,10 @@ receives the effective memory ceiling minus `max(20%, 2 GiB)`, not 25%
 
 ### Guarantee (what V1 promises)
 
-- G1. A plain `decoy run` passes every local mask-table source that the engine's
-  `lazy_input_tables` names and that has a lazy backend (Parquet, CSV, fixed-width, and each
-  DuckDB snapshot, which is Parquet) as a `LazySource` built by the engine's one builder (5.1). A run that takes a sink (5.6) also passes every target through one
+- G1. A plain `decoy run` passes every local mask-table source that has a lazy backend (Parquet,
+  CSV, fixed-width, and each DuckDB snapshot, which is Parquet) as a `LazySource` built by the
+  engine's one builder, and the run reads whole, before routing, each one its own rules cannot
+  keep lazy (5.1). A run that takes a sink (5.6) also passes every target through one
   CLI `TransactionalSink` over DELIV's `DeliverySink`; the engine picks the route. Every route's output reaches the targets: streamed tables
   through the sink during the run, resident tables through the same sink after it (5.2). A config the
   auto-chunk lane admits streams input and output (peak memory bounded by chunk size, not file size).
@@ -463,7 +470,7 @@ engine and CLI choke points rather than a new scheduler, writer or budget calcul
   *, file_access=None) -> LazySource | None` beside `build_declared_source` (`:482-491`), reading under
   the same config position `sources.<table>.path`; it returns `None` for a format with no lazy backend.
   The CLI calls it once per mask-table descriptor to build row-free candidates and keeps the resident
-  read for `None` or for a candidate E5 does not admit.
+  read only for `None`; the run itself reads whole any candidate it cannot keep lazy (E5, 5.1).
 - Lazy input without a publication sink reuses an engine adapter, not a second route. Current
   `run_auto_chunk` asserts when `sink is None and source` is a `LazySource`
   (`_pipeline_auto_chunk.py:433-434`). E5 drives `_run_streamed` through the existing
@@ -479,8 +486,9 @@ engine and CLI choke points rather than a new scheduler, writer or budget calcul
 ### 5.1 Sources (CLI part C1l, engine part E4)
 
 Lazy input and the sink are separate choices (revision 6, Dennis r1 H1). Every plain (not
-`--chunked`) `decoy run` takes lazy input for each mask table the engine's `lazy_input_tables`
-(E5) names and that has a lazy backend, whether or not it also takes a sink. The sink is the 5.6 choice. This is the shape the engine already serves
+`--chunked`) `decoy run` passes lazy input for each mask table that has a lazy backend, with
+`run_pipeline(..., resident_fallback=True)` (E5), whether or not it also takes a sink. The run keeps
+a source lazy only where its own rules allow and reads the rest whole before routing. The sink is the 5.6 choice. This is the shape the engine already serves
 for the platform: the isolated worker hands `run_pipeline` every input as a `LazySource`
 (`execution/_pipeline_sources.py:1-30`), each route resolves a source where it uses it, the
 out-of-core route reads it in batches, and the post-scan gate reads a lazy source batch by batch
@@ -491,39 +499,49 @@ its output tables resident, as today.
   `_load_sources_from_config` (`src/decoy/cli/run/_prepare.py:539`), which first refuses cloud
   endpoints and contradicting target formats (`_execute.py:286-287`) and then reads each source
   (`:293-298`). That call and those two refusals stay. C1l swaps only the read loop: it asks
-  `lazy_sources(config_dict, base_dir, vault_active=...)` in `cli/io/_lazy.py` for the lazy
-  tables and reads the rest as today. For each mask-table descriptor that
-  `source_is_materialized` accepts, `lazy_sources` first calls
-  `build_lazy_source(table, descriptor)` (E4) once. This is row-free; it may read declared
-  schema, footer or framing facts through the owning reader. It passes the non-`None` candidate
-  map once to the engine's public
-  `decoy_engine.execution.pipeline.lazy_input_tables(config, candidates, *, engine_version,
-  base_dir, instance_default_locale, fidelity_report, post_validation, vault_active)` (E5), using
-  the engine's public version, the same config-parent object and the same instance-locale config
-  expression used by the later `run_pipeline` call. A
-  table the predicate does not name, a `None` candidate and a source `source_is_materialized` skips keep exactly
+  `lazy_sources(config_dict, base_dir)` in `cli/io/_lazy.py` for the lazy tables and reads the rest
+  as today. For each mask-table descriptor that `source_is_materialized` accepts, `lazy_sources`
+  calls `build_lazy_source(table, descriptor)` (E4) once. This is row-free; it may read declared
+  schema, footer or framing facts through the owning reader. Every non-`None` candidate goes to
+  `run_pipeline` lazy, and both CLI `run_pipeline` calls (`src/decoy/cli/run/_execute.py:364`,
+  `:420`) pass `resident_fallback=True`. The CLI makes no admission decision and calls no
+  eligibility owner. A `None` candidate and a source `source_is_materialized` skips keep exactly
   today's read (`read_source`, `src/decoy/cli/_sources.py:169-191`;
   `src/decoy/_native_gate.py:198-203`). `run_pipeline` already accepts that mix
   (`_pipeline_sources.py:56-64`).
-- `lazy_input_tables` (E5, engine) owns every rule about which tables may arrive lazy, built from
-  the engine's own predicates, so the CLI copies none. It uses the candidate schemas and the
-  existing bounded `profile_source`, `compile_plan`, relationship-graph builder,
-  `_sequential_eligible`, `_has_cross_table_fk_cycle`, `out_of_core_admission`,
-  `decline_out_of_core` and `fk_out_of_core_dtype_hazard` owners. It does not implement a second
-  strategy, cycle, type or eligibility table. The bounded profile may make the owning reader's
-  bounded facts pass, including CSV or fixed-width rows, but never materializes a whole source;
-  candidate construction itself opens no data row. The predicate returns only names present in
-  `candidates`:
-  - never a table named by the engine-owned `compile_declared_casting_contract(config)`. The
+- The run decides (E5, engine). With `resident_fallback=True`, `run_pipeline` runs one private
+  pre-pass, `resident_fallback_tables` in `execution/pipeline/_lazy_input.py`, before
+  `build_run_context` (`execution/_pipeline.py:307`). The pre-pass gets the run's own `config`,
+  sources, `engine_version`, `base_dir`, `instance_default_locale`, `file_access`, `vault_writer`,
+  `fidelity_report` and `post_validation`, so it compiles exactly what the run compiles; nothing
+  crosses a caller boundary to be kept equal. It returns the caller `LazySource` names the run
+  cannot keep lazy. `run_pipeline` reads each of those whole through the existing
+  `_pipeline_sources.materialize_source` (`_pipeline_sources.py:56`) and builds the run context
+  from that mixed map, so the route, plan and post-scan verdict are those of a run that was handed
+  those tables resident. The pre-pass is not public and not an `@entry_point`; it is a step inside
+  `run_pipeline`, which is already EXEMPT because it runs the post-scan on its resident routes. The
+  default `False` leaves today's behavior for every other caller, the platform's isolated worker
+  included. Every rule is its existing owner answering: `classify_table_kinds`,
+  `compile_declared_casting_contract`, `post_scan_gate_applies`, `transform_bearing_mask_tables`,
+  and for relationship jobs the bounded `profile_source` under `prepare_declared_execution_sources`,
+  `compile_plan`, the relationship-graph builder, `_sequential_eligible`,
+  `_has_cross_table_fk_cycle`, `out_of_core_admission`, `decline_out_of_core` and
+  `fk_out_of_core_dtype_hazard`. It implements no second strategy, cycle, type or eligibility
+  table. The bounded profile may make the owning reader's bounded facts pass, including CSV or
+  fixed-width rows, but never materializes a whole source; that relationship-job profile runs once
+  more inside `build_run_context`, the cost of keeping the pre-pass out of the 600-line
+  `_pipeline_context.py`. A `LazySource` the run reads whole:
+  - every table named by the engine-owned `compile_declared_casting_contract(config)`. The
     auto-chunk streamed arm refuses a declared table when any sink is present
-    (`_pipeline_auto_chunk.py:435-439`), including the internal resident collector. E5 calls that
-    contract owner and does not inspect declared-casting structure itself.
-  - no table when a vault is active. The chunked lane refuses a vault before reading a chunk
-    (`execution/native/_chunked_entry.py:649-652`, `_chunked.py:444`), and routing lifts the vault
-    only onto out-of-core under `vault_ooc_safe` with a fit estimate (`_pipeline_routing.py:236-260`,
-    `:353-361`), which a lazy table cannot give: a lazy vault relationship job is rejected outright.
-    Streaming a vault run is V2 VAULT-STREAM (`docs/roadmap/out-of-scope.md:20`).
-  - when relationships are declared, no table unless the job is bounded-eligible: the terms of
+    (`_pipeline_auto_chunk.py:435-439`), including the internal resident collector. The pre-pass
+    calls that contract owner and does not inspect declared-casting structure itself.
+  - every table when a vault writer is present. The chunked lane refuses a vault before reading a
+    chunk (`execution/native/_chunked_entry.py:649-652`, `_chunked.py:444`), and routing lifts the
+    vault only onto out-of-core under `vault_ooc_safe` with a fit estimate
+    (`_pipeline_routing.py:236-260`, `:353-361`), which a lazy table cannot give: a lazy vault
+    relationship job is rejected outright. Streaming a vault run is V2 VAULT-STREAM
+    (`docs/roadmap/out-of-scope.md:20`).
+  - when relationships are declared, every table unless the job is bounded-eligible: the terms of
     `_sequential_eligible` (`_pipeline_routing.py:88-147`: no `--fidelity`, post-validation,
     validators, model post-scan ask or generate table), no FK cycle (`_has_cross_table_fk_cycle`),
     out-of-core compatible and no FK dtype hazard. A lazy table gives the size estimator no sample
@@ -531,7 +549,7 @@ its output tables resident, as today.
     `_pipeline_routing_signals.py:433`), so an ineligible relationship job with no fit estimate
     raises `fk_full_frame_oom_risk_rejected` (`_pipeline_routing.py:346-425`, `:407`) where the
     resident run fits and runs full frame.
-  - when `post_scan_gate_applies(config)`, never a mask table that declares transforms. A lazy
+  - when `post_scan_gate_applies(config)`, every mask table that declares transforms. A lazy
     transform-bearing mask table defers the gate to report-only (`_post_scan.py:460-473`,
     `:150-155`, `:248-266`) unless the route is sequential and `tee_supported()`, which is false on
     Windows (`:453-457`); a report-only report passes DELIV step 4, so base's block would be lost.
@@ -831,7 +849,7 @@ The choice is one predicate, `sink_applies(ctx) -> str | None`, in `cli/io/_sink
 (`src/decoy/cli/run/_context.py:28`) as a sibling frozenset `SINK_UNUSED_CODES`, the CLI's one
 registry for run-level codes (RESULT OQ-4); the run summary and `--json` `route.sink` print
 `used` or the code (G5). It never refuses a run, and it is not a warning. A run it keeps off the
-sink still takes lazy input for the tables `lazy_input_tables` names (5.1), so a large
+sink still takes lazy input for the tables the run keeps lazy (5.1), so a large
 bounded-eligible FK job reaches the out-of-core route and reads its sources in batches; only its
 output tables are held in memory until delivery.
 
@@ -875,9 +893,9 @@ Under `--chunked` (C2) the strict stream needs streamed output, so the rule diff
 Every route `run_pipeline` can take, and what this plan changes on it:
 
 - auto-chunk lane, resident input (`run_auto_chunk`, `execution/_pipeline_auto_chunk.py:385-484`):
-  unchanged; reached by archive CSV and every table `lazy_input_tables` does not name (5.1).
+  unchanged; reached by archive CSV and every table the run reads whole under `resident_fallback` (5.1).
 - auto-chunk lane, lazy input (`execution/_pipeline_auto_chunk.py:319-382`): the new default for
-  Parquet, CSV and fixed-width tables `lazy_input_tables` names; output streams on a sink run and
+  Parquet, CSV and fixed-width tables the run keeps lazy; output streams on a sink run and
   is materialized through the existing callable sink adapter for the result on a run with no sink
   (E5, AT-C1a, AT-C1l, AT-C1w).
 - full frame (`execution/_pipeline_full_frame.py:145-332`): `LazySource` resolved whole per route
@@ -931,10 +949,8 @@ has no dtype hazard; otherwise it is refused before a data-row iterator opens (5
   `native`).
 - Engine (E4): `decoy_engine.profile.build_lazy_source(table: str, descriptor: Mapping[str, Any], *,
   file_access=None) -> LazySource | None`.
-- Engine (E5): public from `decoy_engine.execution.pipeline`, not the size-capped root facade:
-  `lazy_input_tables(config, candidates: Mapping[str, LazySource], *, engine_version,
-  base_dir, instance_default_locale, fidelity_report, post_validation,
-  vault_active) -> frozenset[str]`; `RouteSummary.native_executed: bool | None`,
+- Engine (E5): `run_pipeline(..., resident_fallback: bool = False)`, one additive keyword;
+  `RouteSummary.native_executed: bool | None`,
   where `True` requires an actually executed registry-owned compiled backend, `False` means lane
   evidence exists without one, and `None` means no lane evidence.
 - CLI: `--max-memory`, `--threads`; env `DECOY_MAX_MEMORY`, `DECOY_THREADS`; `settings.json`
@@ -962,13 +978,13 @@ No surface prints a cell value or a path outside the config's own paths.
 | 1 | Value-bearing output | refusal text under `--chunked`, route reason text, settings errors | Reasons carry codes, counts and column names only (existing reason registry); settings errors name the file and key, never the raw value beyond the key's own text | AT-E1a asserts the refusal for a canary-bearing source has no cell value; existing raw-value sentries run on the new surfaces | M-E1a: put the first lazy batch's first value in the refusal |
 | 2 | Cleanup missing on an exit path | the stage and the engine `_decoy_hold_<hex>` spill on failure, Ctrl-C, out of disk, a native-check failure | `TargetSink.abort()` forwards to DELIV's idempotent, non-raising `DeliverySink.abort()`; every exit the engine does not see reaches it through `layout.abandon()` in `_flow.py`'s `finally` (`src/decoy/cli/run/_flow.py:155-158`); `TargetSink` owns no file of its own | AT-C1d injects `Exception` and `KeyboardInterrupt` before engine `commit()`, after it, after `seal_result` and after `post_run_verify`: `LATEST` and old outputs byte-equal, no stage or `_decoy_hold_` directory left | M-C1d: drop the `abort()` forward; M-C1d2: unregister DELIV's abandon callback for sink runs |
 | 3 | State machine and concurrency | sink states `OPEN`, `ENGINE_COMMITTED`, `SEALED`, `ABORTED`; resources resolved once | `TargetSink` refuses engine writes after `commit()`, overlap, a second `seal_result`, and every call after `abort()`; delivery order is DELIV's (4.2) and `TargetSink` has no deliver member | AT-C1e state test; AT-C1h order through DELIV | M-C1e: let `seal_result` run twice; M-C1h: deliver from `commit()` |
-| 4 | Route parity and silent fallback | plain lazy input with and without a sink; `--chunked` on a non-streamable config; CSV before E2; native absent | `lazy_input_tables` owns the plain-run admission and the no-sink lane reuses the existing callable sink adapter as a resident collector; one strict-stream preflight calls `check_chunked_compatibility`; `CsvLazySource` inherits the existing lazy identity; `stream` refuses instead of falling back | AT-E5 and AT-C1l compare resident and lazy route, exit, bytes and post-scan verdict; AT-E1a strict refusals; AT-E2a lazy choke points; AT-C2b summary | M-E5c: keep the no-sink assertion; M-E1a2: return resident under `stream`; M-E2d: remove `CsvLazySource` inheritance |
+| 4 | Route parity and silent fallback | plain lazy input with and without a sink; `--chunked` on a non-streamable config; CSV before E2; native absent | `run_pipeline(resident_fallback=True)` owns the plain-run admission through its existing owners and the no-sink lane reuses the existing callable sink adapter as a resident collector; one strict-stream preflight calls `check_chunked_compatibility`; `CsvLazySource` inherits the existing lazy identity; `stream` refuses instead of falling back | AT-E5 and AT-C1l compare resident and lazy route, exit, bytes and post-scan verdict; AT-E1a strict refusals; AT-E2a lazy choke points; AT-C2b summary | M-E5c: keep the no-sink assertion; M-E1a2: return resident under `stream`; M-E2d: remove `CsvLazySource` inheritance |
 | 5 | Referential integrity | FK jobs with lazy sources and no sink | No FK code changes; the shapes in 6.3 compared with the base resident run; the gate still blocks | AT-C1c, AT-C1j | M-C1c: pass the sink for an FK job |
 | 6 | Untrusted producer | settings file, env values, flag values | one size parser with `fullmatch`; strict stored primitives; required string `"schema_version": "1.0"` with full-value version parsing; JSON via `json` with duplicate keys and `NaN` refused and a 64 KiB cap; engine-owned budget floor (all shipped in C3) | AT-C3a corpus (`-1`, `0`, `true`, `"6"` for threads, `8gb `, `8GiB\n`, `auto2`, 2 TB, missing/numeric/trailing-newline/unknown-major versions, accepted unknown minor, non-object `resources`) | M-C3a: accept `bool` as `int`; M-C3d: version regex uses `$` |
 | 7 | Check then use on a path (TOCTOU) | lazy source read more than once (facts, then batches); target staging | Engine `facts_match` compares footer facts with the handle it reads (`_chunked_input.py:26-29`); `LazyFileIdentity` checks a CSV or fixed-width file around each lane batch pass (`open_batches`); a full-frame `to_table` is one read of one file (5.1); staging is DELIV's | AT-C1f: on a lane-admitted Parquet and fixed-width source, the file is replaced after the facts pass and before the first batch: exit 3, nothing visible | M-C1f: drop the facts comparison in the CLI path by passing a resident table |
 | 8 | Weak tests and overclaimed evidence | memory claims | Memory acceptance uses a real process and `VmHWM`, on a VM, with the file at least 8 times the bound; the measurement harness is committed | AT-C1b peak-RSS bound | removing the bound check from AT-C1b is a gate finding |
 | 9 | Behavior-preserving refactor drift | output bytes; strict Parquet row-group boundaries; route labels; which jobs take a sink | G6 checks resident output; `stream_required` preserves base chunk grouping instead of the auto lane's 1,048,576-row/256 MiB grouping (`_chunked_output_sink.py:69-73`) | AT-C1a, AT-C2a | M-C1a: use `pyarrow.csv`; M-C2a4: keep the auto byte cap under strict stream |
-| 10 | Frozen contract drift | `run_pipeline` signature, `ExecutionResult.quality_metrics` keys, CLI flags and exit codes, `--json` envelope, reason registry, `decoy_engine.profile` and `decoy_engine.execution.pipeline` exports | Additive only: new `execution_mode` literal, new keyword, new record, the E4 profile export and E5 pipeline export; the 600-line engine root does not grow; `--chunked` keeps its flag and exit code 1 for refusals; registry adds one identity through REG-RENUMBER | compatibility snapshot test; reason registry sentry; engine public-API snapshot and size sentry | M-E1d: rename an existing `execution_mode` literal; M-E5d: export E5 from the engine root |
+| 10 | Frozen contract drift | `run_pipeline` signature, `ExecutionResult.quality_metrics` keys, CLI flags and exit codes, `--json` envelope, reason registry, `decoy_engine.profile` and `decoy_engine.execution.pipeline` exports | Additive only: new `execution_mode` literal, new keywords (E5 `resident_fallback`), new record, the E4 profile export; the 600-line engine root does not grow; `--chunked` keeps its flag and exit code 1 for refusals; registry adds one identity through REG-RENUMBER | compatibility snapshot test; reason registry sentry; engine public-API snapshot and size sentry | M-E1d: rename an existing `execution_mode` literal; M-E5g: default `resident_fallback` to `True` (the isolated worker's behavior changes) |
 | 11 | Silent loss of a safety check | a sink on a job the post-scan gate applies to (R5-7), on a `--vault` run (B0), or the narrow relationship-only `--chunked` exception | one predicate, `sink_applies`, decides the plain route; it calls `post_scan_gate_applies(config)` and reads the vault flag. The one DELIV missing-report choke point owns the strict-stream exception and requires the closed engine metric, engine warning and CLI record conjunction | AT-C1j: a relationship job with an introduced orphan still blocks with exit 4, an integrity job still runs its gate, and a `--vault` job runs resident; AT-C2a removes each evidence member after DELIV C5 | M-C1j: pass the sink when relationships are declared; M-C1j2: inspect relationships locally; M-C2a4: accept a deferred gate without the full conjunction |
 
 ## 8. Acceptance tests (red first)
@@ -984,7 +1000,7 @@ No surface prints a cell value or a path outside the config's own paths.
 | AT-E3a | E3 | `route_summary` on each route gives expected configured caps and applied values: flat Python and generate routes mark native and OOC resources `not_used`; native evidence reports its applied clamp; OOC reports applied DuckDB threads and memory limit; unknown keys are ignored and missing blocks give `route="unknown"` | M-E3a: render a cap as applied without evidence |
 | AT-C1a | C1l, C1a | Plain run, with and without a sink (5.6): Parquet, CSV and DuckDB sources, Parquet, CSV and `.csv.gz` targets, an empty source: output equal (CSV bytes, decompressed `.csv.gz` bytes, Parquet values and schema) to the base CLI's plain run on the fixture set; each CSV failure of 5.1 exits 3 with value-free text | M-C1a |
 | AT-C1b | C1a (VM cell) | VM, 16M-row Parquet source (605 MB): plain `decoy run` peak RSS under 1 GB and route "auto-chunk lane (lazy input, streamed output)" | removing the bound |
-| AT-C1c | C1l | the four FK shapes of 6.3 through the CLI take lazy input and no sink (`route.sink` is `run.sink_unused.post_scan`) and equal the base CLI's plain run; each cell records the same `route_summary(...).route` as base (an eligible pure-mask FK job takes out-of-core under byte-estimate routing whatever `out_of_core_threshold_rows` says, `_pipeline_routing.py:392`); a VM run of the three-level chain at 8 times the bound records peak RSS below the base run's | M-C1c: name no table in `lazy_input_tables` (no memory change); M-C1c2: keep the resident read loop in `_load_sources_from_config` |
+| AT-C1c | C1l | the four FK shapes of 6.3 through the CLI take lazy input and no sink (`route.sink` is `run.sink_unused.post_scan`) and equal the base CLI's plain run; each cell records the same `route_summary(...).route` as base (an eligible pure-mask FK job takes out-of-core under byte-estimate routing whatever `out_of_core_threshold_rows` says, `_pipeline_routing.py:392`); a VM run of the three-level chain at 8 times the bound records peak RSS below the base run's | M-C1c: omit `resident_fallback=True` (the run rejects or changes route instead of reading whole); M-C1c2: keep the resident read loop in `_load_sources_from_config` |
 | AT-C1d | C1a | cleanup matrix of class row 2: `Exception` and `KeyboardInterrupt` before engine `commit()`, after it, after `seal_result`, after `post_run_verify`; zero targets with a hold-back spill; a source that is also a target: `LATEST` and earlier outputs byte-equal, no stage or `_decoy_hold_` directory remains | M-C1d, M-C1d2 |
 | AT-C1e | C1a | sink state machine: resident no-commit, streamed commit then resident-distinct additions, overlap, a target key naming no output table (skipped, not refused), second `seal_result`, calls after `abort()`, `abort()` twice without raising | M-C1e |
 | AT-C1f | C1l | on a lane-admitted Parquet and fixed-width source, the file is replaced after the facts pass and before the first batch read: exit 3, nothing visible | M-C1f |
@@ -992,8 +1008,8 @@ No surface prints a cell value or a path outside the config's own paths.
 | AT-C1h | C1a | a call recorder on a stub `DeliverySink` sees, in order: engine writes, `commit()` (streamed only), `seal_result` writes, then `post_run_verify`, then DELIV's `deliver` once; `TargetSink` makes no `deliver` call; a `--native` run with no compiled-kernel evidence prints "no output was written" and the abandon callback removes the stage | M-C1h: deliver from `commit()`; M-C1h2: unregister the abandon callback on a native refusal |
 | AT-C1i | C1a, C1b | a Parquet source of 1.2M rows whose first column is null for its first 1,100,000 rows: plain `decoy run` streams, the hold-back spills under the stage (kind R) or the fixed folder (kind A, C1b) in a `_decoy_hold_<hex>` directory of mode 0700, `commit()` finds none left, output equal to the resident run. If the hold-back does not fire on this file, the builder reports it and the test seeds the engine's hold-back threshold lower | M-C1i: drop `spill_parent` (raises `HOLD_BACK_SPILL_UNAVAILABLE`); M-C1i2: return a `spill_parent` outside the stage |
 | AT-C1j | C1a | `sink_applies` matrix: relationships declared (no sink, gate blocks an introduced orphan, exit 4); `post_scan.integrity: true` (no sink, gate runs); `--vault` (no sink, vault committed by DELIV, output equal base); kind A before C1b; the plain Parquet job (sink used). Each code is a `SINK_UNUSED_CODES` member, and a guard fails on any `run.sink_unused.` literal in `src` that is not one; the predicate calls `post_scan_gate_applies` | M-C1j, M-C1j2 |
-| AT-C1l | C1l | counterfactual resident-versus-lazy matrix, with no publication sink, asserts identical exit, `route_summary(...).route`, post-scan block and exact CLI target bytes: lane-admitted Parquet, CSV and fixed-width tables below and above the threshold, missing Parquet null statistics, all-null and empty tables, transforms, declared casting, subset, mixed generate/mask, every report flag, quarantine and targetless output. Relationship cells add an introduced orphan, integrity failure, forced `tee_supported() == False`, every `_sequential_eligible` disqualifier, an FK cycle, out-of-core incompatibility and FK dtype hazard. Vault cells remain resident. The no-sink lane must return resident outputs and never hit `_pipeline_auto_chunk.py:433-434`; any unlisted differential stops C1l | M-C1l: admit every candidate without `lazy_input_tables`; M-C1l2: drop `vault_active`; M-C1l3: keep the no-sink assertion; M-C1l4: report streamed output for the internal collector |
-| AT-C1k | C1l | `lazy_sources` calls `build_lazy_source` once per materialized mask descriptor, then `lazy_input_tables` once with exactly the non-`None` candidates and `engine_version`, `base_dir` and `instance_default_locale` equal to the values later passed to `run_pipeline`; an unselected candidate, a `None` candidate, a non-mask sourced table and a source without `path` keep today's resident read. Candidate construction opens no data row; the predicate's CSV/fixed-width facts pass is bounded and may scan rows. A mixed lazy and resident run equals base; cloud-endpoint and target-format refusals still fire before candidate work. A new sentry `tests/sentry/io_policy/test_lazy_source_choke_point.py` fails, in `src/decoy/cli/io/_lazy.py` and `src/decoy/cli/run/`, on any engine reader class name (`LazySource`, `FixedWidthLazySource`, `CsvLazySource`, also through an import alias or `decoy_engine.profile.<name>` attribute access) and on any format dispatch (`==` either way, `in (...)`, `match`/`case`, a dict keyed by format, `.get("format")`), with a seeded red case for each | M-C1k: build `FixedWidthLazySource` directly in the CLI; M-C1k2: filter formats before calling the engine builder; M-C1k3: omit the config base directory |
+| AT-C1l | C1l | counterfactual resident-versus-lazy matrix, with no publication sink, asserts identical exit, `route_summary(...).route`, post-scan block and exact CLI target bytes: lane-admitted Parquet, CSV and fixed-width tables below and above the threshold, missing Parquet null statistics, all-null and empty tables, transforms, declared casting, subset, mixed generate/mask, every report flag, quarantine and targetless output. Relationship cells add an introduced orphan, integrity failure, forced `tee_supported() == False`, every `_sequential_eligible` disqualifier, an FK cycle, out-of-core incompatibility and FK dtype hazard. Vault cells remain resident. The no-sink lane must return resident outputs and never hit `_pipeline_auto_chunk.py:433-434`; any unlisted differential stops C1l. The CLI builds no admission set: every candidate reaches `run_pipeline` lazy with `resident_fallback=True` | M-C1l: pass `resident_fallback=False`; M-C1l2: read vault runs resident in the CLI (a copied rule; the engine's vault cell must be what keeps them resident); M-C1l3: keep the no-sink assertion; M-C1l4: report streamed output for the internal collector |
+| AT-C1k | C1l | `lazy_sources` calls `build_lazy_source` once per materialized mask descriptor and hands exactly the non-`None` candidates to `run_pipeline` lazy; both CLI `run_pipeline` calls pass `resident_fallback=True`; a `None` candidate, a non-mask sourced table and a source without `path` keep today's resident read. The CLI imports no engine eligibility owner (`classify_table_kinds`, `post_scan_gate_applies`, `compile_declared_casting_contract`, any routing name) in `src/decoy/cli/io/_lazy.py` or `src/decoy/cli/run/`, checked by the sentry below. Candidate construction opens no data row. A mixed lazy and resident run equals base; cloud-endpoint and target-format refusals still fire before candidate work. A new sentry `tests/sentry/io_policy/test_lazy_source_choke_point.py` fails, in `src/decoy/cli/io/_lazy.py` and `src/decoy/cli/run/`, on any engine reader class name (`LazySource`, `FixedWidthLazySource`, `CsvLazySource`, also through an import alias or `decoy_engine.profile.<name>` attribute access) and on any format dispatch (`==` either way, `in (...)`, `match`/`case`, a dict keyed by format, `.get("format")`), with a seeded red case for each | M-C1k: build `FixedWidthLazySource` directly in the CLI; M-C1k2: filter formats before calling the engine builder; M-C1k3: drop a candidate in the CLI by table kind or vault (a copied rule) |
 | AT-C1w | C1l, C1a | fixed-width sources on a plain run, with and without a sink: values and schema equal the base CLI's resident run for str, int and float fields and a `nan` float, an empty file (layout schema; CHANGELOG line if base differed); a blank int or float field and an int beyond 64 bits exit 3 with value-free text, as the base run does; the lazy text names `sources.<table>.path`; a file changed between the facts pass and a lane batch gives `runtime.lazy_source_changed`; VM run records wall time and peak RSS against resident for a 4M-record file | M-C1w: build the lazy source with `field_key="source.path"` |
 | AT-C1m | C1a | a streamed table with zero rows on a sink run: a CSV target holds the same bytes as the base plain run's empty-table output, a Parquet target is a zero-row file with the engine's `schema`; batches reach `write_chunked_output` as tables | M-C1m: pass zero batches to `write_chunked_output` for CSV (no file) |
 | AT-C1n | C1l, C1a | `--native` on a lane-streamed single-table Parquet run with the companion installed: `route_summary(...).native_executed` is true and the run passes, with no sink (C1l) and with a sink (C1a). A companion decline, an admitted compiled-planned column whose kernel runs `arrow_python`, and a column planned for `arrow_python` whose executed backend equals that plan each set `native_executed` false and refuse with `native_require_no_evidence` and "no output was written", nothing visible. The base full-frame `--native` cell is unchanged | M-C1n: key the change on "not full frame" (never reaches the lane); M-C1n2: read `native_admitted`; M-C1n3: treat any planned/executed equality as compiled |
@@ -1001,7 +1017,7 @@ No surface prints a cell value or a path outside the config's own paths.
 | AT-C2b | C2 | run summary card and `--json` route/resources objects per route, including `not_used` and OOC actuals; a development install without the companion reports `not_installed` without failing, but this cell is not release acceptance; no cap is labeled as use without route evidence | M-C2b: print the CLI's old label; M-C2b2: render cap as used |
 | AT-C2d | C2/REL-PKG | install the actual V1 CLI wheel and its REL-PKG companion wheel into a clean environment; run the normal non-FK 16M-row path with `--threads 8`; compiled-kernel evidence proves native execution received the resolved thread cap (subject to the recorded native knee), and the test fails if the companion is absent or Python fallback runs | M-C2d: omit the companion wheel; M-C2d2: drop `native_threads` forwarding |
 | AT-C2c | C2 | `_run_chunked_mask`, `iter_source_chunks`, `_ChunkedFixedWidthError` and the CLI import of `run_mask_pipeline_chunked` are gone; `--chunked` on a fixed-width source streams; a sentry fails on a second `run_pipeline` call site in `src/decoy/cli/run/` (the `tokenize` command, `src/decoy/cli/tokenize.py:353`, and the library `src/decoy/api.py:560` are separate callers and unchanged) | M-C2c: re-add a `run_mask_pipeline_chunked` import |
-| AT-E5 | E5 | `lazy_input_tables` returns only candidate names; no table with a vault or in `compile_declared_casting_contract`; none for a relationship job under each disqualifier of `_sequential_eligible`, an FK cycle, an out-of-core incompatible job or an FK dtype hazard; never a transform-bearing mask table when `post_scan_gate_applies`; every otherwise-safe mask candidate. Candidate construction reads no row; the predicate uses the bounded profiler and exact compiler, graph, compatibility and hazard owners, and a guard rejects a copied eligibility check. A lazy auto-chunk table with no external sink runs through a `_CallableSinkAdapter` local to `run_auto_chunk`, while `PipelineRunContext.sink` stays `None`; it returns one resident output equal to the resident-input lane, reports resident output, does not expose the adapter's local evidence as run publication evidence, and a relationship post-scan verdict equals the resident call. `route_summary(...).native_executed` is true only for an executed registry-owned compiled plan, false for an idle compiled kernel and for planned/executed `arrow_python` equality, `None` off the lane | M-E5: drop the transform rule; M-E5b: read `native_admitted`; M-E5c: keep the no-sink assertion; M-E5d: use equality without checking the compiled-backend registry; M-E5e: admit a declared-cast table; M-E5f: install the collector as the context sink |
+| AT-E5 | E5 | With `resident_fallback=True`, `run_pipeline` hands `build_run_context` a `pa.Table`, read through `materialize_source`, for every caller `LazySource` under a vault writer, in `compile_declared_casting_contract`, of a relationship job under each disqualifier of `_sequential_eligible`, an FK cycle, an out-of-core incompatible job or an FK dtype hazard, and for a transform-bearing mask table when `post_scan_gate_applies`; it keeps every otherwise-safe lazy source lazy. Each such run's route, exit, outputs and post-scan verdict equal the same call with those tables passed resident. With the default `False`, every cell keeps today's behavior (the lazy vault relationship job still raises its reject-before-read). The pre-pass is private and not an `@entry_point`; `decoy_engine.execution.pipeline.__all__` gains no name; the post-scan route sentry's GUARDED and EXEMPT tables and `tests/sentry/baselines/post-scan-route-exempt.json` are unchanged; the `run_pipeline` signature freeze gains exactly the one keyword row. The pre-pass uses the bounded profiler and the exact compiler, graph, compatibility and hazard owners, and a guard rejects a copied eligibility check. A lazy auto-chunk table with no external sink runs through a `_CallableSinkAdapter` local to `run_auto_chunk`, while `PipelineRunContext.sink` stays `None`; it returns one resident output equal to the resident-input lane, reports resident output, does not expose the adapter's local evidence as run publication evidence, and a relationship post-scan verdict equals the resident call. `route_summary(...).native_executed` is true only for an executed registry-owned compiled plan, false for an idle compiled kernel and for planned/executed `arrow_python` equality, `None` off the lane | M-E5: drop the transform rule; M-E5b: read `native_admitted`; M-E5c: keep the no-sink assertion; M-E5d: use equality without checking the compiled-backend registry; M-E5e: route a rejected declared-cast candidate lazily; M-E5f: install the collector as the context sink; M-E5g: default `resident_fallback` to `True`; M-E5h: skip the vault rule; M-E5i: publish the pre-pass with a `config` parameter (the EXEMPT test goes red); M-E5j: read a whole table the rules keep lazy (the lazy-kept cell's peak-memory and laziness assertion goes red) |
 | AT-E4 | E4 | `build_lazy_source` returns `LazySource` for Parquet, a `CsvLazySource` for CSV, `FixedWidthLazySource` for fixed-width, `None` for compressed CSV, cloud and an unknown format; it opens no data row; a `column_names_file` read is on the declaration-gate sentry's list; a reason it raises names `sources.<table>.path`; `_build_file_source` and `build_lazy_source` read the one format table and a guard fails if either branches on format outside it | M-E4: add a format branch outside the table; M-E4b: open the facts pass at build time |
 | AT-C3a | C3 | resolution precedence matrix (flag, env, file, auto, per key), strict stored types and version cells from class row 6, value-free public errors with `__cause__ is None` and `__context__ is None`, the keyword mapping of 5.4 (CLI `auto` calls the public engine conservative policy and passes explicit bytes), and proof that no CLI code imports `_MIN_BUDGET_BYTES` or implements the 25% arithmetic | M-C3a: pass `None` for auto; M-C3b: env over flag |
 | AT-C3b | C3 | `decoy setup --yes --json` writes versioned `settings.json` through `write_atomic(decoy_home(), "settings.json", data, WriteMode.REPLACE)` with detected values; off a TTY without `--yes` exits 1; section order fixed; `tests/sentry/test_atomic_writer.py` sees the real tree and a seeded inline temp/replace copy in `_resources.py` turns it red | M-C3c: write in place; M-C3d: add an inline `os.replace` writer |
@@ -1127,8 +1143,8 @@ Revision 5 adds one question. It has no owner answer yet.
 | Native gate | `pre_execution_gate`, `post_run_verify` | `src/decoy/_native_gate.py:306`, `:465` |
 | Resources (shipped) | `_resources.resolve`, `run_pipeline_kwargs` | `src/decoy/_resources.py:303`, `:114-120` |
 
-New mechanisms still to build: `build_lazy_source` (E4), `lazy_input_tables` and
-`RouteSummary.native_executed` (E5), `TargetSink` and `sink_applies` (C1a),
+New mechanisms still to build: `build_lazy_source` (E4), the private `resident_fallback_tables`
+pre-pass behind `run_pipeline(resident_fallback=True)` and `RouteSummary.native_executed` (E5), `TargetSink` and `sink_applies` (C1a),
 `lazy_sources` (C1l). E5 reuses `_CallableSinkAdapter` for the no-external-sink resident result;
 it adds no sink class or writer. Already built: `out_of_core_threads`, `detect_usable_cpus`, the conservative
 CLI auto-budget policy, `route_summary`, lazy CSV input, `_resources.resolve`. Each is the only one
@@ -1150,7 +1166,8 @@ rows retain their own recorded base):
 | tests | `tests/unit/execution/run_stream/` (new sub-package; `tests/unit/execution/` is over 25) | "Unit tests" (`:243`) | `tests/unit/execution/derived_visibility/` |
 | `build_lazy_source` (E4, new `_lazy_build.py`, about 70 lines) | `src/decoy_engine/profile/`, exported from `decoy_engine.profile` | "Source readers, profile types" (`CODEMAP.md:258`): lazy backends sit beside `_readers.py`; E4 adds the module to the `profile/` directory map | `_readers.py` (`build_declared_source`), `_lazy_fixed_width.py` |
 | E4 tests | `tests/unit/profile/` | same row | `tests/unit/profile/` lazy CSV tests |
-| `lazy_input_tables` (E5, new `_lazy_input.py`, about 140 lines) | `src/decoy_engine/execution/pipeline/`, exported from that package's public `__init__`, not the 600-line engine root | "Pipeline spine and routes" (`CODEMAP.md:249`); the target `pipeline/` sub-package has 8 direct modules at `c7433ede` | `_route_summary.py`, `_pipeline_routing.py` |
+| `resident_fallback_tables` (E5, new private `_lazy_input.py`, about 150 lines; not exported, not an `@entry_point`) | `src/decoy_engine/execution/pipeline/`, beside the other `run_pipeline` steps; `pipeline/__init__.py` unchanged | "Pipeline spine and routes" (`CODEMAP.md:249`); the target `pipeline/` sub-package has 8 direct modules at `c7433ede` | `_stream.py`, `_post_scan.py` |
+| `resident_fallback` keyword and its call (E5, about 15 lines) | existing `src/decoy_engine/execution/_pipeline.py` (371 lines), before `build_run_context`; the 600-line `_pipeline_context.py` is untouched | same row (`CODEMAP.md:249`) | `materialize_source` |
 | no-sink lazy-lane resident collection (E5) | existing `src/decoy_engine/execution/_pipeline_auto_chunk.py` | same pipeline-spine row (`CODEMAP.md:249`); no new module | `_run_streamed`, `_CallableSinkAdapter` |
 | `RouteSummary.native_executed` (E5) | `src/decoy_engine/execution/pipeline/_route_summary.py` | same row (`CODEMAP.md:249`) | `_native_status` |
 
@@ -1189,11 +1206,10 @@ P4, CR, SAMPLE SC0, L5a, RESULT C-DOC1, SUB-RUN C1, C2a, C3, C4, C5). C1a adds t
   engine's own sink has, `spill_parent` and `committed_table_path`
   (`_transactional_sink.py:338-344`).
 - Engine `decoy_engine.profile`: adds `build_lazy_source` (E4). Additive.
-- Engine `decoy_engine.execution.pipeline`: adds
-  `lazy_input_tables(config, candidates: Mapping[str, LazySource], *, engine_version,
-  base_dir, instance_default_locale, fidelity_report, post_validation,
-  vault_active) -> frozenset[str]`; the engine root stays exactly as it is. E5
-  also adds `RouteSummary.native_executed: bool | None`. Additive.
+- Engine `run_pipeline`: E5 adds the keyword `resident_fallback: bool = False` (one row in
+  `tests/unit/execution/test_r3_public_signature_freeze.py`); the engine root and
+  `decoy_engine.execution.pipeline` exports stay exactly as they are. E5 also adds
+  `RouteSummary.native_executed: bool | None`. Additive.
 - DELIV `DeliverySink`: RUN-STREAM calls `write_table`, `write_chunked`, `place_quarantine` and
   `abort` (DELIV 4.2, 4.6) and adds two read-only members, `stage_dir()` and `staged_path(table)`,
   that compute without recording a staged file (5.2). If DELIV C2a has not merged when C1a starts,
@@ -1237,8 +1253,8 @@ a merged slice is not re-planned.
 | R | engine | done (0.20.0, 0.21.0) | release carrying E1a to E3 | 3 | 100 | orchestrator |
 | C3 | CLI | merged (#165) | `_resources.py`, flags, env, `settings.json` through `_atomic.write_atomic`, setup section, doctor rows; AT-C3a, AT-C3b | 10 | 650 | Codex |
 | E4 | engine | open | Exact files: `src/decoy_engine/profile/_lazy_build.py` (new one format descriptor and `build_lazy_source`), `src/decoy_engine/profile/_readers.py`, `src/decoy_engine/profile/__init__.py`, `tests/sentry/source_config/test_declaration_gate.py`, `tests/sentry/defects/test_lazy_builder_registry.py`, `tests/unit/profile/test_lazy_build.py`, `CODEMAP.md`, one `changelog.d/` fragment. AT-E4 | 8 | 400 | Codex |
-| E5 | engine | open | Exact files: `src/decoy_engine/execution/pipeline/_lazy_input.py` (new predicate over row-free candidates and existing routing owners), `src/decoy_engine/execution/pipeline/__init__.py` (public export), `src/decoy_engine/execution/pipeline/_route_summary.py` (`native_executed`), `src/decoy_engine/execution/_pipeline_auto_chunk.py` (no-sink resident collector through `_CallableSinkAdapter`), `tests/unit/execution/run_stream/test_lazy_input.py`, `tests/unit/execution/run_stream/test_route_summary_native.py`, `CODEMAP.md`, one `changelog.d/` fragment. The 600-line root facade is untouched. AT-E5 | 8 | 650 | Dennis, then Codex |
-| C1l | CLI | open | Exact files: `src/decoy/cli/io/_lazy.py` (new), `src/decoy/cli/run/_execute.py` (only `_load_sources_from_config`'s read loop), `src/decoy/_native_gate.py` (`classify_route` lane case), `tests/sentry/io_policy/test_lazy_source_choke_point.py`, `tests/unit/run_stream/test_lazy_sources.py`, `tests/e2e/run_stream/test_lazy_parity.py`, `CODEMAP.md`, one `changelog.d/` fragment. AT-C1a (no-sink cells), AT-C1c, AT-C1f, AT-C1k, AT-C1l, AT-C1n (no-sink cell), AT-C1w (no-sink cells) | 8 | 750 | Dennis, then Codex |
+| E5 | engine | open | Exact files: `src/decoy_engine/execution/pipeline/_lazy_input.py` (new private pre-pass `resident_fallback_tables` over the existing owners; no export), `src/decoy_engine/execution/_pipeline.py` (`resident_fallback` keyword, pre-pass call and `materialize_source` before `build_run_context`), `src/decoy_engine/execution/pipeline/_route_summary.py` (`native_executed`), `src/decoy_engine/execution/_pipeline_auto_chunk.py` (no-sink resident collector through `_CallableSinkAdapter`), `tests/unit/execution/test_r3_public_signature_freeze.py` (one keyword row), `tests/unit/execution/run_stream/test_lazy_input.py`, `tests/unit/execution/run_stream/test_route_summary_native.py`, `CODEMAP.md`, one `changelog.d/` fragment. New public names: the `resident_fallback` keyword and `RouteSummary.native_executed`, nothing else. `pipeline/__init__.py`, `_pipeline_context.py`, the 600-line root facade and the post-scan route sentry and its baseline are untouched. AT-E5 | 9 | 650 | Dennis, then Codex |
+| C1l | CLI | open | Exact files: `src/decoy/cli/io/_lazy.py` (new), `src/decoy/cli/run/_execute.py` (`_load_sources_from_config`'s read loop and `resident_fallback=True` on its two `run_pipeline` calls), `src/decoy/_native_gate.py` (`classify_route` lane case), `tests/sentry/io_policy/test_lazy_source_choke_point.py`, `tests/unit/run_stream/test_lazy_sources.py`, `tests/e2e/run_stream/test_lazy_parity.py`, `CODEMAP.md`, one `changelog.d/` fragment. AT-C1a (no-sink cells), AT-C1c, AT-C1f, AT-C1k, AT-C1l, AT-C1n (no-sink cell), AT-C1w (no-sink cells) | 8 | 750 | Dennis, then Codex |
 | C1a | CLI | open | Exact files: `src/decoy/cli/io/_sink.py` (new `TargetSink`, `sink_applies`), `src/decoy/cli/io/_delivery.py` (read-only stage seam), `src/decoy/cli/run/_execute.py` (sink branch and row counts), `src/decoy/cli/run/_context.py` (`SINK_UNUSED_CODES`), `src/decoy/cli/run/_render.py` (`route.sink`), `tests/unit/run_stream/test_target_sink.py`, `tests/e2e/run_stream/test_sink_delivery.py`, `tests/sentry/run/test_sink_unused_codes.py`, one `changelog.d/` fragment. AT-C1a (sink cells), AT-C1b (VM), AT-C1d, AT-C1e, AT-C1g (kind R), AT-C1h, AT-C1i (kind R), AT-C1j, AT-C1m, AT-C1n (sink cell), AT-C1w (sink cells) | 9 | 800 | Dennis, then Codex |
 | C1b | CLI | open | Exact files: `src/decoy/cli/io/_sink.py`, `tests/unit/run_stream/test_target_sink.py`, `tests/e2e/run_stream/test_sink_delivery.py`, one `changelog.d/` fragment. `sink_applies` admits kind A; `spill_parent` is the fixed folder; AT-C1g and AT-C1i kind-A cells | 4 | 300 | Codex |
 | C2 | CLI | open | Exact files: `src/decoy/cli/run/_execute.py` (`--chunked` maps to `execution_mode="stream"`; old fork and class removed), `src/decoy/cli/run/_prepare.py` (obsolete fixed-width/report-path refusals removed; vault and integrity refusals remain), `src/decoy/cli/_sources.py` (`iter_source_chunks` removed), `src/decoy/cli/exit_codes.py` (obsolete exception rows removed), `src/decoy/cli/io/_delivery.py` (the one closed-evidence relationship-only missing-report exception, preserved through DELIV C5), `src/decoy/cli/run/_render.py` (summary and `--json`), `tests/e2e/run_stream/test_chunked_unified.py`, `tests/sentry/run/test_one_run_pipeline.py`, one `changelog.d/` fragment. REL-PKG installed-wheel prerequisite; AT-C2a to AT-C2d | 9 | 650 | Codex |
@@ -1253,9 +1269,10 @@ Order and what each open slice waits on:
 - E5 can build now on engine main, beside E4; both ship in the next engine release. The CLI repin
   to that release (`pyproject`, `uv.lock`, the repin checklist) is the orchestrator's chore PR, as
   for 0.26.0 (#267), outside every slice here.
-- C1l waits only on that repin. It takes no sink and edits only the read loop of
-  `_load_sources_from_config` in `_execute.py`, away from the `run_pipeline` call site the
-  `_execute.py` lane orders; it rebases onto whichever lane slice lands first. E5's resident
+- C1l waits only on that repin. It takes no sink and edits the read loop of
+  `_load_sources_from_config` in `_execute.py` plus one keyword on each `run_pipeline` call, a
+  one-line touch at the call sites the `_execute.py` lane orders; it rebases onto whichever lane
+  slice lands first. E5's resident
   collector makes its no-sink auto-chunk cells valid. It lands before C1a so a difference lazy
   input makes shows up without the publication sink in the way.
 - C1a waits on C1l, on the owner's Q8 answer (option (b) changes `sink_applies` and adds an engine
@@ -1301,9 +1318,10 @@ Order and what each open slice waits on:
   engine AT-18b pins schema and values; AT-C1w pins exits and reasons through the CLI.
 - Lazy input on every plain run (revision 6) changes a route or a failure for a job that takes no
   sink: a CSV dialect, a fixed-width blank field, a route the engine picks for a lazy source but
-  not for a resident one, or a gate that turns report-only. Guard: the engine's
-  `lazy_input_tables` (E5) withholds lazy input from vault runs, relationship jobs that are not
-  bounded-eligible and transform-bearing tables under the gate (5.1); C1l lands alone before the
+  not for a resident one, or a gate that turns report-only. Guard: under
+  `resident_fallback=True` the run (E5) reads whole, before routing, the lazy sources of vault runs,
+  relationship jobs that are not bounded-eligible, declared-cast tables and transform-bearing tables
+  under the gate (5.1); C1l lands alone before the
   sink; AT-C1a, AT-C1c, AT-C1l and AT-C1w compare with the base resident run on the CLI fixture set,
   the 6.3 FK shapes, the gate shapes and the fixed-width corpus; a reason that differs from base is
   a C1l stop, reported, not adapted around.
@@ -1337,4 +1355,5 @@ Order and what each open slice waits on:
   (section 6.5; `api/cgroup_cpu.py:125-131`, `:138-172`).
 - Stream `fixed_width` and archive CSV targets (fixed-width sources stream from C1l).
 - Cloud sources as lazy sources (E4 returns `None` for them; CLI-CLOUD owns cloud I/O).
+- V2-LOG: the post-scan route sentry misses `estimate_job_capacity` (`execution/capacity.py:235`), an `@entry_point` whose config parameter is named `config_dump`; record only, not fixed here.
 - RESULT schema fields for route and resources if RESULT v1 is closed.
