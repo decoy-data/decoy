@@ -7,6 +7,8 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 _spec = importlib.util.spec_from_file_location(
     "launch_pin_check", ROOT / "scripts" / "release" / "launch_pin_check.py"
@@ -83,3 +85,39 @@ def test_version_disagreement_names_all_three() -> None:
 def test_bad_tag_is_a_usage_error() -> None:
     assert lpc.main(["--engine-tag", "latest"], runner=FakeRunner()) == 2
     assert lpc.main([], runner=FakeRunner()) == 2
+
+
+def test_spec_step_failing_on_the_d4_tag_fails_engine_tag() -> None:
+    def runner(argv: Sequence[str]) -> tuple[int, str]:
+        if "--engine-spec" in " ".join(argv):
+            return 1, SPEC + "\n"
+        return FakeRunner()(argv)
+
+    assert lpc.check(TAG, runner, ROOT)[0].code == "launch_pin_not_d4_tag"
+
+
+def _root(tmp_path: Path, version_py: str | None, pyproject: str | None = None) -> Path:
+    (tmp_path / "src" / "decoy").mkdir(parents=True)
+    body = pyproject if pyproject is not None else f'[project]\nversion = "{_version()}"\n'
+    (tmp_path / "pyproject.toml").write_text(body, encoding="utf-8")
+    if version_py is not None:
+        (tmp_path / "src" / "decoy" / "_version.py").write_text(version_py, encoding="utf-8")
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    "version_py",
+    ['__version__ = "9.9.9"\n', "# no literal here\n", None],
+    ids=["mismatch", "absent", "missing-file"],
+)
+def test_bad_version_literal_fails_versions(tmp_path: Path, version_py: str | None) -> None:
+    root = _root(tmp_path, version_py)
+    failed = [r for r in lpc.check(TAG, FakeRunner(), root) if not r.ok]
+    assert [r.code for r in failed] == ["version_disagreement"]
+
+
+def test_malformed_pyproject_fails_versions_without_raising(tmp_path: Path) -> None:
+    root = _root(tmp_path, f'__version__ = "{_version()}"\n', pyproject="[project\nversion = ")
+    results = lpc.check(TAG, FakeRunner(), root)
+    assert results[-1].step == "versions" and results[-1].code == "version_disagreement"
+    assert "version =" not in results[-1].line

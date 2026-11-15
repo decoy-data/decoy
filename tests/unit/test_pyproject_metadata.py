@@ -107,6 +107,7 @@ def test_engine_dependency_pinned() -> None:
     assert len(engine_deps) == 1, f"expected exactly one decoy-engine dep, got {engine_deps}"
     # Exact pin, shared with the platform vault (B-6); see pyproject.toml.
     from packaging.requirements import Requirement
+    from packaging.version import Version
 
     req = Requirement(engine_deps[0])
     floors = [s for s in req.specifier if s.operator in (">=", "==")]
@@ -118,6 +119,8 @@ def test_engine_dependency_pinned() -> None:
         text=True,
     ).stdout.strip()
     pinned = spec.rsplit("@v", 1)[1]
+    # 0.7.0-0.14.x lack `token_vault_writer`; a repin below the seam would TypeError in tokenize.
+    assert Version(pinned) >= Version("0.15.0"), f"engine pin {pinned} predates token_vault_writer"
     assert [str(s) for s in floors] == [f"=={pinned}"], (
         f"decoy-engine must be pinned exactly =={pinned} (the lock_version.sh engine tag); "
         f"got specifier {str(req.specifier)!r}"
