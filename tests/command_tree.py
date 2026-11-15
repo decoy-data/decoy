@@ -2,7 +2,8 @@
 
 ``walk()`` returns every command path with its kind and hidden flag, read from the real
 ``decoy.__main__.app``. ``visible_paths()`` drops hidden commands (and anything under a hidden
-group); ``registry()`` is the two-level view the docs-consistency sentry uses, hidden included.
+group); ``registry()`` is the two-level view the docs-consistency sentry uses, hidden included;
+``json_leaf_commands()`` names the visible leaf commands that take ``--json``.
 """
 
 from __future__ import annotations
@@ -49,3 +50,18 @@ def registry() -> tuple[set[str], dict[str, set[str]]]:
         if len(n.path) == 2 and not n.is_group and n.path[0] in groups:
             groups[n.path[0]].add(n.path[1])
     return leaf_top, groups
+
+
+def json_leaf_commands() -> set[str]:
+    """Space-joined paths of the visible leaf commands that take ``--json``."""
+    root = typer.main.get_command(app)
+    found: set[str] = set()
+    for path in visible_paths():
+        cmd = root
+        for part in path:
+            cmd = cmd.commands[part]  # type: ignore[attr-defined]
+        if not getattr(cmd, "commands", None) and any(
+            "--json" in getattr(p, "opts", []) for p in cmd.params
+        ):
+            found.add(" ".join(path))
+    return found

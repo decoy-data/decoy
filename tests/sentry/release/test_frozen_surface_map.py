@@ -14,12 +14,12 @@ import re
 from pathlib import Path
 
 from tests.command_tree import json_leaf_commands
+from tests.e2e.release_freeze.write_shapes import SNAPSHOT
 from tests.sentry.layout import map_paths, section
 
 ROOT = Path(__file__).resolve().parents[3]
 MAP = ROOT / "docs" / "release" / "frozen-surfaces.md"
 VERSIONING = ROOT / "docs" / "release" / "versioning.md"
-SHAPES = "tests/fixtures/release_freeze/json-shapes.json"
 HEADER = ("Surface", "Completeness source", "Owning code", "Pinning test or snapshot")
 SURFACE, SOURCE, OWNER, TEST = range(4)
 KNOWN_LIMIT = re.compile(r"accepted-known-limit: \S+")
@@ -83,7 +83,8 @@ def findings(text: str) -> list[str]:
     for schema in sorted((ROOT / "docs" / "schemas").glob("*.json")):
         if schema.name not in text:
             found.append(f"no row for docs/schemas/{schema.name}")
-    for needle in ("src/decoy/distribution/", "cli-local-1", "src/decoy/_version.py"):
+    snapshot = SNAPSHOT.relative_to(ROOT).as_posix()
+    for needle in ("src/decoy/distribution/", "cli-local-1", "src/decoy/_version.py", snapshot):
         if needle not in text:
             found.append(f"no row for {needle}")
     return found
@@ -110,7 +111,7 @@ def test_the_evidence_literal_in_the_map_is_the_one_the_writer_emits() -> None:
 
 
 def test_the_json_row_is_backed_by_a_snapshot_with_every_json_command() -> None:
-    snapshot = json.loads((ROOT / SHAPES).read_text(encoding="utf-8"))
+    snapshot = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
     assert set(snapshot) == json_leaf_commands()
 
 
@@ -135,7 +136,8 @@ def test_a_row_pointing_at_a_missing_test_is_found() -> None:
 
 def test_a_row_with_no_test_cell_is_found() -> None:
     lines = MAP.read_text(encoding="utf-8").splitlines()
-    cells = lines[3].strip().strip("|").split("|")
+    first = next(i for i, ln in enumerate(lines) if ln.startswith("|"))
+    cells = lines[first + 2].strip().strip("|").split("|")
     cells[TEST] = " none "
-    lines[3] = "|" + "|".join(cells) + "|"
+    lines[first + 2] = "|" + "|".join(cells) + "|"
     assert any(f.startswith("row without a test") for f in findings("\n".join(lines)))
