@@ -43,8 +43,6 @@ Verification: the version document and the bundle are both checked against the p
 release key before anything is swapped. A bad signature or checksum refuses the upgrade.
 """
 
-_DEFAULT_VERSION_URL = "https://decoy.dev/cli/version.json"
-
 
 def _managed_home() -> Path | None:
     """The managed-runtime home, or None for a pip/dev install (see `layout.managed_home`)."""
@@ -104,7 +102,7 @@ def upgrade(
         _report_outcome(state, outcome, "activated")
         raise typer.Exit(code=EXIT_OK)
 
-    doc_url = url or _DEFAULT_VERSION_URL
+    doc_url = vd.resolve_version_url(url)
     try:
         doc_bytes = _fetch(doc_url)
         doc_sig = _fetch(doc_url + ".sig").decode("ascii").strip()
@@ -161,9 +159,9 @@ def upgrade(
     # already on disk -- so a same-version `--force` re-downloads and re-verifies rather
     # than swapping to the retained bits).
     try:
-        # The base the version document was served under; a pinned non-latest version
-        # resolves <base>/<version>/decoy-<version>-<target>.tar.gz (install.sh scheme).
-        base_url = doc_url.rsplit("/", 1)[0]
+        # A pinned non-latest version resolves <bundle base>/v<version>/decoy-<version>-<target>.tar.gz
+        # (install.sh scheme), not under the document's own base.
+        base_url = installer.resolve_bundle_base()
         outcome = installer.install_version(
             version_doc_bytes=doc_bytes,
             version_doc_sig_b64=doc_sig,

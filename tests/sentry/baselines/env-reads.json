@@ -2,9 +2,6 @@
  "sentry_id": "env-reads",
  "created_in": "CL2",
  "entries": {
-  "_update_check.py::check_latest::DECOY_VERSION_URL::1": {
-   "reason": "environment read of a path, URL, secret or number, recorded when the one flag reader landed; moves to decoy._env_flags or leaves this baseline, never joins it"
-  },
   "ci/_git.py::git_env::<dynamic>::1": {
    "reason": "environment read of a path, URL, secret or number, recorded when the one flag reader landed; moves to decoy._env_flags or leaves this baseline, never joins it"
   },

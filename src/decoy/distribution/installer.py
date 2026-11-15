@@ -64,6 +64,7 @@ from pathlib import Path, PurePosixPath
 from typing import Callable
 
 from decoy._atomic import AtomicWriteError, WriteMode, write_atomic
+from decoy._env_flags import env_str
 from decoy.distribution import layout, lock, verify_extracted
 from decoy.distribution import manifest as manifest_mod
 from decoy.distribution import targets as targets_mod
@@ -74,6 +75,15 @@ PostSwapValidator = Callable[[Path], bool]
 
 # The per-bundle metadata file the assembler writes (packaging_tools/build_bundle.py).
 _BUNDLE_INFO = "BUNDLE_INFO.json"
+
+# Pinned (non-latest) bundles are release assets: <base>/v<version>/decoy-<version>-<target>.tar.gz.
+# install.sh and install.ps1 carry the same literal; DECOY_BUNDLE_BASE overrides it everywhere.
+DEFAULT_BUNDLE_BASE = "https://github.com/louiskeep/decoy/releases/download"
+
+
+def resolve_bundle_base(override: str | None = None) -> str:
+    """The pinned-bundle base: an explicit override, else `DECOY_BUNDLE_BASE`, else `DEFAULT_BUNDLE_BASE`."""
+    return override or env_str("DECOY_BUNDLE_BASE", DEFAULT_BUNDLE_BASE)
 
 
 class InstallError(RuntimeError):
@@ -490,7 +500,7 @@ def install_version(
         # 2) resolve the bundle URL for the REQUESTED version (not blindly the latest),
         #    then download. The v1 document carries only the latest release's artifacts, so
         #    a pinned non-latest version resolves by the published URL convention -- the same
-        #    scheme install.sh uses -- from the base the version document was served under.
+        #    scheme install.sh uses -- from the bundle base (release assets).
         expected_sha: str | None
         if version == doc.get("latest"):
             art = vd.select_artifact(doc, target)
@@ -498,13 +508,8 @@ def install_version(
                 raise InstallError(f"version document lists no bundle for target {target}")
             url, sig_url, expected_sha = art["url"], art["sig"], art["sha256"]
         else:
-            if not base_url:
-                raise InstallError(
-                    f"cannot resolve pinned version {version}: the version document lists "
-                    "only the latest release and no base URL was given to resolve older bundles"
-                )
             name = f"decoy-{version}-{target}.tar.gz"
-            url = f"{base_url.rstrip('/')}/{version}/{name}"
+            url = f"{resolve_bundle_base(base_url).rstrip('/')}/v{version}/{name}"
             sig_url = url + ".sig"
             # CHECKSUM EXCEPTION: the signed v1 document carries only the latest release's
             # sha256, so a pinned older download has NO signed checksum. The sidecar is an

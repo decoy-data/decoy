@@ -31,7 +31,8 @@ $ErrorActionPreference = "Stop"
 
 $DecoyHome = if ($env:DECOY_HOME) { $env:DECOY_HOME } else { Join-Path $env:USERPROFILE ".decoy" }
 $BinDir    = if ($env:DECOY_BIN_DIR) { $env:DECOY_BIN_DIR } else { Join-Path $env:USERPROFILE ".decoy\bin" }
-$VersionUrl = if ($env:DECOY_VERSION_URL) { $env:DECOY_VERSION_URL } else { "https://decoy.dev/cli/version.json" }
+$VersionUrl = if ($env:DECOY_VERSION_URL) { $env:DECOY_VERSION_URL } else { "https://trydecoy.com/cli/version.json" }
+$BundleBase = if ($env:DECOY_BUNDLE_BASE) { $env:DECOY_BUNDLE_BASE } else { "https://github.com/louiskeep/decoy/releases/download" }
 
 # Pinned release public key. DEV/PLACEHOLDER -- filled with the real key at release
 # publish, the same key install.sh pins. DECOY_RELEASE_PUBKEY_FILE overrides it ONLY while this is still the placeholder.
@@ -107,7 +108,7 @@ try {
     Set-Content -Path $pub -Value $PinnedPubKey -NoNewline
   }
 
-  $baseUrl = $VersionUrl -replace '/[^/]*$',''
+  $baseUrl = $BundleBase.TrimEnd('/')
 
   $vdoc = Join-Path $work "version.json"
   Invoke-WebRequest -Uri $VersionUrl -OutFile $vdoc -UseBasicParsing
@@ -124,7 +125,7 @@ try {
     if (-not $art) { Die "version document lists no bundle for $target" }
     $url = $art.url; $expectSha = $art.sha256; $sigUrl = $art.sig
   } else {
-    $url = "$baseUrl/$ver/decoy-$ver-$target.tar.gz"; $sigUrl = "$url.sig"; $expectSha = ""
+    $url = "$baseUrl/v$ver/decoy-$ver-$target.tar.gz"; $sigUrl = "$url.sig"; $expectSha = ""
   }
 
   $tarball = Join-Path $work "decoy-$ver-$target.tar.gz"
