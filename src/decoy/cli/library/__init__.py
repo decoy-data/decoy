@@ -1,6 +1,7 @@
 """The local record library: one store of value-free records per project (LIB plan, L1b, L1c).
 
-Commands import this facade, never a `_` module (G-LIB-WRITER). What exists so far: the root
+Commands import this facade, never a `_` module (G-LIB-WRITER outside the package, and
+`tests/unit/library/test_facade.py` for the command modules in it). What exists so far: the root
 rule (`resolve_root`), the store (`open_library`, `Library.put`, `get`, `resolve`, `rows`,
 `latest`), refs (`Library.set_ref`, `read_ref`, under the library lock), the index and degraded
 mode, the retention policy model (`load_policy`), the error type, and the `library` command group
@@ -19,7 +20,9 @@ from decoy.cli.library._commands import library_app
 
 if TYPE_CHECKING:
     from decoy.cli.library._errors import LibraryError
-    from decoy.cli.library._paths import LibraryRoot, resolve_root
+    from decoy.cli.library._fsck import check as fsck_check
+    from decoy.cli.library._fsck import repair as fsck_repair
+    from decoy.cli.library._paths import LibraryRoot, check_root_budget, resolve_root
     from decoy.cli.library._policy import LibraryPolicy, load_policy
     from decoy.cli.library._store import Library, PutResult, open_library
 
@@ -29,26 +32,34 @@ __all__ = [
     "LibraryPolicy",
     "LibraryRoot",
     "PutResult",
+    "check_root_budget",
+    "fsck_check",
+    "fsck_repair",
     "library_app",
     "load_policy",
     "open_library",
     "resolve_root",
 ]
 
+# Public name -> (module, attribute).
 _LAZY = {
-    "Library": "_store",
-    "LibraryError": "_errors",
-    "LibraryPolicy": "_policy",
-    "LibraryRoot": "_paths",
-    "PutResult": "_store",
-    "load_policy": "_policy",
-    "open_library": "_store",
-    "resolve_root": "_paths",
+    "Library": ("_store", "Library"),
+    "LibraryError": ("_errors", "LibraryError"),
+    "LibraryPolicy": ("_policy", "LibraryPolicy"),
+    "LibraryRoot": ("_paths", "LibraryRoot"),
+    "PutResult": ("_store", "PutResult"),
+    "check_root_budget": ("_paths", "check_root_budget"),
+    "fsck_check": ("_fsck", "check"),
+    "fsck_repair": ("_fsck", "repair"),
+    "load_policy": ("_policy", "load_policy"),
+    "open_library": ("_store", "open_library"),
+    "resolve_root": ("_paths", "resolve_root"),
 }
 
 
 def __getattr__(name: str) -> Any:
-    module = _LAZY.get(name)
-    if module is None:
+    found = _LAZY.get(name)
+    if found is None:
         raise AttributeError(name)
-    return getattr(importlib.import_module(f"decoy.cli.library.{module}"), name)
+    module, attribute = found
+    return getattr(importlib.import_module(f"decoy.cli.library.{module}"), attribute)

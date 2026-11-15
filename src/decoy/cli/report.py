@@ -46,8 +46,9 @@ from rich.markup import escape
 
 from decoy import _mask_secret
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
+from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
+from decoy._yaml_errors import sanitize_yaml_error
 from decoy.cli._sources import read_file, read_report_source
-from decoy.cli._yaml_errors import sanitize_yaml_error
 from decoy.cli.evidence import (
     ManifestError,
     _render_manifest_card,
@@ -55,10 +56,17 @@ from decoy.cli.evidence import (
     resolve_manifest_path,
     verify_manifest,
 )
-from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_RUNTIME, EXIT_USAGE
-from decoy.cli.io import entry_format, pipeline_option, resolve_pipeline
-from decoy.ui.output import OutputMode, OutputState, emit_json, print_traceback, setup_output
-from decoy.ui.summary import render_fidelity_report
+from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_RUNTIME, EXIT_USAGE, exit_code_for
+from decoy.cli.io import ReportTarget, entry_format, pipeline_option, report_dest, resolve_pipeline
+from decoy.ui.output import (
+    OutputMode,
+    OutputState,
+    emit_error,
+    emit_json,
+    print_traceback,
+    setup_output,
+)
+from decoy.ui.summary import announce_report, render_fidelity_report
 from decoy.ui.theme import accent, code, error, hint, info, risk_high, success, warn
 
 # Grade -> minimum overall_score, mirroring the engine's own grade thresholds
@@ -87,13 +95,12 @@ report_app = typer.Typer(
 # ---------------------------------------------------------------------------
 
 
-def _write_out(state: OutputState, path: Path, text: str) -> None:
-    """Write a report file atomically (owner-only); refuse with the rendered reason."""
-    try:
-        write_local_target(path, text.encode("utf-8"), WriteMode.REPLACE)
-    except AtomicWriteError as exc:
-        state.err_console.print(error("error:"), f"could not write {path}: {describe(exc)}")
-        raise typer.Exit(code=EXIT_USAGE)
+def _write_out(state: OutputState, target: ReportTarget, text: str) -> Path | None:
+    """Write a report file (owner-only); a typed target refuses on failure, a default only warns."""
+    with target.recording():
+        for path in target.paths:
+            write_local_target(path, text.encode("utf-8"), WriteMode.REPLACE)
+    return announce_report(state, target)
 
 
 def _load_manifest(
@@ -106,7 +113,7 @@ def _load_manifest(
         msg, missing = exc.message, exc.kind == "missing"
     if state.mode is OutputMode.json:
         emit_json(state, {"command": command, "status": "error", "error": msg})
-    elif state.mode is not OutputMode.quiet:
+    else:
         state.err_console.print(error("error:"), msg)
         if missing:
             how = code("decoy run pipeline.yaml --evidence-out evidence.json")
@@ -1064,7 +1071,9 @@ def _show(
         help="Write the report to this file path (requires --format).",
     ),
     json_: bool = typer.Option(False, "--json", help="Emit the evidence manifest as JSON."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stdout."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug-level logs."),
 ) -> None:
     """Render the evidence report from an evidence manifest file.
@@ -1109,7 +1118,7 @@ def _show(
             content = render_markdown(manifest)
         else:
             content = render_html(manifest)
-        _write_out(state, out, content)
+        _write_out(state, ReportTarget(out, False), content)
         fmt_label = "Markdown" if fmt in ("markdown", "md") else "HTML"
         state.console.print(success("ok"), f"{fmt_label} report written to", code(str(out)))
         return
@@ -1196,7 +1205,9 @@ def _diff(
         ),
     ),
     json_: bool = typer.Option(False, "--json", help="Emit structured JSON."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stdout."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug-level logs."),
 ) -> None:
     """Compare two evidence manifests: fingerprints always, data when present.
@@ -1249,7 +1260,7 @@ def _diff(
             msg = data_dep_error or "data-level comparison is unavailable."
         if state.mode is OutputMode.json:
             emit_json(state, {"command": "report diff", "status": "error", "error": msg})
-        elif state.mode is not OutputMode.quiet:
+        else:
             state.err_console.print(error("error:"), msg)
             state.err_console.print(
                 " ",
@@ -1437,7 +1448,10 @@ def _verify(
         help="Emit a structured JSON result instead of human-readable output.",
     ),
     quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Suppress stdout. Exit code carries the result."
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress stdout. Errors still go to stderr; exit code carries the result.",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable debug-level CLI logs on stderr."
@@ -1473,7 +1487,7 @@ def _verify(
     if refusal is not None:
         if state.mode is OutputMode.json:
             emit_json(state, {"command": "report verify", "status": "error", "error": refusal})
-        elif state.mode is not OutputMode.quiet:
+        else:
             state.err_console.print(error("error:"), refusal)
         raise typer.Exit(code=EXIT_USAGE)
 
@@ -1671,7 +1685,7 @@ def _fidelity(
         False,
         "--quiet",
         "-q",
-        help="Suppress stdout. Exit code carries the result.",
+        help="Suppress stdout. Errors still go to stderr; exit code carries the result.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -1705,20 +1719,14 @@ def _fidelity(
     source_str = str(source)
     output_str = str(output)
 
-    def _emit_error(message: str) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "report fidelity",
-                    "status": "error",
-                    "source": source_str,
-                    "output": output_str,
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), message)
+    def _emit_error(message: str, *, code: str | None = None) -> None:
+        emit_error(
+            state,
+            "report fidelity",
+            message,
+            code=code,
+            context={"source": source_str, "output": output_str},
+        )
 
     joint_pairs: list[tuple[str, str]] = []
     for spec in joint:
@@ -1745,12 +1753,12 @@ def _fidelity(
         from decoy_engine import parse_pipeline_config
 
         try:
-            raw_cfg = _yaml.safe_load(pipeline_path.read_text(encoding="utf-8"))
+            raw_cfg = load_config_mapping(pipeline_path)
+        except (ConfigFileError, OSError) as exc:
+            _emit_error(**config_refusal(exc))
+            raise typer.Exit(code=exit_code_for(exc))
+        try:
             config_dict = parse_pipeline_config(raw_cfg).model_dump()
-        except _yaml.YAMLError as exc:
-            # YAMLError carries the offending source line verbatim; sanitize it.
-            _emit_error(sanitize_yaml_error(exc))
-            raise typer.Exit(code=EXIT_USAGE)
         except Exception as exc:
             _emit_error(f"could not parse --config {pipeline_config}: {exc}")
             raise typer.Exit(code=EXIT_USAGE)
@@ -1782,12 +1790,12 @@ def _fidelity(
     try:
         src_df = read_report_source(source, config_dict, config_dir)
     except Exception as exc:
-        _emit_error(f"could not read {source}: {exc}")
+        _emit_error(f"could not read {source}: {type(exc).__name__}.")
         raise typer.Exit(code=EXIT_USAGE)
     try:
         out_df = read_report_source(output, {}, config_dir)
     except Exception as exc:
-        _emit_error(f"could not read {output}: {exc}")
+        _emit_error(f"could not read {output}: {type(exc).__name__}.")
         raise typer.Exit(code=EXIT_USAGE)
 
     report = compute_quality_report(
@@ -1798,8 +1806,8 @@ def _fidelity(
     )
     policy_result = apply_quality_policy(report, policy_config, strategy_map=strategy_map)
 
-    if report_out is not None:
-        _write_out(state, report_out, _json.dumps({**report, "policy": policy_result}, indent=2))
+    text = _json.dumps({**report, "policy": policy_result}, indent=2)
+    written = _write_out(state, report_dest("fidelity", output, ref, report_out), text)
 
     verdict = policy_result["verdict"]
     status = "ok" if verdict == "pass" else verdict
@@ -1808,7 +1816,7 @@ def _fidelity(
         envelope = dict(report)
         envelope["command"] = "report fidelity"
         envelope["status"] = status
-        envelope["policy"] = policy_result
+        envelope.update(policy=policy_result, **({"report_path": str(written)} if written else {}))
         emit_json(state, envelope)
     elif state.mode is not OutputMode.quiet:
         render_fidelity_report(
@@ -1996,15 +2004,14 @@ def _integrity(
         config_dict: dict
         table_name: str
         if config_path is not None:
-            import yaml as _yaml
             from decoy_engine import parse_pipeline_config
 
             try:
-                raw = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            except _yaml.YAMLError as exc:
-                # The outer handler renders str(exc); a raw YAMLError there would
-                # echo the offending source line. Re-raise a pre-sanitized message.
-                raise ValueError(sanitize_yaml_error(exc)) from None
+                raw = load_config_mapping(config_path)
+            except (ConfigFileError, OSError) as exc:
+                members = {"masked": masked_str, "source": source_str}
+                emit_error(state, "report integrity", context=members, **config_refusal(exc))
+                raise typer.Exit(code=exit_code_for(exc))
             config_dict = parse_pipeline_config(raw).model_dump()
             # One source/masked pair: anchor on the first declared table.
             tables = config_dict.get("tables") or []
@@ -2047,8 +2054,8 @@ def _integrity(
             config=config_dict,
         )
 
-        if out is not None:
-            _write_out(state, out, _json.dumps(report, indent=2))
+        target = report_dest("integrity", masked, ref, out)
+        written = _write_out(state, target, _json.dumps(report, indent=2))
 
         # Decide exit code based on the report's severity counters.
         fail_count = int(report.get("fail_count") or 0)
@@ -2064,6 +2071,7 @@ def _integrity(
                     "masked": masked_str,
                     "source": source_str,
                     "report": report,
+                    **({"report_path": str(written)} if written else {}),
                 },
             )
         elif state.mode is not OutputMode.quiet:
@@ -2212,39 +2220,19 @@ def _vault(
     used; the seed is not key material. A missing or wrong secret exits 1.
     Exits 0 on success, 1 on a config/vault/usage error.
     """
-    import yaml as _yaml
-
     state = setup_output(json_, quiet, verbose)
     config_path = resolve_pipeline(config, state, "report vault").yaml
 
-    def _emit_error(message: str, *, hint_text: str | None = None) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "report vault",
-                    "status": "error",
-                    "vault": str(vault),
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            # markup=False: message is engine text or a user path, not authored
-            # markup. Engine install lines such as `pip install 'decoy-engine[vault]'`
-            # would otherwise lose the bracketed extra name to Rich's tag parser.
-            state.err_console.print(error("error:"), message, markup=False)
-            if hint_text:
-                state.err_console.print(" ", hint("hint:"), hint_text)
+    def _emit_error(message: str, *, hint_text: str | None = None, code: str | None = None) -> None:
+        emit_error(
+            state, "report vault", message, code=code, hint=hint_text, context={"vault": str(vault)}
+        )
 
-    # Parse config YAML.
     try:
-        raw = _yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except _yaml.YAMLError as exc:
-        _emit_error(sanitize_yaml_error(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-    if not isinstance(raw, dict):
-        _emit_error(f"Pipeline YAML must be a YAML mapping (object), not {type(raw).__name__}.")
-        raise typer.Exit(code=EXIT_USAGE)
+        raw = load_config_mapping(config_path)
+    except (ConfigFileError, OSError) as exc:
+        _emit_error(**config_refusal(exc))
+        raise typer.Exit(code=exit_code_for(exc))
     try:
         _mask_secret.apply_mask_secret(raw, mask_secret)
     except _mask_secret.MaskSecretFlagError as exc:
