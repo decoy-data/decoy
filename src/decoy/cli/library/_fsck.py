@@ -36,6 +36,7 @@ from typing import Literal
 
 from decoy_engine import records
 
+from decoy.cli.library import _fsck_codes as C
 from decoy.cli.library import _index, _refs
 from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
@@ -77,20 +78,17 @@ from decoy.cli.library._store import (
 
 __all__ = ["Action", "Finding", "FsckReport", "check", "repair"]
 
-Level = Literal["finding", "warning", "note"]
 STALE_TEMP_SECONDS = 3600  # the git `gc.pruneExpire` idea, scaled to a write's lifetime
 # Job logs are read through the one small-file reader too; a log is one run's value-free events.
 _MAX_LOG_BYTES = 64 * 1024 * 1024
 _POSIX = sys.platform != "win32"
-_CORRUPT_CODES = frozenset({"object_corrupt", "object_name_invalid"})
 # A `get` that could not read the file says nothing about its content: never quarantined.
 _UNREADABLE_CODES = frozenset({LIBRARY_READ_FAILED, LIBRARY_FILE_TOO_LARGE, LIBRARY_PATH_UNSAFE})
-_BLOCKING_CODES = frozenset({"layout_newer", "layout_unreadable"})
 
 
 @dataclass(frozen=True)
 class Finding:
-    level: Level
+    level: C.Level
     code: str
     target: str  # relative to the library root, or a record id
 
@@ -131,9 +129,16 @@ class _Walk:
         self.objects = 0
         self.dangling_refs: list[Entry] = []
 
-    def add(self, level: Level, code: str, path_or_id: Path | str) -> None:
+    def add(self, kind: C.FsckCode, path_or_id: Path | str, entry: Entry | None = None) -> None:
+        """Report one finding. `entry` is the regular file as judged now; only a finding whose
+        descriptor allows a repair keeps it, and repair acts on nothing else."""
         target = path_or_id if isinstance(path_or_id, str) else self.rel(path_or_id)
-        self.items.append(Finding(level, code, target))
+        self.items.append(Finding(kind.level, kind.code, target))
+        if kind.repair is None or entry is None:
+            return
+        self.inodes[target] = entry.inode
+        if kind.repair == "remove_ref":
+            self.dangling_refs.append(entry)
 
     def rel(self, path: Path) -> str:
         return path.relative_to(self.root).as_posix()
@@ -144,7 +149,7 @@ class _Walk:
         if found is None:
             return False
         if found != "dir":
-            self.add("finding", "path_linked", path)
+            self.add(C.PATH_LINKED, path)
             return False
         return True
 
@@ -160,7 +165,7 @@ class _Walk:
         try:
             data = read_capped(self.root, self.lib / LAYOUT_FILE, MAX_LAYOUT_BYTES)
         except LibraryError:
-            self.add("finding", "layout_unreadable", self.lib / LAYOUT_FILE)
+            self.add(C.LAYOUT_UNREADABLE, self.lib / LAYOUT_FILE)
             return True
         if data is None:
             return False
@@ -170,7 +175,7 @@ class _Walk:
         version = found.get("layout") if isinstance(found, dict) else None
         if version == LAYOUT_VERSION and not isinstance(version, bool):
             return False
-        self.add("finding", "layout_newer", self.lib / LAYOUT_FILE)
+        self.add(C.LAYOUT_NEWER, self.lib / LAYOUT_FILE)
         return True
 
     def objects_and_links(self) -> None:
@@ -181,15 +186,13 @@ class _Walk:
         for found in object_entries(self.root, objects):
             path, record_id, entry = found.path, found.record_id, found.entry
             if entry is None:
-                self.add("finding", "object_unreadable", path)
+                self.add(C.OBJECT_UNREADABLE, path)
                 continue
             if entry.kind == "link":
-                self.add("finding", "path_linked", path)
+                self.add(C.PATH_LINKED, path)
                 continue
             if record_id is None:
-                self.add("finding", "object_name_invalid", path)
-                if entry.kind == "file":
-                    self.inodes[self.rel(path)] = entry.inode
+                self.add(C.OBJECT_NAME_INVALID, path, entry if entry.kind == "file" else None)
                 continue
             self.objects += 1
             self.present.add(record_id)
@@ -200,21 +203,20 @@ class _Walk:
             except LibraryError as exc:
                 code = exc.code
             if code in _UNREADABLE_CODES:
-                self.add("finding", "object_unreadable", path)
+                self.add(C.OBJECT_UNREADABLE, path)
             elif code == RECORD_INVALID:
-                self.add("finding", "payload_invalid", path)
+                self.add(C.PAYLOAD_INVALID, path)
             elif code is not None:
-                self.add("finding", "object_corrupt", path)
-                self.inodes[self.rel(path)] = entry.inode
+                self.add(C.OBJECT_CORRUPT, path, entry)
             elif isinstance(decoded, records.RecordNeedsNewer):
-                self.add("warning", "needs_newer", path)
+                self.add(C.NEEDS_NEWER, path)
             else:
                 self.indexable.add(record_id)
                 raw = getattr(decoded, "raw", {})
                 links += [(record_id, str(link.get("id"))) for link in raw.get("links") or ()]
         for src, dst in links:
             if dst not in self.present:
-                self.add("warning", "link_dangling", src)
+                self.add(C.LINK_DANGLING, src)
 
     def refs(self) -> None:
         refs_dir = self.lib / REFS
@@ -222,32 +224,31 @@ class _Walk:
             return
         for entry, read, record_id in _refs.iter_refs(self.root, refs_dir):
             if entry.kind == "link":
-                self.add("finding", "path_linked", entry.path)
+                self.add(C.PATH_LINKED, entry.path)
             elif not read:
-                self.add("finding", "ref_unreadable", entry.path)
+                self.add(C.REF_UNREADABLE, entry.path)
             elif record_id is None:
-                self.add("finding", "ref_corrupt", entry.path)
+                self.add(C.REF_CORRUPT, entry.path)
             elif record_id not in self.present:
-                self.add("finding", "ref_dangling", entry.path)
-                self.dangling_refs.append(entry)
+                self.add(C.REF_DANGLING, entry.path, entry)
 
     def index(self) -> None:
         path = self.lib / INDEX_FILE
         found_kind = kind_of(self.root, path)
         if found_kind is None:
             if self.present:
-                self.add("finding", "index_missing", path)
+                self.add(C.INDEX_MISSING, path)
             return
         if found_kind != "file":
-            self.add("finding", "index_not_file", path)  # a FIFO would block the open
+            self.add(C.INDEX_NOT_FILE, path)  # a FIFO would block the open
             return
         found = _indexed_ids(path)
         if found is None:
-            self.add("finding", "index_corrupt", path)
+            self.add(C.INDEX_CORRUPT, path)
             return
         version, ids = found
         if version != _index.SCHEMA_VERSION or (self.indexable - ids) or (ids - self.present):
-            self.add("finding", "index_stale", path)
+            self.add(C.INDEX_STALE, path)
 
     def temps(self) -> None:
         tmp = self.lib / TMP
@@ -255,26 +256,25 @@ class _Walk:
             return
         for entry in entries(self.root, tmp) or []:
             if entry.kind == "file" and self.now - entry.mtime > STALE_TEMP_SECONDS:
-                self.add("finding", "temp_stale", entry.path)
-                self.inodes[self.rel(entry.path)] = entry.inode
+                self.add(C.TEMP_STALE, entry.path, entry)
 
     def modes(self) -> None:
         if not _POSIX:
             return
         private = [self.lib / INDEX_FILE, self.lib / TMP, self.root / SCRATCH, self.root / LOGS]
         advisory = [self.lib / OBJECTS, self.lib / REFS]
-        classes: tuple[tuple[Level, list[Path]], ...] = (("finding", private), ("note", advisory))
-        for level, paths in classes:
+        classes = ((C.MODE_OPEN, private), (C.MODE_OPEN_ADVISORY, advisory))
+        for kind, paths in classes:
             for path in paths:
                 for entry in _mode_entries(self.root, path):
                     if entry.mode & 0o077:
-                        self.add(level, "mode_open", entry.path)
+                        self.add(kind, entry.path)
 
     def logs(self) -> None:
         try:
             found = self.listing(self.root / LOGS)
         except LibraryError:
-            self.add("finding", "log_unreadable", self.root / LOGS)
+            self.add(C.LOG_UNREADABLE, self.root / LOGS)
             return
         for entry in found:
             if entry.kind != "file" or not entry.name.endswith(".jsonl"):
@@ -284,18 +284,18 @@ class _Walk:
             try:
                 data = read_capped(self.root, entry.path, _MAX_LOG_BYTES) or b""
             except LibraryError:
-                self.add("finding", "log_unreadable", entry.path)
+                self.add(C.LOG_UNREADABLE, entry.path)
                 continue
             log = None
             with contextlib.suppress(records.RecordError):
                 log = records.read_job_log(data)
             if log is None:
-                self.add("finding", "log_header_invalid", entry.path)
+                self.add(C.LOG_HEADER_INVALID, entry.path)
                 continue
             if log.bad_lines:
-                self.add("finding", "log_bad_line", entry.path)
+                self.add(C.LOG_BAD_LINE, entry.path)
             if log.truncated_tail:
-                self.add("warning", "log_truncated", entry.path)
+                self.add(C.LOG_TRUNCATED, entry.path)
 
 
 def _mode_entries(root: Path, path: Path) -> list[Entry]:
@@ -420,9 +420,10 @@ def repair(
     cannot be repaired is reported for itself while the rest goes on.
     """
     before = check(root, now=now)
-    linked = {f.target for f in before.items if f.code == "path_linked"}
+    kinds = [(f, C.descriptor(f)) for f in before.items]
+    linked = {f.target for f, kind in kinds if kind is C.PATH_LINKED}
     lib = root / LIBRARY
-    if any(f.code in _BLOCKING_CODES for f in before.items) or LIBRARY in linked:
+    if any(kind.blocks_repair for _f, kind in kinds) or LIBRARY in linked:
         return (), before
     if kind_of(root, lib) != "dir":
         return (), before
@@ -430,23 +431,25 @@ def repair(
     if tmp_ok:
         ensure_private_dir(root, lib / TMP)
     actions: list[Action] = []
-    candidates = [f for f in before.items if f.code in _CORRUPT_CODES and f.target in before.inodes]
+    candidates = [
+        f for f, kind in kinds if kind.repair == "quarantine" and f.target in before.inodes
+    ]
     if candidates and tmp_ok:
         actions += _quarantine_all(root, lib, candidates, before)
-    for f in before.items:
-        if f.code == "temp_stale":
+    for f, kind in kinds:
+        if kind.repair == "delete_temp":
             try:
                 remove_file(root, root / f.target, inode=before.inodes.get(f.target))
             except LibraryError:
-                actions.append(Action("temp_delete_failed", f.target))
+                actions.append(Action(C.TEMP_DELETE_FAILED.code, f.target))
                 continue
-            actions.append(Action("temp_deleted", f.target))
+            actions.append(Action(C.TEMP_DELETED.code, f.target))
     library = open_library(root, probe=probe)
     if library.degraded is None:
         removed = _refs.remove_refs(library, list(before.dangling_refs))
-        actions += [Action("ref_removed", p.relative_to(root).as_posix()) for p in removed]
+        actions += [Action(C.REF_REMOVED.code, p.relative_to(root).as_posix()) for p in removed]
         library.rebuild_index()
-        actions.append(Action("index_rebuilt", f"{LIBRARY}/{INDEX_FILE}"))
+        actions.append(Action(C.INDEX_REBUILT.code, f"{LIBRARY}/{INDEX_FILE}"))
     return tuple(actions), check(root, now=now)
 
 
@@ -460,9 +463,9 @@ def _quarantine_all(
             for f in candidates:
                 outcome = _quarantine(root, root / f.target, before.inodes.get(f.target))
                 if outcome == "quarantined":
-                    actions.append(Action("object_quarantined", f.target))
+                    actions.append(Action(C.OBJECT_QUARANTINED.code, f.target))
                 elif outcome == "failed":
-                    actions.append(Action("quarantine_failed", f.target))
+                    actions.append(Action(C.QUARANTINE_FAILED.code, f.target))
     except LibraryError:
-        actions += [Action("quarantine_failed", f.target) for f in candidates]
+        actions += [Action(C.QUARANTINE_FAILED.code, f.target) for f in candidates]
     return actions
