@@ -152,7 +152,8 @@ def row(summary: dict[str, Any], record: dict[str, str], *, date: str, run: str,
 def _usage(args: argparse.Namespace) -> str | None:
     if not (_URL.fullmatch(args.run) or _LABEL.fullmatch(args.run)):
         return "--run must be an https URL or a host label"
-    if "|" in args.note or "\n" in args.note or len(args.note) > 200:
+    # splitlines() covers every line boundary a Markdown row can be split on.
+    if "|" in args.note or args.note.splitlines() not in ([], [args.note]) or len(args.note) > 200:
         return "--note must be one line of at most 200 characters with no '|'"
     if args.date is not None and not _DATE.fullmatch(args.date):
         return "--date must be YYYY-MM-DD"
