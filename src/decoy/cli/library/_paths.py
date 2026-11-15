@@ -25,7 +25,7 @@ from typing import Literal
 
 from decoy.cli.io import DECOY_DIR, find_project
 from decoy.cli.library._errors import LIBRARY_PATH_TOO_LONG, LIBRARY_PATH_UNSAFE, LibraryError
-from decoy.cli.library._fs import Entry, entries
+from decoy.cli.library._fs import Entry, anchor, entries
 
 __all__ = [
     "ENV_VAR",
@@ -100,11 +100,11 @@ def resolve_root(
     """
     env = (os.environ if environ is None else environ).get(ENV_VAR, "")
     if flag is not None:
-        return LibraryRoot(flag.resolve(), True, "flag")
+        return LibraryRoot(anchor(flag), True, "flag")
     if env and env != OFF:
-        return LibraryRoot(Path(env).resolve(), True, "env")
+        return LibraryRoot(anchor(Path(env)), True, "env")
     yaml = next((p for p in (pipeline, emit_config, config) if p is not None), None)
-    start = yaml.resolve().parent if yaml is not None else None
+    start = anchor(yaml).parent if yaml is not None else None
     root = find_project(start, project).root / DECOY_DIR
     return LibraryRoot(root, env != OFF, "project")
 
