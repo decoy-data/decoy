@@ -284,3 +284,55 @@ def test_prune_and_export_share_one_closure_walk(
     assert _cli("prune", "--keep-last", "0").exit_code == EXIT_OK
     assert _cli("export", "-o", str(tmp_path / "e.jsonl"), "--ref", ids[0]).exit_code == EXIT_OK
     assert len(calls) == 2
+
+
+# -- review round 2 on #219 -----------------------------------------------------------------------
+
+
+def test_an_export_whose_record_links_to_a_missing_record_refuses(
+    root: Path, tmp_path: Path
+) -> None:
+    """V1-A (1): B links to A and A's file is gone: the export would not be closed."""
+    a = _put(root, sample(1, 1))[0]
+    _put(root, run_result(2, "succeeded", [table(0, "orders", 3)], links=[("baseline", a)]))
+    object_path(root, a).unlink()
+    out = tmp_path / "e.jsonl"
+    result = _cli("export", "-o", str(out))
+    assert result.exit_code == EXIT_RUNTIME, result.output
+    assert "library_unexplained_entries" in result.output
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("ref", [True, False], ids=["named-ref", "whole-library"])
+def test_an_export_with_a_dangling_ref_refuses(root: Path, tmp_path: Path, ref: bool) -> None:
+    """V1-A (2): the ref's target is gone; the header would point at nothing."""
+    ids = _old_samples(root, 2)
+    assert _cli("ref", "sample-run/main", ids[0], "--library", str(root)).exit_code == 0
+    object_path(root, ids[0]).unlink()
+    out = tmp_path / "e.jsonl"
+    extra = ("--ref", "sample-run/main") if ref else ()
+    result = _cli("export", "-o", str(out), *extra)
+    assert result.exit_code != EXIT_OK, result.output
+    assert not out.exists()
+
+
+def test_export_writes_through_one_checked_entry_point() -> None:
+    """DESIGN-B: `_fs.write_export` validates and writes; there is no caller-side check."""
+    from decoy.cli.library import _fs
+
+    assert callable(getattr(_fs, "write_export", None))
+    assert not hasattr(_fs, "write_user_file")
+    source = (
+        Path(__file__).resolve().parents[3] / "src/decoy/cli/library/_exporting.py"
+    ).read_text()
+    assert "check_destination" not in source and "os.path" not in source
+
+
+def test_one_timestamp_parser() -> None:
+    """DESIGN-C: `_index.parse_instant` is the one parser, through the facade."""
+    import decoy.cli.library as facade
+
+    assert facade.parse_instant("2026-11-01").isoformat() == "2026-11-01T00:00:00+00:00"
+    pkg = Path(__file__).resolve().parents[3] / "src/decoy/cli/library"
+    users = sorted(p.name for p in pkg.glob("*.py") if "fromisoformat" in p.read_text())
+    assert users == ["_index.py"]

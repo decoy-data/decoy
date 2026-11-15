@@ -190,6 +190,8 @@ def bad(p: Path, q: Path) -> None:
     os.path.exists(p)
     os.stat(p)
     sqlite3.connect(str(p))
+    os.path.realpath(p)
+    os.path.islink(p)
 
 def fine(p: Path, when: object, library: object) -> None:
     when.replace(tzinfo=None)
@@ -219,6 +221,8 @@ def test_the_scan_fires_on_every_seeded_spelling() -> None:
         "os.path.exists",
         "os.stat",
         "sqlite3.connect",
+        "os.path.realpath",
+        "os.path.islink",
     ]
 
 
