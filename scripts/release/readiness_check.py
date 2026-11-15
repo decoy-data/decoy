@@ -64,7 +64,16 @@ _LICENSOR_LINE = re.compile(
 )
 # The placeholder family in the license files: a sentence naming the entity, not only a
 # copyright line, must follow the licensor value.
-_ENTITY = re.compile(r"Decoy Labs,?\s+(?:L\.?L\.?C\.?|Inc\.?|Ltd\.?|Corp\.?|GmbH|Co\.)")
+# It runs over the whole file text, so a line break or markdown emphasis between the words
+# does not hide a mention.
+_ENTITY = re.compile(
+    r"Decoy[\s*_]+Labs[\s*_,]*(?:L\.?L\.?C|Incorporated|Inc|Corporation|Corp|Limited|Ltd"
+    r"|Company|GmbH|Co)\b\.?",
+    re.IGNORECASE,
+)
+_RIGHTS = re.compile(r"[\s,.;]*all rights reserved\W*$", re.IGNORECASE)
+_SUFFIX = {"incorporated": "inc", "corporation": "corp", "limited": "ltd", "company": "co"}
+_PLACEHOLDER_OWNERS = frozenset({"tbd", "n/a", "na", "none", "owner", "-"})
 _VERSION_LINE = re.compile(r'^__version__ = "([^"]+)"$', re.MULTILINE)
 _URL = re.compile(r"https://\S+")
 _PATH = re.compile(r"[\w.-]+(?:/[\w.-]+)+")
@@ -189,7 +198,9 @@ def check_identity(keys: dict[str, str], release: bool) -> list[tuple[str, str]]
 def check_signoff(keys: dict[str, str]) -> list[tuple[str, str]]:
     owner = keys.get("signoff.owner", "")
     ok = {
-        "signoff.owner": bool(owner) and not owner.startswith("<") and owner.upper() != "TBD",
+        "signoff.owner": bool(owner)
+        and not owner.startswith("<")
+        and owner.casefold() not in _PLACEHOLDER_OWNERS,
         "signoff.date": bool(_DATE.fullmatch(keys.get("signoff.date", ""))),
         "signoff.decision": keys.get("signoff.decision") == "go",
     }
@@ -230,6 +241,12 @@ def read_version(cli_root: Path) -> str:
     return m.group(1)
 
 
+def normalize_entity(name: str) -> str:
+    """One comparison form: case, commas, periods, emphasis, spacing and suffix spelling folded."""
+    words = re.sub(r"[*_,]", " ", name.casefold().replace(".", "")).split()
+    return " ".join(_SUFFIX.get(w, w) for w in words)
+
+
 def check_row_text(rows: list[dict[str, str]], cli_root: Path) -> list[tuple[str, str]]:
     """Result and evidence are the filler's; every other cell must equal the template's."""
     try:
@@ -240,7 +257,10 @@ def check_row_text(rows: list[dict[str, str]], cli_root: Path) -> list[tuple[str
         )
     except Refusal as exc:
         return [(exc.step, exc.code)]
-    want = {r["id"]: r for r in parse_rows(template)}
+    template_rows = parse_rows(template)
+    if tuple(r["id"] for r in template_rows) != ROW_IDS:
+        return [("template", "readiness_template_unreadable")]
+    want = {r["id"]: r for r in template_rows}
     cols = ("gate", "command", "criterion", "owner")
     return [
         (f"row {r['id']}", "readiness_row_text_changed")
@@ -328,8 +348,8 @@ def check_legal(keys: dict[str, str], text: str, roots: dict[str, Path]) -> list
                     found.append((step, "readiness_marker_blocking"))
             names = [m.group(1) for m in map(_LICENSOR_LINE.match, body.splitlines()) if m]
             lines_seen += len(names)
-            names += [e for e in _ENTITY.findall(body) if licensor and e not in licensor]
-            if licensor and any(n != licensor for n in names):
+            names = [_RIGHTS.sub("", n) for n in names] + _ENTITY.findall(body)
+            if licensor and any(normalize_entity(n) != normalize_entity(licensor) for n in names):
                 found.append((step, "readiness_licensor_mismatch"))
     if not lines_seen:
         found.append(("licensor", "readiness_licensor_lines_absent"))
