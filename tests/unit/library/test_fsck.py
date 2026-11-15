@@ -245,6 +245,6 @@ def test_a_newer_layout_refuses_writes_and_repair(root: Path) -> None:
     assert caught.value.code == LIBRARY_LAYOUT_NEWER
     assert len(object_files(root)) == 1
     report = _fsck.check(root, probe=_local)
-    assert _codes(report) == [("layout_newer", "library/LAYOUT")]
+    assert _codes(report) == [(LIBRARY_LAYOUT_NEWER, "library/LAYOUT")]
     actions, after = _fsck.repair(root, probe=_local)
     assert actions == () and not after.clean
