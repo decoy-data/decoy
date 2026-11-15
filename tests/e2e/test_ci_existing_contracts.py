@@ -80,8 +80,8 @@ def test_scan_diff_strict_keeps_its_direct_command_exit(tmp_path: Path) -> None:
     write(repo, "old.json", _scan([{"name": "a", "pii_score": 0.1}]))
     write(repo, "new.json", _scan([{"name": "a", "pii_score": 0.9}]))
     proc = run_decoy(["scan", "diff", "old.json", "new.json", "--strict", "--json"], repo)
-    # Public direct-command behavior: strict drift is EXIT_USAGE, not EXIT_FINDINGS.
-    assert proc.returncode == EXIT_USAGE
+    # Strict drift exits EXIT_FINDINGS, the code `decoy ci check` returns for the same drift (REL-GATE Q8a).
+    assert proc.returncode == EXIT_FINDINGS
     payload = json.loads(proc.stdout)
     assert payload["drift"] is True
     assert payload["summary"]["pii_increased"] == 1

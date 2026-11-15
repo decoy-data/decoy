@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from decoy.cli.exit_codes import EXIT_FINDINGS
 
 runner = CliRunner()
 
@@ -205,7 +206,7 @@ def test_storm_diff_strict_no_drift_exits_zero(baseline: Path, tmp_path: Path):
     assert result.exit_code == 0
 
 
-def test_storm_diff_strict_pii_increase_exits_one(baseline: Path, tmp_path: Path):
+def test_storm_diff_strict_pii_increase_exits_findings(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.7)],
@@ -214,10 +215,10 @@ def test_storm_diff_strict_pii_increase_exits_one(baseline: Path, tmp_path: Path
     result = runner.invoke(
         app, ["scan", "diff", str(baseline), str(new), "--strict"]
     )
-    assert result.exit_code == 1
+    assert result.exit_code == EXIT_FINDINGS
 
 
-def test_storm_diff_strict_quiet_pii_increase_exits_one_silently(
+def test_storm_diff_strict_quiet_pii_increase_exits_findings_silently(
     baseline: Path, tmp_path: Path
 ):
     new = _write_scan(
@@ -229,11 +230,11 @@ def test_storm_diff_strict_quiet_pii_increase_exits_one_silently(
         app,
         ["scan", "diff", str(baseline), str(new), "--strict", "--quiet"],
     )
-    assert result.exit_code == 1
+    assert result.exit_code == EXIT_FINDINGS
     assert result.stdout == ""
 
 
-def test_storm_diff_strict_json_pii_increase_emits_envelope_and_exits_one(
+def test_storm_diff_strict_json_pii_increase_emits_envelope_and_exits_findings(
     baseline: Path, tmp_path: Path
 ):
     new = _write_scan(
@@ -245,10 +246,20 @@ def test_storm_diff_strict_json_pii_increase_emits_envelope_and_exits_one(
         app,
         ["scan", "diff", str(baseline), str(new), "--strict", "--json"],
     )
-    assert result.exit_code == 1
+    assert result.exit_code == EXIT_FINDINGS
     payload = _json.loads(result.stdout)
     assert payload["command"] == "scan diff"
     assert payload["drift"] is True
+
+
+def test_storm_diff_non_strict_drift_exits_zero(baseline: Path, tmp_path: Path):
+    new = _write_scan(
+        tmp_path / "new.json",
+        [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.7)],
+        quasi_identifier_groups=[["first_name", "email"]],
+    )
+    result = runner.invoke(app, ["scan", "diff", str(baseline), str(new)])
+    assert result.exit_code == 0
 
 
 def test_storm_diff_strict_pii_decrease_alone_exits_zero(
