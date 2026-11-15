@@ -423,7 +423,8 @@ def mask(
 
     Raises:
         ConfigValidationError: the config fails `PipelineConfig` schema
-            validation.
+            validation, including two declared tables whose targets the
+            engine proves equal (`target_shared_destination`).
         MaskSecretConfigError: a mask secret is missing, malformed, or
             configured in two places at once.
         ValueError / TypeError: an ambiguous or wrongly-shaped `data` /
@@ -432,7 +433,8 @@ def mask(
             contradicts its path suffix (for example `format: parquet` at
             `out.csv`). Raised before any source is read or the engine runs.
         decoy.cli.io.LayoutError: two outputs (targets, or a target and the
-            quarantine file) resolve to one file, code
+            quarantine file) the schema accepts still resolve to one file on
+            disk (a symlink, hard link, case folding or `..`), code
             `layout.output_path_collision`. Raised before any source is read
             or the engine runs, so no output is replaced.
         UnsupportedCloudEndpointError: a source or target (after `data` /
