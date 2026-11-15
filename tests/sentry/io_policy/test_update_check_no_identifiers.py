@@ -50,11 +50,15 @@ def distribution_imports(source: str) -> set[str]:
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.ImportFrom) and node.module == "decoy.distribution":
             found |= {a.name for a in node.names}
-        elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith("decoy.distribution."):
+        elif isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
+            "decoy.distribution."
+        ):
             found.add(node.module.rsplit(".", 1)[1])
         elif isinstance(node, ast.Import):
             found |= {
-                a.name.rsplit(".", 1)[1] for a in node.names if a.name.startswith("decoy.distribution.")
+                a.name.rsplit(".", 1)[1]
+                for a in node.names
+                if a.name.startswith("decoy.distribution.")
             }
     return found
 
@@ -95,4 +99,3 @@ def test_each_identifier_spelling_is_caught() -> None:
     for source in planted:
         assert identifier_uses(source), source
     assert identifier_uses("import platform\nplatform.machine()") == []
-
