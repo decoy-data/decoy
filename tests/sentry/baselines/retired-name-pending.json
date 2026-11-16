@@ -34,18 +34,6 @@
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 2
   },
-  "docs/diagrams/classes_decoy.svg": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 3
-  },
-  "docs/diagrams/deps.svg": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 11
-  },
-  "docs/diagrams/packages_decoy.svg": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 9
-  },
   "docs/qa/cli-v1-checklist.md": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 2
