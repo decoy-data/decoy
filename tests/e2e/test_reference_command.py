@@ -285,7 +285,7 @@ def test_list_faker_types_equals_the_engine_provider_list():
 def test_list_faker_types_human_output_names_a_provider():
     from decoy_engine import list_generate_faker_providers
 
-    first = list(list_generate_faker_providers())[0]
+    first = next(iter(list_generate_faker_providers()))
     result = runner.invoke(app, ["list", "faker-types"])
     assert result.exit_code == 0, result.output
     assert first in result.stdout
