@@ -43,10 +43,12 @@ Use `--library` with a shorter path.
     index.sqlite        the index (a rebuildable cache) and the library lock; not committed
     tmp/                temp files for atomic writes
     quarantine/         records `fsck --repair` found corrupt (moved here, never deleted)
+  scratch/              the only place Decoy keeps rows (sample output, staging); never committed
 ```
 
-Decoy never edits an existing `.gitignore` or `.gitattributes`. A library root not named
-`.decoy` (a `--library` folder on a mounted volume, for example) gets neither file.
+Decoy never edits an existing `.gitignore` or `.gitattributes`. A library root with another name
+(a `--library` folder, for example) gets the same two files in that folder, also only if absent,
+so scratch rows under it are never committed. A `.gitignore` Decoy cannot write is a warning.
 
 A record id is `sha256:` plus the SHA-256 of the record's canonical JSON without its `id` field.
 The check parses the file before hashing, so a copy with CRLF line endings or different
@@ -182,6 +184,28 @@ one entry cannot be moved or deleted, repair prints `quarantine_failed` or
 `temp_delete_failed` for it and goes on. It
 never deletes a valid record, and it changes nothing in a library whose `LAYOUT` is newer than
 this Decoy, nothing under a linked folder, and no entry that was replaced after the check.
+
+## Scratch
+
+`.decoy/scratch/` is the only part of the library that may hold rows: sample output and staging.
+Decoy's engine creates it and every folder in it owner-only from the first moment (0700 on Linux
+and macOS; on Windows a protected access list for you and SYSTEM). Each command checks it again:
+an empty `scratch/` that is open to others is tightened, and one that is open to others and
+already holds files is refused (`scratch_unsafe`), because those files may have been read. If
+the protection cannot be applied, the command stops before it writes any row
+(`scratch_acl_failed`) and leaves no folder behind.
+
+- Staging folders (`<owner>-<invocation id>-<random>`) are deleted when their command finishes,
+  whether it succeeded or failed.
+- Sample output (`<owner>-<invocation id>`) stays until its time limit (24 hours by default,
+  `retention.scratch.sample_ttl_hours`); removing expired output arrives with `decoy run --sample`.
+- Deletes go file by file. A file another program has open (on Windows, a sample open in Excel)
+  is skipped and reported with `library_delete_skipped`, and the next cleanup removes it.
+- A `scratch/` that is a link, or a link on the way to the folder being deleted, is refused with
+  `library_path_unsafe` and nothing is deleted. A link inside a scratch folder is removed as an
+  entry; whatever it points at is never touched.
+
+The library's `.gitignore` ignores `scratch/`, in `.decoy/` and in any `--library` folder.
 
 ## File modes
 
