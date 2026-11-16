@@ -214,6 +214,33 @@ top: `0` turns blanks off and `0.1` gives 10%, whatever the source had.
 `decoy fit` records the cell format per column, so its snapshots carry the
 blank rate.
 
+## Formulas read numbers as numbers
+
+A `formula` column sees each column it references as that column's own type. A plain
+`sequence`, an int or float `faker` column and a numeric column with blanks arrive as numbers,
+so `round(a / 3)` over a sequence gives `0, 1, 1, 1, 2`. Adding a formula never changes the type
+of the column it reads in the output.
+
+Two rules keep a formula from writing wrong cells:
+
+- A formula that uses a number as text is refused at `decoy validate` and `decoy run` with
+  `generate_formula_number_used_as_text` (exit 1). Rewrite it as in the table below.
+- A formula that raises on a row stops the run with `generate_formula_evaluation_failed`
+  (exit 1) and writes no output. The message names the table, the column, the row index and a
+  reason word, never a cell value. It used to write blanks with a warning.
+
+A blank number reference gives a blank result. A formula cannot replace it, so write
+`x if id is not None else y` when you need to test for blank (`x if id else y` is false for 0).
+
+| Before | After |
+|---|---|
+| `'ORD-' + id` | `'ORD-' + str(id)` or `f'ORD-{id}'` |
+| `id.zfill(5)` | `str(id).zfill(5)` or `f'{id:05d}'` |
+| `id[-4:]`, `len(id)` | `str(id)[-4:]`, `len(str(id))` |
+| `id == '1'` | `id == 1` |
+
+This needs engine 0.24.0 or later. The CLI pins a later one.
+
 ## Step 3: check the result
 
 ```bash

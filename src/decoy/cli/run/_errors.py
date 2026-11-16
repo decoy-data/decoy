@@ -33,6 +33,15 @@ from decoy.ui.theme import error, hint
 # The engine's code for a `unique` generate column or pair that the data cannot satisfy.
 UNIQUENESS_IMPOSSIBLE_CODE = "uniqueness_impossible"
 
+# The engine's code for a generate formula that raised on a row (engine 0.24.0 and later).
+FORMULA_EVALUATION_FAILED_CODE = "generate_formula_evaluation_failed"
+
+# Run-time generation failures the config causes, so they exit 1 like the validate-time checks.
+# Other GenerationError codes (dtype_unsafe, timezone_naive_datetime) stay runtime errors.
+CONFIG_CAUSED_GENERATION_CODES = frozenset(
+    {UNIQUENESS_IMPOSSIBLE_CODE, FORMULA_EVALUATION_FAILED_CODE}
+)
+
 _OUT_OF_MEMORY_TEXT = "the run ran out of memory."
 
 
@@ -174,11 +183,11 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
         # The post-scan gate withheld the output on a verdict about the data, the same
         # state as a blocking post-validation failure (exit 4), not a crash (exit 3).
         _category = None
-    elif isinstance(exc, GenerationError) and exc.code == UNIQUENESS_IMPOSSIBLE_CODE:
-        # A `unique` column or pair the data cannot satisfy (a parent with too
-        # few distinct keys, a faker type that ran out) is fixed in the config, so it exits 1
-        # like the validate-time domain checks. Other GenerationError codes (dtype_unsafe,
-        # timezone_naive_datetime) stay runtime errors. The engine text is value-free.
+    elif isinstance(exc, GenerationError) and exc.code in CONFIG_CAUSED_GENERATION_CODES:
+        # A `unique` column or pair the data cannot satisfy (a parent with too few distinct
+        # keys, a faker type that ran out) and a formula that raises on a row are fixed in the
+        # config, so they exit 1 like the validate-time domain checks. The engine text is
+        # value-free.
         _category = "usage"
     else:
         _category = "usage" if isinstance(exc, _exit_codes.usage_error_types()) else "runtime"
