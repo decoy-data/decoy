@@ -38,6 +38,8 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "decoy" / "cli" / "library"
 OWNER = "_fs.py"
@@ -207,6 +209,8 @@ import shutil
 import sqlite3
 from os import replace as swap
 from pathlib import Path
+
+import pytest
 from decoy._atomic import write_atomic
 
 def bad(p: Path, q: Path) -> None:
@@ -279,6 +283,8 @@ import os
 import tempfile
 from pathlib import Path
 
+import pytest
+
 def bad(p: Path, q: Path, flags: int, fd: int) -> None:
     p.rmdir()
     p.rename(q)
@@ -342,3 +348,20 @@ def test_the_scan_fires_on_every_round2_seed() -> None:
         "os.fdopen(write)",
         "Path.replace",
     ]
+
+
+# Review round 3 on #210: one seed for each registry spelling no seed exercised yet. Each is
+# planted alone in a module of the package and must fail the rule on its own.
+@pytest.mark.parametrize(
+    ("source", "spelling"),
+    [
+        ("import shutil\nshutil.copy('a', 'b')\n", "shutil.copy"),
+        ("import shutil\nshutil.copyfile('a', 'b')\n", "shutil.copyfile"),
+        ("import shutil\nshutil.copytree('a', 'b')\n", "shutil.copytree"),
+        ("from pathlib import Path\nPath('x').mkdir()\n", "Path.mkdir"),
+    ],
+    ids=["shutil.copy", "shutil.copyfile", "shutil.copytree", "Path.mkdir"],
+)
+def test_each_remaining_registry_spelling_fails_the_rule_alone(source: str, spelling: str) -> None:
+    found = hits({**_package_sources(), "_seeded.py": source})
+    assert found == {"_seeded.py": [(2, spelling)]}
