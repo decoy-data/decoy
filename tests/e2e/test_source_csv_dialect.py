@@ -358,4 +358,4 @@ def test_report_verbs_resolve_user_paths_against_cwd(
         assert payload["diagnostic"]["checks"][0]["missing_columns"] == []
     else:
         assert payload["command"] == "report integrity"
-        assert payload["report"]["schema_version"] == "post-scan-integrity/v2"
+        assert payload["report"]["schema_version"] == "post-scan-integrity/v3"
