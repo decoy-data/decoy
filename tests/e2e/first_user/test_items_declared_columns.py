@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 from typer.testing import CliRunner
 
@@ -101,21 +102,30 @@ def test_g5_validate_preflight_alone_refuses_the_same_config(tmp_path: Path) -> 
     assert UNDECLARED in codes
 
 
-def _s3_config(tmp_path: Path) -> Path:
-    s3 = {"type": "s3", "format": "csv", "bucket": "b", "key": "k.csv"}
+_REMOTE = {
+    "s3": {"type": "s3", "format": "csv", "bucket": "b", "key": "k.csv"},
+    "gcs": {"type": "gcs", "format": "csv", "bucket": "b", "object": "k.csv"},
+}
+
+
+def _remote_config(tmp_path: Path, kind: str) -> Path:
     return _write(
         tmp_path,
-        {"people": s3},
+        {"people": _REMOTE[kind]},
         [{"name": "name", "strategy": "redact"}, {"name": "email", "strategy": "redact"}],
     )
 
 
-def test_g5c_a_remote_source_is_not_opened_and_warns(tmp_path: Path, monkeypatch: Any) -> None:
+@pytest.mark.parametrize("kind", ["s3", "gcs"])
+def test_g5c_a_remote_source_is_not_opened_and_warns(
+    tmp_path: Path, monkeypatch: Any, kind: str
+) -> None:
     def _no_network(*_a: Any, **_k: Any) -> None:
         raise AssertionError("validate must not open a remote source")
 
-    monkeypatch.setattr("decoy_engine.profile._cloud_readers.build_s3_profile_source", _no_network)
-    config = _s3_config(tmp_path)
+    for name in ("build_s3_profile_source", "build_gcs_profile_source"):
+        monkeypatch.setattr(f"decoy_engine.profile._cloud_readers.{name}", _no_network)
+    config = _remote_config(tmp_path, kind)
 
     result = _validate(config)
     assert result.exit_code == EXIT_OK, result.output
@@ -124,6 +134,18 @@ def test_g5c_a_remote_source_is_not_opened_and_warns(tmp_path: Path, monkeypatch
 
     strict = _validate(config, "--fail-on-warning")
     assert strict.exit_code == EXIT_WARNINGS, strict.output
+
+
+@pytest.mark.parametrize("kind", ["s3", "gcs"])
+def test_g5c_validate_preflight_alone_warns_on_a_remote_source(tmp_path: Path, kind: str) -> None:
+    result = runner.invoke(
+        app, ["validate", "preflight", str(_remote_config(tmp_path, kind)), "--json"]
+    )
+    assert result.exit_code == EXIT_OK, result.output
+    checks = json.loads(result.stdout)["checks"]
+    assert any(
+        c["status"] == "warn" and "declared columns not checked" in c["message"] for c in checks
+    ), result.output
 
 
 def test_g6_fpe_without_a_namespace_exits_1_at_validate(tmp_path: Path) -> None:
