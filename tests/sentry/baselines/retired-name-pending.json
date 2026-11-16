@@ -1,6 +1,6 @@
 {
  "sentry_id": "retired-name-pending",
- "created_in": "STORM-REMOVAL-C1",
+ "created_in": "NAME-REMOVAL-C1",
  "entries": {
   ".tours/1-onboarding.tour": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
