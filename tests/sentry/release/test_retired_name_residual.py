@@ -6,6 +6,10 @@ not-ignored files, so uncommitted work is seen too). A file is clean when neithe
 line of its content matches, unless it is under `HISTORY` (dated records nobody edits) or listed
 in `PENDING` (files not yet migrated, with their live hit-line count).
 
+`PENDING` lives in `tests/sentry/baselines/retired-name-pending.json`, a registered baseline, and
+`scripts/dev/ratchet_check.py` blocks any added key. Slices C1b and C2 lower it; slice C3 deletes the
+file and its registry row, and this sentry becomes absolute.
+
 `PENDING` is a shrink-only ratchet: a file with hits that is in neither list fails, and a count
 that differs from the live count in either direction fails, so every slice lowers it. The last
 slice deletes it and the sentry becomes absolute. Adding a key or raising a count is a stop line.
@@ -17,6 +21,7 @@ The name is spelled in two pieces so this file does not hold it. Other tests imp
 from __future__ import annotations
 
 import fnmatch
+import json
 import re
 import subprocess
 from collections.abc import Mapping
@@ -65,61 +70,14 @@ HISTORY = (
     Allowed("docs/RECENTLY-SHIPPED.md", "the dated shipped log"),
 )
 
-# {path: lines that still carry the name}. A path that holds the name is written with `{n}`.
-PENDING: dict[str, int] = {
-    ".tours/1-onboarding.tour": 2,
-    "CHANGELOG.md": 13,
-    "CODEMAP.md": 3,
-    "README.md": 3,
-    "SECURITY.md": 2,
-    "docs/ROADMAP.md": 17,
-    "docs/ci-contracts.md": 1,
-    "docs/cli-reference.md": 2,
-    "docs/diagrams/classes_decoy.svg": 3,
-    "docs/diagrams/deps.svg": 11,
-    "docs/diagrams/packages_decoy.svg": 9,
-    "docs/qa/cli-v1-checklist.md": 2,
-    "docs/roadmap/branch-register.md": 2,
-    "docs/roadmap/feature-checklist.md": 1,
-    "docs/roadmap/post-1.0-plan.md": 2,
-    "docs/roadmap/release-gates.md": 1,
-    "docs/roadmap/row-detail.md": 4,
-    "docs/schemas/decoy-ci-v1.schema.json": 1,
-    "src/decoy/ci/adapters.py": 1,
-    "src/decoy/ci/contracts.py": 1,
-    "src/decoy/cli/_init_inference.py": 24,
-    "src/decoy/cli/compile_explain.py": 1,
-    "src/decoy/cli/completers.py": 1,
-    "src/decoy/cli/demo.py": 6,
-    "src/decoy/cli/exit_codes.py": 1,
-    "src/decoy/cli/extras.py": 1,
-    "src/decoy/cli/init.py": 8,
-    "src/decoy/templates/__init__.py": 1,
-    "tests/e2e/test_demo_command.py": 3,
-    "tests/e2e/test_init_command.py": 2,
-    "tests/e2e/test_init_scaffold_roundtrip.py": 5,
-    "tests/e2e/test_run_command.py": 1,
-    "tests/e2e/test_s1_deletions.py": 3,
-    "tests/e2e/test_s4b_consolidation.py": 2,
-    "tests/e2e/test_{n}_animation.py": 2,
-    "tests/e2e/test_{n}_command.py": 7,
-    "tests/e2e/test_{n}_diff.py": 22,
-    "tests/e2e/test_{n}_explore.py": 27,
-    "tests/e2e/test_{n}_sp16.py": 18,
-    "tests/e2e/test_validate_command.py": 1,
-    "tests/sentry/baselines/csv-read-allow.json": 1,
-    "tests/sentry/cli_text/_banned_text.py": 12,
-    "tests/sentry/test_csv_read_choke_point.py": 1,
-    "tests/unit/test_bundled_templates.py": 2,
-    "tests/unit/test_exit_codes.py": 1,
-    "tests/unit/test_init_inference.py": 1,
-    "tests/unit/test_no_dead_command_strings.py": 1,
-    "tests/unit/test_surface_docs_consistency.py": 3,
-}
+# {path: lines that still carry the name}, kept in a registered baseline so the ratchet check
+# lets it only shrink. A path that holds the name is written with `{n}` in the file.
+PENDING_FILE = ROOT / "tests" / "sentry" / "baselines" / "retired-name-pending.json"
 
 
 def _pending() -> dict[str, int]:
-    return {path.format(n=RETIRED_NAME): count for path, count in PENDING.items()}
+    entries = json.loads(PENDING_FILE.read_text(encoding="utf-8"))["entries"]
+    return {path.format(n=RETIRED_NAME): int(e["max"]) for path, e in entries.items()}
 
 
 def is_history(path: str) -> bool:
