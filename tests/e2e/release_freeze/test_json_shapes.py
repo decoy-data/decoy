@@ -106,8 +106,8 @@ def test_every_json_command_matches_its_snapshot(captured: dict) -> None:
     )
 
 
-def test_the_exemption_set_is_exactly_the_five_known_commands() -> None:
-    assert set(ws.EXEMPT) == {"doctor", "models install", "schema", "setup", "upgrade"}
+def test_the_exemption_set_is_exactly_the_four_known_commands() -> None:
+    assert set(ws.EXEMPT) == {"doctor", "schema", "setup", "upgrade"}
 
 
 def test_run_and_info_always_present_keys_are_pinned_not_optional() -> None:
