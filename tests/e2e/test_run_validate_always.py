@@ -509,8 +509,16 @@ def test_gate_refusal_removes_the_staging_dir(
         return d
 
     monkeypatch.setattr(tempfile, "mkdtemp", _record)
+    # The config and compile layers refuse before staging (r13), so the refusal that has a
+    # staging dir to remove is a preflight one: source readiness is checked on the staged file.
+    from decoy.cli.gate import GateFinding
+
     monkeypatch.setattr(
-        "decoy_engine.plan.compile_plan", mock.Mock(side_effect=_plan_error("synthetic_compile"))
+        "decoy.cli.gate._layers._run_preflight_layer",
+        lambda *a, **k: (
+            [GateFinding("preflight", "error", "synthetic_preflight", "x", None)],
+            False,
+        ),
     )
     result = runner.invoke(app, ["run", str(path), "--duckdb-source", f"customers={db}"])
     assert result.exit_code == EXIT_USAGE
