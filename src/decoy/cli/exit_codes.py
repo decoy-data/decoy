@@ -215,9 +215,9 @@ def exit_code_for(exc: BaseException) -> int:
 
     # The literal moves here when the reason-code ratchet allows a 1:1 re-home (owner decision
     # pending), so the constant stays in `cli/run/_errors.py` for now.
-    from decoy.cli.run._errors import UNIQUENESS_IMPOSSIBLE_CODE
+    from decoy.cli.run._errors import CONFIG_CAUSED_GENERATION_CODES
 
-    if isinstance(exc, GenerationError) and exc.code == UNIQUENESS_IMPOSSIBLE_CODE:
+    if isinstance(exc, GenerationError) and exc.code in CONFIG_CAUSED_GENERATION_CODES:
         return EXIT_USAGE
     # A blocking post-scan finding is a data result, as `--post-validate-enforce` is.
     if isinstance(exc, PostScanBlockedError):
