@@ -22,6 +22,7 @@ __all__ = [
     "LIBRARY_LAYOUT_NEWER",
     "LIBRARY_LOCK_UNAVAILABLE",
     "LIBRARY_PATH_TOO_LONG",
+    "LIBRARY_PATH_UNSAFE",
     "LIBRARY_POLICY_INVALID",
     "LIBRARY_POLICY_UNTRUSTED",
     "LIBRARY_READ_FAILED",
@@ -47,6 +48,9 @@ LIBRARY_LOCK_UNAVAILABLE = "library_lock_unavailable"
 LIBRARY_INDEX_CORRUPT = "library_index_corrupt"
 LIBRARY_INDEX_FAILED = "library_index_failed"
 LIBRARY_PATH_TOO_LONG = "library_path_too_long"
+# A path under the library runs through a link, a junction or a non-folder, or leaves the root:
+# refused before any read, write or remove, so nothing outside the library is touched.
+LIBRARY_PATH_UNSAFE = "library_path_unsafe"
 LIBRARY_LAYOUT_NEWER = "library_layout_newer"
 RECORD_LINK_MISSING = "record_link_missing"
 RECORD_NOT_FOUND = "record_not_found"

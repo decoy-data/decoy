@@ -27,6 +27,7 @@ from decoy.cli.fit import fit as fit_command
 from decoy.cli.info import INFO_EPILOG
 from decoy.cli.info import info as info_command
 from decoy.cli.init import INIT_EPILOG, init_command
+from decoy.cli.library import library_app
 from decoy.cli.models import models_app
 from decoy.cli.project import project_app
 from decoy.cli.reference import LIST_EPILOG, SHOW_EPILOG, list_, show
@@ -79,6 +80,7 @@ Try one of:
   decoy report verify evidence.json  Re-hash the recorded files and report fingerprint drift.
   decoy report diff a.json b.json  Compare two manifests: fingerprints always, data when the output files exist.
   decoy ci check                   Run CI checks from .decoy-ci.yaml; JSON, SARIF, or Markdown report (see docs/ci-contracts.md).
+  decoy library fsck               Check the project's record library (.decoy/library); `library path` shows where it is.
 
 Run `decoy --install-completion` to enable shell tab completion.
 """
@@ -282,6 +284,7 @@ app.add_typer(project_app, name="project", rich_help_panel="Start")
 app.add_typer(scan_app, name="scan", rich_help_panel="Mask")
 app.add_typer(report_app, name="report", rich_help_panel="Check and report")
 app.add_typer(ci_app, name="ci", rich_help_panel="Check and report")
+app.add_typer(library_app, name="library", rich_help_panel="Check and report")
 app.command(name="list", rich_help_panel="Reference", epilog=LIST_EPILOG)(list_)
 app.command(name="show", rich_help_panel="Reference", epilog=SHOW_EPILOG)(show)
 app.command(name="doctor", rich_help_panel="Start", epilog=DOCTOR_EPILOG)(doctor)

@@ -7,13 +7,13 @@ from io import StringIO
 from rich.console import Console
 
 from decoy.ui.output import OutputMode, OutputState
-from decoy.ui.storm_animation import (
+from decoy.ui.scan_progress import (
     _CLOUD_LINES,
     _RAIN_FRAMES_RAW,
     CLOUD_FRAMES,
     RUNNING_FRAMES,
-    _StormyHandle,
-    stormy_multistage,
+    _StageHandle,
+    scan_multistage,
 )
 from decoy.ui.theme import DECOY_THEME
 
@@ -34,32 +34,32 @@ def _state(
     return state, out_buf, err_buf
 
 
-def test_stormy_multistage_no_op_in_quiet_mode():
+def test_scan_multistage_no_op_in_quiet_mode():
     state, _, err = _state(OutputMode.quiet)
-    with stormy_multistage(state, ["Load", "Profile"]) as ms:
+    with scan_multistage(state, ["Load", "Profile"]) as ms:
         ms.complete()
         ms.complete()
     assert err.getvalue() == ""
 
 
-def test_stormy_multistage_no_op_in_non_tty():
+def test_scan_multistage_no_op_in_non_tty():
     state, _, err = _state(OutputMode.default, terminal=False)
-    with stormy_multistage(state, ["Load", "Profile"]) as ms:
+    with scan_multistage(state, ["Load", "Profile"]) as ms:
         ms.complete()
         ms.complete()
     assert err.getvalue() == ""
 
 
-def test_stormy_multistage_handles_no_stages_gracefully():
+def test_scan_multistage_handles_no_stages_gracefully():
     state, _, err = _state(OutputMode.default, terminal=True)
-    with stormy_multistage(state, []) as ms:
+    with scan_multistage(state, []) as ms:
         ms.complete()  # should not raise
     assert err.getvalue() == ""
 
 
 def test_stormy_handle_renders_cloud_and_stages():
     """Direct render exercise -- no Live, no thread, just the build output."""
-    handle = _StormyHandle(
+    handle = _StageHandle(
         live=None, stages=["Load", "Profile", "Save"], frame_state={"frame": 0}
     )
     handle.complete()  # idx -> 1, so "Load" is done, "Profile" is running

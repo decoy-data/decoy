@@ -192,6 +192,11 @@ def import_layer_reasons(text: str) -> dict[str, str]:
     return {f"layers::{k}": _LAYER_WHY for k in layout.ignore_keys(text)}
 
 
+def pending_reasons(text: str) -> dict[str, str]:
+    """``{path: reason}`` of the retired-name PENDING baseline; its ``max`` is the live hit count."""
+    return {k: v["reason"] for k, v in json.loads(text)["entries"].items()}
+
+
 SOURCES: tuple[Source, ...] = (
     Source(
         "engine-internal-allow",
@@ -240,6 +245,16 @@ SOURCES: tuple[Source, ...] = (
             "tests/sentry/io_policy/test_library_writer.py",
             "LITERAL_ALLOWLIST",
             key=lambda e: e.file,
+            reason=lambda e: e.reason,
+        ),
+    ),
+    Source(
+        "kind-canary-pending",
+        "tests/sentry/defects/test_kind_canary.py",
+        InCode(
+            "tests/sentry/defects/test_kind_canary.py",
+            "PENDING_ALLOWLIST",
+            key=lambda e: e.kind,
             reason=lambda e: e.reason,
         ),
     ),
@@ -392,6 +407,11 @@ SOURCES: tuple[Source, ...] = (
         ),
     ),
     Source("import-layers", ".importlinter", FromFile(".importlinter", import_layer_reasons)),
+    Source(
+        "retired-name-pending",
+        "tests/sentry/release/test_retired_name_residual.py",
+        FromFile("tests/sentry/baselines/retired-name-pending.json", pending_reasons),
+    ),
 )
 
 # Allowlist-shaped constants a sentry holds that are a closed contract, not a bypass list.

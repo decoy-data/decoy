@@ -79,6 +79,10 @@ id = "library-writer-allow"
 baseline = "tests/sentry/baselines/library-writer-allow.json"
 
 [[sentry]]
+id = "kind-canary-pending"
+baseline = "tests/sentry/baselines/kind-canary-pending.json"
+
+[[sentry]]
 id = "one-error-emitter"
 baseline = "tests/sentry/baselines/one-error-emitter.json"
 
@@ -97,3 +101,7 @@ baseline = "tests/sentry/baselines/exit-code-owner.json"
 [[sentry]]
 id = "config-load-allow"
 baseline = "tests/sentry/baselines/config-load-allow.json"
+
+[[sentry]]
+id = "retired-name-pending"
+baseline = "tests/sentry/baselines/retired-name-pending.json"
