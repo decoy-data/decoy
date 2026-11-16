@@ -2055,6 +2055,7 @@ $ decoy models list [OPTIONS]
 
 **Options**:
 
+* `--model TEXT`: The spaCy model package to check .
 * `--json`: Emit a JSON result instead of text.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug logs on stderr.
@@ -2065,6 +2066,8 @@ Examples:
   decoy models list           One line per model: available, version, or why not.
 
   decoy models list --json    The same rows as JSON.
+
+  decoy models list --model en_core_web_md   Check another installed spaCy model.
 
 
 ### `decoy models install`

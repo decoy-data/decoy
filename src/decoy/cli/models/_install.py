@@ -243,6 +243,21 @@ def _execute(
     )
 
 
+def model_name_error(model: str) -> ModelsError | None:
+    """The refusal for a model name that is not a plain spaCy package name, else None.
+
+    The engine's one name rule (`validate_ner_model_name`); the name is never echoed.
+    """
+    try:
+        validate_ner_model_name(model)
+    except engine_ner.NerModelNameError:
+        return ModelsError(
+            str(reasons.config.NER_MODEL_INVALID),
+            "--model must be a plain package name (lowercase letters, digits, _).",
+        )
+    return None
+
+
 def install_ner(
     *,
     model: str,
@@ -251,16 +266,9 @@ def install_ner(
     progress: Callable[[str], None] = lambda text: None,
 ) -> InstallResult:
     """Install spaCy and `model`, from the index or from `source`; raise `ModelsError`."""
-    named = True
-    try:
-        validate_ner_model_name(model)
-    except engine_ner.NerModelNameError:
-        named = False
-    if not named:
-        raise ModelsError(
-            str(reasons.config.NER_MODEL_INVALID),
-            "--model must be a plain package name (lowercase letters, digits, _).",
-        )
+    bad_name = model_name_error(model)
+    if bad_name is not None:
+        raise bad_name
     if managed_home() is not None:
         raise ModelsError(
             MANAGED_RUNTIME,
