@@ -45,11 +45,23 @@ class ConfigFileError(Exception):
         self.message = message
 
 
+def read_config_bytes(path: Path) -> bytes:
+    """The file's bytes, read once. `decoy run` hashes these exact bytes (`config_sha256`) and
+    parses them through `decode_config_bytes`, so the hash and the config agree, CRLF included.
+
+    An `OSError` from the read passes through unchanged."""
+    return path.read_bytes()
+
+
 def read_config_text(path: Path) -> str:
     """The file's text: its bytes read once, decoded as strict UTF-8, a leading BOM dropped.
 
     An `OSError` from the read passes through unchanged."""
-    data = path.read_bytes()
+    return decode_config_bytes(read_config_bytes(path))
+
+
+def decode_config_bytes(data: bytes) -> str:
+    """`data` decoded as strict UTF-8 with a leading BOM dropped, or `yaml.not_utf8`."""
     not_utf8 = False
     try:
         text = data.decode("utf-8-sig")
@@ -99,7 +111,9 @@ def config_refusal(exc: ConfigFileError | OSError) -> dict[str, str | None]:
 __all__ = [
     "ConfigFileError",
     "config_refusal",
+    "decode_config_bytes",
     "load_config_mapping",
     "parse_config_mapping",
+    "read_config_bytes",
     "read_config_text",
 ]

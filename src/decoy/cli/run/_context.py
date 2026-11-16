@@ -61,6 +61,7 @@ class RunContext:
     vault: Path
     key_label: str
     evidence_out: Path
+    integrity_out: Path | None
     out_dir: Path | None
     notify: list[str]
     notify_on: NotifyOn
@@ -104,6 +105,10 @@ class RunContext:
     layout: RunLayout | None = field(init=False, default=None)
     # The one engine progress sink (`_progress.ProgressFanout`), built by `_flow`.
     progress: Any = field(init=False, default=None)
+    # SHA-256 of the YAML bytes read; the post-scan report and its file (`cli/io`, SCAN-ML C2a).
+    config_sha256: str | None = field(init=False, default=None)
+    _post_scan: dict | None = field(init=False, default=None)
+    _post_scan_file: Path | None = field(init=False, default=None)
 
     # Temp dir holding Parquet snapshots acquired from --duckdb-source inputs;
     # created only when the flag is used, torn down in the run's finally.

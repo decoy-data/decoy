@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 import typer
 
-from decoy.cli.io import LayoutError, mint_invocation_id, open_out_dir
+from decoy.cli.io import LayoutError, mint_invocation_id, open_out_dir, write_run_report
 from decoy.cli.project import only_pipeline, run_all
 from decoy.cli.run import _errors, _evidence, _execute, _prepare, _progress, _render
 from decoy.cli.run._context import RunContext
@@ -24,6 +24,7 @@ from decoy.cli.run._prepare import (
     _load_raw_config,
     _refuse_fidelity_without_mask,
 )
+from decoy.ui.output import detector_log
 from decoy.ui.progress import run_progress
 
 # How each `run` option reaches an `--all` child. Every parameter of `run()` is in exactly one of
@@ -54,6 +55,7 @@ FORWARD_SWITCHES = (  # sent when on
 # Each names one file, so `--all` would write it once per pipeline: refused with exit 1.
 REFUSED_WITH_ALL = (
     ("--evidence-out", "evidence_out"),
+    ("--integrity-out", "integrity_out"),
     ("--vault", "vault"),
     ("--out-dir", "out_dir"),
 )
@@ -102,7 +104,9 @@ def execute(ctx: RunContext) -> None:
 
     parse_channels(ctx)
 
-    ctx.raw, ctx.saved_findings, ctx.config_read_error = _load_raw_config(ctx.config)
+    ctx.raw, ctx.saved_findings, ctx.config_read_error, ctx.config_sha256 = _load_raw_config(
+        ctx.config
+    )
     ctx.raw_cfg = ctx.raw if isinstance(ctx.raw, dict) else None
     ctx.yaml_mode = _detect_mode(ctx.raw_cfg) or ctx.mode.value
 
@@ -131,6 +135,7 @@ def execute(ctx: RunContext) -> None:
             contextlib.ExitStack() as _scopes,
         ):
             ctx.progress.add(display.on_event)
+            _scopes.enter_context(detector_log(ctx.state, ctx.verbose))
             if _trace is not None:
                 # `run_pipeline(progress=...)` binds its sink over any outer binding, so the
                 # trace recorder rides on the fan-out for the full-frame and preview calls; the
@@ -183,6 +188,7 @@ def execute(ctx: RunContext) -> None:
         _render.finish_preview(ctx)
         return
 
+    write_run_report(ctx.state, ctx._post_scan, ctx._post_scan_file, ctx.config_sha256)
     _evidence.write_evidence(ctx)
     _render.commit_latest(ctx)
 

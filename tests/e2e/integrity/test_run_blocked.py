@@ -134,6 +134,19 @@ def test_blocked_json_envelope_carries_code_report_and_counts(
     _nothing_published(tmp_path)
 
 
+def test_blocked_run_writes_the_report_in_the_run_folder_it_never_published_to(
+    tmp_path: Path,
+) -> None:
+    cfg = write_pipeline(tmp_path, notes=True, relative=True)
+    with mock.patch("decoy_engine.run_pipeline", side_effect=blocked_error()):
+        result = runner.invoke(app, ["run", str(cfg), "--json"])
+
+    assert result.exit_code == 4, result.output
+    (report,) = (tmp_path / "out").rglob("masked/pipeline.post-scan.json")
+    assert json.loads(result.stdout)["post_scan"]["report"] == str(report.resolve())
+    assert list((tmp_path / "out").rglob("*.csv")) == []
+
+
 def test_mask_api_raises_the_block_and_writes_no_target(tmp_path: Path) -> None:
     from decoy_engine import PostScanBlockedError
 

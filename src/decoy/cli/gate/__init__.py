@@ -12,6 +12,7 @@ from decoy.cli.gate._layers import (
     run_gate_on_config,
     shared_destination_findings,
 )
+from decoy.cli.gate._models import model_finding
 from decoy.cli.gate._run import (
     ERROR_TEXT_CAP,
     PreRunCheckError,
@@ -33,6 +34,7 @@ __all__ = [
     "check_static_before_acquire",
     "gate_exit_code",
     "layout_findings",
+    "model_finding",
     "parse_pipeline_yaml",
     "run_config_gate",
     "run_gate",

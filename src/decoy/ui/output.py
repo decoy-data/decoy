@@ -7,10 +7,12 @@ and writes through the returned `OutputState`. See CLI_UX_GUIDE.md section 4.
 from __future__ import annotations
 
 import json as _json
+import logging
 import re
 import sys
 import warnings
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from typing import TypeAlias
@@ -226,3 +228,37 @@ def emit_json_document(state: OutputState, doc: object, *, indent: int | None) -
         raise ValueError("emit_json_document writes only in default output mode.")
     sys.stdout.write(_json.dumps(doc, indent=indent) + "\n")
     sys.stdout.flush()
+
+
+# The engine logger whose records name the detectors that ran (SCAN-ML plan 4.8).
+DETECTOR_LOGGER = "decoy_engine.detectors"
+
+
+class _ErrConsoleHandler(logging.Handler):
+    def __init__(self, state: OutputState) -> None:
+        super().__init__(logging.INFO)
+        self._state = state
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self._state.err_console.print(record.getMessage(), markup=False, highlight=False)
+
+
+@contextmanager
+def detector_log(state: OutputState, on: bool) -> Iterator[None]:
+    """Under `-v`, print the engine's detector records on stderr for the command's duration.
+
+    The engine logger has no console handler, so `-v` alone would not show them. The records
+    hold ids, versions and counts only (`log_detector_run`). Off, this does nothing.
+    """
+    if not on:
+        yield
+        return
+    logger = logging.getLogger(DETECTOR_LOGGER)
+    handler, level = _ErrConsoleHandler(state), logger.level
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    try:
+        yield
+    finally:
+        logger.removeHandler(handler)
+        logger.setLevel(level)
