@@ -255,22 +255,10 @@ def _generate_types_list(json_: bool, quiet: bool, verbose: bool) -> None:
     """List every generate column type with its options, from the engine's live catalog."""
     state = setup_output(json_, quiet, verbose)
 
-    from decoy_engine.config import generate_option_catalog
+    from decoy.cli.gen._topic import common_options, type_entries
 
-    catalog = generate_option_catalog()
-    common = list(next(iter(catalog.values())).common) if catalog else []
-    entries = [
-        {
-            "type": type_,
-            "required": list(spec.required),
-            "optional": list(spec.optional),
-            "required_when": {
-                selector: {value: list(keys) for value, keys in by_value.items()}
-                for selector, by_value in spec.required_when.items()
-            },
-        }
-        for type_, spec in catalog.items()
-    ]
+    entries = type_entries()
+    common = list(common_options())
 
     if state.mode is OutputMode.json:
         emit_json(
