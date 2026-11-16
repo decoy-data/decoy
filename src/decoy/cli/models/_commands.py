@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.models._errors import DP_NOTE, ModelsError
 from decoy.ui.output import OutputMode, OutputState, emit_error, emit_json, setup_output
 from decoy.ui.theme import accent, hint, success
@@ -168,7 +169,7 @@ def install_command(
     state = setup_output(json_, quiet, verbose)
     if not yes and not interactive(state):
         emit_error(state, "models install", "models install needs a terminal to ask; pass --yes.")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=EXIT_USAGE)
     failure: ModelsError | None = None
     try:
         result = install_ner(
