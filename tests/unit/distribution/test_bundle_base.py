@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from tests.unit.distribution._helpers import REAL_OPENSSL
 from typer.testing import CliRunner
 
 from decoy import _update_check
@@ -138,8 +139,8 @@ def test_bundle_base_variable_and_explicit_argument(monkeypatch):
 
 
 @pytest.mark.skipif(
-    not (shutil.which("sh") and shutil.which("openssl") and shutil.which("curl")),
-    reason="needs sh, openssl, curl",
+    not (shutil.which("sh") and REAL_OPENSSL and shutil.which("curl")),
+    reason="needs sh, an Ed25519-capable openssl, curl",
 )
 def test_at_c6_install_sh_pin_requests_the_same_path(tmp_path, key_pair, served):
     _, pub = key_pair
