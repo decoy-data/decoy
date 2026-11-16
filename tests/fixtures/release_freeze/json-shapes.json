@@ -91,7 +91,16 @@
     }
   },
   "models install": {
-    "exempt": "installs packages into the running Python environment"
+    "paths": {
+      "/already_installed": "boolean",
+      "/command": "string",
+      "/dp_certified_environment": "boolean",
+      "/installed[]": "string",
+      "/installer": "string",
+      "/model/id": "string",
+      "/model/version": "string",
+      "/status": "string"
+    }
   },
   "models list": {
     "opaque_values": {

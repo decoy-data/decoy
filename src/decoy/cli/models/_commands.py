@@ -26,6 +26,8 @@ Examples:
   decoy models list           One line per model: available, version, or why not.
 
   decoy models list --json    The same rows as JSON.
+
+  decoy models list --model en_core_web_md   Check another installed spaCy model.
 """
 
 INSTALL_EPILOG = """\
@@ -45,6 +47,9 @@ class ModelKind(str, Enum):
 
 
 def list_command(
+    model: str | None = typer.Option(
+        None, "--model", help="The spaCy model package to check [default: en_core_web_sm]."
+    ),
     json_: bool = typer.Option(False, "--json", help="Emit a JSON result instead of text."),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
@@ -52,10 +57,16 @@ def list_command(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logs on stderr."),
 ) -> None:
     """Show each detector model: available here, its version, or the reason and the fix."""
+    from decoy_engine.detection.ner import DEFAULT_NER_MODEL
+
+    from decoy.cli.models._install import model_name_error
     from decoy.cli.models._status import describe, model_rows
 
     state = setup_output(json_, quiet, verbose)
-    rows = model_rows()
+    bad_name = model_name_error(model or DEFAULT_NER_MODEL)
+    if bad_name is not None:
+        fail(state, "models list", bad_name)
+    rows = model_rows(model or DEFAULT_NER_MODEL)
     if state.mode is OutputMode.json:
         emit_json(
             state, {"command": "models list", "status": "ok", "models": rows, "note": DP_NOTE}
