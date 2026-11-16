@@ -1,6 +1,6 @@
 # Remediation report: over-built code, tests and docs (engine and CLI)
 
-Status: record. Roadmap placement: rows 24zi to 24zl (V1); the rest is V1+ in `docs/roadmap/out-of-scope.md`.
+Status: record. Roadmap placement: rows 24zi to 24zl (V1); the rest is classified in `docs/roadmap/post-1.0-plan.md` (1.x patch, or before 1.0 freeze for the public-surface items).
 
 Date: 2026-11-15. Read at engine `64e9349b` and CLI `e716f445`. Engine main has since moved to
 `6367af59` and CLI main to `de4cdeea`, so re-check every line number at build time. No code was
