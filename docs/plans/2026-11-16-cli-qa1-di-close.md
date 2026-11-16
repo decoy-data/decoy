@@ -1,13 +1,13 @@
 # CLI-QA1 close-out: the distribution-integrity items of row 24e
 
-Status: plan (2026-11-16, not built; round 1 review resolved). CLI and engine. Roadmap row 24e
+Status: plan (2026-11-16, not built; round 2 review resolved). CLI and engine. Roadmap row 24e
 (CLI-QA1).
 
 Every slice of `C:plan/cli-qa1` is merged. Row 24e stays open only for the items it lists under
 "Also from the distribution-integrity QA". This plan checks each of those items against `origin/main`
-(CLI `d8805373`, pins `decoy-engine==0.27.0`; engine main `13c95c7de`, last release `v0.27.0`) and
-plans the ones that are still open. Every engine file:line below was re-read at `13c95c7de`. When the
-slices below merge, row 24e closes.
+(CLI `60cac678`, pins `decoy-engine==0.27.0`; engine main `13c95c7de`, last release `v0.27.0`) and
+plans the ones that are still open. Every engine file:line below was re-read at `13c95c7de`, and
+every CLI file:line was re-read at `60cac678`. When the slices below merge, row 24e closes.
 
 Rules consulted: `~/dev-rules/README.md` (routing), `00-universal.md`, `risk-and-exceptions.md`
 (R1, R2), `development-loop.md` (PLAN, Proportion, Placement), `bugfix.md`, `proportionality.md`,
@@ -82,11 +82,14 @@ V2-LOG items this plan creates (logged in row 24e's closing note, not built):
    on provider config that the policy does not see. Override precedence is unchanged: an explicit
    `thresholds.columns` entry for the column, or a `strategy_expectations` override for the
    strategy, still sets a minimum and still gives a violation (`quality/policy.py:166-182` and the
-   column lookup in `_check_per_column`, `:336-341`). `intended_columns` lists only intended-class
-   columns that end with no resolved minimum. The terminal marks them `intended` and prints one
-   line: "Columns marked intended were masked with a strategy that replaces values, so a low score
-   there is expected." The shape check (`shape_strategy_expectations`) does not change. `--mode
-   fail` on a correct masking with no overrides exits 0.
+   column lookup in `_check_per_column`, `:336-343`). `intended_columns` is computed from
+   `strategy_map` plus both override forms before `_check_per_column`; it lists intended-class
+   columns that end with no resolved minimum even if their report record is non-comparable.
+   This ordering matters because today's per-column loop skips non-comparable records first at
+   `quality/policy.py:330-336`. The terminal marks intended columns and prints one line: "Columns
+   marked intended were masked with a strategy that replaces values, so a low score there is
+   expected." The shape check (`shape_strategy_expectations`) does not change. `--mode fail` on a
+   correct masking with no overrides exits 0.
    Aggregates do not change in V1: intended columns still count in `marginal.score`,
    `overall_score` and the grade, so no frozen number moves. A `--min-grade` (or `overall` minimum)
    on a correct hash masking can still fail. The help line for `--min-grade` and the note line say
@@ -95,10 +98,15 @@ V2-LOG items this plan creates (logged in row 24e's closing note, not built):
    `intended_joints: [[a, b], ...]` (sorted pairs). `quality-fidelity/v1` and `quality-report/v1`
    do not change: the joints stay in the report's `pairwise.joints` (`quality/fidelity.py:222`)
    with their scores. `_check_pairwise` (`quality/policy.py:292-312`) today compares the aggregate
-   `pairwise.score`. After E2 it compares a recomputed score: the mean of the joint scores that are
-   not intended, with the same formula the report uses. When every joint is intended, the pairwise
-   check is skipped, not failed, and the result says so (`pairwise_skipped: "all_joints_intended"`
-   in the policy result). The terminal prints `intended` in place of the joint's score.
+   `pairwise.score`. After E2 it keeps that exact comparison when no joint is intended. When at
+   least one joint is intended, it recomputes the score from non-intended joints with the public
+   `mean_comparable_similarity` helper also used by the report aggregate. The helper returns the
+   mean of comparable similarities rounded to `_SCORE_PRECISION`, or `None`. If all non-intended
+   joints are non-comparable, `None` still produces a violation as today. The check is skipped only
+   when the report has at least one joint and every joint is intended. `pairwise_skipped:
+   "all_joints_intended"` is emitted only when a pairwise minimum is configured and that check is
+   skipped. A zero-joint report is not an all-intended report. The terminal prints `intended` in
+   place of an intended joint's score.
 4. `report integrity` without `--config` does not claim a column was not configured. Both message
    sites (`residual_pii.py:291` and `:362`) say the config has no entry for the table, so the
    strategy is unknown. Only the wording changes: with no config entry and an output positionally
@@ -126,6 +134,9 @@ V2-LOG items this plan creates (logged in row 24e's closing note, not built):
   go through `run_pipeline` and the capacity estimate and assert the full-frame route.
 - F4. The intended set is too wide and hides real drift on a shape-keeping strategy (`shuffle`,
   `bucketize`, `date_shift`), or hides a minimum the user set. Guard: AT-E2.2 and AT-E2.7.
+- F4a. Pairwise recomputation changes existing results when no joint is intended, skips an empty
+  joint list by treating `all([])` as true, or silently passes when the remaining non-intended
+  joints are all non-comparable. Guard: AT-E2.3.
 - F5. The policy output changes in a way that breaks a reader of `quality-policy/v1`. The change only
   adds keys; all four goldens are re-pinned in E2 with a reason, a fifth golden pins the intended
   case, and the CLI `--json` shape snapshot is re-pinned in C1. Guard: AT-E2.6, AT-C1.6.
@@ -148,13 +159,19 @@ E0 (engine, pure move):
 
 - AT-E0.1 (guard) the existing `tests/unit/providers_v2/test_distribution_behavior_metadata.py` and
   `tests/unit/transforms/test_derived_aggregate.py` pass with only their import path changed.
-  Mutation: change one label in the moved table; red.
+  The message at `test_distribution_behavior_metadata.py:173` changes its file name to
+  `distribution_behavior.py`. Mutation: change one label in the moved table; red.
 - AT-E0.2 the import-layer contract passes with the ignore line
   `decoy_engine.plan._seed_envelope -> decoy_engine.execution._distribution_behavior` removed from
   `.importlinter` and from `tests/sentry/baselines/import-layers.json`. Fail before: the ignore line
   is needed (the import goes up a tier).
 - AT-E0.3 (guard) `quality` may import the new module: `lint-imports` passes with a scratch import
   from `decoy_engine.quality.policy`. Mutation: put the module back under `execution/`; red.
+- AT-E0.4 (guard) the entry for `src/decoy_engine/execution/_distribution_behavior.py` stays in
+  `tests/sentry/test_physical_seam_disconnection.py` during E0. The exact-diff gate sees the old
+  path as deleted and therefore still needs the entry in `permitted_non_physical`. E2 or a later
+  engine slice removes the now-dead entry after E0 is on main. Mutation: remove it in E0;
+  `test_production_execution_modules_are_byte_identical_to_origin_main` is red.
 
 E1 (engine):
 
@@ -177,8 +194,10 @@ E1 (engine):
   same masked bytes with and without a generate-only edge in the config. Fail before: compile
   refuses the generate-only edge.
 - Review check (no new test): no file under engine `docs/` outside `docs/plans/`, `docs/records/` and
-  `docs/audit/` tells the user to set a top-level `mode:` key or pass `--mode generate`. Before:
-  `docs/recipes.md:154`.
+  `docs/audit/` tells the user to set a top-level `mode:` YAML key. This check does not ban the live
+  CLI flag `--mode generate` (`src/decoy/cli/run/__init__.py:127-133`). Before:
+  `docs/recipes.md:154` and `docs/strategies.md:1251`. Engine `docs/cli.md:16,35,41` and
+  `docs/determinism.md:39,43,99` correctly document the CLI flag and stay unchanged.
 
 E2 (engine):
 
@@ -187,24 +206,42 @@ E2 (engine):
   before: two violations, expected 0.05, actual 0.0 (probe).
 - AT-E2.2 (guard) a `shuffle` column at 0.5 still gives a `column` violation; a `bucketize` column
   below 0.30 still does. Mutation: skip every mapped strategy; red.
-- AT-E2.3 a report with joint `(diagnosis, patient_id)` and `patient_id: hash`: `intended_joints` is
-  `[["diagnosis", "patient_id"]]`, and a `pairwise` minimum does not fail on it. Case (b): two
-  joints, one intended at 0.0 and one not at 0.9, with minimum 0.8: no violation (recomputed score
-  0.9). Case (c): every joint intended: no `pairwise` violation and `pairwise_skipped` is
-  `all_joints_intended`. The report dict is byte-equal before and after the policy call. Fail
-  before: the pairwise minimum fails on the aggregate.
+- AT-E2.3 intended membership and pairwise policy cells:
+  (a) a non-comparable `patient_id: hash` column with `similarity: None` is still listed in
+  `intended_columns`, because membership is derived from `strategy_map`, column overrides and
+  strategy overrides before the per-column loop;
+  (b) a report with joint `(diagnosis, patient_id)` and `patient_id: hash` lists
+  `[["diagnosis", "patient_id"]]` in `intended_joints`, and a pairwise minimum does not fail on it;
+  (c) two joints, one intended at 0.0 and one non-intended at 0.9, with minimum 0.8, have no
+  violation because the recomputed score is 0.9;
+  (d) when no joint is intended, the check compares `report.pairwise.score` exactly as today,
+  including a report whose joint records would produce a different recomputed value;
+  (e) when at least one joint is intended and every non-intended joint is non-comparable, the
+  recomputed score is `None` and the pairwise minimum produces a violation;
+  (f) when the non-empty joint list is all intended, there is no pairwise violation and
+  `pairwise_skipped` is `all_joints_intended` only if a pairwise minimum is configured;
+  (g) a report with a pairwise minimum, `joints: []` and `pairwise.score: None` produces a violation,
+  not a vacuous all-intended skip. The report dict is byte-equal before and after every policy call.
+  Fail before: intended joints fail on the report aggregate. Mutations: always recompute the score,
+  skip when `all(intended_joints)`, or skip when the recomputed score is `None`; (d), (g) or (e),
+  respectively, is red.
 - AT-E2.4 (guard) the shape check for `hash` still applies its 0.95 shape minimum.
 - AT-E2.5 `check_residual_pii` with a config that has no entry for the table: (a) the message for a
   hit says the config has no entry for the table, and never "was not configured to be masked", at
   both sites; (b, guard) an output identical to source on a high-confidence detector still gives
-  severity `fail`. With the table present and the column absent, the message does not change
-  (guard). Mutation: drop the `configured is None` escalation in `_escalate`; (b) goes red. Fail
-  before: probe text.
+  severity `fail`. `residual_pii_findings` builds a set of config table names before its output
+  loop and passes table presence to `_classify` and `_escalate`; it does not infer table presence
+  from the `(table, column)` strategy lookup. With the table present and the column absent, the
+  message stays byte-equal to `tests/fixtures/scanml_m4/regex_only_reports.json` (guard). Mutation:
+  drop the `configured is None` escalation in `_escalate`; (b) goes red. Fail before: probe text.
 - AT-E2.6 the `tests/snapshots/golden/quality_policy/` goldens: all four
   (`all_checks_violate_warn_mode`, `empty_policy_pass`, `overall_fail`,
   `per_column_strategy_violation`) are re-pinned in this slice with a one-line reason per file (the
   added keys); a fifth golden, `intended_hash_faker`, pins the AT-E2.1 result; the
-  `quality-policy/v1` tag does not change.
+  `quality-policy/v1` tag does not change. For each of the four existing fixtures, stripping the
+  new keys from the E2 result reproduces its old pinned SHA-256 digest. In particular,
+  `all_checks_violate_warn_mode` keeps the pairwise violation's actual value at 0.85 rather than
+  recomputing from its empty joint list.
 - AT-E2.7 a `hash` column at 0.0 with (a) `strategy_expectations: {hash: 0.5}` and (b)
   `thresholds.columns: [{column: patient_id, min: 0.5}]` each still gives a `column` violation, and
   the column is not in `intended_columns`. Guard for the precedence rule. Mutation: check the
@@ -231,9 +268,10 @@ C1 (CLI, after the repin to the engine release that carries E0, E1 and E2):
 - AT-C1.5 (EVD-13) `decoy report integrity` without `--config` prints no "not configured to be
   masked". Fail before: two such lines (probe).
 - AT-C1.6 the `--json` shape snapshot (`tests/fixtures/release_freeze/json-shapes.json`) is re-pinned
-  for `report fidelity` with the added policy keys (`intended_columns`, `intended_joints`,
-  `pairwise_skipped`), and nothing else in it moves. `quality-fidelity/v1` and `quality-report/v1`
-  fields in the snapshot do not move.
+  for `report fidelity` with the always-present policy keys (`intended_columns`,
+  `intended_joints`), and nothing else in it moves. This capture has no pairwise minimum, so it does
+  not gain `pairwise_skipped`. `quality-fidelity/v1` and `quality-report/v1` fields in the snapshot
+  do not move.
 - AT-C1.7 (guard) `src/decoy/cli/report.py` shrinks: C1 lowers its `SIZE_ALLOWLIST` entry in
   `tests/sentry/layout/test_module_size.py` and its entry in
   `tests/sentry/baselines/module-size.json` to the new line count after the move. Mutation: leave
@@ -260,18 +298,22 @@ C2 (CLI, can start now):
   validates (existing parametrized test), and an e2e run writes both tables with no orphan key. Fail
   before: no `reference` column under `examples/`.
 - AT-C2.6 `decoy explain modes` carries no "V1 had" history line. Fail before: probe line 15.
-- AT-C2.7 (guard) C2 adds no net lines to `src/decoy/cli/report.py` (docstring edits only).
+- AT-C2.7 (guard) C2 adds no net lines to `src/decoy/cli/report.py` (docstring edits only). If the
+  file shrinks, C2 lowers its entries in `tests/sentry/layout/test_module_size.py` and
+  `tests/sentry/baselines/module-size.json` to the new count. `src/decoy/cli/explain.py` stays at or
+  below 800 lines and receives no allowlist entry. Mutations: keep the old `report.py` count after a
+  shrink, or add line 801 to `explain.py`; the module-size sentry is red.
 
 ## 5. Slices
 
 | Slice | Repo | Risk | Content | Production files (estimate) | Lines | Depends on |
 |---|---|---|---|---|---|---|
-| E0 | engine | R1 (pure move) | Move `execution/_distribution_behavior.py` to `contracts/distribution_behavior.py` with `git mv`, body unchanged. Update the one importer, the two test imports and the two doc references. Remove the `.importlinter` ignore line, its `import-layers.json` baseline entry and the physical-seam allowlist entry (`tests/sentry/test_physical_seam_disconnection.py:953`); all three lists shrink. Repoint the mutation ledger path | `src/decoy_engine/contracts/distribution_behavior.py` (moved), `src/decoy_engine/plan/_seed_envelope.py`, `.importlinter`, `docs/distribution-integrity/extending.md`, `docs/distribution-integrity/index.md` (5) | ~20 changed (185 moved) | none |
+| E0 | engine | R1 (pure move) | Move `execution/_distribution_behavior.py` to `contracts/distribution_behavior.py` with `git mv`, body unchanged. Update the one importer, the two test imports, the metadata-test message, the two doc references and engine `CODEMAP.md:75`. Remove only the `.importlinter:46` ignore and `import-layers.json:68` baseline entry, so those two lists shrink. Keep the old path at `tests/sentry/test_physical_seam_disconnection.py:953` because this slice's exact-diff gate sees that path as deleted | `src/decoy_engine/contracts/distribution_behavior.py` (moved), `src/decoy_engine/plan/_seed_envelope.py`, `.importlinter`, `CODEMAP.md`, `tests/unit/providers_v2/test_distribution_behavior_metadata.py` (message at line 173), `docs/distribution-integrity/extending.md`, `docs/distribution-integrity/index.md` (7) | ~24 changed (185 moved) | none |
 | E1 | engine | R2 | Item 2: generate-only edges get a derived namespace. Item 11 engine docs (`recipes.md`, `strategies.md:1251`) and a `docs/relationships.md` note, including the full-frame route. Changelog fragment | `src/decoy_engine/relationships/_namespace.py`, `docs/recipes.md`, `docs/strategies.md`, `docs/relationships.md` (4) | ~120 | none |
-| E2 | engine | R2 | Items 3 and 4: intended set derived from the moved table in `quality/policy.py`; `intended_columns`, `intended_joints`, `pairwise_skipped` in the policy result; recomputed pairwise score. Item 5: residual-PII wording at both sites, severity unchanged. One doc paragraph. Changelog fragment | `src/decoy_engine/quality/policy.py`, `src/decoy_engine/verification/postmask/residual_pii.py`, `docs/distribution-integrity/snapshot-and-fidelity.md` (3) | ~170 | E0 |
+| E2 | engine | R2 | Items 3 and 4: intended set derived from the moved table in `quality/policy.py`; `intended_columns`, `intended_joints`, conditional `pairwise_skipped` in the policy result; one shared aggregate helper in `quality/fidelity.py`; conditional pairwise recomputation. Remove E0's now-dead physical-seam entry after E0 is on main. Item 5: residual-PII wording at both sites, severity unchanged. One doc paragraph. Changelog fragment | `src/decoy_engine/quality/fidelity.py`, `src/decoy_engine/quality/policy.py`, `src/decoy_engine/quality/__init__.py`, `src/decoy_engine/verification/postmask/residual_pii.py`, `tests/sentry/test_physical_seam_disconnection.py`, `docs/distribution-integrity/snapshot-and-fidelity.md` (6) | ~210 | E0 |
 | R | engine, CLI | standard repin | Engine release with E0, E1 and E2, then the CLI repin by the engine repin checklist | release files only | - | E0, E1, E2 |
 | C1 | CLI | R2 (frozen `--json` shape re-pin) | Items 2, 3, 4, 6 in the CLI: render `intended` and the note, intended joints, the "Same as source" column, the `--min-grade` help line; move `_render_residual_pii` to `src/decoy/ui/summary.py`; lower the `report.py` size entries; GATE-12 e2e; CHANGELOG | `src/decoy/ui/summary.py`, `src/decoy/cli/report.py` (2) | ~130 | R |
-| C2 | CLI | R1 | Items 8 to 12 in the CLI: docstrings of `report fidelity` and `report integrity`, banned patterns, template comment, `explain keys` rewrite, `faker` note, `explain modes` history line, FK example, checklist GEN-16 text; CHANGELOG | `src/decoy/cli/report.py`, `src/decoy/cli/explain.py`, `src/decoy/templates/generate.yaml`, `examples/generate_example.yaml`, `docs/qa/cli-v1-checklist.md` (5) | ~200 | none |
+| C2 | CLI | R1 | Items 8 to 12 in the CLI: docstrings of `report fidelity` and `report integrity`, banned patterns, template comment, `explain keys` rewrite, `faker` note, `explain modes` history line, FK example, checklist GEN-16 text; lower `report.py`'s size entry if these edits shrink it; keep `explain.py` at or below 800 lines with no allowlist entry; CHANGELOG | `src/decoy/cli/report.py`, `src/decoy/cli/explain.py`, `src/decoy/templates/generate.yaml`, `examples/generate_example.yaml`, `docs/qa/cli-v1-checklist.md` (5) | ~200 | none |
 
 E0, E1 and C2 can run in parallel (different repos or different files); E2 starts when E0 merges.
 C1 and C2 both touch `report.py`; C2 changes only two docstrings and adds no net lines, so whichever
@@ -279,9 +321,11 @@ merges second rebases, and C1 sets the size entry to the count on its own merge 
 last, and the row closes when C1 merges.
 
 New public names: `decoy_engine.contracts.distribution_behavior` (moved module; the old
-`execution._distribution_behavior` path is deleted, pre-GA hard delete, no shim). E2 adds three keys
-to the `quality-policy/v1` result dict (`intended_columns`, `intended_joints`, `pairwise_skipped`).
-No change to `quality-fidelity/v1` or `quality-report/v1`. No new reason code.
+`execution._distribution_behavior` path is deleted, pre-GA hard delete, no shim) and
+`decoy_engine.quality.mean_comparable_similarity` (implemented in `quality/fidelity.py`, exported
+through `quality/__init__.py`). E2 adds three keys to the `quality-policy/v1` result dict
+(`intended_columns`, `intended_joints`, `pairwise_skipped`). No change to `quality-fidelity/v1` or
+`quality-report/v1`. No new reason code.
 
 Design notes:
 
@@ -290,9 +334,11 @@ Design notes:
   import `execution` (tier 2), so E2 cannot read the table where it is. The file imports only
   `typing` and has one production importer (`plan/_seed_envelope.py`, through an ignore line). Moving
   it to `contracts/` (tier 4, "engine-owned contracts that CLI and platform consume") lets both
-  tiers import it and removes one ignore line. The move is 185 lines with a five-line diff
-  elsewhere, inside the slice limits, so the fallback (a parity test between two lists) is not
-  needed.
+  tiers import it and removes one ignore line. The physical-seam allowlist entry stays for E0
+  because the same test uses it to permit the moved-away path's deletion; E2 or a later slice
+  deletes the dead entry only after E0 is part of the comparison base. The move is 185 lines with
+  a small diff elsewhere, inside the slice limits, so the fallback (a parity test between two
+  lists) is not needed.
 - E1: `build_namespace_registry(config, profile)` already reads the config. It records the set of
   generate tables from `config.classify_table_kinds` (the one table-kind classifier, guarded by
   `tests/sentry/test_table_kind_classifier.py`). Only when both tables are generate tables does
@@ -304,15 +350,27 @@ Design notes:
   namespace with the same text is a separate thing. No new reason code. Every graph builder goes
   through `build_namespace_registry`; the seven in section 7.2 inherit the exemption, and the
   builder names them in the PR.
-- E2: `policy.py` imports `distribution_behavior_for` from `contracts` and builds the intended set
-  once at import from the three replacing classes, minus `categorical`. The three default entries
-  for `hash`, `faker` and `redact` in `_DEFAULT_STRATEGY_EXPECTATIONS` are deleted (they were the
-  only replacing strategies with a default); explicit overrides still win (section 2.2). The
-  strategy trait sets elsewhere (`residual_pii.py`, `_leakage.py`) answer other questions and stay
-  as they are.
-- C1: `report.py` is over the size cap, so C1 moves `_render_residual_pii` into `ui/summary.py` (the
-  CODEMAP "Terminal output" line already places `report fidelity` text there) and adds the new column
-  in the moved code. "Same as source" renders `None` as `-`.
+- E2: `policy.py` imports `distribution_behavior_for` from `contracts` and builds the intended
+  strategy set once at import from the three replacing classes, minus `categorical`. The three
+  default entries for `hash`, `faker` and `redact` in `_DEFAULT_STRATEGY_EXPECTATIONS` are deleted
+  (they were the only replacing strategies with a default). In `apply_quality_policy`, the final
+  `intended_columns` set is computed from `strategy_map`, column overrides and explicit strategy
+  overrides before `_check_per_column`, independent of whether a report column is comparable.
+  Explicit overrides still win (section 2.2). `mean_comparable_similarity` in `quality/fidelity.py`
+  owns the one rounding and empty-set formula used by both the report's aggregate and the policy's
+  non-intended-joint recomputation. The strategy trait sets elsewhere (`residual_pii.py`,
+  `_leakage.py`) answer other questions and stay as they are.
+- E2 residual PII: `residual_pii_findings` builds one set of table names from `config["tables"]`
+  and supplies table presence to both `_classify` and `_escalate`. The existing
+  `configured_columns` map still resolves the strategy for a present column. This distinguishes
+  "table absent" from "table present, column absent" without a second config parser.
+- C1: CLI `60cac678` defines `_render_residual_pii` at `src/decoy/cli/report.py:1839`.
+  `report.py` is over the size cap, so C1 moves it into `ui/summary.py` (the CODEMAP "Terminal
+  output" line already places `report fidelity` text there) and adds the new column in the moved
+  code. "Same as source" renders `None` as `-`.
+- C2: CLI `60cac678` has `report.py` at 2,309 lines and `explain.py` at 782 lines. If the two
+  docstring edits shrink `report.py`, C2 lowers both size records to the new count in the same
+  slice. `explain.py` remains at or below the 800-line cap and gets no allowlist entry.
 
 ## 6. Class table
 
@@ -382,7 +440,8 @@ Route facts for a generate-only job with a `relationships:` block (unchanged in 
 
 - Policy result (`quality-policy/v1`): new `intended_columns` (list of column names with an
   intended-class strategy and no resolved minimum), `intended_joints` (list of sorted column pairs)
-  and `pairwise_skipped` (absent, or `all_joints_intended`). Report schemas
+  and `pairwise_skipped` (absent unless a configured pairwise-minimum check is skipped, then
+  `all_joints_intended`). Report schemas
   (`quality-fidelity/v1`, `quality-report/v1`) unchanged.
 - Strategy rule after E2: intended loss, no default minimum: every strategy whose class in
   `contracts/distribution_behavior.py` is `preserves_cardinality_only`, `destroys_frequency` or
@@ -429,6 +488,8 @@ Route facts for a generate-only job with a `relationships:` block (unchanged in 
   of what a strategy does to values; E2 reads it in place of a new list.
 - `_DEFAULT_STRATEGY_EXPECTATIONS` in `quality/policy.py`: the one place for per-strategy fidelity
   minimums (E2 deletes three entries from it).
+- `mean_comparable_similarity` in `quality/fidelity.py`: the one mean, rounding and no-comparable
+  formula for fidelity records, used by both report aggregation and the E2 policy recomputation.
 - `report_warning_records`, `render_fidelity_report` and `make_table` in `src/decoy/ui/` (C1).
 - `BANNED_USER_TEXT` and its sentry in `tests/sentry/cli_text/` (C2); no second scanner.
 - The `_STRATEGY_NOTES` table in `explain.py` for the `faker` line (C2).
@@ -438,11 +499,14 @@ Route facts for a generate-only job with a `relationships:` block (unchanged in 
 - `quality-policy/v1` (engine `docs/compatibility-contract.md` section 3.1): three keys added
   (`intended_columns`, `intended_joints`, `pairwise_skipped`), tag unchanged, verdicts change for
   intended-loss columns with no override and for pairwise checks over intended joints (owner
-  question Q3, decided: yes).
+  question Q3, decided: yes). `pairwise_skipped` appears only when a pairwise minimum was set and
+  the non-empty joint list was entirely intended.
 - `quality-fidelity/v1` and `quality-report/v1`: unchanged, including `pairwise.joints`,
   `pairwise.score`, `marginal.score`, `overall_score` and the grade.
 - `report fidelity --json` and `report integrity --json` shapes (CLI release-freeze snapshot):
-  `report fidelity` gains the three policy keys; `report integrity` does not change.
+  `report fidelity` gains `intended_columns` and `intended_joints`; it has no configured pairwise
+  minimum and therefore does not gain the conditional `pairwise_skipped` key. `report integrity`
+  does not change.
 - Exit codes: unchanged. A correct masking under `--mode fail` with no overrides moves from 4 to 0,
   which is the fix.
 - Engine public API: `execution._distribution_behavior` is a private module; its move to
