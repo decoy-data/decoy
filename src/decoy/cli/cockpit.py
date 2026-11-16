@@ -255,7 +255,7 @@ def _generate_types_list(json_: bool, quiet: bool, verbose: bool) -> None:
     """List every generate column type with its options, from the engine's live catalog."""
     state = setup_output(json_, quiet, verbose)
 
-    from decoy.cli.gen._topic import common_options, type_entries
+    from decoy.cli.gen import common_options, type_entries
 
     entries = type_entries()
     common = list(common_options())
