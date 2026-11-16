@@ -41,4 +41,5 @@ __all__ = [
     "scaffold_generate",
     "scale_row_counts",
     "strict_csv",
+    "type_entries",
 ]
