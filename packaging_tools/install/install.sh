@@ -245,18 +245,18 @@ select_verifier() {
       if [ -n "$_c" ] && [ -f "$_c" ] && [ -x "$_c" ] && try_openssl "$_c"; then break; fi
     done
     if [ -z "$VERIFIER_KIND" ]; then
-      case "$PINNED_SSH_PUBKEY" in
-        *"__DECOY_RELEASE_SSH_PUBLIC""_KEY__"*) note_tried "ssh-keygen (the OpenSSH release key is not pinned in this build)" ;;
-        *)
-          for _c in "$(command -v ssh-keygen 2>/dev/null || true)" "$SSH_KEYGEN_FALLBACK"; do
-            [ -n "$_c" ] && [ -f "$_c" ] && [ -x "$_c" ] || continue
-            if kat_sshsig "$_c"; then
-              VERIFIER_KIND=sshsig; VERIFIER_BIN=$_c; VERIFIER_DESC="known answer passed"
-              break
-            fi
-            note_tried "$_c: failed the SSHSIG known answer"
-          done ;;
-      esac
+      if [ "$SSH_KEY_IS_PLACEHOLDER" = 1 ]; then
+        note_tried "ssh-keygen (the OpenSSH release key is not pinned in this build)"
+      else
+        for _c in "$(command -v ssh-keygen 2>/dev/null || true)" "$SSH_KEYGEN_FALLBACK"; do
+          [ -n "$_c" ] && [ -f "$_c" ] && [ -x "$_c" ] || continue
+          if kat_sshsig "$_c"; then
+            VERIFIER_KIND=sshsig; VERIFIER_BIN=$_c; VERIFIER_DESC="known answer passed"
+            break
+          fi
+          note_tried "$_c: failed the SSHSIG known answer"
+        done
+      fi
     fi
     [ -n "$VERIFIER_KIND" ] || refuse_unverifiable
   fi
