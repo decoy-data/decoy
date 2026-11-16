@@ -83,7 +83,7 @@ MCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=
 -----END PUBLIC KEY-----'
 KAT_SIG_B64='kqAJqfDUyrhyDoILX2QlQKKye1QWUD+Ps3YiI+vbadoIWsHkPhWZbkWPNhPQ8R2MOHsurrQwKu6wDSkWErsMAA=='
 
-SSH_IDENTITY="decoy-release@decoy.dev"
+SSH_IDENTITY="decoy-release@trydecoy.com"
 SSH_NAMESPACE="decoy-release"
 # Homebrew, MacPorts and Linuxbrew locations for an OpenSSL 3, tried after PATH. Globs are intended.
 OPENSSL_FALLBACKS="/opt/homebrew/opt/openssl@*/bin/openssl /opt/homebrew/opt/openssl/bin/openssl /opt/homebrew/bin/openssl /usr/local/opt/openssl@*/bin/openssl /usr/local/bin/openssl /opt/local/bin/openssl /home/linuxbrew/.linuxbrew/bin/openssl"
