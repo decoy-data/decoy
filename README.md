@@ -41,15 +41,19 @@ A few heavier capabilities are opt-in, so the default install stays lean:
 | Extra | Adds | Install |
 |-------|------|---------|
 | `cloud` | The S3 / GCS SDK dependencies (`boto3`, `google-cloud-storage`) | `pip install decoy-cli[cloud]` |
-| `ner` | spaCy-based PII autodetect for `text_mask`/`text_redact` | `pip install decoy-cli[ner]` |
-| `ml` | The STORM field-classifier (scikit-learn/lightgbm) | `pip install decoy-cli[ml]` |
+| `ner` | spaCy and the pinned `en_core_web_sm` model: PII autodetect for `text_mask`/`text_redact` and the `ner` detector | `decoy models install ner` |
 | `vault` | Compatibility alias only; installs nothing extra (see note below) | `pip install decoy-cli[vault]` |
 | `all` | Every extra above | `pip install decoy-cli[all]` |
 
 You don't need to plan ahead: run a pipeline that needs one of these without
 it installed and `decoy` fails closed with the exact install line, not a
-raw traceback. `ner` also needs a downloaded spaCy model, a separate step:
-`python -m spacy download en_core_web_sm`.
+raw traceback. `decoy models install ner` installs spaCy and the model wheel
+pinned by SHA-256 without changing any installed package; `--from DIR`
+installs from copied wheels with no network. `decoy models list` shows which
+detector models can run here. The lgbm field classifier ships in every
+install (on macOS it needs `brew install libomp`). Installing NER takes the
+environment off a certified DP row, so keep NER in a separate environment if
+you also fit with DP.
 
 `decoy run` does not read from or write to S3/GCS yet -- `cloud` installs
 the SDK dependencies for other tooling in the stack, but the CLI's own
@@ -112,6 +116,7 @@ declared under `targets:` in the YAML.
 | `decoy run <path>`               | Execute a pipeline: read sources, mask, write targets.                        |
 | `decoy project new <dir>`        | Make a project folder (`decoy.yaml`, `pipelines/`, `out/`). `decoy project show` and `list` inspect them. |
 | `decoy setup`                    | Set this box's max memory and threads (`~/.decoy/settings.json`); `--max-memory` and `--threads` override per run. |
+| `decoy models list`              | Show which detector models (the lgbm classifier, spaCy NER) can run here; `decoy models install ner` installs spaCy and the pinned model. |
 | `decoy tokenize <path>`          | Run the pipeline, replace each `strategy: tokenize` column with a deterministic surrogate, and record the mapping in a local vault. Needs a mask secret. |
 | `decoy detokenize <path> <file>` | Reverse a tokenized file from its vault. Fails closed on a missing/wrong vault or namespace. |
 | `decoy fit <source.csv>`         | Fit a distribution snapshot of a CSV for `statistical` generate columns. Sensitive columns keep no cell values. |

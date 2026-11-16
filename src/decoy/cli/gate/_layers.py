@@ -457,6 +457,9 @@ def run_gate_on_config(
     preflight_findings, capacity_insufficient = _run_preflight_layer(
         raw, config_path, route, compile_errors, validated=config, skip_subset=skip_subset
     )
+    from decoy.cli.gate._models import post_scan_model_findings
+
+    preflight_findings += post_scan_model_findings(config)
     return GateResult(
         config_findings + compile_findings + preflight_findings,
         frozenset({"config", "compile", "preflight"}),

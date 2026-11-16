@@ -1,7 +1,9 @@
-"""The ordered list of `decoy setup` sections.
+"""The ordered lists of `decoy setup` sections.
 
-Each section owns one object of `settings.json`. The order here is the order in the file and the
-order of the prompts. A later feature appends its section to `SECTIONS`; nothing else changes.
+Each section in `SECTIONS` owns one object of `settings.json`. The order here is the order in the
+file and the order of the prompts. A later feature appends its section to `SECTIONS`; nothing else
+changes. `STEPS` are sections that act (install) and store nothing; they run after the settings
+are written, in this order (`_step.Step`).
 """
 
 from __future__ import annotations
@@ -9,7 +11,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
 
+from decoy.cli.setup._models import ModelsSection
 from decoy.cli.setup._resources import ResourcesSection
+from decoy.cli.setup._step import Step
 
 Ask = Callable[[str, str, Callable[[str], Any]], Any]
 
@@ -29,3 +33,9 @@ class Section(Protocol):
 
 
 SECTIONS: tuple[Section, ...] = (ResourcesSection(),)
+STEPS: tuple[Step, ...] = (ModelsSection(),)
+
+
+def setup_order() -> tuple[str, ...]:
+    """Every section name in the order `decoy setup` handles them."""
+    return tuple(s.name for s in SECTIONS) + tuple(s.name for s in STEPS)

@@ -15,6 +15,7 @@ Try one of:
   decoy fit source.csv             Fit a distribution snapshot for statistical generation.
   decoy init &lt;name&gt;                Scaffold a pipeline in the current project.
   decoy setup                      Set this box&#x27;s max memory and threads for `decoy run`.
+  decoy models list                Show which detector models can run here; `models install ner`.
   decoy project new acme           Make a project folder for one client&#x27;s pipelines and outputs.
   decoy list templates             Browse bundled pipeline templates.
   decoy show template hipaa        Dump one bundled template to stdout.
@@ -67,6 +68,7 @@ Generate synthetic data: decoy fit source.csv, then decoy run pipeline.yaml, the
 * `scan`: Profile a dataset for PII and...
 * `report`: The post-run surface: show / render /...
 * `ci`: CI integration: portable checks, SARIF,...
+* `models`: Detector models: see which can run here,...
 
 ## `decoy run`
 
@@ -785,12 +787,13 @@ See also: decoy --version, decoy info.
 
 ## `decoy setup`
 
-Set this box&#x27;s max memory and threads for `decoy run`.
+Set this box&#x27;s max memory and threads for `decoy run`, and offer the NER model.
 
 Shows what this host reports, asks you to confirm or change it, and writes
 $DECOY_HOME/settings.json (default ~/.decoy/settings.json). Other sections and keys
 already in the file are kept. A flag or environment variable on a single run still
-wins over the file.
+wins over the file. The models step then offers `decoy models install ner`; it stores
+nothing, and --yes alone never installs it.
 
 **Usage**:
 
@@ -804,6 +807,8 @@ $ decoy setup [OPTIONS]
 * `--json`: Emit a JSON result instead of text.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug logs on stderr.
+* `--ner [install|skip]`: Install spaCy and the NER model, or skip it, without asking.
+* `--ner-from PATH`: Install NER from this model .whl or directory of .whl files (offline; trusted).
 * `--help`: Show this message and exit.
 
 Examples:
@@ -813,6 +818,10 @@ Examples:
   decoy setup --yes           Write this host's detected values without asking.
 
   decoy setup --yes --json    Same, with a machine-readable result.
+
+  decoy setup --ner install --yes   Also install spaCy and the NER model.
+
+  decoy setup --ner install --ner-from wheels/ --yes   The same, offline from copied wheels.
 
 
 ## `decoy subset`
@@ -1959,3 +1968,84 @@ Examples:
 Exit codes: 0 clean; 1 invalid input or validation errors; 2 blocking warnings;
 3 runtime failure; 4 findings; 5 capacity refusal. See docs/ci-contracts.md.
 Decoy never uploads or comments; uploads belong to your CI workflow.
+
+
+## `decoy models`
+
+Detector models: see which can run here, and install NER.
+
+**Usage**:
+
+```console
+$ decoy models [OPTIONS] COMMAND [ARGS]...
+```
+
+**Options**:
+
+* `--help`: Show this message and exit.
+
+**Commands**:
+
+* `list`: Show each detector model: available here,...
+* `install`: Install spaCy and an NER model into this...
+
+### `decoy models list`
+
+Show each detector model: available here, its version, or the reason and the fix.
+
+**Usage**:
+
+```console
+$ decoy models list [OPTIONS]
+```
+
+**Options**:
+
+* `--json`: Emit a JSON result instead of text.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
+* `-v, --verbose`: Enable debug logs on stderr.
+* `--help`: Show this message and exit.
+
+Examples:
+
+  decoy models list           One line per model: available, version, or why not.
+
+  decoy models list --json    The same rows as JSON.
+
+
+### `decoy models install`
+
+Install spaCy and an NER model into this Python environment.
+
+Online it installs the model wheel pinned by SHA-256; --from installs from wheels you copied,
+with no network. Installed packages never change version. NER takes this environment off a
+certified DP row.
+
+**Usage**:
+
+```console
+$ decoy models install [OPTIONS] KIND:{ner}
+```
+
+**Arguments**:
+
+* `KIND:{ner}`: What to install: ner (spaCy and a model).  [required]
+
+**Options**:
+
+* `--model TEXT`: The spaCy model package .
+* `--from PATH`: A model .whl, or a directory of .whl files (offline; trusted input).
+* `-y, --yes`: Install without asking.
+* `--json`: Emit a JSON result instead of text.
+* `-q, --quiet`: Suppress stdout. Errors still go to stderr.
+* `-v, --verbose`: Enable debug logs on stderr.
+* `--help`: Show this message and exit.
+
+Examples:
+
+  decoy models install ner                       spaCy and the pinned en_core_web_sm wheel.
+
+  decoy models install ner --from wheels/ --yes  Offline, from a directory of wheels.
+
+  decoy models install ner --from en_core_web_sm-3.8.0-py3-none-any.whl
+                                                 Only the model; spaCy must already be installed.
