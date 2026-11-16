@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from tests.unit.distribution._helpers import REAL_OPENSSL
 from tests.unit.test_distribution import (
     REPO_ROOT,
     _file_download,
@@ -109,8 +110,10 @@ def test_installer_installs_unyanked_pin_when_another_version_is_yanked(tmp_path
 
 
 # --------------------------------------------- yank + schema: online shell bootstrap
+# These tests run the installer with a dev key file, which only the OpenSSL route reads, so the gate
+# asks for an openssl that passes an Ed25519 known answer (LibreSSL 3.3 on stock macOS does not).
 needs_shell_tools = pytest.mark.skipif(
-    not (shutil.which("openssl") and shutil.which("curl")), reason="needs openssl + curl"
+    not (REAL_OPENSSL and shutil.which("curl")), reason="needs an Ed25519-capable openssl + curl"
 )
 
 
