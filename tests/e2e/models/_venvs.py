@@ -1,9 +1,11 @@
 """Fresh virtual environments and a local package index for the `decoy models install` tests.
 
-A fresh venv gets the test interpreter's packages through one `.pth` overlay line, so it runs
-this checkout of the CLI and the pinned engine without reinstalling them, while every package
-the install adds lands in the fresh venv's own site-packages. The index is a PEP 503 simple
-index served from a temporary directory on 127.0.0.1; it records every request path.
+`make_venv` gives a fresh venv the test interpreter's packages through one `.pth` overlay line,
+so it runs this checkout without reinstalling anything; it suits tests whose installer is a fake.
+uv reads only a venv's own site-packages, so tests that really install use `make_full_venv`: a
+`uv venv` synced from `requirements-dev.lock` with this checkout installed editable (uv's cache
+makes it about a second). The index is a PEP 503 simple index served from a temporary directory
+on 127.0.0.1; it records every request path.
 """
 
 from __future__ import annotations
@@ -12,6 +14,7 @@ import hashlib
 import http.server
 import io
 import os
+import shutil
 import subprocess
 import sys
 import sysconfig
@@ -22,6 +25,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
 from packaging.utils import canonicalize_name, parse_wheel_filename
 
 CANARY = "CANARY-PASSWORD"
@@ -56,6 +60,38 @@ def make_venv(root: Path, *, with_pip: bool) -> Path:
         f"import site; site.addsitedir({overlay!r})\n", encoding="utf-8"
     )
     return python
+
+
+def make_full_venv(root: Path, *, with_pip: bool) -> Path:
+    """A fresh venv holding the dev lock and this checkout; `with_pip` seeds pip into it."""
+    repo = Path(__file__).resolve().parents[3]
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is not on PATH")
+    seed = ["--seed"] if with_pip else []
+    for args in (
+        ["venv", "-q", *seed, "--python", sys.executable, str(root)],
+        [
+            "pip",
+            "sync",
+            "-q",
+            "--python",
+            str(root / "bin" / "python"),
+            str(repo / "requirements-dev.lock"),
+        ],
+        [
+            "pip",
+            "install",
+            "-q",
+            "--python",
+            str(root / "bin" / "python"),
+            "--no-deps",
+            "-e",
+            str(repo),
+        ],
+    ):
+        subprocess.run([uv, *args], check=True, capture_output=True, env=child_env())
+    return root / "bin" / "python"
 
 
 def site_packages(python: Path) -> Path:
