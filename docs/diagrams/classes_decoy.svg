@@ -2047,11 +2047,11 @@
 <polyline fill="none" stroke="black" points="27102.25,-465.62 27287.75,-465.62"/>
 <text xml:space="preserve" text-anchor="start" x="27192.75" y="-448.32" font-family="Times,serif" font-size="14.00"> </text>
 </g>
-<!-- decoy.ui.storm_animation._StormyHandle -->
+<!-- decoy.ui.scan_progress._StageHandle -->
 <g id="node149" class="node">
-<title>decoy.ui.storm_animation._StormyHandle</title>
+<title>decoy.ui.scan_progress._StageHandle</title>
 <polygon fill="none" stroke="black" points="27305.88,-478.88 27305.88,-546.62 27444.12,-546.62 27444.12,-478.88 27305.88,-478.88"/>
-<text xml:space="preserve" text-anchor="start" x="27319.88" y="-529.33" font-family="Times,serif" font-size="14.00">_StormyHandle</text>
+<text xml:space="preserve" text-anchor="start" x="27325.5" y="-529.33" font-family="Times,serif" font-size="14.00">_StageHandle</text>
 <polyline fill="none" stroke="black" points="27305.88,-521.38 27444.12,-521.38"/>
 <polyline fill="none" stroke="black" points="27305.88,-521.38 27444.12,-521.38"/>
 <text xml:space="preserve" text-anchor="start" x="27313.88" y="-504.07" font-family="Times,serif" font-size="14.00">complete(): None</text>
