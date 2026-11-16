@@ -3,7 +3,7 @@
 Enforces the same privacy discipline as SP-18b's diff command: the profile
 output must NEVER include raw cell values from the source data.
 
-Rationale: STORM profiles contain counts, null rates, and cardinality data.
+Rationale: Scan profiles contain counts, null rates, and cardinality data.
 They must NOT contain top_values, mode_value, min_value, max_value, or any
 other raw aggregates that could reconstruct original values. The profile CLI
 command wraps profile_columns but explicitly strips any raw-value fields before

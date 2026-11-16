@@ -2,7 +2,7 @@
 
 The CLI ships every topic the user might Google before reaching for
 `--help`: modes, transforms, disguises, output flags, pipeline schema,
-YAML authoring, STORM, master-key flow, and safety boundaries.
+YAML authoring, scanning, master-key flow, and safety boundaries.
 Each topic renders as a styled Panel with a one-line summary, a body,
 and a `See also:` line. Tab completion suggests topic names; unknown
 topics produce a `did you mean?` hint.
@@ -81,7 +81,7 @@ _TOPICS: dict[str, _Topic] = {
             "  hipaa     The 18 PHI identifiers from 45 CFR 164.514(b)(2) -- Safe Harbor.\n\n"
             "Pick a Disguise by hand via `decoy show template hipaa` (gets the pipeline shape\n"
             "you'd start from) or by browsing the engine source under decoy_engine.disguises.\n\n"
-            "The V1 FORECAST recommender (which scored Disguises against a STORM scan and drafted\n"
+            "The V1 FORECAST recommender (which scored Disguises against a scan and drafted\n"
             "a pipeline) was retired; pick the Disguise by\n"
             "hand from the templates set for now."
         ),
@@ -169,16 +169,16 @@ _TOPICS: dict[str, _Topic] = {
             "a CLI flag, not a YAML field -- PipelineConfig forbids unknown top-level keys.\n"
             "For portable keyed MASKING, set `global_settings.mask_secret_ref` instead --\n"
             "see `decoy explain keys`.\n"
-            "Treat STORM scan JSON, reference files, and real input/output files as\n"
+            "Treat saved scan JSON, reference files, and real input/output files as\n"
             "sensitive artifacts."
         ),
         see_also=("decoy explain pipeline", "decoy list templates", "decoy validate config --help"),
     ),
-    "storm": _Topic(
-        name="storm",
+    "scan": _Topic(
+        name="scan",
         summary="Dataset analysis -- scan a CSV for PII before writing a mask.",
         body=(
-            "STORM (Statistical Top-down Risk Mapping) scans a dataset and produces a profile:\n"
+            "`decoy scan` reads a dataset and produces a profile:\n"
             "  - Per-column type, cardinality, null fraction, top values.\n"
             "  - PII detector hits (regex + named-entity recognition).\n"
             "  - Sentinel-value flags (the 999s, 99/99/9999s, NA-like literals that pollute stats).\n"
@@ -570,7 +570,7 @@ _TOPICS: dict[str, _Topic] = {
             "          pip install decoy-cli[ner]\n"
             "          Also needs a downloaded model, a separate step:\n"
             "          python -m spacy download en_core_web_sm\n"
-            "  ml      The STORM field-classifier (scikit-learn / lightgbm).\n"
+            "  ml      The field classifier `decoy scan` uses (scikit-learn / lightgbm).\n"
             "          pip install decoy-cli[ml]\n"
             "  vault   Compatibility alias only; installs nothing extra.\n"
             "          pip install decoy-cli[vault]\n"
@@ -710,7 +710,7 @@ def explain(
     """Explain a Decoy concept in plain English.
 
     Built-in topics: modes, transforms, generation, disguises, output, pipeline,
-    yaml, storm, keys, vault, chunked, substrate, differential-privacy, security,
+    yaml, scan, keys, vault, chunked, substrate, differential-privacy, security,
     completion. Run with no topic to see the full list.
     """
     state = setup_output(json_, quiet, verbose)
