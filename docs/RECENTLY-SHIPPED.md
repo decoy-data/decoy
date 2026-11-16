@@ -22,6 +22,12 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-16
 
+- **Engine** (`4157ead6`, engine #541): F22 slice c1b (roadmap row 59, partly merged). Every route publishes through one all-or-none `publish_unit`, with reconcile and restart recovery. Slice c2 (engine #558) is next.
+- **Engine** (`2cce9c40`, engine #602): SCAN-ML M3a (roadmap row 32a, partly merged). Classifier and NER hits go into the pre-scan record. M3b waits on INIT-WIZARD E1.
+- **Engine** (`368b3157`, engine #601): RUN-STREAM E5 (roadmap row 63a, in progress). A plain `auto` run reads lazy inputs whole when routing cannot stream them.
+- **Engine** (`bcec31f7`, engine #522): F25 protected scratch stack (roadmap row 58, left open), merged as one unit. Engine #500, #502, #505, #507, #509, #513, #516 and #518 were closed into it.
+- **Engine** (`12c2b8c3`, engine #532): F22 slice c1a (roadmap row 59, partly merged). The sink state table, and the write half split out.
+- **CLI** (`39e60d26`, CLI #285): roadmap date fixes. **CLI** (`d27807b7`, CLI #284): post-1.0 plan, every V2 item classed 1.x or 2.0.
 - **Engine** (`32ab8044`, engine #512): SCAN-ML M4 (roadmap row 32a, partly merged). Model findings join the post-scan. The post-scan report is now `post-scan-integrity/v3` (owner ruling 2026-11-16); the verdict reader still accepts v2. M3 is not on main yet.
 - **Engine** (`dde37ca4`, engine #521): F22 slice A3 (roadmap row 59, partly merged). `publish_unit` judges and binds a publication unit under the destination lock.
 - **Engine** (`1c8e413c`, engine #496): F22 slice A2 (roadmap row 59, partly merged). The v1 publication descriptor codec and receipt types.
