@@ -1,4 +1,4 @@
-"""Storm-themed multi-stage indicator for `decoy scan`.
+"""Cloud-themed multi-stage indicator for `decoy scan`.
 
 A fixed multi-line ASCII cumulus silhouette anchors the top of the scene;
 eight rain/lightning frames cycle underneath. The per-stage running marker
@@ -77,7 +77,7 @@ _RAIN_FRAMES_RAW: list[list[str]] = [
         "      /   / / /    \\               ",
         "     V    / / /     V               ",
     ],
-    # Frame 7: storm passes -- last few drops.
+    # Frame 7: the cloud passes -- last few drops.
     [
         "            . .                    ",
         "              .                    ",
@@ -105,7 +105,7 @@ DONE_ICON = "v"
 REFRESH_INTERVAL_S = 0.25
 
 
-class _StormyHandle:
+class _StageHandle:
     """Mirrors `_MultistageHandle` -- callers only touch `complete()`."""
 
     def __init__(
@@ -157,17 +157,17 @@ def _disabled(state: OutputState) -> bool:
 
 
 @contextmanager
-def stormy_multistage(
+def scan_multistage(
     state: OutputState, stages: list[str]
-) -> Iterator[_StormyHandle]:
-    """Multi-stage indicator with a big cycling storm cloud + per-stage glyph.
+) -> Iterator[_StageHandle]:
+    """Multi-stage indicator with a big cycling cloud + per-stage glyph.
 
     Drop-in replacement for `multistage()` for the `scan`
     command. The handle exposes the same `complete()` so callers can
     swap freely.
     """
     if _disabled(state) or not stages:
-        yield _StormyHandle(None, stages, {"frame": 0})
+        yield _StageHandle(None, stages, {"frame": 0})
         return
 
     frame_state: dict = {"frame": 0}
@@ -178,7 +178,7 @@ def stormy_multistage(
         refresh_per_second=4,
         transient=True,
     ) as live:
-        handle = _StormyHandle(live, stages, frame_state)
+        handle = _StageHandle(live, stages, frame_state)
         handle.refresh()
 
         def _spin() -> None:
