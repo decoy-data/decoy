@@ -1,0 +1,182 @@
+{
+ "sentry_id": "retired-name-pending",
+ "created_in": "NAME-REMOVAL-C1",
+ "entries": {
+  ".tours/1-onboarding.tour": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "CHANGELOG.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 13
+  },
+  "CODEMAP.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 3
+  },
+  "SECURITY.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "docs/ROADMAP.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 17
+  },
+  "docs/ci-contracts.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "docs/cli-reference.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "docs/qa/cli-v1-checklist.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "docs/roadmap/branch-register.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "docs/roadmap/feature-checklist.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "docs/roadmap/post-1.0-plan.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "docs/roadmap/release-gates.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "docs/roadmap/row-detail.md": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 4
+  },
+  "docs/schemas/decoy-ci-v1.schema.json": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/ci/adapters.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/ci/contracts.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/cli/_init_inference.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 24
+  },
+  "src/decoy/cli/compile_explain.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/cli/completers.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/cli/demo.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 6
+  },
+  "src/decoy/cli/exit_codes.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/cli/extras.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "src/decoy/cli/init.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 8
+  },
+  "src/decoy/templates/__init__.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/e2e/test_demo_command.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 3
+  },
+  "tests/e2e/test_init_command.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "tests/e2e/test_init_scaffold_roundtrip.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 5
+  },
+  "tests/e2e/test_run_command.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/e2e/test_s1_deletions.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 3
+  },
+  "tests/e2e/test_s4b_consolidation.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "tests/e2e/test_validate_command.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/e2e/test_{n}_animation.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "tests/e2e/test_{n}_command.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 7
+  },
+  "tests/e2e/test_{n}_diff.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 22
+  },
+  "tests/e2e/test_{n}_explore.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 27
+  },
+  "tests/e2e/test_{n}_sp16.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 18
+  },
+  "tests/sentry/baselines/csv-read-allow.json": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/sentry/cli_text/_banned_text.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 12
+  },
+  "tests/sentry/test_csv_read_choke_point.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/unit/test_bundled_templates.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 2
+  },
+  "tests/unit/test_exit_codes.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/unit/test_init_inference.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/unit/test_no_dead_command_strings.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 1
+  },
+  "tests/unit/test_surface_docs_consistency.py": {
+   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
+   "max": 3
+  }
+ }
+}

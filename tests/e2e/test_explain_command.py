@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.explain import topic_names
+from tests.sentry.release.test_retired_name_residual import RETIRED_NAME, RETIRED_PATTERN
 
 runner = CliRunner()
 
@@ -37,11 +38,11 @@ def test_explain_known_topic_renders_panel():
 
 
 def test_explain_unknown_topic_suggests_close_match():
-    result = runner.invoke(app, ["explain", "stom"])
+    result = runner.invoke(app, ["explain", "scn"])
     assert result.exit_code == 1
     # Cause + did-you-mean hint per CLI_UX_GUIDE.md section 9.
     assert "unknown topic" in result.stderr.lower()
-    assert "storm" in result.stderr
+    assert "scan" in result.stderr
 
 
 def test_explain_unknown_topic_no_close_match_falls_back_to_list_hint():
@@ -71,11 +72,11 @@ def test_explain_json_index_lists_topics():
 
 
 def test_explain_json_unknown_topic_emits_error_envelope():
-    result = runner.invoke(app, ["explain", "stom", "--json"])
+    result = runner.invoke(app, ["explain", "scn", "--json"])
     assert result.exit_code == 1
     payload = _json.loads(result.stdout)
     assert payload["status"] == "error"
-    assert payload["did_you_mean"] == "storm"
+    assert payload["did_you_mean"] == "scan"
 
 
 def test_explain_quiet_produces_empty_stdout():
@@ -87,11 +88,11 @@ def test_explain_quiet_produces_empty_stdout():
 def test_topic_names_covers_load_bearing_concepts():
     """Sanity check: the topic set must include the load-bearing concepts.
 
-    CLI.4 (2026-06-02): forecast topic dropped (FORECAST retired under
-    storm-reframe-C). The remaining topics cover the V2 surface.
+    CLI.4 (2026-06-02): forecast topic dropped (FORECAST retired with
+    the V1 recommender removal). The remaining topics cover the V2 surface.
     """
     names = set(topic_names())
-    expected = {"modes", "transforms", "disguises", "output", "pipeline", "storm", "keys"}
+    expected = {"modes", "transforms", "disguises", "output", "pipeline", "scan", "keys"}
     missing = expected - names
     assert not missing, f"missing topics: {missing}"
     # CLI.1 + CLI.4 (2026-06-02): forecast topic removed; the explain
@@ -155,3 +156,24 @@ def test_explain_differential_privacy_says_dp_is_certified_only():
     assert listing.exit_code == 0
     topics = {t["name"]: t["summary"] for t in _json.loads(listing.stdout)["topics"]}
     assert "certified installs only" in topics["differential-privacy"]
+
+
+def test_explain_scan_prints_the_moved_scan_body():
+    """AT-C3: the topic the old name held is now `scan`, with the same job."""
+    result = runner.invoke(app, ["explain", "scan"])
+    assert result.exit_code == 0, result.stderr
+    assert "scan" in result.stdout.lower()
+    assert RETIRED_PATTERN.search(result.stdout) is None
+
+
+def test_explain_retired_topic_is_a_usage_error_and_never_suggested():
+    """AT-C3: the retired topic name is unknown (usage exit); no suggestion offers it back."""
+    assert RETIRED_NAME not in topic_names()
+    result = runner.invoke(app, ["explain", RETIRED_NAME, "--json"])
+    assert result.exit_code == 1
+    payload = _json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert RETIRED_NAME not in str(payload.get("did_you_mean", "")).lower()
+    human = runner.invoke(app, ["explain", RETIRED_NAME])
+    assert human.exit_code == 1
+    assert "unknown topic" in human.stderr.lower()
