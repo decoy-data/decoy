@@ -230,6 +230,16 @@ def ensure_decoy_dir(root: Path) -> tuple[LayoutWarning, ...]:
     """
     folder = root / DECOY_DIR
     folder.mkdir(exist_ok=True)
+    return write_decoy_gitignore(folder)
+
+
+def write_decoy_gitignore(folder: Path) -> tuple[LayoutWarning, ...]:
+    """Write `<folder>/.gitignore` with `DECOY_DIR_GITIGNORE` only when absent; the one writer
+    of it, for the project's `.decoy/` and for a library at any other folder (`--library DIR`).
+
+    An existing `.gitignore` is kept (the user may have edited it); one that cannot be written
+    is a warning, not a failure.
+    """
     target = folder / ".gitignore"
     problem = False
     try:

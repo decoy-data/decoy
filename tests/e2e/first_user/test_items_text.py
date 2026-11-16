@@ -21,6 +21,7 @@ from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.explain import topic_names
 from tests.csv_sources import csv_source
 from tests.keyed_secret import TEST_MASK_SECRET, TEST_MASK_SECRET_ENV, with_mask_secret
+from tests.sentry.release.test_retired_name_residual import RETIRED_NAME
 
 runner = CliRunner()
 
@@ -87,7 +88,7 @@ def test_a_real_subcommand_keeps_its_own_usage_path() -> None:
 
 # Literal strings found in these surfaces by the first-user QA. The general
 # pattern sentry over every user string is separate; these cells pin the fixes.
-_REMOVED_FROM_TOPICS = ("FC-1", "storm-reframe", "S22-CL", "decoy-platform")
+_REMOVED_FROM_TOPICS = ("FC-1", f"{RETIRED_NAME}-reframe", "S22-CL", "decoy-platform")
 
 
 @pytest.mark.parametrize("name", topic_names())
