@@ -11,6 +11,8 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Changed
 
+- **A generate `formula` that raises exits 1, and the guide shows how formulas read numbers (GEN-FORMULA-SEQ C1, roadmap row 24y).** With the engine's typing fix (0.24.0 and later), `round(a / 3)` over a `sequence` gives numbers, not blanks. `decoy run` now exits 1 (not 3) with `generate_formula_evaluation_failed` when a formula raises on a row, and writes no output; the message holds the table, column, row index and a reason word, no cell value. `generate_formula_number_used_as_text` (a number used as text, such as `'ORD-' + id`) exits 1 from `decoy validate` and `decoy run`. `decoy explain exit-codes` names the run failure under exit 1. No `--json` field is added. The fit-and-generate guide has a migration table for the refused spellings.
+
 - **Versioning policy and license wording checks (REL-GATE RG-L).** `docs/release/versioning.md` now describes the signed-bundle release and the exact `decoy-engine==` pin instead of a PyPI publish and a `>=` floor, and the 1.0.0 gate list is current. New metadata tests keep FSL-1.1-ALv2 as the one license id across the license docs and refuse a PyPI or `>=` statement in the policy. No command or flag changes.
 
 ### Added
