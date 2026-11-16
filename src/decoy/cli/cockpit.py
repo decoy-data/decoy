@@ -559,6 +559,9 @@ def doctor(
         checks.append({"name": pkg, "kind": "soft", "status": status, "note": note})
 
     checks.extend(_resource_checks())
+    from decoy.cli.models import doctor_rows
+
+    checks.extend(doctor_rows())
 
     overall = "fail" if hard_failed else "pass"
 

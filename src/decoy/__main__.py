@@ -27,6 +27,7 @@ from decoy.cli.fit import fit as fit_command
 from decoy.cli.info import INFO_EPILOG
 from decoy.cli.info import info as info_command
 from decoy.cli.init import INIT_EPILOG, init_command
+from decoy.cli.models import models_app
 from decoy.cli.project import project_app
 from decoy.cli.reference import LIST_EPILOG, SHOW_EPILOG, list_, show
 from decoy.cli.report import report_app
@@ -68,6 +69,7 @@ Try one of:
   decoy fit source.csv             Fit a distribution snapshot for statistical generation.
   decoy init <name>                Scaffold a pipeline in the current project.
   decoy setup                      Set this box's max memory and threads for `decoy run`.
+  decoy models list                Show which detector models can run here; `models install ner`.
   decoy project new acme           Make a project folder for one client's pipelines and outputs.
   decoy list templates             Browse bundled pipeline templates.
   decoy show template hipaa        Dump one bundled template to stdout.
@@ -284,6 +286,7 @@ app.command(name="list", rich_help_panel="Reference", epilog=LIST_EPILOG)(list_)
 app.command(name="show", rich_help_panel="Reference", epilog=SHOW_EPILOG)(show)
 app.command(name="doctor", rich_help_panel="Start", epilog=DOCTOR_EPILOG)(doctor)
 app.command(name="setup", rich_help_panel="Start", epilog=SETUP_EPILOG)(setup_command)
+app.add_typer(models_app, name="models", rich_help_panel="Start")
 app.command(name="subset", rich_help_panel="Run", epilog=SUBSET_EPILOG)(subset_command)
 app.command(name="upgrade", rich_help_panel="Start", epilog=UPGRADE_EPILOG)(upgrade_command)
 

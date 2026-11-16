@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Callable
+from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import typer
@@ -12,7 +14,8 @@ import typer
 from decoy import _resources as host
 from decoy._atomic import AtomicWriteError, describe
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
-from decoy.cli.setup._sections import SECTIONS
+from decoy.cli.setup._sections import SECTIONS, STEPS
+from decoy.cli.setup._step import SetupAnswers
 from decoy.distribution import lock
 from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.theme import accent, hint, success
@@ -34,7 +37,49 @@ Examples:
   decoy setup --yes           Write this host's detected values without asking.
 
   decoy setup --yes --json    Same, with a machine-readable result.
+
+  decoy setup --ner install --yes   Also install spaCy and the NER model.
+
+  decoy setup --ner install --ner-from wheels/ --yes   The same, offline from copied wheels.
 """
+
+
+class NerAnswer(str, Enum):
+    install = "install"
+    skip = "skip"
+
+
+class _Prompter:
+    """The two-method prompt shim the steps use (`typer.confirm` behind it)."""
+
+    def __init__(self, state: Any) -> None:
+        self._state = state
+
+    def confirm(self, text: str) -> bool:
+        return typer.confirm(text, default=False)
+
+    def say(self, text: str) -> None:
+        if self._state.mode is OutputMode.default:
+            self._state.console.print(text, markup=False)
+
+
+def _run_steps(state: Any, answers: SetupAnswers) -> dict[str, Any]:
+    """Run each step in order; the first failure ends setup with that step's code."""
+    from decoy.cli.models import ModelsError, fail
+
+    done: dict[str, Any] = {}
+    prompter = _Prompter(state)
+    for step in STEPS:
+        if state.mode is OutputMode.default and not answers.yes:
+            state.console.print(accent(step.title))
+        failure: ModelsError | None = None
+        try:
+            done[step.name] = step.run(prompter, answers)
+        except ModelsError as exc:
+            failure = exc
+        if failure is not None:
+            fail(state, "setup", failure)
+    return done
 
 
 def _prompt(label: str, default: str, check: Callable[[str], Any]) -> Any:
@@ -58,18 +103,31 @@ def setup_command(
         False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logs on stderr."),
+    ner: NerAnswer | None = typer.Option(
+        None, "--ner", help="Install spaCy and the NER model, or skip it, without asking."
+    ),
+    ner_from: Path | None = typer.Option(
+        None,
+        "--ner-from",
+        help="Install NER from this model .whl or directory of .whl files (offline; trusted).",
+    ),
 ) -> None:
-    """Set this box's max memory and threads for `decoy run`.
+    """Set this box's max memory and threads for `decoy run`, and offer the NER model.
 
     Shows what this host reports, asks you to confirm or change it, and writes
     $DECOY_HOME/settings.json (default ~/.decoy/settings.json). Other sections and keys
     already in the file are kept. A flag or environment variable on a single run still
-    wins over the file.
+    wins over the file. The models step then offers `decoy models install ner`; it stores
+    nothing, and --yes alone never installs it.
     """
     state = setup_output(json_, quiet, verbose)
     if not yes and not sys.stdin.isatty():
         emit_error(state, "setup", "setup needs a terminal; pass --yes to accept.")
         raise typer.Exit(code=EXIT_USAGE)
+    if ner is NerAnswer.skip and ner_from is not None:
+        emit_error(state, "setup", "--ner-from needs --ner install, not --ner skip.")
+        raise typer.Exit(code=EXIT_USAGE)
+    answers = SetupAnswers(yes, None if ner is None else ner.value, ner_from)
     try:
         stored = host.read_settings()
     except host.ResourceError:
@@ -124,6 +182,11 @@ def setup_command(
             hint="check the directory is writable.",
         )
         raise typer.Exit(code=EXIT_RUNTIME) from None
+    if state.mode is OutputMode.default:
+        if replaced:
+            state.console.print(hint("note:"), "the existing settings file was unusable; replaced.")
+        state.console.print(success("Wrote"), str(path))
+    steps = _run_steps(state, answers)
     if state.mode is OutputMode.json:
         emit_json(
             state,
@@ -134,9 +197,6 @@ def setup_command(
                 "schema_version": doc["schema_version"],
                 "sections": written,
                 "replaced_unusable_file": replaced,
+                **steps,
             },
         )
-    elif state.mode is not OutputMode.quiet:
-        if replaced:
-            state.console.print(hint("note:"), "the existing settings file was unusable; replaced.")
-        state.console.print(success("Wrote"), str(path))

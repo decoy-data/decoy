@@ -521,3 +521,25 @@ def test_library_lock_and_ref_files_are_owner_only_under_umask_zero(tmp_path: Pa
     assert "set_ref" in _LIBRARY_LOCK and "index.sqlite" in _LIBRARY_LOCK
     got = _run(_LIBRARY_LOCK, str(tmp_path)).splitlines()
     assert got == ["file 0o600", "file 0o600", "root 0o700"]
+
+
+# -- SCAN-ML C1: the `decoy models install` work folder and the files written into it ----------
+
+_MODELS_WORKDIR = (
+    "import os, stat, sys, tempfile\n"
+    "from pathlib import Path\n"
+    "from decoy.cli.models._private import make_private_dir, private_workdir, write_private\n"
+    "os.umask(0)\n"
+    "tempfile.tempdir = sys.argv[1]\n"
+    "work = private_workdir()\n"
+    "wheels = make_private_dir(work / 'wheels')\n"
+    "write_private(wheels / 'a.whl', b'wheel')\n"
+    "write_private(work / 'constraints.txt', b'numpy==2.2.6\\n')\n"
+    "mode = lambda p: oct(stat.S_IMODE(os.stat(p).st_mode))\n"
+    "print(mode(work), mode(wheels), mode(wheels / 'a.whl'), mode(work / 'constraints.txt'))\n"
+)
+
+
+@posix_only
+def test_models_install_folders_and_files_are_owner_only_under_umask_zero(tmp_path: Path) -> None:
+    assert _run(_MODELS_WORKDIR, str(tmp_path)) == "0o700 0o700 0o600 0o600"

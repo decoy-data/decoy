@@ -90,6 +90,31 @@
       "/templates[]/summary": "string"
     }
   },
+  "models install": {
+    "exempt": "installs packages into the running Python environment"
+  },
+  "models list": {
+    "opaque_values": {
+      "/models/cause": "null|string",
+      "/models/hint": "null|string",
+      "/models/reason": "null|string",
+      "/models/runtime_version": "null|string",
+      "/models/version": "null|string"
+    },
+    "paths": {
+      "/command": "string",
+      "/models[]/available": "boolean",
+      "/models[]/cause": "null|string",
+      "/models[]/hint": "null|string",
+      "/models[]/model_id": "string",
+      "/models[]/reason": "null|string",
+      "/models[]/runtime_version": "null|string",
+      "/models[]/source": "string",
+      "/models[]/version": "null|string",
+      "/note": "string",
+      "/status": "string"
+    }
+  },
   "project list": {
     "paths": {
       "/command": "string",

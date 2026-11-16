@@ -37,6 +37,7 @@ SECRET_ENV = "DECOY_RG_F2_SECRET"
 # Commands with `--json` and no good input in a test environment, each with its reason.
 EXEMPT: dict[str, str] = {
     "doctor": "the check list depends on the installed extras and the host",
+    "models install": "installs packages into the running Python environment",
     "schema": "prints the engine PipelineConfig schema, pinned by the engine snapshot",
     "setup": "writes the user's settings file outside the test directory",
     "upgrade": "manages a bundled install and refuses a pip or dev install",
@@ -56,6 +57,14 @@ DYNAMIC: dict[str, list[str]] = {
 }
 OPAQUE: dict[str, dict[str, str]] = {
     "info": {"/native_companion": "null|object"},
+    # Each row's fields are null or text by whether that model can run on this host.
+    "models list": {
+        "/models/version": "null|string",
+        "/models/runtime_version": "null|string",
+        "/models/reason": "null|string",
+        "/models/cause": "null|string",
+        "/models/hint": "null|string",
+    },
     "run": {"/warnings": "array"},
 }
 OPTIONAL: dict[str, list[str]] = {
@@ -334,6 +343,7 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("list", ["list", "templates"]),
         ("show", ["show", "template", "minimal"]),
         ("info", ["info"]),
+        ("models list", ["models", "list"]),
         ("demo", ["demo"]),
         ("init", ["init", "--preset", "minimal", "-o", "minimal.yaml"]),
         ("fit", ["fit", "patients.csv"]),

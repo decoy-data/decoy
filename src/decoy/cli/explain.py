@@ -560,18 +560,16 @@ _TOPICS: dict[str, _Topic] = {
     ),
     "extras": _Topic(
         name="extras",
-        summary="Optional install extras (cloud/ner/ml/vault) and what each adds.",
+        summary="Optional install extras (cloud/ner/vault) and what each adds.",
         body=(
             "`pip install decoy-cli` (no extras) gives a working masker + generator against\n"
             "local CSV/Parquet/DuckDB. A few heavier capabilities are opt-in by name:\n\n"
             "  cloud   The S3 / GCS SDK dependencies (boto3, google-cloud-storage).\n"
             "          pip install decoy-cli[cloud]\n"
-            "  ner     spaCy-based PII autodetect for text_mask / text_redact.\n"
-            "          pip install decoy-cli[ner]\n"
-            "          Also needs a downloaded model, a separate step:\n"
-            "          python -m spacy download en_core_web_sm\n"
-            "  ml      The STORM field-classifier (scikit-learn / lightgbm).\n"
-            "          pip install decoy-cli[ml]\n"
+            "  ner     spaCy-based PII autodetect for text_mask / text_redact and the\n"
+            "          ner detector. Installs spaCy and the pinned model wheel:\n"
+            "          decoy models install ner   (offline: --from <wheel dir>)\n"
+            "          `decoy models list` shows what can run here.\n"
             "  vault   Compatibility alias only; installs nothing extra.\n"
             "          pip install decoy-cli[vault]\n"
             "  all     Every extra above.\n"
