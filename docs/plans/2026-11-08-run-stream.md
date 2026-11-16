@@ -514,11 +514,13 @@ its output tables resident, as today.
   `src/decoy/_native_gate.py:198-203`). `run_pipeline` already accepts that mix
   (`_pipeline_sources.py:56-64`).
 - The run decides (E5, engine). With `resident_fallback=True` and a plain `auto` run,
-  `run_pipeline` runs one private pre-pass, `resident_fallback_tables` in
-  `execution/pipeline/_lazy_input.py`. Its position is fixed: after `resolve_subset`
-  (`execution/_pipeline.py:289`, so it reads the resolved config) and after the token-vault mode
-  rewrite (`:297-299`), inside the `resolve` progress phase (`:306`), immediately before
-  `build_run_context` (`:307`). Under `execution_mode="stream"` (`stream_required`), under any
+  `build_run_context` runs one private pre-pass, `resident_fallback_tables` in
+  `execution/pipeline/_lazy_input.py`. Its position is fixed: after `resolve_subset` and the
+  token-vault mode rewrite in `run_pipeline`, and inside `build_run_context` after every
+  config-only check (declared-casting preflight, the `require_*` knob checks, F13 key admission),
+  so a bad config fails before any source is read. It uses the run's own routing facts from
+  `build_routing_facts`, whose sources are already post-subset, so a whole read covers only the
+  rows the run keeps. Under `execution_mode="stream"` (`stream_required`), under any
   explicit route, and for a tokenize job that the rewrite moved to `full_frame`, the pre-pass is a
   no-op. This keeps `pipeline/_stream.py`'s promise that `streaming_unavailable` is raised before
   any source is read. The pre-pass gets the run's own `config`,
@@ -1178,7 +1180,7 @@ rows retain their own recorded base):
 | `build_lazy_source` (E4, new `_lazy_build.py`, about 70 lines) | `src/decoy_engine/profile/`, exported from `decoy_engine.profile` | "Source readers, profile types" (`CODEMAP.md:258`): lazy backends sit beside `_readers.py`; E4 adds the module to the `profile/` directory map | `_readers.py` (`build_declared_source`), `_lazy_fixed_width.py` |
 | E4 tests | `tests/unit/profile/` | same row | `tests/unit/profile/` lazy CSV tests |
 | `resident_fallback_tables` (E5, new private `_lazy_input.py`, about 150 lines; not exported, not an `@entry_point`) | `src/decoy_engine/execution/pipeline/`, beside the other `run_pipeline` steps; `pipeline/__init__.py` unchanged | "Pipeline spine and routes" (`CODEMAP.md:249`); the target `pipeline/` sub-package has 8 direct modules at `c7433ede` | `_stream.py`, `_post_scan.py` |
-| `resident_fallback` keyword and its call (E5, about 15 lines) | existing `src/decoy_engine/execution/_pipeline.py` (371 lines), after `resolve_subset` and the token-vault rewrite, inside the `resolve` phase, before `build_run_context`; `_pipeline_context.py` calls the shared `build_routing_facts` instead of its own copy | same row (`CODEMAP.md:249`) | `materialize_source` |
+| `resident_fallback` keyword and its call (E5, about 15 lines) | existing `src/decoy_engine/execution/_pipeline.py` (371-line ceiling) only passes the keyword through; the pre-pass call sits in `_pipeline_context.py` `build_run_context`, after the declared-casting preflight, the `require_*` knob checks and F13 key admission, right after `build_routing_facts` over the post-subset sources and before `prepare_sources`; `_pipeline_context.py` calls the shared `build_routing_facts` instead of its own copy | same row (`CODEMAP.md:249`) | `materialize_source` |
 | `build_routing_facts` (E5, new private `_routing_facts.py`, about 110 lines; not exported) | `src/decoy_engine/execution/pipeline/`, beside `_lazy_input.py` | same row (`CODEMAP.md:249`) | `_lazy_input.py`, `_pipeline_context.py` |
 | no-sink lazy-lane resident collection (E5) | existing `src/decoy_engine/execution/_pipeline_auto_chunk.py` | same pipeline-spine row (`CODEMAP.md:249`); no new module | `_run_streamed`, `_CallableSinkAdapter` |
 | `RouteSummary.native_executed` (E5) | `src/decoy_engine/execution/pipeline/_route_summary.py` | same row (`CODEMAP.md:249`) | `_native_status` |
