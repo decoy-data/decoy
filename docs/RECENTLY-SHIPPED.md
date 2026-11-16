@@ -22,7 +22,12 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-16
 
-- **Engine** (`4157ead6`, engine #541): F22 slice c1b (roadmap row 59, partly merged). Every route publishes through one all-or-none `publish_unit`, with reconcile and restart recovery. Slice c2 (engine #558) is next.
+- **Engine** (`cf43e35ba`, engine #558): F22 slice c2 (roadmap row 59, partly merged). The isolated subprocess route publishes through `publish_unit`, all-or-none. B1 and B2 (vault before output) and W1 (Windows arm) are left.
+- **Engine** (`2929aace8`, engine #604): RUN-STREAM E5a (roadmap row 63a, in progress). A lazy Parquet table with no sink reaches the collector lane, the collector spills under scoped engine scratch, and `bounded_admission` is the one bounded-route composition. E5b, C1l, C1a, C1b, C2 and M1 are left.
+- **CLI** (`b272beb8`, CLI #255): CONFIG-EXPLICIT C1 (roadmap row 22, closed). Every CLI reader asks the engine to check source columns against the declared tables before it reads a data row, and a new sentry keeps new readers on that choke point.
+- **Engine** (`1ca66d5f1`, engine #603): F23 slice E2 (roadmap row 85, in progress). The `decoy-resume-run/v1` and `decoy-resume-table/v1` store records and `plan_resume`. The CLI slices wait on the engine release and repin.
+- **Engine** (`27e404a70`, engine #599): REL-GATE slice RG-F1 (roadmap row 93, partly merged). `docs/frozen-surfaces.md` maps each frozen engine surface to its code and pinning test, a sentry checks it, and the `PipelineConfig` and `RunResult` JSON schemas are snapshotted.
+- **Engine** (`4157ead6`, engine #541): F22 slice c1b (roadmap row 59, partly merged). Every route publishes through one all-or-none `publish_unit`, with reconcile and restart recovery. Slice c2 followed (engine #558).
 - **Engine** (`2cce9c40`, engine #602): SCAN-ML M3a (roadmap row 32a, partly merged). Classifier and NER hits go into the pre-scan record. M3b waits on INIT-WIZARD E1.
 - **Engine** (`368b3157`, engine #601): RUN-STREAM E5 (roadmap row 63a, in progress). A plain `auto` run reads lazy inputs whole when routing cannot stream them.
 - **Engine** (`bcec31f7`, engine #522): F25 protected scratch stack (roadmap row 58, left open), merged as one unit. Engine #500, #502, #505, #507, #509, #513, #516 and #518 were closed into it.
