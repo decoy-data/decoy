@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SIGNER = REPO_ROOT / "packaging_tools" / "sign_release.py"
 INSTALL_SH = REPO_ROOT / "packaging_tools" / "install" / "install.sh"
-IDENTITY, NAMESPACE = "decoy-release@decoy.dev", "decoy-release"
+IDENTITY, NAMESPACE = "decoy-release@trydecoy.com", "decoy-release"
 
 
 def _skip_reason() -> str:

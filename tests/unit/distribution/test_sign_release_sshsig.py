@@ -172,9 +172,9 @@ def test_at_c1_contract_names_sshsig_urls_namespace_identity_and_command():
     for needle in (
         "https://decoy.dev/cli/version.json.sshsig",
         "https://decoy.dev/cli/<version>/decoy-<version>-<target>.tar.gz.sshsig",
-        "decoy-release@decoy.dev",
+        "decoy-release@trydecoy.com",
         'namespaces="decoy-release"',
-        "ssh-keygen -Y verify -f allowed_signers -I decoy-release@decoy.dev "
+        "ssh-keygen -Y verify -f allowed_signers -I decoy-release@trydecoy.com "
         "-n decoy-release -s version.json.sshsig < version.json",
     ):
         assert needle in text

@@ -295,7 +295,7 @@ def test_at_s1_sshsig_route_checks_both_files_with_the_pinned_key(tmp_path):
     for argv, sidecar in zip(real, (None, f"{bundle}.sshsig")):
         flags = dict(zip(argv[3::2], argv[4::2]))
         assert argv[1:3] == ["-Y", "verify"]
-        assert flags["-I"] == "decoy-release@decoy.dev" and flags["-n"] == NAMESPACE
+        assert flags["-I"] == "decoy-release@trydecoy.com" and flags["-n"] == NAMESPACE
         assert flags["-f"].endswith("/allowed_signers") and "/kat/" not in flags["-f"]
         # the data file and the sidecar base have different names for the downloaded version document
         assert flags["-s"] == sidecar if sidecar else flags["-s"].endswith("/vdoc.sshsig")
