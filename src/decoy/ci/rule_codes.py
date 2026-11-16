@@ -209,7 +209,7 @@ def _engine_registry_codes() -> frozenset[str]:
     return _codes_from_registry(reasons.manifest()["entries"])
 
 
-# Literal codes the engine emits outside the registry (sources at engine v0.26.0). The test
+# Literal codes the engine emits outside the registry (sources at engine v0.27.0). The test
 # holds this set equal to what an AST scan of the installed engine finds minus the registry.
 _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
     {
@@ -223,6 +223,7 @@ _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
         "load-error",  # execution/native/_companion_status.py:291
         "magic",  # declared_casting/_quarantine_local.py:439
         "measured",  # execution/_probe.py:461
+        "not_json",  # _canonical/_json.py:206
         "oom_killed",  # execution/_isolated_run.py:520
         "path_base_value",  # records/_payloads.py:108
         "pool_duplicate_rate",  # execution/native/_pool_quality.py:454

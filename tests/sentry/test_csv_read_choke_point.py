@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from tests.sentry.io_policy._calls import call_sites, tally
+from tests.sentry.io_policy._calls import call_sites, is_raw_reader, tally
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "decoy"
@@ -77,33 +77,7 @@ ALLOWLIST: tuple[AllowedRead, ...] = (
 )
 
 
-_ANY_MODULE = {"read_csv", "read_parquet"}
-_PYARROW_PARQUET = {
-    "read_table",
-    "read_pandas",
-    "ParquetFile",
-    "ParquetDataset",
-    "read_schema",
-    "read_metadata",
-}
-_PYARROW_DATASET = {"dataset", "parquet_dataset"}
-_ENGINE = {"read_csv_source", "read_fixed_width", "resolve_csv_dialect"}
-
-
-def _owns(package: str, name: str) -> bool:
-    """Whether `name` from `package` is a watched reader (see the module docstring)."""
-    if name in _ANY_MODULE:
-        return True
-    top = package.split(".")[0]
-    if top == "pandas":
-        return name.startswith("read_")
-    if top == "polars":
-        return name.startswith(("read_", "scan_"))
-    if package.startswith("pyarrow.parquet"):
-        return name in _PYARROW_PARQUET
-    if package == "pyarrow.dataset":
-        return name in _PYARROW_DATASET
-    return top == "decoy_engine" and name in _ENGINE
+_owns = is_raw_reader  # one qualified raw-reader predicate, shared with G-ONE-DECLARED-READ
 
 
 def _owns_csv(package: str, name: str) -> bool:

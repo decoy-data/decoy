@@ -1425,7 +1425,7 @@ $ decoy scan diff [OPTIONS] OLD NEW
 
 **Options**:
 
-* `--strict`: Exit 1 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
+* `--strict`: Exit 4 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
 * `--table TEXT`: Table to read when the saved scan holds more than one.
 * `--json`: Emit the categorized diff as JSON to stdout.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
@@ -1438,7 +1438,7 @@ Examples:
     Print field-, PII-, QI-, and risk-level differences between two scans.
 
   decoy scan diff baseline.json new.json --strict
-    Same, but exit 1 on drift (PII bucket bumped up, new high-PII field, or
+    Same, but exit 4 on drift (PII bucket bumped up, new high-PII field, or
     new quasi-identifier group). Wire this into CI.
 
   decoy scan diff baseline.json new.json --json | jq '.drift'

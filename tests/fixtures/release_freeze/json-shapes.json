@@ -281,6 +281,9 @@
     "paths": {
       "/command": "string",
       "/masked": "string",
+      "/report/config_sha256": "null",
+      "/report/detectors[]/model": "null",
+      "/report/detectors[]/source": "string",
       "/report/error_count": "integer",
       "/report/fail_count": "integer",
       "/report/fk_preservation": "[]",
@@ -290,6 +293,7 @@
       "/report/policy_validation": "[]",
       "/report/residual_pii": "[]",
       "/report/schema_version": "string",
+      "/report/tables_checked[]": "string",
       "/report/warning_count": "integer",
       "/source": "string",
       "/status": "string"
@@ -441,6 +445,7 @@
       "/field/distinct_count": "integer",
       "/field/dtype": "string",
       "/field/leading_zero_count": "integer",
+      "/field/model_hits": "[]",
       "/field/name": "string",
       "/field/null_count": "integer",
       "/field/null_rate": "number",

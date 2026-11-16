@@ -30,7 +30,7 @@ import typer
 from decoy import _mask_secret, _mask_secret_guidance
 from decoy._atomic import AtomicWriteError, describe
 from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
-from decoy.cli._sources import read_file, resolved_source_config
+from decoy.cli._sources import read_file, refusal_message, resolved_source_config
 from decoy.cli._token_vault import LocalTokenVault, TokenVaultError, iter_tokenize_columns
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE, exit_code_for
 from decoy.cli.gate import PreRunCheckError, layout_findings
@@ -231,7 +231,7 @@ def tokenize(
     from decoy_engine import __version__ as engine_version
     from decoy_engine import parse_pipeline_config, run_pipeline
     from decoy_engine.config import PipelineConfigError
-    from decoy_engine.errors import ConfigError
+    from decoy_engine.errors import ConfigError, PipelineValidationError
     from decoy_engine.execution import ExecutionError
     from decoy_engine.plan import PlanCompileError
 
@@ -376,6 +376,10 @@ def tokenize(
     except MaskSecretError as exc:
         # A fixable operator problem; dispatched on the code before the classes below.
         _emit_error(_mask_secret_guidance.secret_error_text(exc, _mask_secret_guidance.TOKENIZE))
+        raise typer.Exit(code=EXIT_USAGE)
+    except PipelineValidationError as exc:
+        # A declared-source refusal: the one emitter, code once, before the broader family.
+        _emit_error(refusal_message(exc), code=exc.code)
         raise typer.Exit(code=EXIT_USAGE)
     except (PlanCompileError, ExecutionError, ConfigError, TargetFormatError, LayoutError) as exc:
         _emit_error(f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}")
@@ -560,6 +564,8 @@ def detokenize(
     except (PlanCompileError, ConfigError) as exc:
         _emit_error(f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}")
         raise typer.Exit(code=EXIT_USAGE)
+    # No declared source is opened here: detokenize reads the file the caller named, so the
+    # config is validated above and the declared sources stay untouched.
 
     # Tables that declare at least one tokenize column -- the reversible set.
     tok_tables = [
