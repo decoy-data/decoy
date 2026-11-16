@@ -246,6 +246,99 @@ def _providers_list(
     )
 
 
+# ---------------------------------------------------------------------------
+# generate catalog readers (dispatched from `decoy list generate-types` / `faker-types`)
+# ---------------------------------------------------------------------------
+
+
+def _generate_types_list(json_: bool, quiet: bool, verbose: bool) -> None:
+    """List every generate column type with its options, from the engine's live catalog."""
+    state = setup_output(json_, quiet, verbose)
+
+    from decoy_engine.config import generate_option_catalog
+
+    catalog = generate_option_catalog()
+    common = list(next(iter(catalog.values())).common) if catalog else []
+    entries = [
+        {
+            "type": type_,
+            "required": list(spec.required),
+            "optional": list(spec.optional),
+            "required_when": {
+                selector: {value: list(keys) for value, keys in by_value.items()}
+                for selector, by_value in spec.required_when.items()
+            },
+        }
+        for type_, spec in catalog.items()
+    ]
+
+    if state.mode is OutputMode.json:
+        emit_json(
+            state,
+            {
+                "command": "list generate-types",
+                "status": "ok",
+                "count": len(entries),
+                "generate_types": entries,
+                "common_options": common,
+            },
+        )
+        return
+
+    if state.mode is OutputMode.quiet:
+        return
+
+    state.console.print(accent(f"Generate column types ({len(entries)}):"))
+    table = make_table("Type", "Required", "Optional")
+    for e in entries:
+        table.add_row(
+            e["type"], ", ".join(e["required"]) or "none", ", ".join(e["optional"]) or "none"
+        )
+    state.console.print(table)
+    state.console.print()
+    state.console.print("Every type also accepts:", ", ".join(common) or "none")
+    state.console.print(
+        hint("Tip:"),
+        code("decoy explain generation"),
+        "shows the rules for each option.",
+    )
+
+
+def _faker_types_list(json_: bool, quiet: bool, verbose: bool) -> None:
+    """List every value a generate column's `faker_type` accepts, from the engine."""
+    state = setup_output(json_, quiet, verbose)
+
+    from decoy_engine import list_generate_faker_providers
+
+    names = list(list_generate_faker_providers())
+
+    if state.mode is OutputMode.json:
+        emit_json(
+            state,
+            {
+                "command": "list faker-types",
+                "status": "ok",
+                "count": len(names),
+                "faker_types": names,
+            },
+        )
+        return
+
+    if state.mode is OutputMode.quiet:
+        return
+
+    state.console.print(accent(f"Faker types ({len(names)}):"))
+    for name in names:
+        state.console.print(f"  {name}")
+    state.console.print()
+    state.console.print(
+        hint("Tip:"),
+        "use one as",
+        code("faker_type:"),
+        "on a generate column.",
+    )
+
+
 def _providers_inspect(
     name: str = typer.Argument(..., help="Provider name to inspect."),
     json_: bool = typer.Option(
