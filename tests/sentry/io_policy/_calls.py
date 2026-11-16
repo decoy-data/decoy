@@ -284,3 +284,35 @@ def is_staged_name(arg: ast.expr | None, names: frozenset[str]) -> bool:
         if len(arg.args) == 1 and not arg.keywords:
             arg = arg.args[0]
     return isinstance(arg, ast.Name) and arg.id in names
+
+
+_ANY_MODULE = {"read_csv", "read_parquet"}
+_PYARROW_PARQUET = {
+    "read_table",
+    "read_pandas",
+    "ParquetFile",
+    "ParquetDataset",
+    "read_schema",
+    "read_metadata",
+}
+_PYARROW_DATASET = {"dataset", "parquet_dataset"}
+_ENGINE = {"read_csv_source", "read_fixed_width", "resolve_csv_dialect"}
+
+
+def is_raw_reader(package: str, name: str) -> bool:
+    """The one qualified raw file-reader predicate: is `name` from `package` a watched reader.
+
+    Shared by G-ONE-CSV-READ (which lists where such a call may sit) and G-ONE-DECLARED-READ
+    (which derives its reader set from it). The watch table is in the csv sentry's docstring."""
+    if name in _ANY_MODULE:
+        return True
+    top = package.split(".")[0]
+    if top == "pandas":
+        return name.startswith("read_")
+    if top == "polars":
+        return name.startswith(("read_", "scan_"))
+    if package.startswith("pyarrow.parquet"):
+        return name in _PYARROW_PARQUET
+    if package == "pyarrow.dataset":
+        return name in _PYARROW_DATASET
+    return top == "decoy_engine" and name in _ENGINE
