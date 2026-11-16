@@ -10,10 +10,8 @@
 #
 # Tune `row_count` and the generate_columns to shape the output.
 #
-# V2 PipelineConfig shape per decoy-engine `decoy_engine.config._pipeline`.
-# OSS.1 commit 2 (2026-06-02) V2 rewrite: replaces V1 `version: '1.0'`
-# + `generator_settings:` + `output:` shape. V2 uses unified
-# `global_settings` and `targets`.
+# The `orders` table joins to `customers` through a `reference` column, so every
+# orders.customer_id is a customer_id that exists. The parent is built first.
 
 version: 2
 
@@ -62,8 +60,31 @@ tables:
         categories: ["bronze", "silver", "gold", "platinum"]
         weights: [0.50, 0.30, 0.15, 0.05]
 
+  - name: orders
+    row_count: 3000
+    generate_columns:
+      - name: order_id
+        type: sequence
+        start: 1
+        step: 1
+
+      # Reference: copy keys from a column of another generate table.
+      - name: customer_id
+        type: reference
+        reference_table: customers
+        reference_column: customer_id
+
+      - name: status
+        type: categorical
+        categories: ["new", "paid", "shipped", "returned"]
+        weights: [0.1, 0.3, 0.5, 0.1]
+
 targets:
   customers:
     type: file
     format: csv
     path: ./customers.csv
+  orders:
+    type: file
+    format: csv
+    path: ./orders.csv
