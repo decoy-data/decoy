@@ -35,13 +35,13 @@ schema does not change: a bundle's `.sshsig` URL is its artifact `url` plus `.ss
 document carries no `sshsig` field.
 
 - Namespace: `decoy-release`
-- Identity: `decoy-release@decoy.dev`
+- Identity: `decoy-release@trydecoy.com`
 - `allowed_signers` holds one line, with the release key as a base64 `ssh-ed25519` blob:
-  `decoy-release@decoy.dev namespaces="decoy-release" ssh-ed25519 <base64 key blob>`
+  `decoy-release@trydecoy.com namespaces="decoy-release" ssh-ed25519 <base64 key blob>`
 - Verify (exit 0 means the signature is good):
 
 ```
-ssh-keygen -Y verify -f allowed_signers -I decoy-release@decoy.dev -n decoy-release -s version.json.sshsig < version.json
+ssh-keygen -Y verify -f allowed_signers -I decoy-release@trydecoy.com -n decoy-release -s version.json.sshsig < version.json
 ```
 
 ## Document shape

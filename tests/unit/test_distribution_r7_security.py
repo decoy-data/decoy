@@ -330,7 +330,12 @@ def test_install_sh_ignores_override_when_key_is_pinned(tmp_path, keypair):
         serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
     body = "".join(real_pub.splitlines()[1:-1])
     script = (REPO_ROOT / "packaging_tools/install/install.sh").read_text()
-    injected = script.replace("__DECOY_RELEASE_PUBLIC_KEY__", body)
+    # Both forms are injected: a release with one real key form and one placeholder is refused
+    # before any signature check (MAC-V1a "release keys incomplete").
+    ssh_blob = real_key.public_key().public_bytes(
+        serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH).decode().split()[1]
+    injected = script.replace("__DECOY_RELEASE_PUBLIC_KEY__", body).replace(
+        "__DECOY_RELEASE_SSH_PUBLIC_KEY__", ssh_blob)
     sh = tmp_path / "install_release.sh"
     sh.write_text(injected)
     attacker, attacker_pub = keypair

@@ -8,12 +8,19 @@
 # Trust model (config-secrets-and-supply-chain + security): this script arrives over
 # TLS from the Decoy host and PINS the release public key inline. It verifies the
 # hosted version document's Ed25519 signature AND the bundle's Ed25519 signature AND a
-# SHA-256 checksum against the signed document BEFORE anything is laid down. The
-# signature is the raw Ed25519 signature produced by `decoy.distribution.signing` /
-# `packaging_tools.sign_release`, so `openssl pkeyutl -verify -rawin` checks the exact same
-# bytes `decoy upgrade` checks. A failed signature OR checksum is a HARD REFUSAL, never
-# a warning-and-continue. Established methodology: Ed25519 via openssl; no hand-rolled
-# verification.
+# SHA-256 checksum against the signed document BEFORE anything is laid down. A failed
+# signature OR checksum is a HARD REFUSAL, never a warning-and-continue. Established
+# methodology: Ed25519 via a system tool; no hand-rolled verification. The tool is chosen
+# once, before any download, and only if it passes a known-answer test (a good signature
+# accepted, a changed message rejected):
+#   openssl  : the raw Ed25519 signature produced by `decoy.distribution.signing` /
+#              `packaging_tools.sign_release` (`<file>.sig`), checked with
+#              `openssl pkeyutl -verify -rawin`, the exact bytes `decoy upgrade` checks.
+#              Needs OpenSSL 3; LibreSSL 3.3 (stock macOS) and OpenSSL 1.1.1 cannot.
+#   sshsig   : the same release key's OpenSSH signature (`<file>.sshsig`, namespace
+#              decoy-release), checked with `ssh-keygen -Y verify` against the pinned
+#              OpenSSH form of the key. Stock macOS ships a capable ssh-keygen.
+# With neither, the script exits 69 ("cannot verify") before downloading anything.
 #
 # Freshness (TUF-style timestamp "version"/"expires"): the signed document carries a
 # monotonic `serial` and an `expires` deadline. An expired document is refused, and the
@@ -35,6 +42,9 @@
 #                         while PINNED_PUBKEY below is still the placeholder, with a loud
 #                         warning; ignored with a warning once a release injects the real key)
 #   DECOY_LOCAL_BUNDLE    install from a local tarball instead of downloading (offline)
+#   DECOY_OPENSSL         absolute path of an OpenSSL 3 `openssl` to use. When set it is the only
+#                         candidate: if it fails the known answer the install exits 69 and no
+#                         other verifier is tried.
 set -eu
 
 DEFAULT_VERSION_URL="https://trydecoy.com/cli/version.json"
@@ -65,6 +75,19 @@ U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgfu+fIAX8txwjsy0RZfNaUFDaC5
 c2gtZWQyNTUxOQAAAEB+iuN19bqZQ1G1GtU7swHFU6KZmfoimlg1V+XtaVZ0Sl2l+VEFk8
 8E3UhqgWQjknqU9A958r4mZ/pn8MmDXyUC
 -----END SSH SIGNATURE-----'
+
+# Known answer for the OpenSSL route: RFC 8032 section 7.1 TEST 2 (SPKI public key body, message
+# 0x72, signature as base64 because the real check reads base64 sidecars). 0x73 must fail. Only the
+# body is kept here: the release smoke counts PEM blocks in this file and expects exactly the
+# release key, so kat_openssl assembles the PEM at run time.
+KAT_PEM_BODY='MCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw='
+KAT_SIG_B64='kqAJqfDUyrhyDoILX2QlQKKye1QWUD+Ps3YiI+vbadoIWsHkPhWZbkWPNhPQ8R2MOHsurrQwKu6wDSkWErsMAA=='
+
+SSH_IDENTITY="decoy-release@trydecoy.com"
+SSH_NAMESPACE="decoy-release"
+# Homebrew, MacPorts and Linuxbrew locations for an OpenSSL 3, tried after PATH. Globs are intended.
+OPENSSL_FALLBACKS="/opt/homebrew/opt/openssl@*/bin/openssl /opt/homebrew/opt/openssl/bin/openssl /opt/homebrew/bin/openssl /usr/local/opt/openssl@*/bin/openssl /usr/local/bin/openssl /opt/local/bin/openssl /home/linuxbrew/.linuxbrew/bin/openssl"
+SSH_KEYGEN_FALLBACK="/usr/bin/ssh-keygen"
 
 die() { printf 'decoy install: %s\n' "$*" >&2; exit 1; }
 info() { printf 'decoy install: %s\n' "$*" >&2; }
@@ -118,15 +141,129 @@ sha256_of() {
   fi
 }
 
+# Low-level checks. Only verify_file (the real checks) and the known-answer tests call them, so the
+# probe exercises the same commands the install relies on. stdin is always a named file or
+# /dev/null: under `curl | sh` an inherited stdin would let the tool swallow the rest of the script.
 verify_sig() {
-  # verify_sig DATA_FILE SIG_B64_FILE PUBKEY_PEM -- raw detached Ed25519 via openssl.
-  # Returns non-zero on any failure; the caller turns that into a hard refusal.
-  _raw="$(mktemp)"
-  openssl base64 -d -A -in "$2" -out "$_raw" 2>/dev/null || { rm -f "$_raw"; return 1; }
-  if openssl pkeyutl -verify -pubin -inkey "$3" -rawin -in "$1" -sigfile "$_raw" >/dev/null 2>&1; then
+  # verify_sig OPENSSL DATA_FILE SIG_B64_FILE PUBKEY_PEM -- raw detached Ed25519.
+  _raw="$WORK/raw.sig"
+  "$1" base64 -d -A -in "$3" -out "$_raw" </dev/null 2>/dev/null || { rm -f "$_raw"; return 1; }
+  if "$1" pkeyutl -verify -pubin -inkey "$4" -rawin -in "$2" -sigfile "$_raw" </dev/null >/dev/null 2>&1; then
     rm -f "$_raw"; return 0
   fi
   rm -f "$_raw"; return 1
+}
+
+verify_sshsig() {
+  # verify_sshsig SSH_KEYGEN ALLOWED_SIGNERS DATA_FILE SIGNATURE_FILE. `-Y verify` binds the pinned
+  # key through the allowed-signers file; `-Y check-novalidate` would accept any key.
+  "$1" -Y verify -f "$2" -I "$SSH_IDENTITY" -n "$SSH_NAMESPACE" -s "$4" < "$3" >/dev/null 2>&1
+}
+
+verify_file() {
+  # verify_file DATA_FILE SIDECAR_BASE -- the only signature check. The sidecar is
+  # SIDECAR_BASE.sig or SIDECAR_BASE.sshsig and is never derived from DATA_FILE.
+  # Anything but a selected verifier plus a present sidecar returns 1.
+  case "$VERIFIER_KIND" in
+    openssl) [ -f "$2.sig" ] && verify_sig "$VERIFIER_BIN" "$1" "$2.sig" "$PUBKEY" ;;
+    sshsig) [ -f "$2.sshsig" ] && verify_sshsig "$VERIFIER_BIN" "$WORK/allowed_signers" "$1" "$2.sshsig" ;;
+    *) return 1 ;;
+  esac
+}
+
+write_allowed_signers() {
+  # write_allowed_signers FILE BASE64_KEY_BLOB
+  printf '%s namespaces="%s" ssh-ed25519 %s\n' "$SSH_IDENTITY" "$SSH_NAMESPACE" "$2" > "$1"
+}
+
+kat_openssl() {
+  # Passes only if the binary accepts the RFC 8032 signature on 0x72 and rejects it on 0x73.
+  mkdir -p "$WORK/kat" || return 1
+  printf '%s\n%s\n%s\n' "-----BEGIN PUBLIC ""KEY-----" "$KAT_PEM_BODY" "-----END PUBLIC ""KEY-----" > "$WORK/kat/pub.pem"
+  printf '%s\n' "$KAT_SIG_B64" > "$WORK/kat/sig.b64"
+  printf r > "$WORK/kat/good"; printf s > "$WORK/kat/bad"
+  verify_sig "$1" "$WORK/kat/good" "$WORK/kat/sig.b64" "$WORK/kat/pub.pem" || return 1
+  verify_sig "$1" "$WORK/kat/bad" "$WORK/kat/sig.b64" "$WORK/kat/pub.pem" && return 1
+  return 0
+}
+
+kat_sshsig() {
+  mkdir -p "$WORK/kat" || return 1
+  write_allowed_signers "$WORK/kat/allowed_signers" "$KAT_SSH_PUBKEY"
+  printf '%s\n' "$KAT_SSHSIG" > "$WORK/kat/sig.sshsig"
+  printf r > "$WORK/kat/good"; printf s > "$WORK/kat/bad"
+  verify_sshsig "$1" "$WORK/kat/allowed_signers" "$WORK/kat/good" "$WORK/kat/sig.sshsig" || return 1
+  verify_sshsig "$1" "$WORK/kat/allowed_signers" "$WORK/kat/bad" "$WORK/kat/sig.sshsig" && return 1
+  return 0
+}
+
+note_tried() { TRIED="${TRIED}decoy install:   tried: $*
+"; }
+
+refuse_unverifiable() {
+  # Exit 69 (EX_UNAVAILABLE): the host cannot check signatures. Never says INVALID or tampering,
+  # because nothing was found wrong with the release.
+  {
+    printf 'decoy install: cannot verify Ed25519 signatures: no usable openssl or ssh-keygen was found. Nothing was downloaded or installed.\n'
+    printf '%s' "$TRIED"
+    printf 'decoy install: macOS: /usr/bin/ssh-keygen ships with macOS; restore it, or brew install openssl@3\n'
+    printf 'decoy install: Linux: OpenSSL 3.0 or newer is required (RHEL 8: dnf install openssl3 from EPEL; Ubuntu 20.04 / Debian 10: a newer distro or brew install openssl@3)\n'
+    printf 'decoy install: or name one: DECOY_OPENSSL=/path/to/openssl sh install.sh\n'
+  } >&2
+  exit 69
+}
+
+try_openssl() {
+  # try_openssl PATH -- selects it if it passes the known answer, else records why not.
+  _ver=$("$1" version </dev/null 2>&1 | head -n1 | tr -cd '[:print:]' | cut -c1-80 || true)
+  if kat_openssl "$1"; then
+    VERIFIER_KIND=openssl; VERIFIER_BIN=$1; VERIFIER_DESC=$_ver
+    return 0
+  fi
+  note_tried "$1 ($_ver): failed the Ed25519 known answer"
+  return 1
+}
+
+select_verifier() {
+  # Runs once, after $WORK exists and before any download. Sets VERIFIER_KIND and VERIFIER_BIN.
+  TRIED=""; VERIFIER_KIND=""; VERIFIER_BIN=""; VERIFIER_DESC=""
+  if [ -n "${DECOY_OPENSSL:-}" ]; then
+    # An explicit choice is never second-guessed: no fallback, so a typo cannot silently verify
+    # with a different binary.
+    case "$DECOY_OPENSSL" in
+      /*) ;;
+      *) note_tried "$DECOY_OPENSSL (DECOY_OPENSSL must be an absolute path)"; refuse_unverifiable ;;
+    esac
+    if [ -f "$DECOY_OPENSSL" ] && [ -x "$DECOY_OPENSSL" ]; then
+      try_openssl "$DECOY_OPENSSL" || true
+    else
+      note_tried "$DECOY_OPENSSL (DECOY_OPENSSL is not an executable file)"
+    fi
+    [ -n "$VERIFIER_KIND" ] || refuse_unverifiable
+  else
+    for _c in "$(command -v openssl 2>/dev/null || true)" "$(command -v openssl3 2>/dev/null || true)" $OPENSSL_FALLBACKS; do
+      if [ -n "$_c" ] && [ -f "$_c" ] && [ -x "$_c" ] && try_openssl "$_c"; then break; fi
+    done
+    if [ -z "$VERIFIER_KIND" ]; then
+      if [ "$SSH_KEY_IS_PLACEHOLDER" = 1 ]; then
+        note_tried "ssh-keygen (the OpenSSH release key is not pinned in this build)"
+      else
+        for _c in "$(command -v ssh-keygen 2>/dev/null || true)" "$SSH_KEYGEN_FALLBACK"; do
+          [ -n "$_c" ] && [ -f "$_c" ] && [ -x "$_c" ] || continue
+          if kat_sshsig "$_c"; then
+            VERIFIER_KIND=sshsig; VERIFIER_BIN=$_c; VERIFIER_DESC="known answer passed"
+            break
+          fi
+          note_tried "$_c: failed the SSHSIG known answer"
+        done
+      fi
+    fi
+    [ -n "$VERIFIER_KIND" ] || refuse_unverifiable
+  fi
+  if [ "$VERIFIER_KIND" = sshsig ]; then
+    write_allowed_signers "$WORK/allowed_signers" "$PINNED_SSH_PUBKEY"
+  fi
+  info "verifier: $VERIFIER_KIND $VERIFIER_BIN ($VERIFIER_DESC)"
 }
 
 # Whitespace-tolerant so it reads both the signed canonical document and the Python-written
@@ -165,7 +302,6 @@ done
 
 [ "$ACTION" = uninstall ] && uninstall
 
-need openssl
 need tar
 need mktemp
 
@@ -226,13 +362,23 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Pinned key -> PEM file (test override allowed).
-# The marker is split so the release step's placeholder substitution cannot rewrite this test.
+# The markers are split so the release step's placeholder substitution cannot rewrite these tests.
 PUBKEY="$WORK/pub.pem"
 case "$PINNED_PUBKEY" in
   *"__DECOY_RELEASE_PUBLIC""_KEY__"*) KEY_IS_PLACEHOLDER=1 ;;
   *) KEY_IS_PLACEHOLDER=0 ;;
 esac
+case "$PINNED_SSH_PUBKEY" in
+  *"__DECOY_RELEASE_SSH_PUBLIC""_KEY__"*) SSH_KEY_IS_PLACEHOLDER=1 ;;
+  *) SSH_KEY_IS_PLACEHOLDER=0 ;;
+esac
+# One real form and one placeholder is a broken release build, not a dev build.
+[ "$KEY_IS_PLACEHOLDER" = "$SSH_KEY_IS_PLACEHOLDER" ] || die "release keys incomplete -- refusing (one pinned key form is still a placeholder)"
+
+# Choose the verifier before the key is written and before anything is fetched.
+select_verifier
+
+# Pinned key -> PEM file (test override allowed).
 if [ -n "${DECOY_RELEASE_PUBKEY_FILE:-}" ] && [ "$KEY_IS_PLACEHOLDER" = 1 ]; then
   info "WARNING: trusting the release key from DECOY_RELEASE_PUBKEY_FILE=$DECOY_RELEASE_PUBKEY_FILE instead of a pinned key. This is a dev/test build; never do this with a real install."
   cp "$DECOY_RELEASE_PUBKEY_FILE" "$PUBKEY"
@@ -248,20 +394,23 @@ BASE_URL="${DECOY_BUNDLE_BASE:-$DEFAULT_BUNDLE_BASE}"
 BASE_SET="${DECOY_BUNDLE_BASE:-}"
 conv_url() { printf '%s' "${BASE_URL%"${BASE_URL##*[!/]}"}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"; }
 
+# Only the sidecar the selected verifier reads is fetched or required.
+if [ "$VERIFIER_KIND" = sshsig ]; then SIDEXT=sshsig; else SIDEXT=sig; fi
+
 if [ -n "${DECOY_LOCAL_BUNDLE:-}" ]; then
-  # Offline / air-gapped: install from a local tarball + its .sig + .sha256 sidecars.
+  # Offline / air-gapped: install from a local tarball + its signature sidecar + .sha256.
   TARBALL="$DECOY_LOCAL_BUNDLE"
-  SIGFILE="$DECOY_LOCAL_BUNDLE.sig"
+  SIDECAR="$DECOY_LOCAL_BUNDLE"
   SHAFILE="$DECOY_LOCAL_BUNDLE.sha256"
-  [ -f "$TARBALL" ] && [ -f "$SIGFILE" ] && [ -f "$SHAFILE" ] || die "offline install needs $TARBALL plus .sig and .sha256 sidecars"
+  [ -f "$TARBALL" ] && [ -f "$SIDECAR.$SIDEXT" ] && [ -f "$SHAFILE" ] || die "offline install needs $TARBALL plus .$SIDEXT and .sha256 sidecars"
   VERSION="${PIN_VERSION:-local}"
   EXPECT_SHA=$(cut -d' ' -f1 < "$SHAFILE")
 else
   # Fetch + verify the signed version document.
   VDOC="$WORK/version.json"
   fetch "$DECOY_VERSION_URL" "$VDOC" || die "could not fetch version document: $DECOY_VERSION_URL"
-  fetch "$DECOY_VERSION_URL.sig" "$VDOC.sig" || die "could not fetch version-document signature"
-  verify_sig "$VDOC" "$VDOC.sig" "$PUBKEY" || die "version-document signature INVALID -- refusing (possible tampering)"
+  fetch "$DECOY_VERSION_URL.$SIDEXT" "$WORK/vdoc.$SIDEXT" || die "could not fetch version-document signature"
+  verify_file "$VDOC" "$WORK/vdoc" || die "version-document signature INVALID -- refusing (possible tampering)"
   info "version document signature verified"
 
   # The signature only proves WHO signed it; refuse a document of any other schema, as
@@ -318,8 +467,11 @@ else
     if [ -n "$BASE_SET" ]; then
       # A configured base (mirror, allowlist) wins for latest too; the signed sha256 still applies.
       URL=$(conv_url)
-      SIGURL="$URL.sig"
+      SIGURL="$URL.$SIDEXT"
     fi
+    # The document names only the .sig URL; the .sshsig sits beside the artifact, and the
+    # SSHSIG check itself proves the file, so the signed schema needs no new field.
+    [ "$SIDEXT" = sig ] || SIGURL="$URL.$SIDEXT"
   else
     # Pinned to a non-latest version: the signed version document carries only the
     # latest release's checksum, so construct URLs by convention and take the checksum
@@ -332,14 +484,14 @@ else
     # .sha256 sidecar is unsigned corruption detection only, and yank status cannot be
     # checked (no network by design) -- the pinned-key signature is still enforced.
     URL=$(conv_url)
-    SIGURL="$URL.sig"
+    SIGURL="$URL.$SIDEXT"
     EXPECT_SHA=""
   fi
 
   TARBALL="$WORK/decoy-$VERSION-$TARGET.tar.gz"
-  SIGFILE="$TARBALL.sig"
+  SIDECAR="$WORK/bundle"
   fetch "$URL" "$TARBALL" || die "could not download bundle: $URL"
-  fetch "$SIGURL" "$SIGFILE" || die "could not download bundle signature: $SIGURL"
+  fetch "$SIGURL" "$SIDECAR.$SIDEXT" || die "could not download bundle signature: $SIGURL"
   if [ -z "$EXPECT_SHA" ]; then
     fetch "$URL.sha256" "$TARBALL.sha256" 2>/dev/null && EXPECT_SHA=$(cut -d' ' -f1 < "$TARBALL.sha256") || true
   fi
@@ -352,7 +504,7 @@ if [ -n "$EXPECT_SHA" ]; then
   info "bundle checksum verified"
 fi
 # 2) signature (the trust anchor) -- hard refusal on failure
-verify_sig "$TARBALL" "$SIGFILE" "$PUBKEY" || die "bundle signature INVALID -- refusing (possible tampering)"
+verify_file "$TARBALL" "$SIDECAR" || die "bundle signature INVALID -- refusing (possible tampering)"
 info "bundle signature verified"
 
 # 3) quarantine-extract, then promote. Nothing is laid down live until every check
