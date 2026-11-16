@@ -2,7 +2,7 @@
 
 Status: plan
 
-Date: 2026-11-16. Author: Opus planner. Bases: CLI `origin/main` `ba7b613e`, engine `origin/main`
+Date: 2026-11-16. Author: Opus planner. Bases: CLI `origin/main` `ba7b613e` (re-checked against `e4c7f387`), engine `origin/main`
 `13c95c7de` (#607). Line numbers below are from those heads.
 
 Rules consulted: `dev-rules/00-universal.md`, `dev-rules/risk-and-exceptions.md`,
@@ -87,7 +87,7 @@ actions; section 12 lists them with the dates they are needed by.
   raised caps) to every ratchet this plan touches.
 - Commit rules: Conventional Commits subject, no body unless it says why, final line `cam`.
 - No logging of data values, user project paths, host names or key material.
-- File size cap 800 lines. `src/decoy/cli` is frozen at 29 direct modules; a new command goes in a
+- File size cap 800 lines. `src/decoy/cli` is frozen at 30 direct modules (CODEMAP on current main); a new command goes in a
   named sub-package (sub-packages do not count toward the parent).
 
 ### Plan-record placement
@@ -477,7 +477,7 @@ from `keyprovider`). Pattern: lock file plus diffable environment report (sectio
 | AT-78-C5 | A patched `native_companion_status()` returns a seeded path marker in both `cause` and `abi_actual`: the report shows `ok: false` and a reason code, omits both unsafe fields, and the marker is absent from stdout, stderr and `--json` | Command does not exist |
 | AT-78-C6 | `--label` values `"a\n"`, `""`, 33 characters and `"a b"` exit 1 | Command does not exist |
 | AT-78-C7 | QA INST-18 on two hosts (a Linux VM and the Mac) | Run at QA |
-| AT-78-C8 | Writer and CLI report-reader strict-type matrix for `decoy-env-report/v1`: apply the AT-78-E6 primitive and `dependencies` mutations on write and read; also refuse wrong scalar or container types for `cli_version`, `target`, `native_selfcheck`, `label` and `probe_status`, booleans or numeric strings in integer fields, malformed `native_selfcheck` members, and every `probe_status` token except `ok` and `mismatch`. Named mutations: coerce a numeric string, accept `True` as `1`, stringify a dependency value, accept a list for an object, and treat unknown `probe_status` as free text | Command and strict report reader do not exist |
+| AT-78-C8 | Writer and CLI report-reader strict-type matrix for `decoy-env-report/v1`: apply the AT-78-E6 primitive and `dependencies` mutations on write and read; also refuse wrong scalar or container types for `cli_version`, `target`, `native_selfcheck`, `label` and `probe_status`, booleans or numeric strings in integer fields, malformed `native_selfcheck` members (`present` and `ok` each refuse `0`, `1`, `"true"`, `null` and a list on write and on read), and every `probe_status` token except `ok` and `mismatch`. Named mutations: coerce a numeric string, accept `True` as `1`, stringify a dependency value, accept a list for an object, coerce an integer to a boolean in `native_selfcheck.present` or `native_selfcheck.ok`, and treat unknown `probe_status` as free text | Command and strict report reader do not exist |
 
 ### Slices
 
@@ -495,7 +495,7 @@ from `keyprovider`). Pattern: lock file plus diffable environment report (sectio
 | Probe | engine `src/decoy_engine/support/_probe.py` | Same row; tier 1 because it runs tier 2 and tier 3 code |
 | Label rule | engine `src/decoy_engine/keyprovider.py` | Existing owner of `KeyProvider.key_version`; import tier 3, read by `delivery.resume` and `support` |
 | Lock corpus sample | engine `tests/integration/compat_corpus/runtime-lock/lock-v1.json` | Existing compatibility corpus; hand-written sample read by its harness |
-| Env command | CLI `src/decoy/cli/env/` | `src/decoy/cli` frozen at 29; new command goes in a named sub-package, like `project/` and `setup/`; new CODEMAP row |
+| Env command | CLI `src/decoy/cli/env/` | `src/decoy/cli` frozen at 30; new command goes in a named sub-package, like `project/` and `setup/`; new CODEMAP row |
 | Engine tests | `tests/unit/support/` | CODEMAP "Support bundles" tests |
 | CLI tests | `tests/unit/cli/env/`, one e2e in `tests/e2e/` | Mirror `src/` |
 
