@@ -40,6 +40,9 @@ from decoy.distribution import version_document as vd
 from decoy.distribution.release_key import PLACEHOLDER_MARKER
 from decoy.distribution.targets import SUPPORTED_TARGETS, detect_target
 
+# The OpenSSH-form placeholder in install.sh (PINNED_SSH_PUBKEY), injected beside the PEM one.
+SSH_PLACEHOLDER_MARKER = "__DECOY_RELEASE_SSH_PUBLIC_KEY__"
+
 WORKFLOW = (
     Path(__file__).resolve().parent.parent.parent
     / ".github"
@@ -181,6 +184,13 @@ def candidate_set(tmp_path, monkeypatch):
         .decode()
     )
     body = "".join(pem.strip().splitlines()[1:-1])
+    # The release step injects both key forms; install.sh refuses a build with only one.
+    ssh_blob = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
+        .decode()
+        .split()[1]
+    )
     dist = tmp_path / "dist"
     dist.mkdir()
     for target in SUPPORTED_TARGETS:
@@ -189,7 +199,8 @@ def candidate_set(tmp_path, monkeypatch):
         (dist / f"{tarball.name}.sig").write_text(_sign(key, tarball.read_bytes()))
     for name in cand.INSTALLERS:
         text = (ROOT / "packaging_tools" / "install" / name).read_text(encoding="utf-8")
-        (dist / name).write_text(text.replace(PLACEHOLDER_MARKER, body), encoding="utf-8")
+        text = text.replace(PLACEHOLDER_MARKER, body).replace(SSH_PLACEHOLDER_MARKER, ssh_blob)
+        (dist / name).write_text(text, encoding="utf-8")
     _write_document(dist, key, _artifacts(dist))
     _seal(dist)
     pubkey = tmp_path / "release.pub.pem"
