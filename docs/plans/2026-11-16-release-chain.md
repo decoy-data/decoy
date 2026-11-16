@@ -2,14 +2,17 @@
 
 Status: plan
 
-Date: 2026-11-16. Author: Opus planner. Bases: CLI `origin/main` `60cac678`, engine `origin/main`
-`13c95c7d` (#607). Line numbers below are from those heads.
+Date: 2026-11-16. Author: Opus planner. Bases: CLI `origin/main` `ba7b613e`, engine `origin/main`
+`13c95c7de` (#607). Line numbers below are from those heads.
 
 Rules consulted: `dev-rules/00-universal.md`, `dev-rules/risk-and-exceptions.md`,
 `dev-rules/development-loop.md`, `dev-rules/release-and-rollback.md`,
 `dev-rules/catalogs/recurring-defects.md`, `dev-rules/testing.md` (Test depth),
-`dev-rules/workspace-and-vcs.md` (Commit messages); memories plan-defines-acceptance-tests,
-v1-bar-blocking-criteria, develop-correctly-registries-and-sizing.
+`dev-rules/workspace-and-vcs.md` (Commit messages), `dev-rules/architecture.md`,
+`dev-rules/cross-cutting-concerns.md`, `dev-rules/api-and-compatibility.md`,
+`dev-rules/security.md`, `dev-rules/documentation.md`; memories
+plan-defines-acceptance-tests, v1-bar-blocking-criteria,
+develop-correctly-registries-and-sizing.
 
 This plan covers the release-chain rows that have not started, and the parts of the partly done
 rows that have not started. V1 is CLI 1.0.0, with an optional 1.0.0rc.1 first. The Windows chain
@@ -107,7 +110,9 @@ Searches run for this plan (web and codebase):
   enforced (`conda env export`, `pip freeze`). The engine already has `runtime_identity()`
   (`generation/_pinned_plan.py:163`) and one canonical JSON writer (`_canonical`). 78-E1 builds on
   both; no new hashing or serialization code.
-- Pure-move check. The engine has `scripts/check_pure_move.py` (H-1 Wave A). 47-A ports it.
+- Pure-move check. The engine has `scripts/check_pure_move.py` and its scope analyzer,
+  `scripts/check_pure_move_scope.py` (H-1 Wave A). 47-A ports both and records both as adapted
+  `[[mirror]]` entries in `ci/vendored.toml`.
 - Pin agreement. The CLI already has one source for the engine spec (`lock_version.sh
   --engine-spec`) and tests that read it. RD-0 extends that registry and test to the remaining locations.
 
@@ -123,7 +128,7 @@ pure move. The row names `src/decoy/cli/distribution/installer.py`; that path do
 real file is `src/decoy/distribution/installer.py`. Fix the row text when this slice merges.
 
 No sentry forces the split today (731 is under 800). It is done now because row 88 adds an
-offline bundle source and an upgrade preflight to this file, which would put it over the cap.
+offline bundle source and an upgrade preflight to this file, which can put it over the cap.
 
 Guarantee: no behavior change. Non-goals: renaming public names, changing error text, changing
 the B-2 staging order.
@@ -142,19 +147,24 @@ section C1), checked against main:
 |---|---|---|
 | `src/decoy/distribution/_slots.py` | `_fresh_same_version_slot` 126, `_reclaim_superseded` 161, `_sweep_stale_staging` 175, `_retained_other` 443, `prune_old_versions` 695 (re-exported) | about 150 lines |
 | `src/decoy/distribution/_trust.py` | `_read_trust_state` 185, `_trust_state_text` 207, `check_document_freshness` 215 (re-exported) | about 70 lines |
-| `src/decoy/distribution/_bundle.py` | `_urllib_download` 247, `_no_bytecode_env` 254, `_selfcheck` 265, `_resolve_in_archive` 286, `_extract_bundle` 314, `_try_download_sha` 369, `_bundle_declared_version` 379, `_bundle_declared_target` 451 | about 220 lines |
+| `src/decoy/distribution/_bundle.py` | `_urllib_download` 247, `_no_bytecode_env` 254, `_run_staged` and `_selfcheck` 265, `_resolve_in_archive` 286, `_extract_bundle` 314, `_try_download_sha` 369, `_bundle_declared_version` 379, `_bundle_declared_target` 451 | about 240 lines |
 | `src/decoy/distribution/_errors.py` | `InstallError` 98 (re-exported from `installer.py`) | about 20 lines |
-| `src/decoy/distribution/installer.py` (stays) | `install_version` 464, `activate_local_version` 398, `local_version_present` 392, `_promote_staged` 139, `_write_launcher_shim` 660, `resolve_bundle_base`, `DEFAULT_BUNDLE_BASE`, `InstallOutcome` 115 | about 320 lines |
+| `src/decoy/distribution/installer.py` (stays) | `install_version` 464, `activate_local_version` 398, `local_version_present` 392, `_promote_staged` 139, `_write_launcher_shim` 660, `_exclusive` 104, `_bundle_url` 94, `_explicit_bundle_base` 89, `resolve_bundle_base`, `DEFAULT_BUNDLE_BASE`, `InstallOutcome` 115 | about 320 lines |
 
 `_promote_staged` (its `os.replace` at `installer.py:152`) and `_write_launcher_shim` (its
-`os.replace` at `installer.py:688`) stay in `installer.py`. Moving either would add a second file
+`os.replace` at `installer.py:688`) stay in `installer.py`. Moving either adds a second file
 to the atomic-writer allowlist, which `tests/sentry/test_atomic_writer.py:218` pins at two files
 (defect class 11). With both kept, the atomic-writer entry stays `distribution/installer.py`, 3
 sites, unchanged.
 
 `InstallError` moves to `src/decoy/distribution/_errors.py` and `installer.py` re-exports it, so
 `installer.InstallError` still works and no new module imports `installer` (no cycle).
-`InstallOutcome` stays in `installer.py`.
+`InstallOutcome`, `_exclusive`, `_bundle_url` and `_explicit_bundle_base` stay in `installer.py`.
+
+The moved `_selfcheck` and the later 88-P preflight use one
+`_run_staged(python_bin, argv, timeout, max_bytes)` helper in `_bundle.py`. The helper always adds
+`-I -B`, uses `_no_bytecode_env()`, applies the timeout and bounds captured output. This is the
+one subprocess policy for code that runs from a staged runtime.
 
 Every sentry key on `installer.py`, and what happens to it. The invariant: the total site count per
 sentry is unchanged.
@@ -192,9 +202,9 @@ the H-1 Wave A splits in the engine (pure move, re-export, characterization gold
 
 | Id | Test | Fails before |
 |---|---|---|
-| AT-47-1 | `scripts/dev/check_pure_move.py --base origin/main --head HEAD src/decoy/distribution` reports every removed function body present byte-for-byte in one new module, and no other source change except imports and re-exports | The script does not exist in the CLI (47-A adds it) |
+| AT-47-1 | `python scripts/dev/check_pure_move.py --manifest ci/pure-moves/installer-split.json --base origin/main --head HEAD` reports `PURE`. The manifest lists the retained file, each new module, moved-name owners and importers. The checker refuses an edited statement, an unlisted importer and a changed definition scope | The checker, scope analyzer and manifest do not exist in the CLI |
 | AT-47-2 | `tests/unit/test_installer_characterization.py::test_install_version_layout_golden` (from H-1 Wave B) passes unchanged before and after the split. Mutation: rename the staged folder before the self-check; the test must fail | The golden test does not exist on main |
-| AT-47-3 | A test lists every `monkeypatch.setattr(installer, "<name>")` and `mock.patch("decoy.distribution.installer.<name>")` in `tests/`, and asserts each name is still looked up through `installer` at run time, or the patch target names the new module | No such test; after a move the patch would be a no-op |
+| AT-47-3 | A test lists every `monkeypatch.setattr(installer, "<name>")` and `mock.patch("decoy.distribution.installer.<name>")` in `tests/`, and asserts each name is still looked up through `installer` at run time, or the patch target names the new module | No such test; after a move the patch is a no-op |
 | AT-47-4 | For every row of the sentry key table above: the total sites per sentry are unchanged, each re-homed key matches its new path, and a test proves the old key no longer matches (owner re-home rule, 2026-11-15). `test_atomic_writer.py:218` still asserts two files | The four re-homed keys point at code that moves; without the re-home each sentry goes red on the split |
 | AT-47-5 | `import decoy.distribution.installer as i` then `i.install_version`, `i.check_document_freshness`, `i.prune_old_versions`, `i.activate_local_version` in a clean venv | Guard: green before, must stay green |
 | AT-47-6 | QA INST-17: INST-01 to INST-06 and INST-14 give the same result on the split build | Run at QA |
@@ -203,8 +213,8 @@ the H-1 Wave A splits in the engine (pure move, re-export, characterization gold
 
 | Slice | Files (production) | Lines | Tests | Risk |
 |---|---|---|---|---|
-| 47-A | `scripts/dev/check_pure_move.py` (ported from engine `scripts/check_pure_move.py`, adapted to CLI paths) | 1 file, about 250 | self-test with a fixture move (passes) and a fixture move plus one edited line (refused) | R1 |
-| 47-B | `installer.py`, `_slots.py`, `_trust.py`, `_bundle.py`, `_errors.py`, the sentry data for the four re-homed keys; test patch targets updated in `test_distribution.py`, `test_distribution_r7_security.py`, `test_distribution_acceptance.py`, `tests/unit/distribution/test_bundle_base.py`, `test_atomic_callers.py`, `test_release_smoke_workflow.py`, `tests/e2e/test_upgrade_error_text.py` | 5 production files, about 750 moved lines | AT-47-1 to AT-47-5; full suite on the merge head | R2 |
+| 47-A | `scripts/dev/check_pure_move.py` and `scripts/dev/check_pure_move_scope.py` (ported from engine at 249 and 214 lines, adapted to CLI paths), plus one `[[mirror]]` row for each in `ci/vendored.toml` | 2 files, about 460 | ported unit tests and fixtures cover a pure move, one edited line, an unlisted importer and scope drift | R1 |
+| 47-B | `installer.py`, `_slots.py`, `_trust.py`, `_bundle.py`, `_errors.py`, `ci/pure-moves/installer-split.json`, the sentry data for the four re-homed keys; test patch targets updated in `test_distribution.py`, `test_distribution_r7_security.py`, `test_distribution_acceptance.py`, `tests/unit/distribution/test_bundle_base.py`, `test_atomic_callers.py`, `test_release_smoke_workflow.py`, `tests/e2e/test_upgrade_error_text.py` | 5 production files, about 750 moved lines | Author the move manifest, then run AT-47-1 to AT-47-5; full suite on the merge head | R2 |
 
 The characterization golden (AT-47-2) lands as 47-B's first commit, before any move, so the gate
 sees it pass on the unsplit file.
@@ -214,7 +224,8 @@ sees it pass on the unsplit file.
 | Item | Goes in | Map line and neighbor |
 |---|---|---|
 | `_slots.py`, `_trust.py`, `_bundle.py`, `_errors.py` | `src/decoy/distribution/` | Private modules beside their owner, as `layout_point.py` and `verify_extracted.py` sit today. 13 direct modules now, 17 after, under the 25 cap |
-| `check_pure_move.py` | `scripts/dev/` | Dev tooling, beside `ratchet_check.py`; 5 Python modules there |
+| `check_pure_move.py`, `check_pure_move_scope.py` | `scripts/dev/` | Dev tooling, beside `ratchet_check.py`; 5 Python modules there before this slice |
+| Installer move manifest | `ci/pure-moves/installer-split.json` | Add a CODEMAP row for pure-move manifests under `ci/`, beside the existing CI registries |
 | Characterization test | `tests/unit/test_installer_characterization.py` | Name fixed by H-1 Wave B |
 
 ## 6. Row 76: R-d, engine release train and CLI repin
@@ -267,7 +278,7 @@ release contains (that follows what merged).
 
 | Id | Test | Fails before |
 |---|---|---|
-| AT-76-1 | The existing sentry `tests/sentry/test_ci_lock_installs.py:277` (`test_lock_profile_lives_in_lock_version_and_the_policy`, which `scripts/release/launch_pin_check.py` already runs) also reads new `[[engine_pin]]` rows in `ci/install-policy.toml` and asserts the version each row's pattern captures equals the `--engine-spec` tag. A seeded case: one row's file with an old tag must fail | Plant an old tag in the current-pin sentence of `docs/release/fresh-install-smoke.md`: the extended test fails, today's suite passes |
+| AT-76-1 | The existing sentry `tests/sentry/test_ci_lock_installs.py:277` (`test_lock_profile_lives_in_lock_version_and_the_policy`, which `scripts/release/launch_pin_check.py` already runs) also reads new `[[engine_pin]]` rows in `ci/install-policy.toml`. It asserts that every pattern matches exactly once and that its captured version equals the `--engine-spec` tag. The `policy_findings()` reason loop in `tests/sentry/_ci_lock_scan.py:329` includes `engine_pin`. A seeded missing reason, zero-match pattern, two-match pattern and old tag each fail | Plant an old tag in the current-pin sentence of `docs/release/fresh-install-smoke.md`: the extended test fails, today's suite passes |
 | AT-76-2 | Per stop: `scripts/release/launch_pin_check.py` passes, and the release freeze shape test passes with the new shapes recorded | Fails on a stop until the shapes are recorded |
 | AT-76-3 | QA BLD-05 and INST-11 at RC | Run at REL-GATE |
 
@@ -333,20 +344,19 @@ than invented.
 | `compat_phase` | `RELEASE_PHASE` in `src/decoy_engine/release.py` |
 | `faker` | installed `faker` distribution metadata |
 | `providers_digest` | SHA-256 of the canonical JSON of the default provider registry's content (`providers_v2/_registry.py:146`, `get_default_registry()`): each provider's name, kind and backing library version, sorted. Not file bytes |
+| `data_digest` | SHA-256 over canonical JSON of sorted `(relative path, sha256)` pairs for shipped data under `codesets/*.parquet`, `reference_tables/data/*.parquet` and `generation/composite/data/us_localities.csv`. Paths use package-relative POSIX spelling; the digest covers file bytes |
 | `dependencies` | installed versions of the G12 floor set, read from distribution metadata |
 | `key_version` | optional label from the caller |
 | `probe` | `run_probe()` digest (78-E2) |
 
-Left out on purpose:
+The engine ships pool and reference data. The `data_digest` covers the four files under
+`codesets/`, every parquet file under `reference_tables/data/`, and
+`generation/composite/data/us_localities.csv`. Resource discovery supplies the file set, so the
+implementation has no second hand-written data-file list.
 
-- `canon` and `generator_logic`: the engine has no canonical-form version or generator-logic
-  version today (searched `src/decoy_engine` for such constants; none). Their drift shows up in
-  `probe`, which runs the canonical writer and the generators, and in `engine`. Adding version
-  constants would need their own drift sentries and is not in the row.
-- Pool digests (row text): pools are built per run from config, seed and providers
-  (`generation/pool/_builder.py:41`); there is no shipped pool data to digest. The inputs are
-  covered by `providers_digest`, `faker` and `seed_protocol`, and the probe draws from one pool.
-  The plan records this narrowing of the row text.
+The owner decides whether V1 drops `canon` and `generator_logic` (OQ-9). The engine has no
+canonical-form or generator-logic version constant today. The recommended answer is to drop both:
+the version-invariant probe covers their executable paths, and `engine` records the release.
 
 Drift guard: AT-78-E2 changes each source and asserts exactly the named field changes, so a source
 that stops feeding its field turns the test red.
@@ -356,13 +366,13 @@ that stops feeding its field turns the test red.
 - `decoy env report` prints the report for this host. `--json` prints `decoy-env-report/v1`.
   `--out FILE` writes it through the CLI's atomic writer. `--label NAME` sets the host label
   (default `host`); it must full-match `[A-Za-z0-9][A-Za-z0-9._-]{0,31}` (defect class 1), else
-  exit 1. Exit 0.
+  exit 1. Exit 0 when the probe matches.
 - `decoy env compare A.json B.json [C.json ...]` reads two or more reports and prints one line per
   differing field, naming the field and the label of each side. Exit 0 when all match, exit 4
   (`EXIT_FINDINGS`) when any field differs, exit 1 on a file that is not a valid report.
-- The probe runs inside `decoy env report`; its digest is a report field. If it differs from the
-  golden digest the engine ships for its seed protocol, the report says `probe: MISMATCH` and the
-  command exits 3.
+- The probe runs inside `decoy env report`; its digest and `probe_status` are report fields.
+  `probe_status` is `ok` or `mismatch`. `--json` always prints the complete report. A mismatch
+  prints `probe: MISMATCH` in human mode and exits 3 after writing the report in either mode.
 - `--key-version LABEL` (optional) records the label the project uses. It is checked by the
   engine's one exported key-version label rule (below); anything else exits 1.
 - `native_selfcheck` in the report carries only the companion's `present`, `ok` and `reason`
@@ -374,24 +384,32 @@ that stops feeding its field turns the test red.
 
 The engine already has one label pattern: `_LABEL_PATTERN` at
 `src/decoy_engine/delivery/resume/_records.py:102`, `[A-Za-z0-9][A-Za-z0-9._:+!-]{0,63}`, used with
-`fullmatch`. 78-E1 exports it as a public name from `decoy_engine.delivery.resume` (for example
-`KEY_VERSION_LABEL_PATTERN` plus a `is_key_version_label()` check), switches `_records.py` to read
-the exported name, and the lock uses the same check. The CLI calls the engine check; it holds no
-copy of the pattern. The plan does not define a separate "F09 rule".
+`fullmatch`. 78-E1 moves the private pattern and `is_key_version_label()` to
+`src/decoy_engine/keyprovider.py` (import tier 3), the owner of `KeyProvider.key_version`.
+`delivery/resume/_records.py` and the runtime lock import the function from there. The engine root
+exports only `is_key_version_label` through `decoy_engine.__all__`; the CLI imports that public
+name and holds no copy of the pattern. `docs/frozen-surfaces.md` adds it to one Public names row,
+and `tests/sentry/release/test_frozen_surface_map.py` proves that the name appears exactly once.
 
 ### Engine design
 
 - `src/decoy_engine/support/_runtime_lock.py`: `build_runtime_lock(*, key_version=None)`,
   `RuntimeLock` with `to_json()` through `_canonical`, and
   `compare_runtime_locks(locks) -> tuple[LockDifference, ...]`. One writer model; the reader is
-  derived from it, refuses an unknown major and a missing version tag, and treats unknown minor
-  fields as differences (defect class 4).
-- `src/decoy_engine/support/_probe.py`: `run_probe() -> str`. A fixed synthetic table (no real
-  data), a fixed seed and a fixed test key, run through the deterministic hash path and one pinned
-  generator per provider family; returns a SHA-256 hex digest. The golden per
-  `SEED_PROTOCOL_VERSION` is a constant beside it.
+  derived from it. The `lock/v1` reader refuses an unknown major or missing tag and ignores added
+  fields, matching the existing `RunResultRead` rule for additive fields (defect class 4).
+- `src/decoy_engine/support/_probe.py`: `run_probe() -> str`. Its module contract says the golden
+  uses version-invariant code only: the HKDF/HMAC hash path, FF1 and seeded draws from the pinned
+  Faker. It does not use NumPy or pandas distribution draws. Fixed inputs, a fixed seed and a fixed
+  test key produce one SHA-256 digest. The golden per `SEED_PROTOCOL_VERSION` is a constant beside
+  it.
 - Both are exported from `decoy_engine.support` and the root `__init__.py`.
-- The row detail FRAME note says `runtime_identity` should include Faker and the provider and
+- 78-E1 adds `lock/v1` to the compatibility-contract 3.1 tag block and the Format tags table in
+  `docs/frozen-surfaces.md`. `test_every_contract_tag_has_a_row` enforces the pair. It also adds a
+  hand-written `tests/integration/compat_corpus/runtime-lock/lock-v1.json` sample and a corpus
+  reader cell. The written compatibility rule permits additive fields and requires older readers
+  to ignore them.
+- The row detail FRAME note proposes that `runtime_identity` include Faker and the provider and
   pool digests. This plan does not change `runtime_identity`, because that changes the
   fingerprint of every saved pinned plan (OQ-3, decided). The lock carries those keys beside it.
 
@@ -400,9 +418,8 @@ Why `support/`: the engine import layers (`.importlinter`, exhaustive) put `cont
 lock reads `generation` and `providers_v2`; the probe runs generators and the masking hash path in
 `execution`. Both must sit in tier 1, the top tier. `support` is a tier 1 package, its job is
 support bundles that describe a run's environment with no values (F32), and it has 2 modules.
-`delivery` (tier 1) is a sibling, so importing the label rule from `decoy_engine.delivery.resume`
-is allowed. No new top-level package (the engine root is at its fan-out cap) and no new ignore
-line.
+Both modules import the label rule from `keyprovider` in tier 3. No new top-level package (the
+engine root is at its fan-out cap) and no new ignore line.
 
 ### CLI design
 
@@ -412,6 +429,9 @@ line.
 - Registered in `src/decoy/__main__.py` beside `doctor` (one line). `doctor` does not change.
 - 78-C1 adds a CLI CODEMAP "Where Things Go" row for `src/decoy/cli/env/`, so
   `tests/sentry/layout/test_package_fanout.py` does not list it as an unmapped sub-package.
+- 78-C1 updates QA INST-18 (`docs/qa/cli-v1-checklist.md:168`) to require `data_digest`, the
+  other lock fields and `probe_status`, plus a two-host comparison that names each differing
+  field. It no longer refers to a generic pool digest.
 - Windows hook: the target field takes whatever `targets.detect_target()` returns; the env package
   has no platform list of its own.
 
@@ -419,7 +439,7 @@ line.
 
 New structure: two engine modules in an existing package, one CLI command group. Principles: one
 place per fact (runtime keys from `runtime_identity`, digests from `_canonical`, the label rule
-from `delivery.resume`). Pattern: lock file plus diffable environment report (section 4).
+from `keyprovider`). Pattern: lock file plus diffable environment report (section 4).
 
 ### Failure modes
 
@@ -428,8 +448,8 @@ from `delivery.resume`). Pattern: lock file plus diffable environment report (se
 - A report carries a path, host name or user name. Hosts are named only by `--label`; the companion
   fields carry a reason code, never detail text.
 - The probe is slow or does I/O. It must finish in under 2 seconds and touch no file or network.
-- A report from a newer CLI has fields an older CLI does not know: compare lists them as
-  differences, it does not crash.
+- A lock from a newer engine has added fields an older reader does not know: the reader ignores
+  them under `lock/v1`, matching the compatibility contract.
 - A value derived from key material leaks into the lock.
 
 ### Acceptance tests (write first)
@@ -437,17 +457,17 @@ from `delivery.resume`). Pattern: lock file plus diffable environment report (se
 | Id | Test | Fails before |
 |---|---|---|
 | AT-78-E1 | `build_runtime_lock()` in two processes with different `PYTHONHASHSEED` gives equal canonical bytes | Function does not exist |
-| AT-78-E2 | Changing the Faker version (patched metadata), the provider registry (one added provider), `SEED_PROTOCOL_VERSION`, and `RELEASE_PHASE` each changes exactly the named field in `compare_runtime_locks` | Function does not exist |
-| AT-78-E3 | `run_probe()` equals the shipped golden; a mutation in the hash path (one HKDF label byte) changes it | Probe does not exist |
-| AT-78-E4 | With a configured key seeded for the test: the lock JSON does not contain that key, its `PreparedSecret.key_check_value()`, any path under `tmp_path`, or `socket.gethostname()` | Lock does not exist |
-| AT-78-E5 | `key_version` values `"v1\n"`, `""`, 65 characters, and `"a/b"` raise the engine's typed error with a catalog reason code; `__cause__` and `__context__` are None; `_records.py` and the lock use the same exported check (mutating the exported pattern turns both red) | Lock does not exist; the pattern is private |
-| AT-78-E6 | Reader cells: next major refused, missing version tag refused, an extra minor field read as a difference | Lock does not exist |
+| AT-78-E2 | Changing the Faker version (patched metadata), the provider registry (one added provider), `SEED_PROTOCOL_VERSION`, `RELEASE_PHASE`, and one byte from a stubbed shipped-data resource changes exactly the named field in `compare_runtime_locks`. These field-isolation cells stub `run_probe()` to a constant; a separate integration cell expects both `seed_protocol` and `probe` when the real probe changes with the protocol | Function does not exist |
+| AT-78-E3 | `run_probe()` equals the shipped golden; mutations in one HKDF/HMAC label byte, the FF1 path and one seeded Faker draw each change it. The focused golden assertion runs in every `fingerprint-matrix` cell in `.github/workflows/dps-dependency-matrix.yml`, with no NumPy or pandas distribution draw | Probe does not exist |
+| AT-78-E4 | With a configured key seeded for the test: the lock JSON does not contain that key, `build_fingerprint(...).key_check` (`delivery/resume/_fingerprint.py:96-103`), any path under `tmp_path`, or `socket.gethostname()` | Lock does not exist |
+| AT-78-E5 | `key_version` values `"v1\n"`, `""`, 65 characters, and `"a/b"` raise the engine's typed error with a catalog reason code; `__cause__` and `__context__` are None; `_records.py` and the lock use the same public check (mutating the private pattern in `keyprovider.py` turns both red) | Lock does not exist; the pattern is private in `_records.py` |
+| AT-78-E6 | Reader cells: next major refused, missing version tag refused, and an added field ignored under `lock/v1`. The hand-written compatibility-corpus sample reads successfully | Lock does not exist |
 | AT-78-E7 | The import-layer sentry (`tests/sentry/layout/test_import_layers.py`) passes with no new ignore line | Guard: green before, must stay green |
 | AT-78-C1 | `decoy env report --json` validates against `decoy-env-report/v1` and contains the engine lock fields | Command does not exist |
 | AT-78-C2 | Two reports that differ in `faker`: `decoy env compare` prints one line naming `faker` and exits 4; identical reports exit 0; a truncated file exits 1 | Command does not exist |
-| AT-78-C3 | Probe golden patched to a wrong value: `decoy env report` prints `probe: MISMATCH` and exits 3 | Command does not exist |
+| AT-78-C3 | Probe golden patched to a wrong value: human mode prints `probe: MISMATCH`; `--json` prints the complete report with `probe_status: "mismatch"`; both exit 3 | Command does not exist |
 | AT-78-C4 | Report and compare output contain no host name and no absolute path | Command does not exist |
-| AT-78-C5 | A broken companion whose self-check error text holds a seeded path marker: the report shows `ok: false` and a reason code, and the marker is absent from stdout, stderr and `--json` | Command does not exist |
+| AT-78-C5 | A patched `native_companion_status()` returns a seeded path marker in both `cause` and `abi_actual`: the report shows `ok: false` and a reason code, omits both unsafe fields, and the marker is absent from stdout, stderr and `--json` | Command does not exist |
 | AT-78-C6 | `--label` values `"a\n"`, `""`, 33 characters and `"a b"` exit 1 | Command does not exist |
 | AT-78-C7 | QA INST-18 on two hosts (a Linux VM and the Mac) | Run at QA |
 
@@ -455,9 +475,9 @@ from `delivery.resume`). Pattern: lock file plus diffable environment report (se
 
 | Slice | Repo | Files (production) | Count | Lines | Depends on | Risk |
 |---|---|---|---|---|---|---|
-| 78-E1 | engine | `support/_runtime_lock.py`, `support/__init__.py`, root `__init__.py` export, `delivery/resume/__init__.py` and `delivery/resume/_records.py` (export the label rule), the reason catalog entry, a `changelog.d/` fragment | 6 | about 400 | none | R2 (new versioned contract) |
-| 78-E2 | engine | `support/_probe.py`, `support/__init__.py`, `support/_runtime_lock.py` (wire `probe`) | 3 | about 260 | 78-E1 | R2 |
-| 78-C1 | CLI | `cli/env/__init__.py`, `cli/env/_report.py`, `cli/env/_compare.py`, `__main__.py` (one line), `docs/schemas/decoy-env-report-v1.schema.json` with its row in `docs/release/frozen-surfaces.md`, the CODEMAP row | 5 | about 450 | an engine release with E1 and E2 | R2 |
+| 78-E1 | engine | `support/_runtime_lock.py`, `support/__init__.py`, root `__init__.py` export, `keyprovider.py`, `delivery/resume/_records.py`, the reason catalog entry, a `changelog.d/` fragment | 6 | about 450 | none | R2 (new versioned contract) |
+| 78-E2 | engine | `support/_probe.py`, `support/__init__.py`, `support/_runtime_lock.py` (wire `probe`), dependency-matrix workflow | 3 | about 300 | 78-E1 | R2 |
+| 78-C1 | CLI | `cli/env/__init__.py`, `cli/env/_report.py`, `cli/env/_compare.py`, `__main__.py` (one line), `docs/schemas/decoy-env-report-v1.schema.json` with its row in `docs/release/frozen-surfaces.md`, the CODEMAP row, and QA INST-18 | 5 | about 450 | an engine release with E1 and E2 | R2 |
 
 ### Placement
 
@@ -465,7 +485,8 @@ from `delivery.resume`). Pattern: lock file plus diffable environment report (se
 |---|---|---|
 | Lock envelope | engine `src/decoy_engine/support/_runtime_lock.py` | CODEMAP "Support bundles" (`src/decoy_engine/support/_<concern>.py`); import tier 1, beside `_shape.py`; 2 modules there, 4 after |
 | Probe | engine `src/decoy_engine/support/_probe.py` | Same row; tier 1 because it runs tier 2 and tier 3 code |
-| Label rule export | engine `src/decoy_engine/delivery/resume/` | Its current owner; tier 1 sibling of `support` |
+| Label rule | engine `src/decoy_engine/keyprovider.py` | Existing owner of `KeyProvider.key_version`; import tier 3, read by `delivery.resume` and `support` |
+| Lock corpus sample | engine `tests/integration/compat_corpus/runtime-lock/lock-v1.json` | Existing compatibility corpus; hand-written sample read by its harness |
 | Env command | CLI `src/decoy/cli/env/` | `src/decoy/cli` frozen at 29; new command goes in a named sub-package, like `project/` and `setup/`; new CODEMAP row |
 | Engine tests | `tests/unit/support/` | CODEMAP "Support bundles" tests |
 | CLI tests | `tests/unit/cli/env/`, one e2e in `tests/e2e/` | Mirror `src/` |
@@ -548,19 +569,26 @@ be able to upgrade from a bundle file it was handed.
 V1 behavior:
 
 - `decoy upgrade --bundle PATH` installs from a local bundle. It needs `PATH.sha256` and
-  `PATH.sig` beside it, the same sidecars `install.sh` needs. It copies the bundle into staging,
-  then checks the SHA-256 and the Ed25519 signature of the copy with the pinned release key, then
-  reads the version and target from the bundle's own `BUNDLE_INFO` inside the verified archive
-  (`_bundle_declared_version` and `_bundle_declared_target`, never the file name), then the signed
-  manifest, then self-checks and flips `current` exactly like a network upgrade. No network call.
+  `PATH.sig` beside it, the same sidecars `install.sh` needs. It reads the bundle into memory once,
+  then verifies the SHA-256 and Ed25519 signature of those bytes with the pinned release key. It
+  quarantine-extracts the verified bytes into a random-token `.incoming.*` folder and verifies the
+  signed manifest with the existing extractor and verifier. It then reads the declared version and
+  target from the extracted `BUNDLE_INFO`, before `_selfcheck` and before `_promote_staged`. This
+  matches the network order at `installer.py:545-575` and adds no second tar-member parser. No
+  network call occurs.
 - Where the branch sits in `upgrade.py`: after the pinned-key check (`src/decoy/cli/upgrade.py:83`
   to `:87`) and before the local-activation branch (`:98`). So `--bundle` always installs from the
   file; local activation never runs for it, even when `--version` names a retained version.
 - With `--bundle`, `--version` has one meaning: it confirms a downgrade. A bundle whose declared
   version is lower than the current one is refused unless `--version` equals that declared
   version. A `--version` that differs from the declared version is refused. Both refusals come
-  after verification and before extract, through `_refuse` (exit 3).
-- A bundle whose declared target differs from this host is refused before extract.
+  after quarantine extract and manifest verification, before self-check, through `_refuse`
+  (exit 3).
+- A bundle whose declared target differs from this host is refused after quarantine extract and
+  manifest verification, before self-check.
+- A bundle that declares the current version is verified and then reports no action unless
+  `--force` is present. With `--force`, it reinstalls from the local bytes. A retained non-current
+  version still installs from the bundle; it never takes the local-activation shortcut.
 - No version document is read, so yank, floor and freshness are not checked. Stderr says:
   `offline bundle: yank and floor checks skipped (no version document)`. With `--json`, the result
   carries `checks_skipped: ["yank", "floor"]` (OQ-7).
@@ -570,23 +598,32 @@ Shared core: the declared-version and declared-target checks, staging, self-chec
 into one core that both `install_version` and the new `install_local_bundle` call. That is a
 refactor of `install_version` steps 3 to 7 (`src/decoy/distribution/installer.py:464-658`), so the
 network path changes shape. The characterization golden from 47-B (AT-47-2) must pass unchanged
-on the network path before and after.
+on the network path before and after. The core passes the verified declared version to the CLI
+`_post_swap` validator; it does not close over `target_version`, which is `None` on `--bundle`.
 
-Failure modes: a sidecar missing or for another file; the bundle changing on disk between check
-and extract (only the staged copy is checked and extracted); `PATH` a symlink into `DECOY_HOME`; a
-renamed file that claims a newer version than it holds.
+Failure modes: a sidecar missing or for another file; the bundle changing on disk after its one
+bounded read (the in-memory bytes are verified and extracted); `PATH` a symlink into `DECOY_HOME`;
+a renamed file that claims a newer version than it holds.
+
+The local reader adds no file sink and no atomic-writer site. It supplies bytes to the existing
+extractor, while `_promote_staged` remains the only runtime promotion site.
+
+The refusal tests compare retained version folders before and after. They exclude `.incoming*`
+from that comparison because the staging folder has a random token, then separately assert that
+cleanup leaves no `.incoming*` folder.
 
 | Id | Test | Fails before |
 |---|---|---|
 | AT-88-O1 | A fixture bundle signed by a test key, key pinned: `decoy upgrade --bundle` installs and `current` flips; a socket guard proves no network call; `--json` has `checks_skipped` | Option does not exist |
-| AT-88-O2 | One flipped byte in the bundle: refused before extract; `versions/` unchanged (INST-03 for upgrade) | Option does not exist |
+| AT-88-O2 | One flipped byte in the bundle: refused before extract; existing version folders are unchanged and no `.incoming.*` folder remains (INST-03 for upgrade) | Option does not exist |
 | AT-88-O3 | Missing `.sig`, then missing `.sha256`: each refused (INST-04 for upgrade) | Option does not exist |
 | AT-88-O4 | Signature by a second key: refused with the signature code | Option does not exist |
-| AT-88-O5 | Older bundle without `--version`: refused; with `--version <its declared version>`: installs; with a different `--version`: refused | Option does not exist |
+| AT-88-O5 | Older bundle without `--version`: refused; with `--version <its declared version>`: installs; with a different `--version`: refused. Each refusal leaves existing version folders unchanged and no `.incoming.*` folder remains | Option does not exist |
 | AT-88-O6 | Original file replaced after the copy (test hook): the staged copy is what installs | Option does not exist |
 | AT-88-O7 | A validly signed older bundle renamed to a newer version's file name, sidecars renamed with it: refused as a downgrade without `--version` | Option does not exist |
 | AT-88-O8 | `--bundle` with `--version` naming a version that is retained on disk: the bundle installs; `activate_local_version` is not called | Option does not exist |
 | AT-88-O9 | AT-47-2 golden passes on the network path after the shared-core refactor | Guard from 47-B |
+| AT-88-O10 | A bundle with the current declared version reports no action without `--force`; with `--force` it reinstalls. The post-swap validator receives that declared version and accepts the launched version | Option does not exist |
 
 Files: `src/decoy/distribution/_bundle.py` (local source beside the downloader),
 `src/decoy/distribution/installer.py` (the shared core and `install_local_bundle`),
@@ -595,8 +632,8 @@ Files: `src/decoy/distribution/_bundle.py` (local source beside the downloader),
 and a refactor of the network path); full suite on the merge head. Depends on 47-B and RW-C2b.
 
 Choke point: both entries share one verify, stage and flip core in `installer.py`; a test asserts
-both reach the same verify function. Mutation: skip the signature check in the local entry;
-AT-88-O4 turns red.
+both reach the same verify function. The offline source only supplies already-read bytes and
+sidecars. Mutation: skip the signature check in the local entry; AT-88-O4 turns red.
 
 V2-LOG: read a signed version document placed beside the bundle, so offline upgrades can check
 yank and floor too.
@@ -612,19 +649,24 @@ V1 behavior:
 
 - After the staged runtime passes its self-check and before the flip, the upgrade runs the staged
   runtime's report as a subprocess (`python -I -B -m decoy --no-update-check env report --json`,
-  30-second timeout, output read up to 64 KiB) and builds the current runtime's report in-process,
-  then compares them with the engine compare function.
+  30-second timeout, output read up to 64 KiB) through
+  `_run_staged(python_bin, argv, timeout, max_bytes)`. `_selfcheck` uses the same helper, including
+  `-I -B` and `_no_bytecode_env()`. The preflight builds the current report in-process, then
+  compares both reports with the engine compare function.
 - Fields compared: every lock field except `key_version` (not set during an upgrade). That is
   `engine`, `numpy`, `pandas`, `pyarrow`, `python`, `seed_protocol`, `tz`, `compat_phase`, `faker`,
-  `providers_digest`, `dependencies` and `probe`. For each that differs it prints one line on
-  stderr: `upgrade changes <field>: outputs for the same seed and key may differ from runs made
-  with <old version>`. With `--json`, the list goes in a `preflight` field of the result.
-- Any failure to get the staged report (non-zero exit, timeout, more than 64 KiB, unparsable, an
-  unknown major version, or a staged runtime with no `env` command) gives one stderr line,
+  `providers_digest`, `data_digest`, `dependencies` and `probe`. For each that differs it prints
+  one value-free line on stderr: `upgrade changes <field>: outputs for the same seed and key may
+  differ`. With `--json`, the list goes in a `preflight` field of the result.
+- Exit 0 and exit 3 are accepted when stdout is a valid report. Exit 3 with
+  `probe_status: "mismatch"` prints `upgrade changes probe: outputs for the same seed and key may
+  differ` and the upgrade continues.
+- Any other non-zero exit, timeout, more than 64 KiB, unparsable report, unknown major version, or
+  staged runtime with no `env` command gives one stderr line,
   `upgrade preflight: report unavailable`, and `preflight: null` in `--json`. The upgrade goes on
   and flips. The staged runtime's own output is never echoed.
 - It never blocks (OQ-4). Rollback is local and offline.
-- `--check` does not run the preflight (it would need the new runtime installed). The help text
+- `--check` does not run the preflight (it needs the new runtime installed). The help text
   says so.
 
 V2-LOG: local-activation rollback (`activate_local_version`, `src/decoy/distribution/installer.py:398`)
@@ -637,13 +679,14 @@ gets no preflight.
 | AT-88-P3 | A staged runtime with no `env` command: the upgrade flips; stderr has `upgrade preflight: report unavailable`; `--json` has `preflight: null` | No preflight |
 | AT-88-P4 | The same as P1 through `--bundle` | No preflight |
 | AT-88-P5 | A staged report of 1 MiB, one with an unknown major, and one that sleeps past the timeout: each is "report unavailable" and the flip happens; a seeded marker in the staged runtime's stderr does not reach the user | No preflight |
-| AT-88-P6 | The subprocess argument list contains `--no-update-check` | No preflight |
+| AT-88-P6 | `_selfcheck` and the preflight both call `_run_staged`; each subprocess argument list contains `-I -B`, the preflight list contains `--no-update-check`, and both receive `_no_bytecode_env()` | No shared staged-runtime helper |
+| AT-88-P7 | The staged report writes valid JSON with `probe_status: "mismatch"` and exits 3: stderr says `upgrade changes probe ...`, the flip happens, and `--json` records `probe` in `preflight` | No preflight |
 
 Files: `src/decoy/distribution/installer.py` (a preflight hook beside `post_swap_validate`),
 `src/decoy/cli/upgrade.py`, `src/decoy/cli/env/_report.py` (a function the upgrade can call
 in-process). 3 production files, about 240 lines. Risk R2. Depends on 78-C1 and 88-O.
 
-`upgrade.py` is 204 lines; after 88-O and 88-P it should stay under 400. If it would pass 500,
+`upgrade.py` is 204 lines; after 88-O and 88-P it must stay under 400. If it passes 500,
 the 88-P builder moves the preflight text into `src/decoy/distribution/_preflight.py`.
 
 ### Placement for row 88
@@ -742,13 +785,14 @@ None of these blocks a slice in sections 5 to 11 except where the slice says so.
 | Id | Question | Recommended |
 |---|---|---|
 | OQ-1 | Mark row 46 (H-1 C0) folded into FILE-SIZE C2, with the pure-move checker moved to row 47 slice 47-A? | Yes. |
-| OQ-2 | F10 in V1: should `decoy run` refuse when the host differs from a project's saved lock? | No for V1. V1 ships the report and the compare. The CLI has no project lock file today, and adding one is a new feature. |
-| OQ-3 | Should engine `runtime_identity()` grow Faker, provider and pool digests before 1.0 (row detail FRAME note)? | No. It would change the fingerprint of every saved pinned plan. The lock carries those keys beside it. Revisit after 1.0. |
-| OQ-4 | Should an upgrade that changes seed protocol or generator logic block until the user confirms? | No. Print the change and go on; rollback is local and offline. A block needs a new flag the row does not ask for. |
+| OQ-2 | Does F10 in V1 make `decoy run` refuse when the host differs from a project's saved lock? | No for V1. V1 ships the report and the compare. The CLI has no project lock file today, and adding one is a new feature. |
+| OQ-3 | Does engine `runtime_identity()` grow Faker, provider and pool digests before 1.0 (row detail FRAME note)? | No. That changes the fingerprint of every saved pinned plan. The lock carries those keys beside it. Revisit after 1.0. |
+| OQ-4 | Does an upgrade that changes seed protocol or generator logic block until the user confirms? | No. Print the change and go on; rollback is local and offline. A block needs a new flag the row does not ask for. |
 | OQ-5 | The SBOM lock-mode refusal prints lock package names (row 88 follow-up). Keep? | Keep. Package names are public build metadata, not user data. |
 | OQ-6 | DIST-INTEGRITY (row 31) has not started. If it is not built by G0, does it leave the R-d list? | Yes. R-d closes with what merged; row 31 keeps its own row. |
 | OQ-7 | `decoy upgrade --bundle` skips yank and floor checks (no version document offline). Accept? | Yes, with the stderr line. Reading a signed version document from beside the bundle can come later if users ask. |
-| OQ-8 | QA INST-11 open point: should `decoy --version` also print the engine version? | Yes, one extra line. It is a REL-GATE item, not planned here. |
+| OQ-8 | QA INST-11 open point: does `decoy --version` also print the engine version? | Yes, one extra line. It is a REL-GATE item, not planned here. |
+| OQ-9 | Keep separate `canon` and `generator_logic` fields in `lock/v1` when the engine has no version constants for them? | No. Drop both for V1. The version-invariant probe covers both executable paths, and `engine` records the release. |
 
 ## 14. Slice summary
 
@@ -835,9 +879,9 @@ N/A: no slice in this plan touches table data or relationships.
   `version_dir`, `previous_version`, `rolled_back`, `rollback_version`. Unchanged; the preflight
   list goes in the upgrade `--json` result, not in this type.
 - `RuntimeLock` (new, 78-E1): the `runtime_identity()` keys plus `compat_phase`, `faker`,
-  `providers_digest`, `dependencies`, `key_version`, `probe`.
+  `providers_digest`, `data_digest`, `dependencies`, `key_version`, `probe`.
 - `decoy-env-report/v1` (new, 78-C1): the lock plus `cli_version`, `target`, `native_selfcheck`
-  (`present`, `ok`, `reason` only), `label`.
+  (`present`, `ok`, `reason` only), `probe_status`, `label`.
 - Upgrade `--json` result: new optional `preflight` (list or null) and `checks_skipped` (offline
   path only).
 
@@ -880,9 +924,10 @@ All additive. Each is recorded in `docs/release/frozen-surfaces.md` before 1.0.0
   is on the snapshot's exemption list; the env commands get snapshot rows.
 - `docs/schemas/`: new `decoy-env-report-v1.schema.json`, which needs its own map row.
 - Version document and installer contract: unchanged; the offline path reads no version document.
-- Engine: the new `lock/v1` contract and the exported key-version label rule from
-  `decoy_engine.delivery.resume`, added to the engine's frozen-surface map in 78-E1. The label
-  pattern itself does not change.
+- Engine: `lock/v1` is added to the compatibility-contract 3.1 tag block and the Format tags map.
+  Its hand-written corpus sample pins the reader rule that added fields are ignored. The public
+  `is_key_version_label` name from `decoy_engine.keyprovider` appears in exactly one Public names
+  row. The private label pattern itself does not change.
 - Exit codes: no new code. `env compare` uses 0, 1 and 4; `env report` uses 0, 1 and 3.
 
 ## 20. V2-LOG items this plan records
@@ -890,14 +935,14 @@ All additive. Each is recorded in `docs/release/frozen-surfaces.md` before 1.0.0
 - Offline upgrade reads a signed version document placed beside the bundle, to check yank and
   floor (88-O, OQ-7).
 - Local-activation rollback gets the upgrade preflight (88-P).
-- Version constants for the canonical form and generator logic, if the probe proves too coarse
-  (78-E1).
+- Engine `support/_shape.py:252` can derive `Versions` from `build_runtime_lock` after V1, instead
+  of keeping a parallel environment-version shape.
 
 ## 21. Pre-mortem
 
 Assume it is 2026-12-04 and the release chain slipped. Likely reasons, with the guard for each:
 
-- The owner key and Environment came late, so S0 and IMG-2 could not run. Guard: the dates in
+- The owner key and Environment came late, so S0 and IMG-2 did not run. Guard: the dates in
   section 12 and an early ping. No slice before item 15 needs the key.
 - 47-B grew past a pure move (a "while here" fix), review took three rounds, and 88-O waited.
   Guard: AT-47-1 refuses any change that is not a move.
