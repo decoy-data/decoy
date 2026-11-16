@@ -348,6 +348,7 @@ def _run_preflight_layer(
         PLAN_UNCOMPILABLE_CHECK,
         _check_capacity,
         _check_native,
+        _check_remote_sources,
         _check_source_files,
         _PreflightAccumulator,
     )
@@ -364,6 +365,7 @@ def _run_preflight_layer(
         except SubsetError:
             pass  # the compile layer reports it; the estimate then says "not applicable"
     _check_source_files(raw, config.parent, acc)
+    _check_remote_sources(raw, acc)
     _check_capacity(capacity_raw, config, acc)
     _check_native(raw, acc)
 

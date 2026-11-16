@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from decoy_engine import parse_pipeline_config
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -63,21 +62,6 @@ def test_g5_a_declared_column_missing_from_the_source_exits_1(tmp_path: Path) ->
     assert UNDECLARED in run.output
 
 
-def test_g5_the_column_check_reads_the_header_only(tmp_path: Path) -> None:
-    from decoy.cli.preflight import _check_declared_columns, _PreflightAccumulator
-
-    src = tmp_path / "in.csv"
-    # A data row that cannot decode: a body read would fail with a different code.
-    src.write_bytes(b"name\n\xff\xfe\xfd\n")
-    config = _write(
-        tmp_path, {"people": csv_source(src)}, [{"name": "name", "strategy": "redact"}]
-    )
-    validated = parse_pipeline_config(yaml.safe_load(config.read_text())).model_dump()
-    acc = _PreflightAccumulator()
-    _check_declared_columns(validated, tmp_path, acc)
-    assert [c.status for c in acc.checks] == ["pass"]
-
-
 def test_g5b_a_headerless_csv_with_too_few_column_names_exits_1(tmp_path: Path) -> None:
     src = tmp_path / "in.csv"
     src.write_text("Ada\nBen\n", encoding="utf-8")
@@ -113,12 +97,12 @@ def test_g5_validate_preflight_alone_refuses_the_same_config(tmp_path: Path) -> 
     )
     result = runner.invoke(app, ["validate", "preflight", str(config), "--json"])
     assert result.exit_code == EXIT_USAGE, result.output
-    codes = [c["code"] for c in json.loads(result.stdout)["checks"]]
+    codes = [c.get("code") for c in json.loads(result.stdout)["checks"]]
     assert UNDECLARED in codes
 
 
 def _s3_config(tmp_path: Path) -> Path:
-    s3 = {"type": "s3", "format": "csv", "bucket": "b", "key": "k.csv" }
+    s3 = {"type": "s3", "format": "csv", "bucket": "b", "key": "k.csv"}
     return _write(
         tmp_path,
         {"people": s3},
@@ -153,3 +137,12 @@ def test_g6_fpe_without_a_namespace_exits_1_at_validate(tmp_path: Path) -> None:
     result = _validate(config)
     assert result.exit_code == EXIT_USAGE, result.output
     assert "fpe_requires_namespace" in [c for _, c in _codes(result)]
+
+
+def test_g5_an_undeclared_source_column_exits_1_with_its_own_code(tmp_path: Path) -> None:
+    src = tmp_path / "in.csv"
+    src.write_text("name,ssn\nAda,1\n", encoding="utf-8")
+    config = _write(tmp_path, {"people": csv_source(src)}, [{"name": "name", "strategy": "redact"}])
+    result = _validate(config)
+    assert result.exit_code == EXIT_USAGE, result.output
+    assert ("preflight", "source_file.undeclared_column") in _codes(result)

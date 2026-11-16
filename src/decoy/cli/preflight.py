@@ -307,6 +307,32 @@ def _check_target_overwrite(raw: dict[str, Any], acc: _PreflightAccumulator, bas
 # ---------------------------------------------------------------------------
 
 
+_REMOTE_SOURCE_TYPES = frozenset({"s3", "gcs"})
+
+# A declared-column refusal found while pricing capacity. Not CAPACITY_CHECK, so the
+# chunked-route downgrade leaves it a FAIL.
+DECLARED_COLUMNS_CHECK = "source.declared_columns"
+
+
+def _check_remote_sources(raw: dict[str, Any], acc: _PreflightAccumulator) -> None:
+    """Warn that a remote source's declared columns are not checked here.
+
+    Validate is an offline gate and must not need cloud credentials, so an `s3` or `gcs`
+    source is never opened. `decoy run` still refuses before any row.
+    """
+    sources = raw.get("sources") or {}
+    if not isinstance(sources, dict):
+        return
+    for name, src in sources.items():
+        if isinstance(src, dict) and src.get("type") in _REMOTE_SOURCE_TYPES:
+            acc.add_warn(
+                name=f"source.{name}.declared_columns",
+                message=f"Source {name!r}: declared columns not checked: remote source, "
+                "checked at run.",
+                location=f"sources.{name}",
+            )
+
+
 def _file_sources_missing_on_disk(raw: dict[str, Any], base_dir: Path) -> bool:
     """True if any declared FILE-type source does not resolve to a readable
     regular file, resolved the SAME way `estimate_job_capacity`,
@@ -426,8 +452,15 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
         )
         return
 
-    from decoy_engine import CapacityVerdict, ExecutionError, parse_pipeline_config
+    from decoy_engine import (
+        CapacityVerdict,
+        ExecutionError,
+        PipelineValidationError,
+        parse_pipeline_config,
+    )
     from decoy_engine.plan import PlanCompileError
+
+    from decoy.cli._sources import refusal_message
 
     # The ONE narrow catch here (R3): a source that is present but corrupt /
     # not-the-declared-format passes the on-disk guard above (which only tests
@@ -463,6 +496,14 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
             message=f"Cannot estimate capacity -- source not parsed ({type(exc.__cause__).__name__})",
             code=exc.code,
         )
+        return
+    except PipelineValidationError as exc:
+        # The engine checks every declared column against the source header before it reads a
+        # row, with the refusal `decoy run` gives. That is the one column check; this renders
+        # its code instead of letting it escape as a traceback.
+        if not str(exc.code).startswith("source_file."):
+            raise
+        acc.add_fail(name=DECLARED_COLUMNS_CHECK, message=refusal_message(exc), code=exc.code)
         return
     except PlanCompileError as exc:
         # Own check name so CHUNKED's CAPACITY_CHECK downgrade cannot make it a warning.
@@ -732,6 +773,7 @@ def preflight(
 
     # -- Step 4: Source file checks ------------------------------------------
     _check_source_files(raw, config_path.parent, acc)
+    _check_remote_sources(raw, acc)
 
     # -- Step 5: Target overwrite advisory -----------------------------------
     _check_target_overwrite(raw, acc, config_path.parent)
