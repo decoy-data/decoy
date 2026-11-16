@@ -2,7 +2,7 @@
 
 `decoy.api` is a thin wrapper over `decoy_engine.run_pipeline` /
 `decoy_engine.profile_columns` -- the SAME entrypoints `decoy run` /
-`decoy storm analyze` call. These tests prove:
+`decoy scan` call. These tests prove:
 
   1. Basic mask/scan behavior (round-trip, keyed determinism, generate
      tables, multi-table dict data, error handling for malformed
@@ -10,7 +10,7 @@
   2. Parity: `decoy.mask(...)` on a config produces byte-identical output
      to `decoy run <same config>.yaml` (test_mask_parity_with_cli_run*),
      and `decoy.scan(...)` on a file produces the identical ColumnProfile
-     to `decoy storm analyze <same file>` (test_scan_parity_with_cli*).
+     to `decoy scan <same file>` (test_scan_parity_with_cli*).
 
 See src/decoy/api.py for the design notes (why `data`/`out` need staged
 placeholder sources/targets before PipelineConfig validation).
@@ -428,11 +428,11 @@ def test_scan_invalid_data_type_raises():
 
 
 # --------------------------------------------------------------------------
-# decoy.scan -- parity with `decoy storm analyze`
+# decoy.scan -- parity with `decoy scan`
 # --------------------------------------------------------------------------
 
 
-def test_scan_parity_with_cli_storm_analyze(sample_csv: Path, tmp_path: Path):
+def test_scan_parity_with_cli_scan(sample_csv: Path, tmp_path: Path):
     scan_out = tmp_path / "scan.json"
     result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--output", str(scan_out)])
     assert result.exit_code == 0, result.stdout

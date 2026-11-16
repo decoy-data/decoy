@@ -1,4 +1,4 @@
-"""End-to-end tests for `decoy report integrity` (relocated from the storm group, S4b).
+"""End-to-end tests for `decoy report integrity` (relocated from the old scan group, S4b).
 
 The CLI verb wraps `decoy_engine.verification.postmask.run_post_mask` and
 returns the same post-scan-integrity report payload the platform persists
@@ -82,8 +82,8 @@ def test_integrity_clean_pair_exits_zero(clean_pair: tuple[Path, Path]):
     assert report.get("error_count", 0) == 0
 
 
-def test_integrity_returns_jobstormreport_shape(clean_pair: tuple[Path, Path]):
-    """The wire shape matches what the platform's JobStormReport.report_json
+def test_integrity_returns_report_shape(clean_pair: tuple[Path, Path]):
+    """The wire shape matches what the platform's integrity report_json
     column carries: schema_version + 3 finding lists + 4 severity counters
     + pass_failed_with + generated_at. Pin this so a future engine refactor
     can't silently change the public contract."""
@@ -164,8 +164,8 @@ def test_integrity_quiet_suppresses_stdout(clean_pair: tuple[Path, Path]):
 
 
 class TestExitFourReachable:
-    """Audit H6/C1 (2026-06-12): with the pre-fix engine, `storm
-    integrity` could never exit 4 in the no-config path -- residual-PII
+    """Audit H6/C1 (2026-06-12): with the pre-fix engine, the old
+    integrity verb could never exit 4 in the no-config path -- residual-PII
     findings capped at 'warning' and real output==source leaks on
     faker-family strategies classified 'info'. The README's documented
     contract ('exit 4 on residual PII') is now reachable: a masked file

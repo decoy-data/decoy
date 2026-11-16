@@ -97,3 +97,7 @@ baseline = "tests/sentry/baselines/exit-code-owner.json"
 [[sentry]]
 id = "config-load-allow"
 baseline = "tests/sentry/baselines/config-load-allow.json"
+
+[[sentry]]
+id = "retired-name-pending"
+baseline = "tests/sentry/baselines/retired-name-pending.json"
