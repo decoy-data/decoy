@@ -142,26 +142,6 @@
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 1
   },
-  "tests/e2e/test_{n}_animation.py": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 2
-  },
-  "tests/e2e/test_{n}_command.py": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 7
-  },
-  "tests/e2e/test_{n}_diff.py": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 22
-  },
-  "tests/e2e/test_{n}_explore.py": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 27
-  },
-  "tests/e2e/test_{n}_sp16.py": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 18
-  },
   "tests/sentry/baselines/csv-read-allow.json": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 1
