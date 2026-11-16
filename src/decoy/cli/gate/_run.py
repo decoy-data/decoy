@@ -18,6 +18,7 @@ from decoy.cli.gate._layers import (
     GateRoute,
     gate_exit_code,
     run_gate_on_config,
+    run_static_gate,
 )
 
 if TYPE_CHECKING:
@@ -157,6 +158,29 @@ def check_before_run(
     if result.config is None:  # a passing gate always carries its config; kept under -O
         raise RuntimeError("pre-run gate passed without a parsed config")
     return result.config
+
+
+def check_static_before_acquire(
+    raw: Any, config_path: Path, placement: OutputPlacement | None = None
+) -> dict[str, Any]:
+    """Refuse a config the config and compile layers reject, before any source is acquired.
+
+    Raises `PreRunCheckError` exactly as `check_before_run` does for those layers and returns the
+    validated config otherwise. Preflight (source readiness, capacity) is source-dependent and
+    stays with `check_before_run`."""
+    static = run_static_gate(raw, config_path, placement)
+    result = GateResult(
+        static.config_findings + static.compile_findings,
+        static.layers,
+        False,
+        static.checks_run,
+        static.config,
+    )
+    if gate_exit_code(result, fail_on_warning=False) != 0:
+        raise PreRunCheckError.from_result(result)
+    if static.config is None:  # a passing static gate carries its config; kept under -O
+        raise RuntimeError("static gate passed without a parsed config")
+    return static.config
 
 
 def _is_human(state: Any) -> bool:
