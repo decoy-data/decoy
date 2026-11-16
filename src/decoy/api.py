@@ -50,8 +50,13 @@ from decoy.cli.run import (
     _load_sources_from_config,
     _write_mask_outputs,
 )
-from decoy.cli.scan import InputFormat, SampleStrategy, _load_data, _parse_layout
-from decoy.cli.scan import _infer_format as _storm_infer_format
+from decoy.cli.scan import (
+    InputFormat,
+    SampleStrategy,
+    _infer_format,
+    _load_data,
+    _parse_layout,
+)
 
 __all__ = [
     "ConfigValidationError",
@@ -700,7 +705,7 @@ def scan(
         label = source_label or "<dataframe>"
     elif isinstance(data, (str, Path)):
         path = Path(data)
-        fmt = InputFormat(format) if format is not None else _storm_infer_format(path)
+        fmt = InputFormat(format) if format is not None else _infer_format(path)
         layout_columns: list[dict] | None
         if isinstance(layout, list):
             layout_columns = layout

@@ -46,6 +46,7 @@ design decision to hide.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -502,11 +503,24 @@ def run_pipeline_kwargs(gate_result: PreGateResult) -> dict[str, bool]:
     kwargs dict themselves, so neither can independently regress this."""
     if gate_result.unified_slice_enabled:
         return {}
-    from decoy_engine import run_pipeline
-
-    if "unified_slice_enabled" not in inspect.signature(run_pipeline).parameters:
+    if not run_pipeline_accepts("unified_slice_enabled"):
         return {}
     return {"unified_slice_enabled": False}
+
+
+def run_pipeline_accepts(name: str, run_pipeline: Callable[..., Any] | None = None) -> bool:
+    """Whether the INSTALLED engine's `run_pipeline` takes the keyword `name`.
+
+    The one capability check for a `run_pipeline` keyword newer than the engine floor: the
+    native lane's `unified_slice_enabled` above and the progress sink's `progress` both ask
+    here, so an older engine runs without the keyword instead of failing on it.
+    `run_pipeline` defaults to the engine's own (tests pass a stand-in).
+    """
+    if run_pipeline is None:
+        from decoy_engine import run_pipeline as installed
+
+        run_pipeline = installed
+    return name in inspect.signature(run_pipeline).parameters
 
 
 __all__ = [
@@ -518,6 +532,7 @@ __all__ = [
     "is_unified_slice_candidate",
     "post_run_verify",
     "pre_execution_gate",
+    "run_pipeline_accepts",
     "run_pipeline_kwargs",
     "sanitize_abi",
     "source_is_materialized",

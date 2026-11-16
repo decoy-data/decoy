@@ -2,7 +2,7 @@
 
 The CLI ships every topic the user might Google before reaching for
 `--help`: modes, transforms, disguises, output flags, pipeline schema,
-YAML authoring, STORM, master-key flow, and safety boundaries.
+YAML authoring, scanning, master-key flow, and safety boundaries.
 Each topic renders as a styled Panel with a one-line summary, a body,
 and a `See also:` line. Tab completion suggests topic names; unknown
 topics produce a `did you mean?` hint.
@@ -53,10 +53,7 @@ _TOPICS: dict[str, _Topic] = {
             "mask table, one with `generate_columns:` is a generate table (the old\n"
             "top-level `mode:` key was removed). The --mode flag is\n"
             "now only a label for progress/JSON output; it does not override what the\n"
-            "tables declare.\n\n"
-            "V1 had two additional modes (graph + convert) that were removed.\n"
-            "YAML with `mode: graph` or `mode: convert`\n"
-            "is rejected by the V2 PipelineConfig validator with a typed error."
+            "tables declare."
         ),
         see_also=("decoy run --help", "decoy explain pipeline"),
     ),
@@ -81,7 +78,7 @@ _TOPICS: dict[str, _Topic] = {
             "  hipaa     The 18 PHI identifiers from 45 CFR 164.514(b)(2) -- Safe Harbor.\n\n"
             "Pick a Disguise by hand via `decoy show template hipaa` (gets the pipeline shape\n"
             "you'd start from) or by browsing the engine source under decoy_engine.disguises.\n\n"
-            "The V1 FORECAST recommender (which scored Disguises against a STORM scan and drafted\n"
+            "The V1 FORECAST recommender (which scored Disguises against a scan and drafted\n"
             "a pipeline) was retired; pick the Disguise by\n"
             "hand from the templates set for now."
         ),
@@ -149,8 +146,8 @@ _TOPICS: dict[str, _Topic] = {
             "  decoy show template minimal > pipeline.yaml\n"
             "  decoy validate config pipeline.yaml\n"
             "  decoy run pipeline.yaml\n\n"
-            "Pick one top-level mode:\n"
-            "  mask      sources + tables + targets (V2 PipelineConfig shape).\n"
+            "Two kinds of table:\n"
+            "  mask      sources + tables with columns + targets (V2 PipelineConfig shape).\n"
             "  generate  tables with generate_columns + targets.\n\n"
             "Common V2 column shape (generate):\n\n"
             "  - name: parent_id\n"
@@ -169,16 +166,16 @@ _TOPICS: dict[str, _Topic] = {
             "a CLI flag, not a YAML field -- PipelineConfig forbids unknown top-level keys.\n"
             "For portable keyed MASKING, set `global_settings.mask_secret_ref` instead --\n"
             "see `decoy explain keys`.\n"
-            "Treat STORM scan JSON, reference files, and real input/output files as\n"
+            "Treat saved scan JSON, reference files, and real input/output files as\n"
             "sensitive artifacts."
         ),
         see_also=("decoy explain pipeline", "decoy list templates", "decoy validate config --help"),
     ),
-    "storm": _Topic(
-        name="storm",
+    "scan": _Topic(
+        name="scan",
         summary="Dataset analysis -- scan a CSV for PII before writing a mask.",
         body=(
-            "STORM (Statistical Top-down Risk Mapping) scans a dataset and produces a profile:\n"
+            "`decoy scan` reads a dataset and produces a profile:\n"
             "  - Per-column type, cardinality, null fraction, top values.\n"
             "  - PII detector hits (regex + named-entity recognition).\n"
             "  - Sentinel-value flags (the 999s, 99/99/9999s, NA-like literals that pollute stats).\n"
@@ -191,54 +188,31 @@ _TOPICS: dict[str, _Topic] = {
     ),
     "keys": _Topic(
         name="keys",
-        summary="Two separate key mechanisms: --master-key for generation; a mask secret (--mask-secret/mask_secret_ref) is required for keyed masking.",
+        summary="--master-key for generation; --mask-secret (required) for masking.",
         body=(
-            "Decoy has two independent keyed-determinism mechanisms. They do not share a\n"
-            "secret and setting one has no effect on the other.\n\n"
-            "1) SYNTHETIC GENERATION (generate_columns:) -- `--master-key` / `--key-label`\n"
-            "   By default, generation is per-input deterministic: same seed -> same\n"
-            "   generated output within one run, but not portable across machines.\n"
-            "   With --master-key (32-byte hex) plus a --key-label, the engine derives\n"
-            "   generation keys from the master/label pair, so:\n"
-            "     - Same key + same label -> bitwise-identical generated output, anywhere.\n"
-            "     - Same key + different label -> different output (label is the namespace).\n"
-            "   Generate a key:\n"
-            "     python -c 'import secrets; print(secrets.token_hex(32))'\n"
-            "   Pass it via --master-key, the DECOY_MASTER_KEY env var, or both. The label\n"
-            "   is a CLI-only flag: `--key-label`. It is NOT a pipeline YAML field --\n"
-            "   PipelineConfig forbids unknown top-level keys, so a top-level `key_label:`\n"
-            "   in the YAML fails validation.\n\n"
-            "2) MASKING (mask: strategies) -- `--mask-secret` or `global_settings.mask_secret_ref`\n"
-            "   --master-key does NOT affect masking. Keyed masking strategies (fpe, hash,\n"
-            "   date_shift, and others) are keyed off a secret referenced two ways -- pick\n"
-            "   ONE (setting both is a usage error):\n"
-            "     decoy run pipeline.yaml --mask-secret env:DECOY_MASK_SECRET\n"
-            "   or in the YAML:\n"
-            "     global_settings:\n"
-            '       mask_secret_ref: "env:DECOY_MASK_SECRET"   # or "file:/path/to/secret"\n'
-            "   --mask-secret is an explicit flag only -- unlike --master-key it has NO env\n"
-            "   var, because the ref it carries already indirects through the environment\n"
-            "   (a second env layer would swallow the raw exported secret as the flag value).\n"
-            "   It is a completely separate secret from --master-key; the two are independent\n"
-            "   and setting one has no effect on the other.\n"
-            "   The ref points at a >=32-byte secret (hex or base64); the ENGINE resolves it\n"
-            "   from the referenced env var or file at run time and never logs or serializes\n"
-            "   the raw secret.\n"
-            "   A keyed masking strategy (fpe, hash, date_shift, tokenize, any\n"
-            "   `deterministic: true` or `vault: true` column, ...) with no mask secret is\n"
-            "   REJECTED before any data is read (keyed_strategy_requires_secret). There is\n"
-            "   no fallback to the public job_seed: that would let anyone with the config\n"
-            "   reproduce the mapping. The bundled gdpr, hipaa and pci templates are keyed.\n"
-            "   Make a throwaway secret for local development:\n"
-            "     export DECOY_MASK_SECRET=$(openssl rand -hex 32)\n"
-            "     decoy run pipeline.yaml --mask-secret env:DECOY_MASK_SECRET\n"
-            "   For a lasting secret use an owner-only file (decoy has no implicit source:\n"
-            "   it never reads a default file or makes a key for you):\n"
-            "     umask 077; mkdir -p ~/.config/decoy\n"
-            "     openssl rand -hex 32 > ~/.config/decoy/mask.key\n"
-            "     decoy run pipeline.yaml --mask-secret file:$HOME/.config/decoy/mask.key\n"
-            "   `decoy unmask` and `decoy report vault` take the same --mask-secret (or the\n"
-            "   YAML ref); it must be the same secret the mask run used."
+            "Use --master-key (with --key-label) for GENERATION: generate_columns tables.\n"
+            "Use --mask-secret for MASKING: keyed strategies such as fpe, hash and date_shift.\n"
+            "The two are separate secrets. Setting one has no effect on the other.\n\n"
+            "GENERATION -- `--master-key` and `--key-label`\n"
+            "  By default the same seed gives the same output within one run. With a\n"
+            "  master key and a label, the same pair gives the same bytes on any machine.\n"
+            "  The key is 64 hex characters (32 bytes). Make one:\n"
+            "    python -c 'import secrets; print(secrets.token_hex(32))'\n"
+            "  Pass it as --master-key or in DECOY_MASTER_KEY. `--key-label` is a CLI flag,\n"
+            "  not a YAML field: a top-level `key_label:` fails validation.\n\n"
+            "MASKING -- `--mask-secret` or `global_settings.mask_secret_ref`\n"
+            "  Give the ref on the command line or in the YAML, not both:\n"
+            "    decoy run pipeline.yaml --mask-secret env:DECOY_MASK_SECRET\n"
+            '    mask_secret_ref: "env:DECOY_MASK_SECRET"   # or "file:/path/to/secret"\n'
+            "  The ref points at a secret of 32 bytes or more (hex or base64). The engine\n"
+            "  reads it at run time and never logs it. --mask-secret has no env var.\n"
+            "  A keyed strategy with no secret is rejected before any data is read\n"
+            "  (keyed_strategy_requires_secret). There is no fallback to the public seed.\n"
+            "  Make a throwaway secret for local use:\n"
+            "    export DECOY_MASK_SECRET=$(openssl rand -hex 32)\n"
+            "  For a lasting secret, write it to an owner-only file (umask 077) and pass\n"
+            "  --mask-secret file:/path. `decoy unmask` and `decoy report vault` need the\n"
+            "  same secret the mask run used."
         ),
         see_also=("decoy run --help",),
     ),
@@ -570,7 +544,7 @@ _TOPICS: dict[str, _Topic] = {
             "          pip install decoy-cli[ner]\n"
             "          Also needs a downloaded model, a separate step:\n"
             "          python -m spacy download en_core_web_sm\n"
-            "  ml      The STORM field-classifier (scikit-learn / lightgbm).\n"
+            "  ml      The field classifier `decoy scan` uses (scikit-learn / lightgbm).\n"
             "          pip install decoy-cli[ml]\n"
             "  vault   Compatibility alias only; installs nothing extra.\n"
             "          pip install decoy-cli[vault]\n"
@@ -596,7 +570,10 @@ _TOPICS: dict[str, _Topic] = {
 # What the common strategies do. A name the engine no longer registers is never printed, and a
 # registered name with no entry here is still listed, so the list itself is the engine's.
 _STRATEGY_NOTES = {
-    "faker": "A realistic fake value of a chosen `provider` (person_email, ...). The most common pick.",
+    "faker": (
+        "A realistic fake value of a chosen `provider` (person_email, ...). The most common pick; "
+        "equal source values get different fakes unless the column is deterministic."
+    ),
     "hash": "A deterministic hash: the same input gives the same output. Joins survive.",
     "redact": "Literal text in place of the value, e.g. 'XXX-XX-XXXX'.",
     "categorical": "A pick from an explicit category list, optionally weighted.",
@@ -710,7 +687,7 @@ def explain(
     """Explain a Decoy concept in plain English.
 
     Built-in topics: modes, transforms, generation, disguises, output, pipeline,
-    yaml, storm, keys, vault, chunked, substrate, differential-privacy, security,
+    yaml, scan, keys, vault, chunked, substrate, differential-privacy, security,
     completion. Run with no topic to see the full list.
     """
     state = setup_output(json_, quiet, verbose)

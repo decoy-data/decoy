@@ -108,7 +108,7 @@ def test_init_preset_json_envelope_carries_preset_and_count(tmp_path: Path):
 
 
 def test_init_preset_generate_produces_generator_yaml(tmp_path: Path):
-    """The generate preset uses `mode: generate` + `generate_columns`. CLI.3
+    """The generate preset uses `generate_columns` and no top-level `mode:`. CLI.3
     (2026-06-02): V1 `generator_settings:` block folded into the unified
     V2 `global_settings:`."""
     out = tmp_path / "pipeline.yaml"
@@ -118,7 +118,7 @@ def test_init_preset_generate_produces_generator_yaml(tmp_path: Path):
     assert result.exit_code == 0
     body = out.read_text()
     assert "tables:" in body
-    assert "mode: generate" in body
+    assert "mode: generate" not in body
     assert "generate_columns:" in body
 
 

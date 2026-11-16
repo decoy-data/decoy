@@ -497,9 +497,10 @@ def test_unreadable_entries_are_value_free(tmp_path: Path) -> None:
 # The init digest was re-recorded when the scaffold header stopped naming a
 # private engine module; that header line is the only line that changed. Re-recorded again
 # when init began writing the source relative to the YAML and a bare target (PROJECT-LAYOUT P7);
-# only the two path lines changed.
+# only the two path lines changed. The scan digest was re-recorded when the scan `pii_note`
+# stopped naming the retired detector (retired-name removal, slice C1); that note is the only change.
 _INIT_YAML_SHA256 = "f392a49f86f7db96d6dc9b46b2242beb0b9e9dd6c7e4466d7d25bfded55c39c8"
-_SCAN_JSON_SHA256 = "81b904aa55af6552451bd44d1cbec86b3cf9f860f0d4aaa2f56df720f090a476"
+_SCAN_JSON_SHA256 = "0328e9e09969dcdbb5e47b9f8b520a1c69f9a04360f7b6768b172f7f462ba17e"
 
 
 def test_init_and_scan_parquet_unchanged(tmp_path: Path) -> None:
