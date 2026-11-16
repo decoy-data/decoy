@@ -62,8 +62,22 @@ Before anything is laid down, the installer:
    or ABI-mismatched.
 
 Only then does it swap the new runtime into place. **A failed checksum or signature is a
-hard refusal, never a warning-and-continue.** Verification uses `openssl` (Ed25519); the
-installer requires it and refuses rather than skip signature verification.
+hard refusal, never a warning-and-continue.** The installer checks signatures with one of
+two system tools and refuses rather than skip verification:
+
+- **OpenSSL 3** (`openssl pkeyutl`, checks the `.sig` file). On Linux this is the
+  prerequisite for 1.0.0: OpenSSL 1.1.1 (RHEL 8, Debian 10) cannot check these signatures.
+  RHEL 8: `dnf install openssl3` from EPEL. `DECOY_OPENSSL=/path/to/openssl` names one.
+- **`ssh-keygen`** from OpenSSH 8.1 or newer (checks the `.sshsig` file, same release key).
+  Stock macOS ships it, so a Mac needs no package manager. Linux hosts with OpenSSH 8.1+
+  may install this way too, but only OpenSSL 3 is promised.
+
+Before downloading anything the installer tests each candidate tool on a built-in known
+answer (a good signature must pass and a changed message must fail) and prints the choice,
+for example `verifier: sshsig /usr/bin/ssh-keygen (known answer passed)`. If no tool passes
+it exits **69** with "cannot verify Ed25519 signatures", lists what it tried and prints the
+fix. Exit 69 never means the release was tampered with; a bad signature is still exit 1
+with "signature INVALID". When `DECOY_OPENSSL` is set it is the only candidate.
 
 The signed version document is also checked for shape and status, in both the shell
 installer and `decoy upgrade`: a correctly signed document of any schema other than
