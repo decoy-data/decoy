@@ -14,7 +14,7 @@ arguments reference). There is no run catalog or workspace.
 
 S4b (CLI redesign) folded the former `report summarize` + `report compare`,
 the `evidence` verbs (show/verify), the `validate` distribution check, the
-`storm` integrity check, and `vault info` into this one noun. The relocated
+old integrity check group, and `vault info` into this one noun. The relocated
 bodies are reused verbatim; their engine deps stay lazy-imported inside each
 body.
 
@@ -27,7 +27,7 @@ RAW-VALUE ISOLATION (Dennis review note, cli-first-capability-guide.md L534-538)
   The manifest renderers accept a manifest DICT and render it. They do NOT:
     - Read source or output CSV files from disk.
     - Embed raw cell/row values in any report.
-    - Render full STORM profiles or raw diagnostic values.
+    - Render full scan profiles or raw diagnostic values.
 
   What is intentionally excluded is stated in each report footer so reviewers
   know the omission is deliberate. (`fidelity`/`integrity` DO read the data
@@ -639,7 +639,7 @@ What the report includes:
   row counts, masking strategies (names only), node timings, and warnings.
 
 What the report intentionally excludes:
-  Raw row values, PII samples, STORM profile internals, diagnostic values.
+  Raw row values, PII samples, scan profile internals, diagnostic values.
   The evidence manifest records strategy names and fingerprints only; the
   report renders that safe subset.
 
@@ -680,7 +680,7 @@ def _render(
     """Render an evidence manifest to an HTML or Markdown report file.
 
     The report is built from the manifest only (evidence-safe). Raw row
-    values, PII, and STORM profile internals are never included.
+    values, PII, and scan profile internals are never included.
 
     HTML output is self-contained and offline-capable (no CDN/external JS).
     Markdown output is plain text.
@@ -1869,7 +1869,7 @@ def _render_residual_pii(state: Any, findings: list[Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI: report integrity MASKED --source SRC  (relocated from the `storm` group)
+# CLI: report integrity MASKED --source SRC  (relocated from the old scan group)
 # ---------------------------------------------------------------------------
 
 _INTEGRITY_EPILOG = """\
@@ -1887,7 +1887,7 @@ Examples:
     is reduced to "no config provided" notes.
 
   decoy report integrity masked.csv --source source.csv --json > report.json
-    Pipe the full JobStormReport-shaped JSON for downstream tooling.
+    Pipe the full integrity report JSON for downstream tooling.
 
   decoy report integrity masked.csv --source source.csv --output report.json
     Write JSON to file + render a Rich summary on stderr.
@@ -1930,7 +1930,7 @@ def _integrity(
         "--output",
         "-o",
         help=(
-            "Write the JobStormReport JSON to this path. The Rich table still renders to stderr."
+            "Write the integrity report JSON to this path. The Rich table still renders to stderr."
         ),
     ),
     allow_source_mismatch: bool = typer.Option(
@@ -1944,7 +1944,7 @@ def _integrity(
     json_: bool = typer.Option(
         False,
         "--json",
-        help="Emit the full JobStormReport JSON to stdout. No card.",
+        help="Emit the full integrity report JSON to stdout. No card.",
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
@@ -2060,7 +2060,7 @@ def _integrity(
         elif state.mode is not OutputMode.quiet:
             # A 3-row summary, then the residual-PII rows. FK and policy findings
             # are other record types and stay in the JSON payload only.
-            table = make_table("Bucket", "Findings", "Severities", title="Storm integrity")
+            table = make_table("Bucket", "Findings", "Severities", title="Post-scan integrity")
             for bucket in ("residual_pii", "fk_preservation", "policy_validation"):
                 findings = report.get(bucket) or []
                 if not findings:
