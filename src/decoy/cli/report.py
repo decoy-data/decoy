@@ -1701,13 +1701,11 @@ def _fidelity(
 ) -> None:
     """Recompute distribution fidelity between a source and an output CSV.
 
-    Wraps `decoy_engine.quality.compute_quality_report` +
-    `apply_quality_policy` (report.py:97, policy.py:142): the engine owns
-    every metric and the letter grade; this command computes no fidelity
-    number itself. Reads both CSVs fresh on every invocation (pure,
-    repeatable) -- the CLI's local evidence manifest records file
+    The engine owns every metric and the letter grade; this command
+    computes no fidelity number itself. It reads both CSVs fresh on every
+    run (pure, repeatable). The local evidence manifest records file
     fingerprints but not the raw frames, so recomputing from the two files
-    is the only honest source for this number (BF1).
+    is the only honest source for this number.
 
     Exit codes: 0 when the policy verdict is 'pass' (or 'warn' without
     --fail-on-warning); EXIT_FINDINGS (4) when the verdict is 'fail', or
@@ -1955,11 +1953,9 @@ def _integrity(
 ) -> None:
     """Verify a masked file's integrity against its pre-mask source.
 
-    Wraps `decoy_engine.verification.postmask.run_post_mask`. Runs the
-    three post-mask check buckets (residual_pii, fk_preservation,
-    policy_validation) the platform's mask job already runs when
-    `post_scan: {integrity: true}` is declared in the pipeline; this verb lets the
-    CLI user run the same checks standalone.
+    Runs the three post-mask check buckets (residual_pii, fk_preservation,
+    policy_validation) that `post_scan: {integrity: true}` runs inside a
+    pipeline; this verb runs the same checks standalone.
 
     Distinct from `report verify` (manifest fingerprint-drift): integrity is
     post-mask residual-PII / FK / policy on a masked file plus --source.

@@ -318,3 +318,18 @@ def test_bite_exempt_string_with_a_second_banned_pattern_fails_on_that_pattern()
     synthetic = {("cli/synthetic.py", "_scan (FC-1)", r"(?<!\w)_scan\b", CTX_NAME_KWARG): (1, "t")}
     hits = _constant_hits("cli/synthetic.py", "_scan (FC-1)", CTX_NAME_KWARG, synthetic)
     assert hits == [r"FC-\d"]
+
+
+@pytest.mark.parametrize(
+    ("text", "pattern"),
+    [
+        ("see report.py:97 for the call", r"\b\w+\.py:\d+"),
+        ("measured on the source (BF1)", r"\bBF\d+\b"),
+        ("the platform's mask job already runs", r"the platform's"),
+    ],
+)
+def test_bite_each_di_pattern_catches_its_seeded_text(text: str, pattern: str) -> None:
+    assert pattern in {p.pattern for p in BANNED_USER_TEXT}
+    assert _hits(text) == [pattern]
+    without = [p for p in BANNED_USER_TEXT if p.pattern != pattern]
+    assert not [p for p in without if p.search(text)]

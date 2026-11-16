@@ -372,7 +372,7 @@ null shape and the generation catalog. Engine sections 12 and 13 own the generat
 | GEN-13 | A generate run that triggers the fidelity warning, with and without `--json` | The warning reaches stdout and `--json` | 24o | |
 | GEN-14 | The catalog command; `decoy list templates` | **Not built.** Every generate type, option and provider from the engine registries; one starter template each for healthcare, banking, insurance, retail, telecom and HR | 24s | |
 | GEN-15 | `decoy run gen-basic --mode generate` with and without `DECOY_MASTER_KEY` | With a key, `global_settings.seed` does not change generated tables; without, the seeded path is used and the summary says which | 24o | |
-| GEN-16 | `decoy init gen-x --preset generate --json` | The written YAML says `mode: generate` and validates | 24e | |
+| GEN-16 | `decoy init gen-x --preset generate --json` | The written YAML carries no stale `mode:` text and validates | 24e | |
 
 ## 10. Evidence and reports
 
