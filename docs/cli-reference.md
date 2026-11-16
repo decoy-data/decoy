@@ -569,7 +569,7 @@ See also: decoy scan, decoy run.
 Explain a Decoy concept in plain English.
 
 Built-in topics: modes, transforms, generation, disguises, output, pipeline,
-yaml, storm, keys, vault, chunked, substrate, differential-privacy, security,
+yaml, scan, keys, vault, chunked, substrate, differential-privacy, security,
 completion. Run with no topic to see the full list.
 
 **Usage**:
@@ -1303,7 +1303,7 @@ Examples:
     Scan a fixed-width file using an explicit column layout.
     Layout YAML: columns: [{name: id, start: 0, width: 5}, ...]
 
-HONESTY: PII candidates are SUGGESTIONS based on STORM pattern matching. They
+HONESTY: PII candidates are SUGGESTIONS based on pattern matching. They
 are NOT authoritative classifications. You review each flagged field and decide
 what masking to apply. Decoy never auto-classifies PII.
 
@@ -1311,7 +1311,7 @@ No raw cell values appear in the inline output or in --output. Field stats
 include dtype, null_rate, distinct_count only.
 
 See also: decoy scan fields, decoy scan show, decoy scan diff,
-  decoy explain storm, decoy validate.
+  decoy explain scan, decoy validate.
 
 
 **Commands**:
@@ -1336,7 +1336,7 @@ $ decoy scan fields [OPTIONS] SCAN
 
 **Arguments**:
 
-* `SCAN`: Path to a STORM scan JSON, or `-` for stdin.  [required]
+* `SCAN`: Path to a saved scan JSON, or `-` for stdin.  [required]
 
 **Options**:
 
@@ -1378,7 +1378,7 @@ $ decoy scan show [OPTIONS] SCAN FIELD
 
 **Arguments**:
 
-* `SCAN`: Path to a STORM scan JSON, or `-` for stdin.  [required]
+* `SCAN`: Path to a saved scan JSON, or `-` for stdin.  [required]
 * `FIELD`: Field name to inspect.  [required]
 
 **Options**:
@@ -1420,8 +1420,8 @@ $ decoy scan diff [OPTIONS] OLD NEW
 
 **Arguments**:
 
-* `OLD`: Path to the older STORM scan JSON, or `-` for stdin.  [required]
-* `NEW`: Path to the newer STORM scan JSON, or `-` for stdin.  [required]
+* `OLD`: Path to the older saved scan JSON, or `-` for stdin.  [required]
+* `NEW`: Path to the newer saved scan JSON, or `-` for stdin.  [required]
 
 **Options**:
 
@@ -1528,7 +1528,7 @@ See also: decoy report render, decoy report verify.
 Render an evidence manifest to an HTML or Markdown report file.
 
 The report is built from the manifest only (evidence-safe). Raw row
-values, PII, and STORM profile internals are never included.
+values, PII, and scan profile internals are never included.
 
 HTML output is self-contained and offline-capable (no CDN/external JS).
 Markdown output is plain text.
@@ -1565,7 +1565,7 @@ What the report includes:
   row counts, masking strategies (names only), node timings, and warnings.
 
 What the report intentionally excludes:
-  Raw row values, PII samples, STORM profile internals, diagnostic values.
+  Raw row values, PII samples, scan profile internals, diagnostic values.
   The evidence manifest records strategy names and fingerprints only; the
   report renders that safe subset.
 
@@ -1746,9 +1746,9 @@ $ decoy report integrity [OPTIONS] MASKED
 
 * `--source FILE`: Pre-mask source CSV (ground truth for the integrity check).  [required]
 * `--config TEXT`: Optional pipeline.yaml, or a pipeline name. When passed, policy_validation can compare against the configured masks. Without it the runner still produces residual_pii + fk_preservation findings.
-* `-o, --output PATH`: Write the JobStormReport JSON to this path. The Rich table still renders to stderr.
+* `-o, --output PATH`: Write the integrity report JSON to this path. The Rich table still renders to stderr.
 * `--allow-source-mismatch`: Suppress the stderr warning when --source does not match the pipeline&#x27;s declared sources block.
-* `--json`: Emit the full JobStormReport JSON to stdout. No card.
+* `--json`: Emit the full integrity report JSON to stdout. No card.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
 * `-v, --verbose`: Enable debug-level CLI logs on stderr.
 * `--help`: Show this message and exit.
@@ -1767,7 +1767,7 @@ Examples:
     is reduced to "no config provided" notes.
 
   decoy report integrity masked.csv --source source.csv --json > report.json
-    Pipe the full JobStormReport-shaped JSON for downstream tooling.
+    Pipe the full integrity report JSON for downstream tooling.
 
   decoy report integrity masked.csv --source source.csv --output report.json
     Write JSON to file + render a Rich summary on stderr.

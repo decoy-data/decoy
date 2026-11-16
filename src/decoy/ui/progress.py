@@ -36,7 +36,7 @@ def spinner(
     `style` is any Rich spinner name -- run `python -m rich.spinner` to see
     the gallery. Default `dots` matches Rich's own default. Notable picks:
     `simpleDotsScrolling` for an ASCII-safe rain-drop feel that complements
-    the storm theme; `line` for a minimal ASCII rotor; `dots12` for a
+    the cloud theme; `line` for a minimal ASCII rotor; `dots12` for a
     Braille trickle.
     """
     if _disabled(state):

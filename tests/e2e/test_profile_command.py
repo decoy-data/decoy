@@ -35,7 +35,7 @@ runner = CliRunner()
 _SENTINEL_EMAIL = "SENTRY_PII_PROFILE_EMAIL_XXXXXXXZZZZ@example.com"
 _SENTINEL_SSN = "SENTRY_NOTANSSN_XXXXXXXZZZZ"
 
-# Threshold used by the engine's STORM to flag a field as a PII candidate.
+# Threshold used by the engine's scan to flag a field as a PII candidate.
 # The engine's pii_score >= 0.6 is the commonly used threshold.
 _PII_THRESHOLD = 0.6
 
@@ -160,7 +160,7 @@ def test_profile_show_fields_shows_dtype(sample_csv: Path) -> None:
 
 
 def test_profile_pii_framed_as_suggestion_not_classified(sample_csv: Path) -> None:
-    """When STORM flags PII candidates, the output must say 'suggestion' or 'candidate'.
+    """When the scan flags PII candidates, the output must say 'suggestion' or 'candidate'.
 
     NEVER: 'classified as', 'auto-classified', 'detected as PII' (authoritative).
     ALWAYS: 'suggestion', 'candidate', or 'review' language.
@@ -372,7 +372,7 @@ def test_profile_numeric_column_reports_numeric_type(sample_csv: Path) -> None:
     """CSV numeric columns must report an integer/float type, not 'string'.
 
     The 'score' column in sample_csv has integer values [1, 2, 3, 4, 5].
-    With proper dtype inference (no dtype=str override), STORM must report
+    With proper dtype inference (no dtype=str override), the scan must report
     inferred_type as 'integer', NOT 'string'.
     """
     result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"])
