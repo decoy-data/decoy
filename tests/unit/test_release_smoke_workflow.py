@@ -34,6 +34,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from packaging_tools import candidate as cand
 from packaging_tools import smoke_install as smoke
+from packaging_tools.sign_release import pinned_forms
 
 from decoy import _native_gate
 from decoy.distribution import version_document as vd
@@ -183,14 +184,8 @@ def candidate_set(tmp_path, monkeypatch):
         .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
         .decode()
     )
-    body = "".join(pem.strip().splitlines()[1:-1])
     # The release step injects both key forms; install.sh refuses a build with only one.
-    ssh_blob = (
-        key.public_key()
-        .public_bytes(serialization.Encoding.OpenSSH, serialization.PublicFormat.OpenSSH)
-        .decode()
-        .split()[1]
-    )
+    body, ssh_blob = pinned_forms(key)
     dist = tmp_path / "dist"
     dist.mkdir()
     for target in SUPPORTED_TARGETS:
