@@ -28,14 +28,13 @@ clone are all caught up this way.
 from __future__ import annotations
 
 import contextlib
-import os
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
 
-from decoy._private_file import PrivateFileError, open_private
+from decoy._private_file import PrivateFileError
 from decoy.cli.library._errors import (
     LIBRARY_BUSY,
     LIBRARY_INDEX_CORRUPT,
@@ -44,7 +43,8 @@ from decoy.cli.library._errors import (
     LibraryError,
     library_error,
 )
-from decoy.cli.library._paths import INDEX_FILE, record_digest
+from decoy.cli.library._fs import entry_of, open_database
+from decoy.cli.library._paths import INDEX_FILE, object_entries
 
 _T = TypeVar("_T")
 
@@ -58,6 +58,7 @@ __all__ = [
     "latest",
     "locked",
     "object_ids",
+    "rebuild",
     "row_from",
     "run_locked",
     "select",
@@ -67,7 +68,6 @@ __all__ = [
 SCHEMA_VERSION = 1
 BUSY_TIMEOUT_SECONDS = 5.0  # read at call time, so a test can shorten it
 _INODE_RETRIES = 3
-_SUFFIX = ".json"
 # SQLITE_BUSY and SQLITE_LOCKED; `sqlite_errorcode` exists from Python 3.11.
 _BUSY_CODES = frozenset({5, 6})
 # SQLITE_CORRUPT and SQLITE_NOTADB, compared on the primary code (the low byte).
@@ -123,22 +123,13 @@ def row_from(raw: Mapping[str, Any], size: int, known: bool) -> IndexRow:
     )
 
 
-def object_ids(objects_dir: Path) -> set[str]:
-    """Every record id under `objects/`, from file names only (no file is opened)."""
-    found: set[str] = set()
+def object_ids(root: Path, objects_dir: Path) -> set[str]:
+    """Every record id under `objects/`, from file names only (no file is opened). A linked or
+    unlistable folder adds nothing; fsck reports it."""
     try:
-        fans = [e for e in os.scandir(objects_dir) if e.is_dir(follow_symlinks=False)]
-    except FileNotFoundError:
-        return found
-    for fan in fans:
-        with os.scandir(fan.path) as entries:
-            for entry in entries:
-                if not entry.name.endswith(_SUFFIX):
-                    continue
-                candidate = f"sha256:{fan.name}{entry.name[: -len(_SUFFIX)]}"
-                if record_digest(candidate) is not None:
-                    found.add(candidate)
-    return found
+        return {o.record_id for o in object_entries(root, objects_dir) if o.stored}  # type: ignore[misc]
+    except LibraryError:
+        return set()
 
 
 def _is_busy(exc: BaseException) -> bool:
@@ -163,10 +154,10 @@ def _is_corrupt(exc: BaseException) -> bool:
 
 def _inode(path: Path) -> tuple[int, int] | None:
     try:
-        info = os.stat(path)
-    except OSError:
+        found = entry_of(path.parent.parent, path)
+    except LibraryError:
         return None
-    return info.st_dev, info.st_ino
+    return None if found is None else found.inode
 
 
 def _begin(
@@ -176,9 +167,10 @@ def _begin(
     (connection, failure, still the live file)."""
     conn: sqlite3.Connection | None = None
     try:
-        open_private(path, new_parent=False, truncate=truncate)
+        conn = open_database(
+            path.parent.parent, path, truncate=truncate, timeout=BUSY_TIMEOUT_SECONDS
+        )
         before = _inode(path)
-        conn = sqlite3.connect(str(path), timeout=BUSY_TIMEOUT_SECONDS, isolation_level=None)
         conn.execute("BEGIN IMMEDIATE")
         conn.execute("SELECT count(*) FROM sqlite_master").fetchone()  # reads the header
     except (PrivateFileError, sqlite3.Error) as exc:
@@ -201,6 +193,11 @@ def locked(library_dir: Path, *, reset: bool = False) -> Iterator[sqlite3.Connec
     `library_index_corrupt` or `library_index_failed` for a SQLite error in the block or the
     commit. A `LibraryError` the block raises itself passes through unchanged.
     """
+    # SQLite opens its database by path: `_fs` judges that path first (no linked folder above
+    # it, nothing but a regular file at it), so neither the open nor the lock reaches outside.
+    found = entry_of(library_dir.parent, library_dir / INDEX_FILE)  # unsafe: a linked folder
+    if found is not None and found.kind != "file":
+        raise LibraryError(LIBRARY_LOCK_UNAVAILABLE)  # a folder, pipe or link where it should be
     path = library_dir / INDEX_FILE
     conn: sqlite3.Connection | None = None
     failure: BaseException | None = None
@@ -276,6 +273,12 @@ def ensure_schema(conn: sqlite3.Connection) -> bool:
         conn.execute(statement)
     conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     return True
+
+
+def rebuild(conn: sqlite3.Connection) -> None:
+    """Drop every table and create the schema again (the rows come back from `sync`)."""
+    conn.execute("PRAGMA user_version = 0")
+    ensure_schema(conn)
 
 
 def insert(conn: sqlite3.Connection, row: IndexRow) -> None:

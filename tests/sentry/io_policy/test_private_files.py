@@ -146,8 +146,8 @@ PRIVATE_CASES: dict[str, str] = {
     + "test_layout_files_are_owner_only_under_umask_zero",
     "cli/library/_fs.py::ensure_private_dir::create_private_directory::1": _LIBRARY,
     "cli/library/_fs.py::_write::write_atomic::1": _LIBRARY,
-    "cli/library/_index.py::_begin::open_private::1": _LIBRARY_LOCK,
-    "cli/library/_index.py::_begin::sqlite3.connect::1": _LIBRARY_LOCK,
+    "cli/library/_fs.py::open_database::open_private::1": _LIBRARY_LOCK,
+    "cli/library/_fs.py::open_database::sqlite3.connect::1": _LIBRARY_LOCK,
     "cli/library/_fs.py::write_dotfile_once::write_local_target::1": _LIBRARY,
 }
 _CASE_MODULES = {
@@ -597,14 +597,14 @@ def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
     assert run(files) == []
 
 
-def test_the_census_is_58_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_59_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 58
+    assert len(sinks) == 59
     assert len([s for s in sinks if is_entry(s)]) == 24
     counts: dict[str, int] = {}
     for r in ROWS:
         counts[r.disposition] = counts.get(r.disposition, 0) + 1
-    assert counts == {"public": 23, "private": 3, "staged": 3, "temp": 2, "read": 3}
+    assert counts == {"public": 23, "private": 3, "staged": 3, "temp": 2, "read": 4}
 
 
 def test_the_baseline_has_two_rows_with_exits() -> None:
