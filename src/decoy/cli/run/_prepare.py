@@ -16,6 +16,7 @@ from decoy.cli.gate import (
     GateRoute,
     PreRunCheckError,
     check_before_run,
+    check_static_before_acquire,
     layout_findings,
     parse_pipeline_yaml,
     shared_destination_findings,
@@ -24,7 +25,9 @@ from decoy.cli.io import (
     DuckDBSourceError,
     OutputPlacement,
     acquire_relation,
-    parse_flag,
+    check_declared_before_acquire,
+    duckdb_probe_raw,
+    parse_flags,
     quarantine_enabled,
 )
 from decoy.cli.io import resolve_path as _resolve_path
@@ -358,18 +361,29 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
             for t in (_raw_tables if _tables_wellformed else [])
             if isinstance(t, dict) and isinstance(t.get("name"), str)
         }
+        # Everything that can refuse runs before the first database access, the temp dir or
+        # the first acquisition: the flags are parsed once (a syntax error refuses here), every
+        # table is checked against `tables:`, and the placeholder config is validated.
+        _flags = parse_flags(ctx.duckdb_source)
+        for _flag in _flags:
+            if _tables_wellformed and _flag.table not in _declared:
+                raise DuckDBSourceError(
+                    f"--duckdb-source: {_flag.table!r} is not a table in the pipeline "
+                    f"`tables:` ({sorted(n for n in _declared if n)})"
+                )
+        # The source-independent gate layers (config, compile) run on the placeholder config
+        # first (r13): an invalid config keeps the gate's own error, and no database is opened.
+        _probe = check_static_before_acquire(
+            duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
+        )
+        check_declared_before_acquire(_probe, _flags, ctx.config.parent)
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
-        for _spec in ctx.duckdb_source:
-            _tbl, _db = parse_flag(_spec)
-            if _tables_wellformed and _tbl not in _declared:
-                raise DuckDBSourceError(
-                    f"--duckdb-source: {_tbl!r} is not a table in the pipeline "
-                    f"`tables:` ({sorted(n for n in _declared if n)})"
-                )
+        for _flag in _flags:
+            _tbl = _flag.table
             _parquet = acquire_relation(
-                _resolve_path(_db, ctx.config.parent), _tbl, ctx._duckdb_tmpdir
+                _resolve_path(_flag.db_path, ctx.config.parent), _tbl, ctx._duckdb_tmpdir
             )
             _raw_sources[_tbl] = {
                 "type": "file",
