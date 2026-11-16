@@ -75,7 +75,7 @@ git logs). Dates are the UTC merge dates from GitHub.
 - **CLI** (`7850e217`, #233): repin to engine 0.23.0. The CLI now pins `decoy-engine==0.23.0`. Roadmap row 71 needs no further repin; row 67 (F34 E3 and its release) is done.
 - **Engine** (`13778a0d`, engine #549): CLI-CLOUD part EC2a (roadmap row 64), merged 2026-11-12 and in 0.23.0. One S3 put path and SDK floors.
 - **CLI** (`16135525`, #205): LIB part L1b.2 (roadmap row 34). The local record store core. L1b.3 remains.
-- **CLI** (`048068a6`, #232): V2 rows VAULT-STREAM and TOKENIZE-CHUNKED added to `docs/roadmap/out-of-scope.md`.
+- **CLI** (`048068a6`, #232): V2 rows VAULT-STREAM and TOKENIZE-CHUNKED added to `docs/roadmap/out-of-scope.md` (now in `docs/roadmap/post-1.0-plan.md`, as 1.x minor).
 
 ## 2026-11-12
 
