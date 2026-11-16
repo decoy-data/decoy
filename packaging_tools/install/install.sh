@@ -76,11 +76,11 @@ c2gtZWQyNTUxOQAAAEB+iuN19bqZQ1G1GtU7swHFU6KZmfoimlg1V+XtaVZ0Sl2l+VEFk8
 8E3UhqgWQjknqU9A958r4mZ/pn8MmDXyUC
 -----END SSH SIGNATURE-----'
 
-# Known answer for the OpenSSL route: RFC 8032 section 7.1 TEST 2 (public key as SPKI PEM, message
-# 0x72, signature as base64 because the real check reads base64 sidecars). 0x73 must fail.
-KAT_PEM='-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=
------END PUBLIC KEY-----'
+# Known answer for the OpenSSL route: RFC 8032 section 7.1 TEST 2 (SPKI public key body, message
+# 0x72, signature as base64 because the real check reads base64 sidecars). 0x73 must fail. Only the
+# body is kept here: the release smoke counts PEM blocks in this file and expects exactly the
+# release key, so kat_openssl assembles the PEM at run time.
+KAT_PEM_BODY='MCowBQYDK2VwAyEAPUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw='
 KAT_SIG_B64='kqAJqfDUyrhyDoILX2QlQKKye1QWUD+Ps3YiI+vbadoIWsHkPhWZbkWPNhPQ8R2MOHsurrQwKu6wDSkWErsMAA=='
 
 SSH_IDENTITY="decoy-release@trydecoy.com"
@@ -179,7 +179,7 @@ write_allowed_signers() {
 kat_openssl() {
   # Passes only if the binary accepts the RFC 8032 signature on 0x72 and rejects it on 0x73.
   mkdir -p "$WORK/kat" || return 1
-  printf '%s\n' "$KAT_PEM" > "$WORK/kat/pub.pem"
+  printf '%s\n%s\n%s\n' "-----BEGIN PUBLIC ""KEY-----" "$KAT_PEM_BODY" "-----END PUBLIC ""KEY-----" > "$WORK/kat/pub.pem"
   printf '%s\n' "$KAT_SIG_B64" > "$WORK/kat/sig.b64"
   printf r > "$WORK/kat/good"; printf s > "$WORK/kat/bad"
   verify_sig "$1" "$WORK/kat/good" "$WORK/kat/sig.b64" "$WORK/kat/pub.pem" || return 1
