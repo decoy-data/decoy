@@ -58,6 +58,9 @@ built by this page. Each needs an owner or orchestrator decision on whether to c
 | J2 `api.scan` points at `scan_sources` where the CLI uses a different profile call | audit J2 | The scan result of the public `api.scan` may change. 1.x patch only if results stay identical. | public API, result schema |
 | STORM taxonomy split: pending public renames | owner direction 2026-11-16 | Renames after 1.0 are 2.0. The names are not listed in this repo's docs; the orchestrator lists them. | CLI flags, YAML config schema |
 | F22 publication names | owner direction 2026-11-16 | Same. Roadmap rows 59 and 61 own the work. | public API, report tags |
+| A1, A3, A4, A8 quiet fallbacks that hide a wrong result: a Faker failure replaced by `fake.name()` (A1), a swallowed provider check (A3), a bad expression becoming an empty reference set (A4), a result with no outputs reported as success (A8) | audit package A | Fixing each turns a run that "works" today into an error, and A8 changes an exit code. That is a contract change after 1.0. Owner question 2. | exit codes, reason registry |
+| Partition-stable `when:` on number-with-blanks columns (platform plan 12) | platform V2 plan | Fixing the precision loss changes the output of existing configs on integers of 2**53 or more. | determinism |
+| Atomic output: the `.gz` header can store the staging basename | ROADMAP row 21b, `docs/records/2026-11-07-atomic-output-build.md` | Fixing it changes the bytes of compressed outputs from existing configs. | determinism |
 | `run_mask_chunked` writes a pass-through `large_string` column as `large_string` where the other routes write `string` | corrective backlog, DUP E3 #565 review (2026-11-13) | Same values, different output Arrow type. Unify now; after 1.0 it is 2.0. | artifact format |
 | CLI reason registry: move `layout.report_source_ambiguous` out of the `layout.` namespace | corrective backlog | A reason code rename. | reason registry |
 
@@ -174,6 +177,14 @@ cleanups (see 1.x patch). Row 9 is in the "other way" table.
 | 20 Support bundle as Parquet | New format. Stays 1.x only while the old bundle format stays readable and the default. | none |
 | 21 DuckDB-Wasm in-browser preview | New web feature. | none |
 
+### Items named in ROADMAP rows and plans
+
+| Item | Source | Why 1.x minor | Contract surface |
+|---|---|---|---|
+| A certified DP stack for normal users (a DP fit on a default install works) | ROADMAP row 24g | Turns the `dp_stack_uncertified` message into a success. Exit code 3 stays for the cases still refused. | none |
+| GEN-PROVIDERS per-provider options and `unique` | ROADMAP row 24p | New optional keys on `type: provider`. | YAML config schema (additive) |
+| DUP-DEFECTS A6: `fromisoformat` with `Z` on Python 3.10 | ROADMAP row 24zd, `E:plan/dup-defects` section 13 | A hand-made profile that is refused with exit 1 today is accepted. | none |
+
 ### After-V1 items from the findings register and decisions
 
 | Item | Source | Why 1.x minor | Contract surface |
@@ -215,7 +226,7 @@ carry the V1 part). Each cut shows the unit's coverage and mutation score unchan
 
 | Items | What | Why 1.x patch |
 |---|---|---|
-| A1 to A9 (package A) | Quiet fallbacks: a Faker failure replaced by `fake.name()` (A1), a reference table that fails to load becoming `{}` (A2), a swallowed provider check (A3), a bad expression becoming an empty set (A4), a native-lane exception rerun on pandas (A5), `except Exception: return None` (A6, A7), a result with no outputs reported as success (A8), a hint that always returns None (A9) | Each is a defect: today's behavior is wrong or silent. A config that works correctly sees no change. A1, A3, A4 and A8 turn a silent wrong result into an error; owner question 2. |
+| A2, A5, A6, A7, A9 (package A) | Quiet fallbacks: a reference table that fails to load becoming `{}` (A2), a native-lane exception rerun on pandas (A5), `except Exception: return None` (A6, A7), a hint that always returns None (A9) | Each is a defect on a broken install or an internal bug; a working config sees no change. (A1, A3, A4 and A8 are in "Before 1.0 freeze".) |
 | C1 to C8 | Internal modules with no production caller: `MemoryMonitor`, `ProgressLogger`, `ConfigValidator`, five operator Protocols, pass-through adapters, `_route_diagnostics.py`, `_ner_rate.py` (check against row 32c), `_pool_quality.py` (check the platform caller) | Private paths, no public name. |
 | C11, C12, C14, C15, C17 | `mimesis/_parity.py` moves to tests; `reject_unsafe_text_mask_source_dtype`; `progress_bar`; `env_int` and `prune_old_versions`; pandas loaders used only by `api.scan` | Private or test-only. |
 | C13 | `cli/library/`, nine files with no importer outside the package | Not a cleanup: planned work for row LIB. Stays. |
@@ -242,6 +253,16 @@ carry the V1 part). Each cut shows the unit's coverage and mutation score unchan
 | "V2 audit after V1 from the V2 log; phases 1 to 3 are hardening" | decisions 2026-11-03 | This page and the vault backlog are that audit. |
 | Flaky tests on platform main | ROADMAP, V2 backlog | Tests. |
 | DuckDB 5 Data viewer SQL tab; 6 memory-fraction constant duplicated across repos; 7 `--duckdb-source` audit | DuckDB master note | "Needs change" items that keep results and names the same. |
+
+### Items named in ROADMAP rows and records
+
+| Item | Source | Why 1.x patch |
+|---|---|---|
+| The CI lane sentry imports `_shell_tokens` by a private name; add a small public facade shared by both repos | ROADMAP row 5 (CI-L1) | Test machinery. |
+| The `decoy run` error text cap of 500 characters | ROADMAP row 65 (F31) | Text length in an error message. |
+| Atomic output: ACLs and xattrs of an old output are not copied; `_atomic.py` is over 400 lines; a second temp-create path; a `KeyboardInterrupt` during the temp chmod can leave an empty hidden temp; ENOSPC inside the writer block is not mapped to `atomic_write_failed` | ROADMAP row 21b, `docs/records/2026-11-07-atomic-output-build.md` | Defects and cleanup; the output for a working run is the same. (The `.gz` header item is in "Before 1.0 freeze".) |
+| DUP-DEFECTS B11: no scheme check on notify and `--url` | ROADMAP row 24zd, `E:plan/dup-defects` section 13 | Rejects only schemes that never worked: nothing is sent today. |
+| VALUE-FREE-ERRORS B3, FU-5 and FU-6 | ROADMAP row 24a | In the vault backlog, tagged there. |
 
 ### Platform V2 candidate plan: cleanups and validation
 
@@ -272,7 +293,6 @@ No item on the old V2 lists is 2.0 as designed. Two things can make one 2.0:
 | X-11 better free-text detection | expansion page | it ships as a new opt-in detector or profile | 2.0: it changes the findings of the existing default detector |
 | DuckDB 9 whole-file profiling aggregates | DuckDB master note | the aggregates are an option or new fields | 2.0: default profile numbers change for configs valid today |
 | Hostile in-process hardening | decisions 2026-10-30 | it hardens internals and custom providers keep working | 2.0: it restricts what custom providers may do |
-| Platform plan 12: partition-stable `when:` on number-with-blanks columns | platform V2 plan | the owner accepts the changed result for affected rows as a defect fix | 2.0: the output of existing configs changes |
 | Phase F: re-baselined generation oracle (accelerated or streamed generation, F1 and F3) | platform V2 plan | new routes match today's output byte for byte | 2.0: generation re-freezes to a new deterministic output |
 | F2 follow-up: a sibling column that reads the FK key through `when:` | platform V2 plan | the sibling keeps seeing the source key, as today | 2.0: it would see the resolved key |
 
@@ -300,8 +320,9 @@ bucket tag. The tags are a first pass. These are the counts:
 
 1. Reason codes (audit B9): 68 of 69 platform codes and others are unreferenced in the engine and CLI. Record the platform
    consumer, or remove the code before the freeze?
-2. Package A fixes (A1, A3, A4, A8) turn a silent wrong result into an error, and A8 changes the exit code of a run with no
-   outputs from success to failure. Are these patch-level defect fixes, or contract changes to settle before the freeze?
+2. Package A: A1, A3, A4 and A8 are listed under "Before 1.0 freeze" because each turns a run that works today into an
+   error, and A8 changes the exit code of a run with no outputs from success to failure. A2, A5, A6 and A7 turn a
+   fallback into an error only on a broken install or an internal bug and are kept as 1.x patch. Confirm the split.
 3. F17 and F27: the companion scope marks them V1 and the old list kept them as V2. Which is right? This page treats them
    as 1.x minor.
 4. Which public renames belong in "Before 1.0 freeze" for the STORM taxonomy split and the F22 names?
@@ -317,7 +338,7 @@ bucket tag. The tags are a first pass. These are the counts:
 |---|---|
 | `out-of-scope.md` (replaced by this page): Council features, DETECT-PROFILES, EXPAND, VAULT-STREAM, TOKENIZE-CHUNKED, post-V1 on demand, proportionality work | 1.x minor, 1.x patch, Before 1.0 freeze |
 | `v2-v3-expansion-candidates.md`, X-01 to X-25 | 1.x minor, 2.0 only if built the other way (X-11) |
-| `findings-register.md` after-V1 items, `decisions.md` V2 notes, ROADMAP V2 mentions | 1.x minor, 1.x patch, 2.0 only if built the other way |
+| `findings-register.md` after-V1 items, `decisions.md` V2 notes, ROADMAP V2 mentions (rows 5, 12, 21b, 24a, 24g, 24p, 24zd, 65) and `docs/records/2026-11-07-atomic-output-build.md` | 1.x minor, 1.x patch, 2.0 only if built the other way |
 | `REMEDIATION.md` (proportionality audit), packages A to K | Before 1.0 freeze (B, C9, C10, C16, D6, D9, J2), 1.x patch (the rest) |
 | Vault `handoffs/V2-CORRECTIVE-BACKLOG.md` | Corrective backlog (vault) |
 | Vault `v2/duckdb/` | 1.x minor, 1.x patch, 2.0 only if built the other way (9) |
