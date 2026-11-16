@@ -58,6 +58,7 @@ from decoy.cli.io._layout import (
     relative_outputs,
     shown_path,
     side_file_default,
+    side_file_name,
     target_parent_writable,
     write_claim,
 )
@@ -68,6 +69,7 @@ from decoy.cli.io._layout_errors import (
     GATE_CODES,
     GATE_DESCRIPTORS,
     OUTPUT_DIR_UNUSABLE,
+    OUTPUT_PATH_COLLISION,
     PIPELINE_NAME_INVALID,
     PROJECT_NESTED,
     PROJECT_NOT_FOUND,
@@ -110,9 +112,12 @@ from decoy.cli.io._placement import (
 )
 from decoy.cli.io._project import (
     DECOY_DIR,
+    OwnedYaml,
+    OwnedYamlError,
     Project,
     ensure_decoy_dir,
     find_project,
+    read_owned_yaml,
     write_project_marker,
 )
 from decoy.cli.io._scan_set import (
@@ -146,6 +151,7 @@ __all__ = [
     "GATE_CODES",
     "GATE_DESCRIPTORS",
     "OUTPUT_DIR_UNUSABLE",
+    "OUTPUT_PATH_COLLISION",
     "PIPELINES_DIR",
     "PIPELINE_NAME_INVALID",
     "PROJECT_NESTED",
@@ -161,6 +167,8 @@ __all__ = [
     "LayoutError",
     "LayoutWarning",
     "OutputPlacement",
+    "OwnedYaml",
+    "OwnedYamlError",
     "PipelineEntry",
     "PipelineName",
     "PipelineRef",
@@ -223,6 +231,7 @@ __all__ = [
     "prepare_out",
     "prepared_sources",
     "read_claim",
+    "read_owned_yaml",
     "read_small_file",
     "read_source",
     "relative_outputs",
@@ -237,6 +246,7 @@ __all__ = [
     "select_table",
     "shown_path",
     "side_file_default",
+    "side_file_name",
     "source_schema_and_chunks",
     "table_records",
     "target_format_issues",

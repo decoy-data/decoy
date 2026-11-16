@@ -1,13 +1,18 @@
-"""The record store: `put`, `get` and `resolve` over content-addressed object files.
+"""The record store: `put`, `get`, `resolve` and the ref entry points over content-addressed object files.
 
 The shape is git's object store: immutable objects named by their content hash under a two-hex
 fan-out (`objects/ab/<62 hex>.json`), written to a temp file and moved into place without ever
 replacing a file. An existing object is success only when it passes the one id rule
 (`decoy_engine.records.record_id`, which `records.decode` also applies: parse, drop `id`,
-canonicalize, hash), so a CRLF checkout of a
-valid record is fine and a different file under the same name is `record_corrupt` (plan 4.3,
-4.8). A record may only link to records already stored (plan 4.3): ids hash their links, so the
-link graph has no cycles by construction. Record writes take no lock (plan 4.8).
+canonicalize, hash), so a CRLF checkout of a valid record is fine and a different file under the
+same name is `record_corrupt` (plan 4.3, 4.8). A record may only link to records already stored
+(plan 4.3): ids hash their links, so the link graph has no cycles by construction. Record writes
+take no lock (plan 4.8); the index row is inserted only after the object exists, and a failed
+insert never fails the put (the next locked open catches up, plan 4.4).
+
+`open_library` probes for a network filesystem and runs the index freshness sync once. A remote
+root or an index that cannot be locked puts the library in degraded mode (plan 4.8): `put` still
+works, ref updates refuse with `library_lock_unavailable`, and queries parse the object files.
 
 `put` is the only writer under `library/objects/` and `records.encode` is called only here
 (G-LIB-WRITER, tests/sentry/io_policy/test_library_writer.py). Plan sections 4.2, 4.3, 4.5, 4.8
@@ -18,15 +23,19 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from decoy_engine import records
 
 from decoy.cli.io import LayoutWarning, ensure_decoy_dir
+from decoy.cli.library import _index
 from decoy.cli.library._errors import (
     LIBRARY_FILE_TOO_LARGE,
     LIBRARY_LAYOUT_NEWER,
+    LIBRARY_LOCK_UNAVAILABLE,
     LIBRARY_READ_FAILED,
     LIBRARY_WRITE_FAILED,
     RECORD_CORRUPT,
@@ -37,9 +46,11 @@ from decoy.cli.library._errors import (
     library_error,
 )
 from decoy.cli.library._fs import ensure_private_dir, read_capped, write_dotfile_once, write_once
+from decoy.cli.library._index import IndexRow
 from decoy.cli.library._paths import (
     GITATTRIBUTES,
     GITATTRIBUTES_TEXT,
+    ID_PREFIX,
     LAYOUT_FILE,
     LAYOUT_VERSION,
     LIBRARY,
@@ -47,14 +58,14 @@ from decoy.cli.library._paths import (
     TMP,
     check_root_budget,
     is_project_folder,
+    record_digest,
+    record_prefix,
 )
+from decoy.cli.library._refs import read_ref, set_ref
+from decoy.cli.library._remote import remote_filesystem
 
 __all__ = ["Library", "PutResult", "open_library"]
 
-_PREFIX = "sha256:"
-_HEX = frozenset("0123456789abcdef")
-_DIGEST_CHARS = 64
-_MIN_PREFIX = 8  # as git allows abbreviated object names
 _SUFFIX = ".json"
 # Records hold names, counts and digests only; 16 MiB is far above any real one and keeps a
 # planted file from being read whole. `put` refuses a record it could not read back.
@@ -62,6 +73,9 @@ MAX_RECORD_BYTES = 16 * 1024 * 1024
 _MAX_LAYOUT_BYTES = 4096
 
 Decoded = records.DecodedRecord | records.OpaqueRecord | records.RecordNeedsNewer
+Probe = Callable[[Path], "str | None"]
+REMOTE_FILESYSTEM = "remote_filesystem"
+LOCK_UNAVAILABLE = "lock_unavailable"
 
 
 @dataclass(frozen=True)
@@ -75,14 +89,13 @@ class PutResult:
     warnings: tuple[LayoutWarning, ...] = ()
 
 
-def _digest(record_id: str) -> str | None:
-    """The 64 hex digits of a full record id, or None when it is not one (no path is built)."""
-    digest = record_id.removeprefix(_PREFIX) if record_id.startswith(_PREFIX) else ""
-    return digest if len(digest) == _DIGEST_CHARS and set(digest) <= _HEX else None
-
-
 class Library:
-    """One library root. Build it with `open_library`; setup runs once, on the first `put`."""
+    """One library root. Build it with `open_library`; setup runs once, on the first `put`.
+
+    `degraded` is None, `"remote_filesystem"` (with `filesystem` naming it) or
+    `"lock_unavailable"`. `stale` is True when the index could not be caught up this time (the
+    lock was busy); queries then read the object files.
+    """
 
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -90,20 +103,112 @@ class Library:
         self._objects = self._library / OBJECTS
         self._tmp = self._library / TMP
         self._ready = False
+        self.degraded: str | None = None
+        self.filesystem: str | None = None
+        self.stale = False
+
+    def _open(self, probe: Probe) -> None:
+        self.filesystem = probe(self.root)
+        if self.filesystem is not None:
+            self.degraded = REMOTE_FILESYSTEM
+        elif self._library.is_dir():
+            self._catch_up()
+
+    def _catch_up(self) -> None:
+        """The freshness sync under the lock (plan 4.4); a missing or corrupt index is rebuilt."""
+        code: str | None = None
+        try:
+            _index.run_locked(self._library, self._sync_all)
+        except LibraryError as exc:
+            code = exc.code
+        if code == LIBRARY_LOCK_UNAVAILABLE:
+            self.degraded = LOCK_UNAVAILABLE
+        elif code is not None:
+            self.stale = True
+
+    def _sync_all(self, conn: sqlite3.Connection) -> None:
+        _index.ensure_schema(conn)
+        _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+
+    def _ready_index(self, conn: sqlite3.Connection) -> None:
+        """The schema in place; a schema just (re)built is filled from the objects at once, so
+        a rebuild in the middle of a process never answers with an empty index."""
+        if _index.ensure_schema(conn):
+            _index.sync(conn, _index.object_ids(self._objects), self._index_row)
+
+    def _index_row(self, record_id: str) -> IndexRow | None:
+        """The row for a stored object, or None when it is corrupt or of an unreadable major
+        (fsck reports those)."""
+        try:
+            decoded = self.get(record_id)
+        except LibraryError:
+            return None
+        if isinstance(decoded, records.RecordNeedsNewer) and not decoded.verified:
+            return None
+        digest = record_digest(record_id) or ""
+        size = os.stat(self._object(digest)).st_size
+        return _index.row_from(decoded.raw, size, isinstance(decoded, records.DecodedRecord))
+
+    def _index_put(self, row: IndexRow) -> None:
+        if self.degraded is not None:
+            return
+
+        def work(conn: sqlite3.Connection) -> None:
+            self._ready_index(conn)
+            _index.insert(conn, row)
+
+        try:
+            _index.run_locked(self._library, work)
+        except LibraryError:
+            self.stale = True  # the object is stored; the next locked open inserts the row
+
+    def rows(
+        self, *, kind: str | None = None, pipeline: str | None = None, table: str | None = None
+    ) -> list[IndexRow]:
+        """Rows matching the filters, oldest first. From the index; when the library is
+        degraded or the index is stale, from the object files."""
+        return _index.select(self._all_rows(), kind=kind, pipeline=pipeline, table=table)
+
+    def latest(
+        self, kind: str, *, pipeline: str | None = None, table: str | None = None
+    ) -> str | None:
+        """The virtual `latest` (plan 4.5): the largest `(created_at, id)` of `kind`."""
+        return _index.latest(self._all_rows(), kind=kind, pipeline=pipeline, table=table)
+
+    def _all_rows(self) -> list[IndexRow]:
+        if not self._library.is_dir():
+            return []
+        if self.degraded is None and not self.stale:
+
+            def work(conn: sqlite3.Connection) -> list[IndexRow]:
+                self._ready_index(conn)
+                return _index.all_rows(conn)
+
+            rows: list[IndexRow] | None = None
+            try:
+                rows = _index.run_locked(self._library, work)
+            except LibraryError:
+                rows = None
+            if rows is not None:
+                return rows
+        loaded = (self._index_row(i) for i in sorted(_index.object_ids(self._objects)))
+        return [row for row in loaded if row is not None]
 
     def _object(self, digest: str) -> Path:
         return self._objects / digest[:2] / f"{digest[2:]}{_SUFFIX}"
 
     def put(self, envelope: records.RecordEnvelope) -> PutResult:
         """Store a built envelope; storing it again is success. Raises `LibraryError`."""
-        digest = _digest(envelope.id) if isinstance(envelope, records.RecordEnvelope) else None
+        digest = (
+            record_digest(envelope.id) if isinstance(envelope, records.RecordEnvelope) else None
+        )
         if digest is None:
             raise LibraryError(RECORD_INVALID)
         for link in envelope.links:
-            target = _digest(link.id)
+            target = record_digest(link.id)
             if target is None or not self._object(target).is_file():
                 raise LibraryError(RECORD_LINK_MISSING)
-        warnings = self._prepare()
+        warnings = self.prepare()
         data = records.encode(envelope)
         if len(data) > MAX_RECORD_BYTES:
             raise LibraryError(LIBRARY_FILE_TOO_LARGE)
@@ -112,6 +217,7 @@ class Library:
         created = write_once(folder, f"{digest[2:]}{_SUFFIX}", data, tmp_dir=self._tmp)
         if not created:
             self._verify(self._object(digest), envelope.id)
+        self._index_put(_index.row_from(envelope.to_dict(), len(data), True))
         return PutResult(envelope.id, created, warnings)
 
     def get(self, record_id: str) -> Decoded:
@@ -123,7 +229,7 @@ class Library:
         envelope, an `OpaqueRecord` for a kind this version does not know, or
         `RecordNeedsNewer`. This is the one library read (G-ONE-SCAN-READER exempts this file).
         """
-        digest = _digest(record_id)
+        digest = record_digest(record_id)
         data = None if digest is None else read_capped(self._object(digest), MAX_RECORD_BYTES)
         if data is None:
             raise LibraryError(RECORD_NOT_FOUND)
@@ -144,8 +250,8 @@ class Library:
 
         Empty for no match or for text that is not a prefix; more than one means ambiguous.
         """
-        digest = text.removeprefix(_PREFIX)
-        if not (_MIN_PREFIX <= len(digest) <= _DIGEST_CHARS and set(digest) <= _HEX):
+        digest = record_prefix(text)
+        if digest is None:
             return ()
         failure: OSError | None = None
         names: list[str] = []
@@ -158,17 +264,34 @@ class Library:
         if failure is not None:
             raise library_error(LIBRARY_READ_FAILED, failure)
         rest = digest[2:]
+        found = (f"{ID_PREFIX}{digest[:2]}{name.removesuffix(_SUFFIX)}" for name in names)
         return tuple(
             sorted(
-                f"{_PREFIX}{digest[:2]}{name.removesuffix(_SUFFIX)}"
-                for name in names
+                record_id
+                for record_id, name in zip(found, names)
                 if name.endswith(_SUFFIX)
                 and name.startswith(rest)
-                and _digest(f"{_PREFIX}{digest[:2]}{name.removesuffix(_SUFFIX)}") is not None
+                and record_digest(record_id) is not None
             )
         )
 
-    def _prepare(self) -> tuple[LayoutWarning, ...]:
+    @property
+    def library_dir(self) -> Path:
+        return self._library
+
+    @property
+    def tmp_dir(self) -> Path:
+        return self._tmp
+
+    def set_ref(self, kind: str, name: str, record_id: str) -> None:
+        """Point `refs/<kind>/<name>` at a stored record, under the library lock (plan 4.5)."""
+        set_ref(self, kind, name, record_id)
+
+    def read_ref(self, kind: str, name: str) -> str | None:
+        """The record id `refs/<kind>/<name>` holds, or None when the ref is not set."""
+        return read_ref(self, kind, name)
+
+    def prepare(self) -> tuple[LayoutWarning, ...]:
         """Make the root, its git files, `library/`, `tmp/`, `LAYOUT` and `objects/`, once."""
         if self._ready:
             return ()
@@ -229,8 +352,12 @@ class Library:
             raise LibraryError(RECORD_CORRUPT)
 
 
-def open_library(root: Path) -> Library:
-    """The library at `root` (from `resolve_root`). Checks the Windows path budget; writes
-    nothing until the first `put`."""
+def open_library(root: Path, *, probe: Probe | None = None) -> Library:
+    """The library at `root` (from `resolve_root`). Checks the Windows path budget, probes for a
+    network filesystem (`probe`, default `_remote.remote_filesystem`) and, when the library
+    exists, catches the index up with the object files. Creates nothing for a new library until
+    the first `put`."""
     check_root_budget(root)
-    return Library(root)
+    library = Library(root)
+    library._open(probe or remote_filesystem)
+    return library

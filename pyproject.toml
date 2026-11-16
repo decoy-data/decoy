@@ -120,10 +120,20 @@ dependencies = [
     # profile's `generated_at` end `+00:00`; row 620a48a5 is the CLI runtime
     # profile (67 pins, unchanged).
     #
+    # 0.25.0 canonicalises every digest input (pinned-plan and resume fingerprints
+    # and `pipeline_config_hash` move), refuses a YAML date, NaN or surrogate in a
+    # config at plan compile, and renames `CUSTOM_PROVIDERS_DIR` to
+    # `DECOY_CUSTOM_PROVIDERS_DIR`; row c80550ef is the CLI runtime profile (67
+    # pins, unchanged).
+    #
+    # 0.26.0 refuses two declared tables that write to one destination
+    # (`target_shared_destination`) and reads every fixed-width file through one
+    # record parser; row dceac0cd is the CLI runtime profile (67 pins, unchanged).
+    #
     # Hard-pinned to one engine release. The platform is parked and stays on
     # 0.18.0, so the two pins differ for now. The engine is not on PyPI, so CI
-    # and the smoke docs install the `v0.24.0` git tag.
-    "decoy-engine==0.24.0",
+    # and the smoke docs install the `v0.26.0` git tag.
+    "decoy-engine==0.26.0",
     # Pin the typer minor: `typer utils docs` metavar rendering differs across
     # typer minors (0.26.x emits `TEXT`/`FILE`; 0.27.x emits `<str>`/`<file>`),
     # and docs/cli-reference.md is committed and checked by the test_cli_surface

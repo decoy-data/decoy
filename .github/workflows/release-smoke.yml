@@ -11,21 +11,25 @@
 # this workflow runs on the built wheel inside an isolated venv that
 # does not see the source tree. Both are intentionally redundant.
 #
+# This is the wheel smoke, the weekly regression lane. It does not smoke
+# the release artifact: the 1.0.0 release gate (R1) counts only the
+# canonical smoke of the signed bundles,
+# `packaging_tools/smoke_install.py --from-dist`, recorded in the
+# canonical table of docs/release/smoke-log.md (REL-GATE 5.4).
+#
 # Triggers:
 #   - workflow_dispatch: manual button on the Actions page.
-#   - push on tag matching v*: every release candidate runs the gate.
-#   - schedule (weekly): catches PyPI / wheel-resolution drift from
-#     transitive dependencies publishing breaking minor versions.
+#   - push on tag matching v*: runs on every tag as a regression check.
+#   - schedule (weekly): catches index drift from transitive
+#     dependencies publishing breaking minor versions.
 #
-# Engine resolution: the `decoy` wheel declares `decoy-engine>=0.4.0`
-# but the engine is not yet on the real PyPI index (the publish
-# pipeline lives in OSS.7). For the dry-run window the workflow
-# installs the engine from the sibling repo's main branch via a
-# git+https VCS spec. Once OSS.7 publishes to TestPyPI / PyPI, this
-# step swaps to a plain `pip install decoy-engine==<pinned>`.
+# Engine resolution: tag pushes and manual runs install the wheel
+# constrained by requirements-dev.lock, which pins the engine commit.
+# The weekly run installs the engine from its pinned git tag and lets
+# everything else resolve from today's index (see the install steps).
 #
-# OSS matrix: Python only at OSS.1. OS matrix (windows + macos)
-# rides with OSS.7's publish pipeline; resist adding here.
+# Matrix: Python only. Per-platform coverage belongs to the canonical
+# smoke above, so do not add an OS matrix here.
 #
 # Reference: oss-cli/README.md sections 8 (Tier A row OSS.1) +
 # OSS.1 sprint spec section 'Implementation order' commit 3.
@@ -81,7 +85,7 @@ jobs:
         # The one install that resolves today's index on purpose, so the weekly
         # run sees transitive-dependency drift. Registered in ci/install-policy.toml.
         if: github.event_name == 'schedule'
-        run: uv pip install --python .smoke/bin/python "git+https://github.com/louiskeep/decoy-engine@v0.24.0" dist/*.whl
+        run: uv pip install --python .smoke/bin/python "git+https://github.com/louiskeep/decoy-engine@v0.26.0" dist/*.whl
 
       - name: decoy --version (smoke 1)
         run: .smoke/bin/decoy --version

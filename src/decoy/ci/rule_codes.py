@@ -203,13 +203,13 @@ def _engine_registry_codes() -> frozenset[str]:
     codes are fixed tokens that carry no values, which is the property this allowlist keeps.
 
     Derived on first use, not at import: `decoy ci` must first import the engine inside
-    `engine_logging_silenced`, or the engine's cwd-relative log file lands in the repository."""
+    `engine_logging_silenced`, so the engine's logger is quiet before anything can log."""
     from decoy_engine import reasons
 
     return _codes_from_registry(reasons.manifest()["entries"])
 
 
-# Literal codes the engine emits outside the registry (sources at engine v0.24.0). The test
+# Literal codes the engine emits outside the registry (sources at engine v0.26.0). The test
 # holds this set equal to what an AST scan of the installed engine finds minus the registry.
 _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
     {

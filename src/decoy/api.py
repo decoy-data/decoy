@@ -39,7 +39,12 @@ from decoy.cli._sources import (
     resolved_source_config,
 )
 from decoy.cli.extras import UnsupportedCloudEndpointError
-from decoy.cli.io import RunLayout, prepared_sources
+from decoy.cli.io import (
+    OUTPUT_PATH_COLLISION,
+    RunLayout,
+    prepared_sources,
+    resolved_output_collisions,
+)
 from decoy.cli.io._targets import claimed_format, format_for_path
 from decoy.cli.run import (
     _load_sources_from_config,
@@ -355,6 +360,31 @@ def _file_target_entry(existing: Any, path: Any) -> dict:
     return entry
 
 
+def _refuse_output_collisions(config_dict: dict, layout: RunLayout) -> None:
+    """Refuse two outputs that `_write_mask_outputs` would write to one file.
+
+    Checks the paths the writer will open, not the declared text, so `../x.csv`, a symlinked
+    folder or a case-only difference is caught as well as two equal spellings. Every file
+    target takes part, as in `decoy run` and `decoy validate`, so the library refuses what the
+    CLI refuses. The check input is built fresh: `config_dict` is never edited, because the plan
+    hash covers `quarantine`.
+    """
+    placed_targets: dict[str, dict] = {}
+    for table, entry in (config_dict.get("targets") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        raw = entry.get("path")
+        if entry.get("type", "file") in ("file", None) and isinstance(raw, str):
+            placed_targets[table] = {"type": "file", "path": str(layout.place_target(raw))}
+    placed: dict[str, Any] = {"targets": placed_targets}
+    quarantine = layout.place_quarantine(config_dict)
+    if quarantine is not None:
+        placed["quarantine"] = {"enabled": True, "output_path": quarantine}
+    clash = resolved_output_collisions(placed, None)
+    if clash is not None:
+        raise OUTPUT_PATH_COLLISION.error(first=clash[0], second=clash[1])
+
+
 def mask(
     data: Any = None,
     config: Any = None,
@@ -430,7 +460,8 @@ def mask(
 
     Raises:
         ConfigValidationError: the config fails `PipelineConfig` schema
-            validation.
+            validation, including two declared tables whose targets the
+            engine proves equal (`target_shared_destination`).
         MaskSecretConfigError: a mask secret is missing, malformed, or
             configured in two places at once.
         ValueError / TypeError: an ambiguous or wrongly-shaped `data` /
@@ -438,6 +469,11 @@ def mask(
         decoy.cli.io._targets.TargetFormatError: a declared target format
             contradicts its path suffix (for example `format: parquet` at
             `out.csv`). Raised before any source is read or the engine runs.
+        decoy.cli.io.LayoutError: two outputs (targets, or a target and the
+            quarantine file) the schema accepts still resolve to one file on
+            disk (a symlink, hard link, case folding or `..`), code
+            `layout.output_path_collision`. Raised before any source is read
+            or the engine runs, so no output is replaced.
         UnsupportedCloudEndpointError: a source or target (after `data` /
             `out` are applied) is s3 or gcs. Same refusal as `decoy run`,
             raised by the shared I/O helper before the engine runs; cloud
@@ -530,6 +566,9 @@ def mask(
             warnings.warn(gate_result.warn_message, stacklevel=2)
 
         base_dir = Path(config).parent if isinstance(config, (str, Path)) else Path.cwd()
+        # Library callers get fixed, predictable paths: no run folder, claim, `LATEST` or `current`.
+        layout = RunLayout.fixed(base_dir)
+        _refuse_output_collisions(config_dict, layout)
         # Every `sources:` entry now points at a real file (the caller's
         # own declared path, or one of the temp files just staged), so the
         # CLI's own loader (`decoy.cli.run._load_sources_from_config`)
@@ -537,8 +576,6 @@ def mask(
         # `decoy run pipeline.yaml`.
         sources = _load_sources_from_config(config_dict, base_dir)
 
-        # Library callers get fixed, predictable paths: no run folder, claim, `LATEST` or `current`.
-        layout = RunLayout.fixed(base_dir)
         resolver = _build_generation_resolver(master_key, key_label)
         instance_locale = (config_dict.get("global_settings") or {}).get("default_locale")
 

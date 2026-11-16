@@ -179,6 +179,16 @@ def compile(
         _simple_error(state, config_path, str(refusal["message"]), code=refusal["code"])
         raise typer.Exit(code=exit_code_for(exc))
 
+    # `compile_plan` takes the raw mapping and never runs the schema, so without this check a
+    # config that run and validate refuse would compile cleanly and could write `--output`.
+    from decoy.cli.gate import shared_destination_findings
+
+    shared = shared_destination_findings(raw)
+    if shared:
+        lines = "\n".join(f"{f.location}: {f.message} [{f.code}]" for f in shared)
+        _simple_error(state, config_path, lines, code=shared[0].code)
+        raise typer.Exit(code=EXIT_USAGE)
+
     from decoy_engine import __version__ as engine_version
     from decoy_engine import parse_pipeline_config
     from decoy_engine.plan import compile_plan

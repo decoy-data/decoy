@@ -19,6 +19,7 @@ from decoy.cli.gate import (
     check_static_before_acquire,
     layout_findings,
     parse_pipeline_yaml,
+    shared_destination_findings,
 )
 from decoy.cli.io import (
     DuckDBSourceError,
@@ -263,8 +264,13 @@ def _placement(ctx: RunContext) -> OutputPlacement:
 def _refuse_layout_faults(ctx: RunContext) -> None:
     """Raise the gate's own refusal for an output layout fault, before any source is touched.
 
-    A config the layout check cannot read is left to the gate, which names the fault.
+    Two targets the declarations prove equal raise the engine's schema refusal instead, the
+    code `decoy validate` reports for the same config. A config the layout check cannot read is
+    left to the gate, which names the fault.
     """
+    shared = shared_destination_findings(ctx.raw)
+    if shared:
+        raise PreRunCheckError.from_findings(shared)
     try:
         findings = layout_findings(ctx.config, ctx.raw, _placement(ctx))
     except Exception:

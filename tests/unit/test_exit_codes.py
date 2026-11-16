@@ -48,6 +48,7 @@ def test_named_constants_have_pinned_integer_values() -> None:
         "EXIT_CAPACITY",
         "EXIT_PARTIAL",
         "RUN_EXIT_MAP",
+        "PRECEDENCE",
     }
 
 
