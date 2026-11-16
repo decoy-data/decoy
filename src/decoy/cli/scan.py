@@ -1,13 +1,13 @@
-"""`decoy scan` -- one "look at my data" verb (merges `profile` + `storm analyze`).
+"""`decoy scan` -- one "look at my data" verb (merges the former `profile` and analyze verbs).
 
 `decoy scan SOURCE` profiles a CSV / Parquet / fixed-width file with the engine's
-STORM (Statistical Top-down Risk Mapping) detector and reports dataset shape,
+pre-scan detector and reports dataset shape,
 per-field stats, PII candidates, quasi-identifier groups, and a re-identification
 risk score. Saved-scan operations are subcommands: `scan fields SCAN`,
 `scan show SCAN FIELD`, `scan diff OLD NEW`.
 
 This command is the S3a merge of the former top-level `profile` command and the
-`storm analyze` verb. It keeps BOTH commands' capabilities while preserving the
+old analyze verb. It keeps BOTH commands' capabilities while preserving the
 former profile command's two
 non-negotiable disciplines:
 
@@ -56,7 +56,7 @@ _SCAN_GROUP_HELP = (
 
 
 # PII score threshold to surface a field as a candidate. Mirrors the engine's
-# STORM internal threshold (>=0.6 is a "PII candidate" / "high" bucket).
+# scan internal threshold (>=0.6 is a "PII candidate" / "high" bucket).
 _PII_CANDIDATE_THRESHOLD = 0.6
 
 
@@ -134,7 +134,7 @@ Examples:
     Scan a fixed-width file using an explicit column layout.
     Layout YAML: columns: [{name: id, start: 0, width: 5}, ...]
 
-HONESTY: PII candidates are SUGGESTIONS based on STORM pattern matching. They
+HONESTY: PII candidates are SUGGESTIONS based on pattern matching. They
 are NOT authoritative classifications. You review each flagged field and decide
 what masking to apply. Decoy never auto-classifies PII.
 
@@ -142,7 +142,7 @@ No raw cell values appear in the inline output or in --output. Field stats
 include dtype, null_rate, distinct_count only.
 
 See also: decoy scan fields, decoy scan show, decoy scan diff,
-  decoy explain storm, decoy validate.
+  decoy explain scan, decoy validate.
 """
 
 
@@ -205,7 +205,7 @@ scan_app = typer.Typer(
 
 
 # ---------------------------------------------------------------------------
-# Source loaders (format dispatch + sampling). Moved from storm.py with `scan`.
+# Source loaders (format dispatch + sampling). Moved from the old scan group with `scan`.
 # ---------------------------------------------------------------------------
 
 
@@ -383,7 +383,7 @@ def _load_data(
 
 
 # ---------------------------------------------------------------------------
-# Saved-scan helpers (used by fields/show/diff). Moved from storm.py.
+# Saved-scan helpers (used by fields/show/diff). Moved from the old scan group.
 # ---------------------------------------------------------------------------
 
 
@@ -449,7 +449,7 @@ def _emit_load_error(
     raw_data = _looks_like_raw_data(scan)
     if raw_data:
         label = Path(scan).name
-        message = f"{label} looks like raw data, not a STORM scan JSON."
+        message = f"{label} looks like raw data, not a saved scan JSON."
         scan_cmd = f"decoy scan {scan} --has-header --output scan.json"
     elif isinstance(exc, FileNotFoundError):
         message = f"could not open {scan}: file not found."
@@ -497,7 +497,7 @@ def _read_table(scan: str, table: str | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan SOURCE` -- the default command (merges profile + storm analyze)
+# `decoy scan SOURCE` -- the default command (merges profile and the old analyze verb)
 # ---------------------------------------------------------------------------
 
 
@@ -582,7 +582,7 @@ def _scan(
 ) -> None:
     """Profile source files: shape, field stats, PII candidates, reid risk.
 
-    Runs STORM detection on each file, one table per file. PII candidates are
+    Runs the scan detectors on each file, one table per file. PII candidates are
     surfaced as SUGGESTIONS for review, never as authoritative classifications.
     No raw cell values appear in the inline output or in `--output`. Save the
     scan with `--output scan.json`, then use `decoy scan fields/show/diff`.
@@ -608,13 +608,13 @@ def _scan(
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan fields SCAN` -- list fields from a saved scan (was the storm verb)
+# `decoy scan fields SCAN` -- list fields from a saved scan (was a verb of the old scan group)
 # ---------------------------------------------------------------------------
 
 
 def _fields(
     scan: str = typer.Argument(
-        ..., help="Path to a STORM scan JSON, or `-` for stdin."
+        ..., help="Path to a saved scan JSON, or `-` for stdin."
     ),
     pii: PiiLevel | None = typer.Option(
         None, "--pii",
@@ -718,13 +718,13 @@ def _fields(
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan show SCAN FIELD` -- per-field detail (was the storm verb)
+# `decoy scan show SCAN FIELD` -- per-field detail (was a verb of the old scan group)
 # ---------------------------------------------------------------------------
 
 
 def _show(
     scan: str = typer.Argument(
-        ..., help="Path to a STORM scan JSON, or `-` for stdin."
+        ..., help="Path to a saved scan JSON, or `-` for stdin."
     ),
     field: str = typer.Argument(..., help="Field name to inspect."),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
@@ -840,13 +840,13 @@ def _show(
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan diff OLD NEW` -- compare two saved scans (was the storm verb)
+# `decoy scan diff OLD NEW` -- compare two saved scans (was a verb of the old scan group)
 # ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class ScanDiff:
-    """The categorized difference between two saved STORM scans (pure, no I/O)."""
+    """The categorized difference between two saved scans (pure, no I/O)."""
 
     added_rows: list[dict]
     removed_rows: list[dict]
@@ -942,10 +942,10 @@ def compute_scan_diff(old_data: dict, new_data: dict) -> ScanDiff:
 
 def _diff(
     old: str = typer.Argument(
-        ..., help="Path to the older STORM scan JSON, or `-` for stdin."
+        ..., help="Path to the older saved scan JSON, or `-` for stdin."
     ),
     new: str = typer.Argument(
-        ..., help="Path to the newer STORM scan JSON, or `-` for stdin."
+        ..., help="Path to the newer saved scan JSON, or `-` for stdin."
     ),
     strict: bool = typer.Option(
         False, "--strict",

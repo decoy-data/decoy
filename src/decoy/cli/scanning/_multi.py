@@ -32,12 +32,12 @@ from decoy.ui.output import (
     emit_json_document,
     print_traceback,
 )
-from decoy.ui.storm_animation import stormy_multistage
+from decoy.ui.scan_progress import scan_multistage
 from decoy.ui.table import make_table
 from decoy.ui.theme import accent, code, hint, warn
 
 PII_NOTE = (
-    "PII candidates are SUGGESTIONS based on STORM pattern matching. "
+    "PII candidates are SUGGESTIONS based on pattern matching. "
     "They are not authoritative classifications. Review each flagged field "
     "and decide what masking to apply. Decoy never auto-classifies PII."
 )
@@ -326,7 +326,7 @@ def render_pii_honesty(state: OutputState, pii_candidate_count: int) -> None:
     """The profile-honesty framing block (H4): candidates are suggestions."""
     state.console.print(
         warn("PII candidates:"),
-        f"{pii_candidate_count} field(s) flagged by STORM pattern matching.",
+        f"{pii_candidate_count} field(s) flagged by pattern matching.",
     )
     state.console.print(
         " ", hint("These are SUGGESTIONS for review -- NOT authoritative classifications.")
@@ -442,7 +442,7 @@ def run_scan(
     try:
         from decoy_engine import scan_set_to_dict, scan_sources
 
-        with stormy_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms:
+        with scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms:
             result = scan_sources(
                 descriptors,
                 sample_rows=row_cap,
