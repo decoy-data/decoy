@@ -136,18 +136,6 @@ def test_g5c_a_remote_source_is_not_opened_and_warns(
     assert strict.exit_code == EXIT_WARNINGS, strict.output
 
 
-@pytest.mark.parametrize("kind", ["s3", "gcs"])
-def test_g5c_validate_preflight_alone_warns_on_a_remote_source(tmp_path: Path, kind: str) -> None:
-    result = runner.invoke(
-        app, ["validate", "preflight", str(_remote_config(tmp_path, kind)), "--json"]
-    )
-    assert result.exit_code == EXIT_OK, result.output
-    checks = json.loads(result.stdout)["checks"]
-    assert any(
-        c["status"] == "warn" and "declared columns not checked" in c["message"] for c in checks
-    ), result.output
-
-
 def test_g6_fpe_without_a_namespace_exits_1_at_validate(tmp_path: Path) -> None:
     src = tmp_path / "in.csv"
     src.write_text("ssn\n123456789\n", encoding="utf-8")

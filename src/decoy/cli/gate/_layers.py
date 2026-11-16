@@ -343,12 +343,12 @@ def _run_preflight_layer(
     an error the compile layer already reports, so it becomes a not-checked warning. Matching
     the location too keeps a same-code failure at another config path.
     """
+    from decoy.cli._sources import remote_source_names
     from decoy.cli.preflight import (
         CAPACITY_CHECK,
         PLAN_UNCOMPILABLE_CHECK,
         _check_capacity,
         _check_native,
-        _check_remote_sources,
         _check_source_files,
         _PreflightAccumulator,
     )
@@ -365,7 +365,12 @@ def _run_preflight_layer(
         except SubsetError:
             pass  # the compile layer reports it; the estimate then says "not applicable"
     _check_source_files(raw, config.parent, acc)
-    _check_remote_sources(raw, acc)
+    for name in remote_source_names(raw):
+        acc.add_warn(
+            name=f"source.{name}.declared_columns",
+            message=f"Source {name!r}: declared columns not checked: remote source, checked at run.",
+            location=f"sources.{name}",
+        )
     _check_capacity(capacity_raw, config, acc)
     _check_native(raw, acc)
 
