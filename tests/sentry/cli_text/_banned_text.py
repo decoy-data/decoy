@@ -84,6 +84,9 @@ BANNED_USER_TEXT = tuple(
         r"decoy_engine\.\w+\._",
         _SCAN_PATTERN,
         _GATE_PATTERN,
+        r"\b\w+\.py:\d+",
+        r"\bBF\d+\b",
+        r"the platform's",
     )
 )
 
