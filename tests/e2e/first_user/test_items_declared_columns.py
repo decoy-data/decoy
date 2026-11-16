@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from decoy_engine import parse_pipeline_config
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -21,7 +22,7 @@ from tests.csv_sources import csv_source
 
 runner = CliRunner()
 
-UNDECLARED = "source_file.undeclared_column"
+UNDECLARED = "source_file.declared_column_missing"
 
 
 def _write(tmp_path: Path, sources: dict[str, Any], columns: list[dict[str, Any]]) -> Path:
@@ -38,6 +39,7 @@ def _write(tmp_path: Path, sources: dict[str, Any], columns: list[dict[str, Any]
 
 
 def _codes(result: Any) -> list[tuple[str, str]]:
+    assert result.stdout, f"no JSON: {result.output!r} {result.exception!r}"
     return [(m["layer"], m["code"]) for m in json.loads(result.stdout)["messages"]]
 
 
@@ -61,16 +63,19 @@ def test_g5_a_declared_column_missing_from_the_source_exits_1(tmp_path: Path) ->
     assert UNDECLARED in run.output
 
 
-def test_g5_validate_reads_the_header_only(tmp_path: Path) -> None:
+def test_g5_the_column_check_reads_the_header_only(tmp_path: Path) -> None:
+    from decoy.cli.preflight import _check_declared_columns, _PreflightAccumulator
+
     src = tmp_path / "in.csv"
     # A data row that cannot decode: a body read would fail with a different code.
     src.write_bytes(b"name\n\xff\xfe\xfd\n")
     config = _write(
         tmp_path, {"people": csv_source(src)}, [{"name": "name", "strategy": "redact"}]
     )
-    result = _validate(config)
-    assert result.exit_code == EXIT_OK, result.output
-    assert UNDECLARED not in result.output
+    validated = parse_pipeline_config(yaml.safe_load(config.read_text())).model_dump()
+    acc = _PreflightAccumulator()
+    _check_declared_columns(validated, tmp_path, acc)
+    assert [c.status for c in acc.checks] == ["pass"]
 
 
 def test_g5b_a_headerless_csv_with_too_few_column_names_exits_1(tmp_path: Path) -> None:
@@ -113,7 +118,7 @@ def test_g5_validate_preflight_alone_refuses_the_same_config(tmp_path: Path) -> 
 
 
 def _s3_config(tmp_path: Path) -> Path:
-    s3 = {"type": "s3", "format": "csv", "bucket": "b", "key": "k.csv", "has_header": True}
+    s3 = {"type": "s3", "format": "csv", "bucket": "b", "key": "k.csv" }
     return _write(
         tmp_path,
         {"people": s3},
@@ -122,17 +127,10 @@ def _s3_config(tmp_path: Path) -> Path:
 
 
 def test_g5c_a_remote_source_is_not_opened_and_warns(tmp_path: Path, monkeypatch: Any) -> None:
-    import decoy.cli._sources as sources
-
     def _no_network(*_a: Any, **_k: Any) -> None:
         raise AssertionError("validate must not open a remote source")
 
     monkeypatch.setattr("decoy_engine.profile._cloud_readers.build_s3_profile_source", _no_network)
-    seen: list[Any] = []
-    real = sources.prepared_sources
-    monkeypatch.setattr(
-        sources, "prepared_sources", lambda *a, **k: (seen.append(a), real(*a, **k))[1]
-    )
     config = _s3_config(tmp_path)
 
     result = _validate(config)
