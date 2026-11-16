@@ -33,6 +33,7 @@ from tests.e2e.models._venvs import (
     fake_sdist,
     fake_wheel,
     installed,
+    make_full_venv,
     make_venv,
     ner_available,
     run_cli,
@@ -106,7 +107,7 @@ def test_a_lone_model_wheel_needs_the_closure_already_installed(tmp_path: Path) 
     work = tmp_path / "work"
     work.mkdir()
 
-    bare = make_venv(tmp_path / "bare", with_pip=True)
+    bare = make_full_venv(tmp_path / "bare", with_pip=True)
     before = installed(bare)
     proc = run_cli(
         bare,
@@ -118,7 +119,7 @@ def test_a_lone_model_wheel_needs_the_closure_already_installed(tmp_path: Path) 
     assert _doc(proc)["code"] == "models.source_invalid"
     assert installed(bare) == before
 
-    ready = make_venv(tmp_path / "ready", with_pip=True)
+    ready = make_full_venv(tmp_path / "ready", with_pip=True)
     closure = [str(p) for p in wh.glob("*.whl") if p.name != MODEL_WHEEL]
     subprocess.run(
         [
@@ -155,7 +156,7 @@ def test_a_wheelhouse_installs_closure_and_model_with_no_network(
 ) -> None:
     wh = wheelhouse()
     assert wh is not None
-    python = make_venv(tmp_path / "venv", with_pip=route == "pip")
+    python = make_full_venv(tmp_path / "venv", with_pip=route == "pip")
     env = child_env(PIP_INDEX_URL=UNREACHABLE_INDEX, UV_DEFAULT_INDEX=UNREACHABLE_INDEX)
     work = tmp_path / "work"
     work.mkdir()
@@ -207,7 +208,7 @@ def test_online_install_never_asks_for_decoy_engine_and_moves_nothing(
         fake_wheel(extra, "numpy", "99.0.0"),
         fake_wheel(extra, "pandas", "99.0.0"),
     ]
-    python = make_venv(tmp_path / "venv", with_pip=route == "pip")
+    python = make_full_venv(tmp_path / "venv", with_pip=route == "pip")
     before = installed(python)
     work = tmp_path / "work"
     work.mkdir()
@@ -235,7 +236,7 @@ def test_online_install_never_moves_an_installed_closure_member(tmp_path: Path) 
     wh = wheelhouse()
     assert wh is not None
     old = fake_wheel(tmp_path, "catalogue", "2.0.0")  # spaCy needs >=2.0.6
-    python = make_venv(tmp_path / "venv", with_pip=True)
+    python = make_full_venv(tmp_path / "venv", with_pip=True)
     subprocess.run(
         [str(python), "-m", "pip", "install", "-q", "--no-index", str(old)],
         check=True,
@@ -259,7 +260,7 @@ def test_online_install_never_moves_an_installed_closure_member(tmp_path: Path) 
 def test_mac_mini_offline_wheelhouse_install(tmp_path: Path) -> None:
     wh = wheelhouse()
     assert wh is not None
-    python = make_venv(tmp_path / "venv", with_pip=True)
+    python = make_full_venv(tmp_path / "venv", with_pip=True)
     env = child_env(PIP_INDEX_URL=UNREACHABLE_INDEX, UV_DEFAULT_INDEX=UNREACHABLE_INDEX)
     work = tmp_path / "work"
     work.mkdir()

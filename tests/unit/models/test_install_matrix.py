@@ -104,7 +104,7 @@ def test_ctrl_c_leaves_no_temporary_directory(
 
     rig.hook = interrupt
     result = rig.invoke("--yes")
-    assert result.exit_code == 1
+    assert result.exit_code == 130, "Ctrl-C keeps the shell's interrupt status"
     assert rig.leftovers() == []
     assert _models_list_ner(rig) is False
 
