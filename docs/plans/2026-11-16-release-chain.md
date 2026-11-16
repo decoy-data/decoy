@@ -82,12 +82,19 @@ actions; section 12 lists them with the dates they are needed by.
 - Each acceptance test below is written first and must fail on the base head for the reason
   given ("fails before"). A builder may add tests but must not weaken these.
 - Recurring defect classes apply by name: 1 (anchored validation) to the `key_version` label and
-  every new option value; 3 (no exception context) to every new refusal; 4 (versioned read models)
-  to `lock/v1` and `decoy-env-report/v1`; 11 (no raised caps) to every ratchet this plan touches.
+  every new option value; 2 (strict wire and stored types) and 4 (versioned read models) to
+  `lock/v1` and `decoy-env-report/v1`; 3 (no exception context) to every new refusal; 11 (no
+  raised caps) to every ratchet this plan touches.
 - Commit rules: Conventional Commits subject, no body unless it says why, final line `cam`.
 - No logging of data values, user project paths, host names or key material.
 - File size cap 800 lines. `src/decoy/cli` is frozen at 29 direct modules; a new command goes in a
   named sub-package (sub-packages do not count toward the parent).
+
+### Plan-record placement
+
+| New file | Directory | Placement basis | Neighbor |
+|---|---|---|---|
+| `2026-11-16-release-chain-record.md` | `docs/plans/` | Owner-directed companion record beside this executable plan; it has `Status: record` and contains no executable work | `2026-11-16-release-chain.md` |
 
 ## 4. Established solutions
 
@@ -354,9 +361,9 @@ The engine ships pool and reference data. The `data_digest` covers the four file
 `generation/composite/data/us_localities.csv`. Resource discovery supplies the file set, so the
 implementation has no second hand-written data-file list.
 
-The owner decides whether V1 drops `canon` and `generator_logic` (OQ-9). The engine has no
-canonical-form or generator-logic version constant today. The recommended answer is to drop both:
-the version-invariant probe covers their executable paths, and `engine` records the release.
+OQ-9 is decided: V1 drops `canon` and `generator_logic`. The engine has no canonical-form or
+generator-logic version constant today. The version-invariant probe covers both executable paths,
+and `engine` records the release.
 
 Drift guard: AT-78-E2 changes each source and asserts exactly the named field changes, so a source
 that stops feeding its field turns the test red.
@@ -461,7 +468,7 @@ from `keyprovider`). Pattern: lock file plus diffable environment report (sectio
 | AT-78-E3 | `run_probe()` equals the shipped golden; mutations in one HKDF/HMAC label byte, the FF1 path and one seeded Faker draw each change it. The focused golden assertion runs in every `fingerprint-matrix` cell in `.github/workflows/dps-dependency-matrix.yml`, with no NumPy or pandas distribution draw | Probe does not exist |
 | AT-78-E4 | With a configured key seeded for the test: the lock JSON does not contain that key, `build_fingerprint(...).key_check` (`delivery/resume/_fingerprint.py:96-103`), any path under `tmp_path`, or `socket.gethostname()` | Lock does not exist |
 | AT-78-E5 | `key_version` values `"v1\n"`, `""`, 65 characters, and `"a/b"` raise the engine's typed error with a catalog reason code; `__cause__` and `__context__` are None; `_records.py` and the lock use the same public check (mutating the private pattern in `keyprovider.py` turns both red) | Lock does not exist; the pattern is private in `_records.py` |
-| AT-78-E6 | Reader cells: next major refused, missing version tag refused, and an added field ignored under `lock/v1`. The hand-written compatibility-corpus sample reads successfully | Lock does not exist |
+| AT-78-E6 | Writer and reader strict-type matrix for `lock/v1`: every integer field refuses `True`, a numeric string and a non-integer scalar; every scalar field refuses a list or object; `dependencies` refuses a scalar, list, non-string key, non-string version and nested value. Run each mutation through model construction/write and JSON read. Reader compatibility cells also refuse the next major and a missing version tag, ignore an added field under `lock/v1`, and read the hand-written corpus sample. Named mutations: coerce `str` to `int`, accept `True` as `1`, stringify dependency values and accept a list in place of the dependency object | Lock does not exist |
 | AT-78-E7 | The import-layer sentry (`tests/sentry/layout/test_import_layers.py`) passes with no new ignore line | Guard: green before, must stay green |
 | AT-78-C1 | `decoy env report --json` validates against `decoy-env-report/v1` and contains the engine lock fields | Command does not exist |
 | AT-78-C2 | Two reports that differ in `faker`: `decoy env compare` prints one line naming `faker` and exits 4; identical reports exit 0; a truncated file exits 1 | Command does not exist |
@@ -470,6 +477,7 @@ from `keyprovider`). Pattern: lock file plus diffable environment report (sectio
 | AT-78-C5 | A patched `native_companion_status()` returns a seeded path marker in both `cause` and `abi_actual`: the report shows `ok: false` and a reason code, omits both unsafe fields, and the marker is absent from stdout, stderr and `--json` | Command does not exist |
 | AT-78-C6 | `--label` values `"a\n"`, `""`, 33 characters and `"a b"` exit 1 | Command does not exist |
 | AT-78-C7 | QA INST-18 on two hosts (a Linux VM and the Mac) | Run at QA |
+| AT-78-C8 | Writer and CLI report-reader strict-type matrix for `decoy-env-report/v1`: apply the AT-78-E6 primitive and `dependencies` mutations on write and read; also refuse wrong scalar or container types for `cli_version`, `target`, `native_selfcheck`, `label` and `probe_status`, booleans or numeric strings in integer fields, malformed `native_selfcheck` members, and every `probe_status` token except `ok` and `mismatch`. Named mutations: coerce a numeric string, accept `True` as `1`, stringify a dependency value, accept a list for an object, and treat unknown `probe_status` as free text | Command and strict report reader do not exist |
 
 ### Slices
 
@@ -616,11 +624,11 @@ cleanup leaves no `.incoming*` folder.
 |---|---|---|
 | AT-88-O1 | A fixture bundle signed by a test key, key pinned: `decoy upgrade --bundle` installs and `current` flips; a socket guard proves no network call; `--json` has `checks_skipped` | Option does not exist |
 | AT-88-O2 | One flipped byte in the bundle: refused before extract; existing version folders are unchanged and no `.incoming.*` folder remains (INST-03 for upgrade) | Option does not exist |
-| AT-88-O3 | Missing `.sig`, then missing `.sha256`: each refused (INST-04 for upgrade) | Option does not exist |
+| AT-88-O3 | Missing `.sig`, then missing `.sha256`: each refused, with no residual `.incoming*` staging directory (INST-04 for upgrade) | Option does not exist |
 | AT-88-O4 | Signature by a second key: refused with the signature code | Option does not exist |
 | AT-88-O5 | Older bundle without `--version`: refused; with `--version <its declared version>`: installs; with a different `--version`: refused. Each refusal leaves existing version folders unchanged and no `.incoming.*` folder remains | Option does not exist |
-| AT-88-O6 | Original file replaced after the copy (test hook): the staged copy is what installs | Option does not exist |
-| AT-88-O7 | A validly signed older bundle renamed to a newer version's file name, sidecars renamed with it: refused as a downgrade without `--version` | Option does not exist |
+| AT-88-O6 | Original file replaced after the one bounded in-memory read (test hook): the already verified in-memory bytes are what install; there is no staged file copy to substitute | Option does not exist |
+| AT-88-O7 | A validly signed older bundle renamed to a newer version's file name, sidecars renamed with it: refused as a downgrade without `--version`, with no residual `.incoming*` staging directory | Option does not exist |
 | AT-88-O8 | `--bundle` with `--version` naming a version that is retained on disk: the bundle installs; `activate_local_version` is not called | Option does not exist |
 | AT-88-O9 | AT-47-2 golden passes on the network path after the shared-core refactor | Guard from 47-B |
 | AT-88-O10 | A bundle with the current declared version reports no action without `--force`; with `--force` it reinstalls. The post-swap validator receives that declared version and accepts the launched version | Option does not exist |
@@ -686,8 +694,8 @@ Files: `src/decoy/distribution/installer.py` (a preflight hook beside `post_swap
 `src/decoy/cli/upgrade.py`, `src/decoy/cli/env/_report.py` (a function the upgrade can call
 in-process). 3 production files, about 240 lines. Risk R2. Depends on 78-C1 and 88-O.
 
-`upgrade.py` is 204 lines; after 88-O and 88-P it must stay under 400. If it passes 500,
-the 88-P builder moves the preflight text into `src/decoy/distribution/_preflight.py`.
+`upgrade.py` is 204 lines; its estimated finished size after 88-O and 88-P is under 400 lines, and
+the finished file must stay under the 800-line cap.
 
 ### Placement for row 88
 
@@ -700,72 +708,26 @@ the 88-P builder moves the preflight text into `src/decoy/distribution/_prefligh
 | SBOM in bundle | `packaging_tools/build_bundle.py` | Existing bundle builder |
 | Tests | `tests/unit/distribution/`, `tests/e2e/test_upgrade_*.py`, `tests/unit/release/` | Existing test homes |
 
-## 9. Row 90: REL-PKG remainder
+## 9. Inherited plans: executable summary
 
-Verdict: the MAC-ED25519 plan (`plan/mac-ed25519` `97dbcfb0`) stands. MAC-V1b merged (#281).
-MAC-V1a is PR #282 on `feat/mac-v1a`. Action: finish its gate (Codex on the exact head; Dennis
-too, since it touches signature code) and merge. No new slice.
+The supporting delta audits for MAC-ED25519, REL-IMAGE and REL-WEB are in the linked
+[release-chain record](2026-11-16-release-chain-record.md). Their executable decisions remain
+here:
 
-Left after MAC-V1a, all owner tasks or row 94:
+- MAC-V1a: finish Dennis and Codex gates on PR #282 and merge. All remaining REL-PKG work is an
+  owner task or row 94 S0. No new slice is added here.
+- REL-IMAGE: IMG-1 is buildable now. IMG-2 follows one published native companion release; IMG-3
+  follows IMG-2. IMG-4 is not buildable: its increase of the CI write-scope allowlist from one to
+  three remains owner-gated until an exception records who approved it, when, and where. IMG-5
+  follows IMG-4 and row 32a. Risks remain IMG-1 R2, IMG-2 R2, IMG-3 R1, IMG-4 R2 and IMG-5 R2.
+- REL-WEB: run one Codex pass on `plan/rel-web` `53e0e77c` sections 5.1 to 5.4 before RW-H. RW-C2b
+  is buildable now and precedes 88-O. RW-H is R2; RW-D and RW-P are R1 and follow RW-H.
 
-- The release key pair (owner creates it; the private half goes only into the Environment
-  `native-release`).
-- The Environment, with a required approver.
-- Tag protection for `native-v*` and for the CLI release tags.
-- A SHA pin for the qemu action. Engine `native-companion-release.yml` line 119 uses
-  `docker/setup-qemu-action@v3`, a tag, not a SHA.
-- Row 94 S0 `.github/workflows/release.yml`, including the five PRE-S0 items in the MAC plan.
-
-Windows hook: `targets.py` holds the target list in one place; 88-O refuses a foreign bundle
-through `targets.detect_target()`, so a Windows target added by row 89 needs no change here.
-
-## 10. Row 90a: REL-IMAGE, deltas against main
-
-The plan on `plan/rel-image` `d4716855` stands. Changes since its base (CLI `5bb93e66`):
-
-1. Roadmap row 90a says "NOT STARTED; needs a plan". Update to "plan GO (Codex); IMG-1
-   buildable".
-2. `installer.py:655` (the launcher shim) is now `installer.py:660`. After 47-B it stays in
-   `installer.py`.
-3. The root callback IMG-1 edits is now `src/decoy/__main__.py:218` (`_root`), with the runtime
-   guard at lines 251 to 255. IMG-1 puts its check after the runtime guard and before the update
-   notice, as the plan says.
-4. The write-scope ratchet assertion is at `tests/sentry/test_ci_lock_installs.py:313`, not 314.
-   OQ-5 (raise to 3) was answered yes on 2026-11-15, so IMG-4 may raise it, as a recorded owner
-   exception (defect class 11).
-5. The guide hint `https://decoy.dev/docs/container` (plan line 352) must use the REL-WEB Q1 host,
-   `trydecoy.com`. Derive it from the same constant the version endpoint uses
-   (`version_document.DEFAULT_URL`) so one change moves both.
-6. Owner answers are in: OQ-1 (a), OQ-2 GHCR under an organization, OQ-3 keyless, OQ-4 slim only,
-   OQ-5 yes. The GHCR organization is not created yet; IMG-4 waits on it.
-7. IMG-2 needs one published engine native companion release. The workflow exists
-   (`native-companion-release.yml`, tags `native-v*`); no `native-v*` tag exists yet. It needs the
-   `DECOY_RELEASE_KEY_PEM` secret in the Environment (owner).
-8. The engine pin in the Dockerfile `ARG` joins the RD-n pin list (and AT-76-1) when IMG-2
-   merges.
-
-Slices unchanged: IMG-1 R2 (now), IMG-2 R2, IMG-3 R1, IMG-4 R2, IMG-5 R2.
-
-## 11. Row 91: REL-WEB remainder
-
-The plan on `plan/rel-web` `53e0e77c` (rev 3) stands. The roadmap calls it "not yet gated": it had
-two Dennis rounds and a cross-model review, but no Codex pass. Recommend one Codex pass on its
-sections 5.1 to 5.4 before RW-H builds (plan only, R1).
-
-- RW-C2b (CLI): unblocked. `docs/install.md`, `packaging_tools/README.md` and
-  `docs/distribution/version-endpoint-contract.md` still name decoy.dev; plus the host-agreement
-  sentry. AT-C7. At most 5 files and 200 lines. R1. Build now. 88-O also edits `docs/install.md`;
-  RW-C2b goes first.
-- RW-H (web): hosting layout, `check-dist.mjs`, deploy guards, freshness workflow. AT-H1 to AT-H6.
-  R2 (it publishes signed files).
-- RW-D (web): download page. AT-D1 to AT-D4. Under Q1 (a) it needs no extra field. R1. After RW-H.
-- RW-P (web): `/proof` page. AT-P1 to AT-P5. R1. After RW-H.
-
-The trydecoy.com domain, DNS and hosting account are owner items (section 12).
+The owner-gated setup and release actions are in section 12.
 
 ## 12. Owner-gated items
 
-None of these blocks a slice in sections 5 to 11 except where the slice says so.
+None of these blocks a slice in sections 5 to 9 except where the slice says so.
 
 | Item | Blocks | Needed by |
 |---|---|---|
@@ -775,12 +737,13 @@ None of these blocks a slice in sections 5 to 11 except where the slice says so.
 | Approve the qemu action SHA pin | S0 | 2026-12-01 |
 | Push the first `native-v*` tag (a release, R3) | IMG-2 | after the key |
 | Create the GHCR organization | IMG-4 | before G5 |
+| Record the CI write-scope allowlist exception with approver, date and durable location | IMG-4 | before IMG-4 enters a buildable slice |
 | trydecoy.com domain, DNS and hosting account (spend) | RW-H deploy, the live version endpoint | before G5 |
 | Licensor name and CLA (counsel; REL-GATE Q1, Q2) | INST-13 license check at RC | G7 |
 | GA flip (REL-GATE Q3) | G8 | G8 |
 | Tart on the Mac mini (MAC plan Q3) | Mac release smoke only | G6 |
 
-## 13. Owner questions, with recommended answers
+## 13. Owner decisions and recommended answers
 
 | Id | Question | Recommended |
 |---|---|---|
@@ -829,89 +792,57 @@ None of these blocks a slice in sections 5 to 11 except where the slice says so.
 
 ## 16. Class table
 
-Classes from the defect catalog (`docs/handoffs/DEFECT-CATALOG.md`, section 3).
+The full supporting audit is in the linked
+[release-chain record](2026-11-16-release-chain-record.md). This compact index keeps the plan-lint
+contract and points to the executable acceptance cells.
 
-| # | Class | Closing structure | Sentry or test | Mutation that turns it red |
+| # | Class | Closing structure | Sentry or property test | Mutation |
 |---|---|---|---|---|
-| 1 | Value-bearing output | `_refuse` in `upgrade.py` prints fixed text, a code and the exception type only; env reports carry labels, never host names | AT-78-E4, AT-78-C4, AT-88-S4; a seeded marker in the bundle path and the label must not reach stdout, stderr or `--json` | Make `_refuse` print `str(exc)`; make the report read `socket.gethostname()` |
-| 2 | Cleanup missing on an exit path | Staging stays under the install lock and `_sweep_stale_staging`; 88-O copies into the same staging folder | AT-88-O2, AT-88-O3, AT-88-O5 and AT-88-O7 assert no new folder under `versions/` after each refusal | Skip the staging sweep on the offline refusal path |
-| 3 | State machine and concurrency | The single-flight lock in `distribution/lock.py` covers the offline path and the preflight, since both run inside the install critical section | A test that holds the lock and runs `decoy upgrade --bundle`: refused at once | Call the local entry outside `_exclusive(home)` |
-| 4 | Route parity and silent fallback | Network and offline upgrade share one verify, stage and flip core | AT-88-O4 and AT-88-P4 run the same checks through `--bundle` | Skip the signature check in `install_local_bundle` |
-| 5 | Referential integrity | N/A: no slice reads or writes table data or foreign keys | N/A: no table data in this plan | N/A: no table data in this plan |
-| 6 | Untrusted producer | The staged runtime's report is parsed by the strict versioned reader (unknown major refused, size bounded at 64 KiB) and its text is never echoed | AT-78-E6; AT-88-P5 (1 MiB, wrong major, timeout, seeded stderr marker) | Echo the staged runtime's stderr in the preflight line |
-| 7 | Check then use on a path (TOCTOU) | 88-O copies the bundle into staging first, then checks and extracts the copy only | AT-88-O6 | Extract from the original `PATH` after checking the copy |
-| 8 | Weak tests and overclaimed evidence | Every acceptance test states its fail-before; RD-0 seeds an old tag | AT-76-1 seeded doc; AT-47-3 lists patch targets | Remove the seeded-case assertion in AT-76-1 |
-| 9 | Behavior-preserving refactor drift | 47-B is a pure move with the characterization golden first and re-homed sentry keys | AT-47-1, AT-47-2, AT-47-4 | Rename the staged folder before the self-check (AT-47-2) |
-| 10 | Frozen contract drift | New command, flag, schema and `--json` fields are additive and recorded in the frozen-surface map | `tests/sentry/release/test_frozen_surface_map.py`, `tests/unit/test_cli_surface.py`, the release freeze shape test | Add `decoy env` without its `docs/cli-reference.md` and map rows |
+| 1 | Value-bearing output | Fixed refusal text and bounded report fields | AT-78-E4, AT-78-C4, AT-88-S4 | Print `str(exc)` |
+| 2 | Cleanup missing on an exit path | One staging sweep under the install lock | AT-88-O2, O3, O5, O7 | Skip the sweep |
+| 3 | State machine and concurrency | One exclusive install section | Offline lock-contention test | Call outside `_exclusive` |
+| 4 | Route parity and silent fallback | Shared verify, stage and flip core | AT-88-O4, AT-88-P4 | Skip local signature verification |
+| 5 | Referential integrity | N/A: no table data | N/A | N/A |
+| 6 | Untrusted producer | Strict versioned readers and 64 KiB bound | AT-78-E6, AT-78-C8, AT-88-P5 | Coerce a numeric string |
+| 7 | Check then use on a path (TOCTOU) | Verify and extract the same in-memory bytes | AT-88-O6 | Reopen `PATH` after verification |
+| 8 | Weak tests and overclaimed evidence | Red-first acceptance cells | AT-76-1, AT-47-3 | Remove a seeded assertion |
+| 9 | Behavior-preserving refactor drift | Pure-move manifest and characterization golden | AT-47-1, AT-47-2, AT-47-4 | Rename staging before self-check |
+| 10 | Frozen contract drift | One frozen-surface map | Frozen-surface, CLI-surface and release-freeze tests | Omit the map row |
 
 ## 17. Enumerations
 
-### Exit paths of `decoy upgrade` (the code that owns installed state)
+The full enumeration audit is in the linked
+[release-chain record](2026-11-16-release-chain-record.md). No executable requirement is moved.
 
-- `src/decoy/cli/upgrade.py:81` and `src/decoy/cli/upgrade.py:87`: usage refusals, exit 1. 88-O
-  adds `--bundle` with `--url` or `--check` here.
-- `src/decoy/cli/upgrade.py:101`: local activation failed, `_refuse`, exit 3.
-- `src/decoy/cli/upgrade.py:103`: local activation done, exit 0.
-- `src/decoy/cli/upgrade.py:110`, `:122`, `:127`: endpoint unreachable, document rejected,
-  document stale; exit 3. The offline path skips all three.
-- `src/decoy/cli/upgrade.py:118`: placeholder key or signature refusal, exit 3.
-- `src/decoy/cli/upgrade.py:142` and `:145`: `--check` result and already current, exit 0.
-- `src/decoy/cli/upgrade.py:174`: install failed, runtime unchanged, exit 3. The 88-O and 88-P
-  refusals end here.
-- `src/decoy/cli/upgrade.py:177`: installed, exit 0.
-- `src/decoy/distribution/installer.py` raises `InstallError` at 35 sites; all reach
-  `src/decoy/cli/upgrade.py:174`.
+### Exit paths
+
+- Usage and early refusal exits begin at `src/decoy/cli/upgrade.py:81`.
+- Install failures converge on the refusal at `src/decoy/cli/upgrade.py:174`.
 
 ### Routes
 
-- Network upgrade: `upgrade.py` to `install_version` (`src/decoy/distribution/installer.py:464`).
-- Local activation: `activate_local_version` (`src/decoy/distribution/installer.py:398`).
-- Offline upgrade (new, 88-O): `install_local_bundle`, on the same core as `install_version`.
-- First install: `install.sh` and `src/decoy/distribution/first_install.py`; unchanged here.
+- Network upgrade enters through `install_version` at `src/decoy/distribution/installer.py:464`.
+- Offline upgrade enters through `install_local_bundle` and shares the verify, stage and flip core.
 
 ### FK shapes
 
-N/A: no slice in this plan touches table data or relationships.
+N/A: no slice touches table data or relationships.
 
 ### Fields
 
-- `InstallOutcome` (`src/decoy/distribution/installer.py:115`): `version`, `target`,
-  `version_dir`, `previous_version`, `rolled_back`, `rollback_version`. Unchanged; the preflight
-  list goes in the upgrade `--json` result, not in this type.
-- `RuntimeLock` (new, 78-E1): the `runtime_identity()` keys plus `compat_phase`, `faker`,
-  `providers_digest`, `data_digest`, `dependencies`, `key_version`, `probe`.
-- `decoy-env-report/v1` (new, 78-C1): the lock plus `cli_version`, `target`, `native_selfcheck`
-  (`present`, `ok`, `reason` only), `probe_status`, `label`.
-- Upgrade `--json` result: new optional `preflight` (list or null) and `checks_skipped` (offline
-  path only).
+- Stored fields: `InstallOutcome`, `RuntimeLock` and `decoy-env-report/v1`.
+- Wire additions: upgrade `preflight` and `checks_skipped`.
 
 ### Output surfaces
 
-- stdout: `decoy env report`, `decoy env compare`, the `decoy upgrade` result.
-- stderr: refusals through `_refuse` (`src/decoy/cli/upgrade.py:180`), the offline skip line, the
-  preflight lines, `probe: MISMATCH`.
-- `--json`: `decoy-env-report/v1`; the upgrade result's new `preflight` field.
-- Files: the report written by `--out`; `LICENSE.md`, `NOTICE` and `sbom.cdx.json` in the bundle.
-- Logs: none added. Errors: typed engine errors with catalog reason codes (78-E1).
-- Help: `decoy env --help`, `decoy upgrade --help` (the `--bundle` text and the `--check` note).
-- Root callback: unchanged by this plan (IMG-1 owns its own edit, section 10).
+- User surfaces: stdout, stderr, JSON, report and bundle files, and help.
+- Server log surfaces: none added.
 
 ## 18. Reuse inventory
 
-- Pinned release key, signature and manifest checks: `src/decoy/distribution/signing.py`,
-  `manifest.py`, `release_key.py`, `verify_extracted.py`.
-- Staging, flip, rollback and the single-flight lock: `installer.py`, `lock.py`, `layout.py`.
-- Refusal path: `_refuse` in `upgrade.py`; exit codes in `src/decoy/cli/exit_codes.py`.
-- Environment reads: `decoy._env_flags` only (sentry `tests/sentry/io_policy/test_environment_reads.py`).
-- Atomic writes: the CLI atomic writer (sentry `tests/sentry/test_atomic_writer.py`).
-- Engine: `runtime_identity()`, `_canonical`, the reason catalog, `providers_v2/_registry.py`.
-- Size and layout sentries: `tests/sentry/layout/test_module_size.py`, `test_package_fanout.py`.
-- Engine pin source: `scripts/dev/lock_version.sh --engine-spec`.
-- Release tools: `packaging_tools/build_bundle.py`, `scripts/release/sbom.sh`, `sbom_checks.py`,
-  `launch_pin_check.py`.
-
-New machinery and why: the pure-move checker (ported, not new); the lock envelope and the probe
-(the row asks for them); the env command (the row asks for it).
+The detailed reuse inventory is in the linked
+[release-chain record](2026-11-16-release-chain-record.md). The executable plan continues to name
+each reused choke point where its slice uses it.
 
 ## 19. Frozen contracts touched
 
