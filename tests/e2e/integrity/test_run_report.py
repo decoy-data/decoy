@@ -93,10 +93,12 @@ def test_integrity_out_is_honored_and_a_rerun_replaces_the_report(tmp_path: Path
 
 def test_a_rerun_replaces_the_default_report(tmp_path: Path) -> None:
     cfg = write_pipeline(tmp_path, post=REGEX_ONLY)
+    stamps = []
     for _ in range(2):
         result = runner.invoke(app, ["run", str(cfg)])
         assert result.exit_code == 0, result.output
-    assert default_report(tmp_path).is_file()
+        stamps.append(json.loads(default_report(tmp_path).read_text("utf-8"))["generated_at"])
+    assert stamps[0] != stamps[1]
 
 
 def test_a_report_that_cannot_be_written_exits_3_after_the_outputs(tmp_path: Path) -> None:
