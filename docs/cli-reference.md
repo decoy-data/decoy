@@ -95,7 +95,7 @@ $ decoy run [OPTIONS] [CONFIG]
 
 **Options**:
 
-* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the worst child&#x27;s (3, then 5, 1, 4, 2, 0). Takes no pipeline name and refuses --evidence-out, --vault and --out-dir.
+* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the first of 5 &gt; 3 &gt; 1 &gt; 6 &gt; 4 &gt; 2 &gt; 0 that any child produced. Takes no pipeline name and refuses --evidence-out, --vault and --out-dir.
 * `-m, --mode [mask|generate]`: Operation: mask existing data or generate synthetic data.  [default: mask]
 * `--json`: Emit a structured JSON result on stdout. Progress goes to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries success.
@@ -1423,7 +1423,7 @@ $ decoy scan diff [OPTIONS] OLD NEW
 
 **Options**:
 
-* `--strict`: Exit 1 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
+* `--strict`: Exit 4 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.
 * `--table TEXT`: Table to read when the saved scan holds more than one.
 * `--json`: Emit the categorized diff as JSON to stdout.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr.
@@ -1436,7 +1436,7 @@ Examples:
     Print field-, PII-, QI-, and risk-level differences between two scans.
 
   decoy scan diff baseline.json new.json --strict
-    Same, but exit 1 on drift (PII bucket bumped up, new high-PII field, or
+    Same, but exit 4 on drift (PII bucket bumped up, new high-PII field, or
     new quasi-identifier group). Wire this into CI.
 
   decoy scan diff baseline.json new.json --json | jq '.drift'

@@ -1,8 +1,8 @@
 # Versioning policy
 
-`decoy-cli` (PyPI dist) follows [Semantic Versioning 2.0.0](https://semver.org/).
+`decoy-cli` follows [Semantic Versioning 2.0.0](https://semver.org/).
 
-`decoy-cli` and `decoy-engine` are published as separate distributions, and each carries its own version number; they bump independently. The CLI's `decoy-engine>=X.Y` dependency pin documents the engine surface it was tested against.
+`decoy-cli` and `decoy-engine` each carry their own version number; they bump independently. The CLI pins one engine release exactly (`decoy-engine==X.Y.Z`), and that pin documents the engine surface it was tested against. Users get the CLI as a signed per-platform bundle that contains the matched engine.
 
 ## Bump rules
 
@@ -38,21 +38,21 @@ Pre-1.0 (currently `0.X.Y`) the surface is settling. We try to follow MAJOR-equi
 
 The first `1.0.0` release is gated on:
 
-- The license confirmed by counsel (FSL-1.1-ALv2, release gate R1-c).
-- OSS.7 publish pipeline + first real-PyPI green push.
-- The release-smoke gate having at least one recorded green run (README §8 R2).
-- All Tier-A OSS sprints (OSS.3 through OSS.7) shipped.
+- The licensor confirmed by counsel (license FSL-1.1-ALv2).
+- Publication of the signed bundles to the download host.
+- A recorded canonical smoke install on each supported platform.
+- The completed release readiness instance.
 
 ## Release process
 
-The mechanical process is owned by OSS.7. Until that sprint lands, releases are by-hand:
+A release is a bundle release, built and signed as described in the [packaging spec](../plans/2026-10-22-cli-distribution-and-packaging-spec.md). Nothing goes to a public package index.
 
 1. Run `decoy --version` and confirm the value matches `pyproject.toml`'s `version`.
 2. Append a new section to `CHANGELOG.md` under `## [X.Y.Z] - YYYY-MM-DD`.
 3. Tag the release on `main` with `git tag vX.Y.Z` and push the tag.
-4. Trigger the `release-smoke.yml` workflow on the tag. The smoke gate is required to be green before any publish step.
-5. (OSS.7) the trusted-publishing action takes over from here.
+4. Trigger the `release-smoke.yml` workflow on the tag. The smoke gate must be green before any bundle is published.
+5. Build and sign the bundle for each platform, then publish the bundles, `SHA256SUMS` and the version document to the download host.
 
 ## Engine compatibility
 
-`decoy-cli==X.Y.Z` declares `decoy-engine>=A.B` as the minimum engine version it was tested against. A `pip install decoy-cli` resolves to the latest compatible engine in the `A.B+` line. Crossing an engine MAJOR boundary requires a CLI MINOR (additive) or MAJOR (breaking) bump; the CHANGELOG entry names the engine version range explicitly.
+`decoy-cli` X.Y.Z pins one engine release exactly (`decoy-engine==A.B.C`), and the bundle ships that release. There is no range to resolve. Moving to another engine release is a CLI release that changes the pin; the CHANGELOG entry names the engine version. Crossing an engine MAJOR boundary requires a CLI MINOR (additive) or MAJOR (breaking) bump.

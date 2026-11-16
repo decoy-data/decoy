@@ -120,8 +120,8 @@ def run(
         "--all",
         help=(
             "Run every pipeline of the project, one process each, in name order. The exit "
-            "code is the worst child's (3, then 5, 1, 4, 2, 0). Takes no pipeline name and "
-            "refuses --evidence-out, --vault and --out-dir."
+            "code is the first of 5 > 3 > 1 > 6 > 4 > 2 > 0 that any child produced. Takes no "
+            "pipeline name and refuses --evidence-out, --vault and --out-dir."
         ),
     ),
     mode: Mode = typer.Option(

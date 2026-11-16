@@ -6,14 +6,19 @@ window, cache the result, and print ONE non-blocking line when a newer version e
 with the exact upgrade command. It never blocks or slows a run and fails silent on any
 error.
 
-Hard rules honored here:
-  - Interactive only: suppressed when stderr/stdout is not a TTY, under CI, and when
-    output is piped or ``--json`` (the caller passes ``suppress=True`` then).
-  - Opt-out: ``--no-update-check``, ``DECOY_NO_UPDATE_CHECK``, or a config setting all
-    disable it.
-  - Leak-safe: the check fetches only the signed version document. It sends NO data, no
-    identifiers, no telemetry -- consistent with the CLI's raw-value isolation posture.
-  - Fail-silent: any network/parse/cache error is swallowed; the notice is advisory.
+Privacy contract (REL-WEB plan section 5.2, tested in `tests/unit/distribution/`):
+  - P1: the request is ``GET <path>`` with no query string and no body, and exactly the
+    headers ``Host``, ``User-Agent: decoy-update-check``, ``Accept-Encoding: identity`` and
+    ``Connection: close``. A proxy the user configured still applies.
+  - P2: no redirect is followed; any 3xx ends the check with no notice.
+  - P3: at most one request per 24 hours per user cache, and none under CI, when stdout or
+    stderr is not a TTY (piped ``--json`` output included), with ``--no-update-check`` or
+    ``DECOY_NO_UPDATE_CHECK``, or when the caller passes ``suppress=True``.
+  - P4: the cache file holds exactly ``checked_at`` and ``latest``; nothing reads or
+    creates an identifier (sentry ``tests/sentry/io_policy/test_update_check_no_identifiers.py``).
+  - P5: the body is read up to 64 KiB, ``latest`` is kept and shown only in canonical PEP 440
+    form, and any failure caches ``latest: null`` (one request per 24 hours still holds).
+  - Fail-silent: any network, parse or cache error is swallowed; the notice is advisory.
 
 The notice does NOT trust the document for anything but display: it is advisory text,
 not an action. The signed verification that gates an actual swap lives in
@@ -23,20 +28,50 @@ not an action. The signed verification that gates an actual swap lives in
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
+
+from packaging.version import Version
 
 from decoy._env_flags import is_ci, safe_env_flag
 from decoy._version import __version__
 from decoy.distribution import layout
 from decoy.distribution import version_document as vd
 
-_DEFAULT_VERSION_URL = "https://decoy.dev/cli/version.json"
 _CADENCE_SECONDS = 24 * 60 * 60  # at most one network check per day
 _FETCH_TIMEOUT = 1.5  # never make startup wait long
 _CACHE_NAME = "update-check.json"
+_MAX_BODY_BYTES = 64 * 1024  # a version document is under 2 KiB
+_USER_AGENT = "decoy-update-check"
+
+
+def _opener():
+    # urllib is imported here, not at module load, so a start that skips the check never
+    # pays for it. build_opener keeps ProxyHandler (the check still works behind a proxy).
+    import urllib.request
+
+    class RefuseRedirects(urllib.request.HTTPRedirectHandler):
+        # Returning None makes urllib raise HTTPError for the 3xx instead of following it,
+        # so a redirect can never send the request (and the user's IP) to a second host.
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    opener = urllib.request.build_opener(RefuseRedirects)
+    # The default User-Agent names the Python version, so it is replaced, not added to.
+    opener.addheaders = [("User-Agent", _USER_AGENT)]
+    return opener
+
+
+def _canonical(value: object) -> str | None:
+    """The canonical PEP 440 form of ``value``, or None. Server text is never shown raw."""
+    if not isinstance(value, str):
+        return None
+    try:
+        text = str(Version(value))
+    except ValueError:  # InvalidVersion, and int() past Python's digit limit
+        return None
+    return text if len(text) <= 64 else None
 
 
 def _opted_out() -> bool:
@@ -66,12 +101,12 @@ def _read_cache() -> dict | None:
         return None
 
 
-def _write_cache(latest: str | None) -> None:
+def _write_cache(latest: str | None, now: int) -> None:
     try:
         p = _cache_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
-            json.dumps({"checked_at": int(time.time()), "latest": latest}),
+            json.dumps({"checked_at": now, "latest": latest}),
             encoding="utf-8",
         )
     except Exception:
@@ -79,19 +114,16 @@ def _write_cache(latest: str | None) -> None:
 
 
 def _fetch_latest(url: str) -> str | None:
-    """Fetch the version document and return its ``latest``. No signature check here --
-    this is advisory display only; a tampered 'newer version' line at worst prints a
-    wrong number, and the actual upgrade re-verifies against the pinned key. Returns None
-    on any failure."""
-    import urllib.request
-
+    """Fetch the version document and return its ``latest`` in canonical form. No signature
+    check here: this is advisory display only, a tampered 'newer version' line at worst
+    prints a wrong number, and the actual upgrade re-verifies against the pinned key.
+    Returns None on any failure."""
     try:
-        req = urllib.request.Request(url, headers={})  # no identifying headers
-        with urllib.request.urlopen(req, timeout=_FETCH_TIMEOUT) as resp:
-            data = resp.read()
-        payload = vd.parse_document(data)
-        latest = payload.get("latest")
-        return latest if isinstance(latest, str) else None
+        with _opener().open(url, timeout=_FETCH_TIMEOUT) as resp:
+            data = resp.read(_MAX_BODY_BYTES + 1)
+        if len(data) > _MAX_BODY_BYTES:
+            return None
+        return _canonical(vd.parse_document(data).get("latest"))
     except Exception:
         return None
 
@@ -99,15 +131,14 @@ def _fetch_latest(url: str) -> str | None:
 def check_latest(*, url: str | None = None, now: int | None = None) -> str | None:
     """Return the latest version, from cache within the cadence window or a fresh fetch.
     Updates the cache on a fetch. Returns None if unknown."""
-    url = url or os.environ.get("DECOY_VERSION_URL", _DEFAULT_VERSION_URL)
+    url = vd.resolve_version_url(url)
     now = now if now is not None else int(time.time())
     cache = _read_cache()
-    if cache and isinstance(cache.get("checked_at"), int):
+    if isinstance(cache, dict) and isinstance(cache.get("checked_at"), int):
         if now - cache["checked_at"] < _CADENCE_SECONDS:
-            latest = cache.get("latest")
-            return latest if isinstance(latest, str) else None
+            return _canonical(cache.get("latest"))
     latest = _fetch_latest(url)
-    _write_cache(latest)
+    _write_cache(latest, now)
     return latest
 
 

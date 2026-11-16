@@ -48,11 +48,13 @@ KINDS = frozenset(
         "Shared cross-suite test helpers (constants and lookups used by more than one test folder)",
         "Developer environment scripts",
         "Release scripts",
+        "Release runbooks, logs and maps",
         "CI install, vendor and lane policy",
         "Composite CI actions",
         "Task-oriented user guides (one folder per topic, with a `README.md` index)",
         "Root legal files (license text, notice, licensing FAQ, trademark policy)",
         "Roadmap, plans, records",
+        "QA checklists and run templates",
     }
 )
 # Paths the map marks `(target)`. A new or misspelled target is red. None is open since C3
