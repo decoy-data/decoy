@@ -40,6 +40,7 @@ The detached signature is over the exact on-disk file bytes, so three verifiers 
 - `sign_release.py` also writes `<file>.sshsig` (`sshsig`, via `ssh-keygen -Y sign`, namespace
   `decoy-release`) and keeps the two pinned forms of the public key in `install.sh` as one key
   (`pubkeys`, `inject-keys`, `check-keys`). See `docs/distribution/version-endpoint-contract.md`.
+  `install.sh` picks OpenSSL 3 (`.sig`) or `ssh-keygen` (`.sshsig`) at run time; see `docs/install.md`.
 - **Rotation:** generate a new keypair, publish the new public key in a signed release,
   and keep the old public key in a documented trust set for one deprecation window so
   in-flight installers still verify prior releases.
