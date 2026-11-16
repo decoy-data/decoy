@@ -50,6 +50,11 @@ def no_color() -> bool:
     return bool(os.environ.get("NO_COLOR"))
 
 
+def env_str(name: str, default: str) -> str:
+    """The variable's value, `default` when unset or empty. Not trimmed: a URL or path is taken as typed."""
+    return os.environ.get(name) or default
+
+
 def env_int(name: str, default: int) -> int:
     """The variable as an int, `default` when unset or empty; a non-integer is a `ValueError`."""
     raw = os.environ.get(name, "").strip()

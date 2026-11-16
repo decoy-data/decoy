@@ -130,10 +130,15 @@ dependencies = [
     # (`target_shared_destination`) and reads every fixed-width file through one
     # record parser; row dceac0cd is the CLI runtime profile (67 pins, unchanged).
     #
+    # 0.27.0 publishes the isolated route and the reference sink through
+    # `publish_unit`, renames `ScratchArena.open` to `fresh`, and emits the post-scan
+    # report as `post-scan-integrity/v3`; row 789b1eae is the CLI runtime profile (67
+    # pins, unchanged).
+    #
     # Hard-pinned to one engine release. The platform is parked and stays on
     # 0.18.0, so the two pins differ for now. The engine is not on PyPI, so CI
-    # and the smoke docs install the `v0.26.0` git tag.
-    "decoy-engine==0.26.0",
+    # and the smoke docs install the `v0.27.0` git tag.
+    "decoy-engine==0.27.0",
     # Pin the typer minor: `typer utils docs` metavar rendering differs across
     # typer minors (0.26.x emits `TEXT`/`FILE`; 0.27.x emits `<str>`/`<file>`),
     # and docs/cli-reference.md is committed and checked by the test_cli_surface
