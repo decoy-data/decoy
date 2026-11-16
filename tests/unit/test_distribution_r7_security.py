@@ -49,6 +49,12 @@ def _doc(key, serve, latest="0.2.0", **fields):
     return _signed_doc(key, serve / f"d{next(_n)}", latest, mutate=lambda d: d.update(fields))
 
 
+def _served_from(doc_bytes) -> Path:
+    # A configured bundle base also applies to `latest`, so install from the dir _doc staged it in.
+    url = vd.select_artifact(vd.parse_document(doc_bytes), "linux-x86_64")["url"]
+    return Path(url.removeprefix("file://").rsplit("/v", 1)[0])
+
+
 # ------------------------------------------------------------- freshness: installer
 def test_expired_document_is_refused(tmp_path, keypair):
     key, pub = keypair
@@ -72,12 +78,12 @@ def test_lower_serial_signed_document_is_refused_after_a_newer_one(tmp_path, key
     key, pub = keypair
     serve = tmp_path / "serve"
     new, new_sig = _doc(key, serve, "0.2.0", serial=10, expires=_FUTURE)
-    _install(new, new_sig, pub, serve)
+    _install(new, new_sig, pub, _served_from(new))
     stale, stale_sig = _doc(key, serve, "0.2.0", serial=9, expires=_FUTURE)
     with pytest.raises(installer.InstallError, match="rollback"):
-        _install(stale, stale_sig, pub, serve, pin_version="0.2.0")
+        _install(stale, stale_sig, pub, _served_from(stale), pin_version="0.2.0")
     # an equal serial (idempotent re-run / repair) is still accepted
-    _install(new, new_sig, pub, serve)
+    _install(new, new_sig, pub, _served_from(new))
 
 
 def test_recorded_serial_survives_a_refused_lower_document(tmp_path, keypair):

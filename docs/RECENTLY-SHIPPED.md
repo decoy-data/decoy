@@ -15,13 +15,42 @@ Moved here from `decoy-platform/docs/backlog/RECENTLY-SHIPPED.md` on 2026-11-05 
 ([ROADMAP.md](ROADMAP.md)). The platform copy is frozen at that date. Entries below 2026-11-05 are
 copied unchanged; paths in them are relative to the repo they name.
 
-Last updated: 2026-11-15 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
-git logs).
+Last updated: 2026-11-16 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
+git logs). Dates are the UTC merge dates from GitHub.
 
 ---
 
+## 2026-11-16
+
+- **Engine** (`cf43e35ba`, engine #558): F22 slice c2 (roadmap row 59, partly merged). The isolated subprocess route publishes through `publish_unit`, all-or-none. B1 and B2 (vault before output) and W1 (Windows arm) are left.
+- **Engine** (`2929aace8`, engine #604): RUN-STREAM E5a (roadmap row 63a, in progress). A lazy Parquet table with no sink reaches the collector lane, the collector spills under scoped engine scratch, and `bounded_admission` is the one bounded-route composition. E5b, C1l, C1a, C1b, C2 and M1 are left.
+- **CLI** (`b272beb8`, CLI #255): CONFIG-EXPLICIT C1 (roadmap row 22, closed). Every CLI reader asks the engine to check source columns against the declared tables before it reads a data row, and a new sentry keeps new readers on that choke point.
+- **Engine** (`1ca66d5f1`, engine #603): F23 slice E2 (roadmap row 85, in progress). The `decoy-resume-run/v1` and `decoy-resume-table/v1` store records and `plan_resume`. The CLI slices wait on the engine release and repin.
+- **Engine** (`27e404a70`, engine #599): REL-GATE slice RG-F1 (roadmap row 93, partly merged). `docs/frozen-surfaces.md` maps each frozen engine surface to its code and pinning test, a sentry checks it, and the `PipelineConfig` and `RunResult` JSON schemas are snapshotted.
+- **Engine** (`4157ead6`, engine #541): F22 slice c1b (roadmap row 59, partly merged). Every route publishes through one all-or-none `publish_unit`, with reconcile and restart recovery. Slice c2 followed (engine #558).
+- **Engine** (`2cce9c40`, engine #602): SCAN-ML M3a (roadmap row 32a, partly merged). Classifier and NER hits go into the pre-scan record. M3b waits on INIT-WIZARD E1.
+- **Engine** (`368b3157`, engine #601): RUN-STREAM E5 (roadmap row 63a, in progress). A plain `auto` run reads lazy inputs whole when routing cannot stream them.
+- **Engine** (`bcec31f7`, engine #522): F25 protected scratch stack (roadmap row 58, left open), merged as one unit. Engine #500, #502, #505, #507, #509, #513, #516 and #518 were closed into it.
+- **Engine** (`12c2b8c3`, engine #532): F22 slice c1a (roadmap row 59, partly merged). The sink state table, and the write half split out.
+- **CLI** (`39e60d26`, CLI #285): roadmap date fixes. **CLI** (`d27807b7`, CLI #284): post-1.0 plan, every V2 item classed 1.x or 2.0.
+- **Engine** (`32ab8044`, engine #512): SCAN-ML M4 (roadmap row 32a, partly merged). Model findings join the post-scan. The post-scan report is now `post-scan-integrity/v3` (owner ruling 2026-11-16); the verdict reader still accepts v2. M3 is not on main yet.
+- **Engine** (`dde37ca4`, engine #521): F22 slice A3 (roadmap row 59, partly merged). `publish_unit` judges and binds a publication unit under the destination lock.
+- **Engine** (`1c8e413c`, engine #496): F22 slice A2 (roadmap row 59, partly merged). The v1 publication descriptor codec and receipt types.
+
 ## 2026-11-15
 
+- **CLI** (`074e6256`, CLI #281): MAC-V1b (roadmap row 90, partly merged). The signer writes `.sshsig` sidecars with `ssh-keygen -Y sign` and checks the pinned key forms in `install.sh`. MAC-V1a, the verifier that stock macOS runs, is still open.
+- **CLI** (`6a3adca5`, CLI #278): `decoy scan diff --strict` exits 4 on drift, the same code `decoy ci check` returns (REL-GATE plan Q8 (a), row 93). The flag is unreleased, so this sets the code.
+- **CLI** (`06cf2cd7`, CLI #280): proportionality audit rows 24zi to 24zl added to the roadmap (not started). The 2026-11-15 audit report is in `docs/records/`.
+- **CLI** (`d36ba1e4`, CLI #279): REL-WEB RW-C2a (roadmap row 91, partly merged). The update host moves to trydecoy.com, and pinned bundles resolve from GitHub releases under `DECOY_BUNDLE_BASE`.
+- **Engine** (`a7f278eb`, engine #489): F22 slice A1b (roadmap row 59, partly merged). Publication units publish durably under a lock.
+- **CLI** (`5f642e0f`, CLI #275): REL-GATE slice RG-R (row 93, partly merged). Release-readiness template and `scripts/release/readiness_check.py`. `--release` stays red until counsel confirms the licensor name.
+- **CLI** (`de4cdeea`, CLI #277): REL-GATE slice RG-S (row 93, partly merged). `packaging_tools.candidate` writes `SHA256SUMS` and `candidate.json`, and `smoke_install.py` smokes a signed candidate on the host.
+- **CLI** (`73482905`, CLI #276): REL-GATE slice RG-L, CLI half (row 93). Versioning policy rewritten; FSL-1.1-ALv2 in the license and install wording.
+- **Engine** (`72ff5089`, engine #600): REL-GATE slice RG-L, engine half (row 93). The README says the engine ships inside the CLI bundle in V1.
+- **CLI** (`e716f445`, CLI #274): REL-GATE slice RG-F3 (row 93, partly merged). `scripts/release/launch_pin_check.py` checks the engine pin against the engine tag.
+- **CLI** (`4db0ec88`, CLI #273): REL-GATE slice RG-F2, CLI half (row 93, partly merged). Frozen-surface map and `--json` shape snapshots.
+- **CLI** (`4f5887f3`, CLI #272): REL-WEB RW-C1 (roadmap row 91, partly merged). The update check sends a fixed header set and follows no redirect.
 - **CLI** (`a2db34d9`, CLI #270): REL-GATE slice RG-X (row 93, in progress). `run --all` and `decoy ci` now use one exit-code order, 5, 3, 1, 6, 4, 2, 0, from `decoy.cli.exit_codes`; `run --all` keeps a child's exit 6. A crash still exits 1, now under a named constant, and the README and `decoy explain exit-codes` list 130 for Ctrl-C. A sentry keeps both docs in step with the code.
 - **CLI** (`1825e45a`, CLI #269): CLI-QA-CHECKLIST (roadmap row 92a, now done). `docs/qa/cli-v1-checklist.md` lists each V1 CLI promise and its check by feature group, with a run template for the dated record. It is used after the V1 build, one complete group at a time; it has not been run yet.
 
@@ -57,7 +86,7 @@ git logs).
 - **CLI** (`7850e217`, #233): repin to engine 0.23.0. The CLI now pins `decoy-engine==0.23.0`. Roadmap row 71 needs no further repin; row 67 (F34 E3 and its release) is done.
 - **Engine** (`13778a0d`, engine #549): CLI-CLOUD part EC2a (roadmap row 64), merged 2026-11-12 and in 0.23.0. One S3 put path and SDK floors.
 - **CLI** (`16135525`, #205): LIB part L1b.2 (roadmap row 34). The local record store core. L1b.3 remains.
-- **CLI** (`048068a6`, #232): V2 rows VAULT-STREAM and TOKENIZE-CHUNKED added to `docs/roadmap/out-of-scope.md`.
+- **CLI** (`048068a6`, #232): V2 rows VAULT-STREAM and TOKENIZE-CHUNKED added to `docs/roadmap/out-of-scope.md` (now in `docs/roadmap/post-1.0-plan.md`, as 1.x minor).
 
 ## 2026-11-12
 
@@ -146,7 +175,7 @@ git logs).
 - **Engine** (`cfef8a6e`, engine #452): FK-FANOUT part E2b (roadmap row 24h). A fitted `reference` column gives each parent a child count drawn from the fitted degree histogram in the pinned snapshot, in place of independent uniform picks; the column takes the whole-table route. A fitted column with no pinned fan-out stops with `plan.reference_fanout_missing`, and child rows against an empty parent pool stop with `plan.reference_parent_pool_empty`. Other distributions generate the same cells as before. Merged before E2a (#448).
 - **Engine** (`5c24a75e`, engine #450): REG-RELEASE part E1. Changelog fragments: a PR that changes behavior adds one `changelog.d/<slug>.md` file instead of editing `CHANGELOG.md`, which keeps an empty `[Unreleased]` heading. Release prep compiles the fragments into the dated section with `scripts/release/stamp_release.py` and deletes them; a release is refused while fragments remain. PRs get a fragment check. E2 (registry stamping at release) waits on owner question R1.
 - **Engine** (`f3816b81`, engine #441): CONFIG-EXPLICIT part E2a (roadmap row 22). The declared-columns module (`source_columns`, `declared_columns`, `check_columns_declared`, `prepare_declared_sources`) and the `config_explicit` codemod modes `declare-columns` and `source-schema`. Registry 1.19.0 adds `source_file.undeclared_column` and `source_file.undeclared_table`. No run route calls the check yet, so runs are unchanged.
-- **Engine** (`937d9e53`, engine #446): GEN-UNIQUE part E2 (roadmap row 24m). `unique: true` works on faker, categorical and reference generate columns, and a table can declare `unique_together` column pairs. A domain too small for the row count is refused with the E0 codes. Faker retries reseed and stop at 1,000 attempts per row. Nested values (such as dict parents) are matched by equality. Unique plans run resident; the pinned route refuses `unique_together`. Columns without `unique` generate the same cells as before.
+- **Engine** (`937d9e53`, engine #446): GEN-UNIQUE part E2 (roadmap row 24m). `unique: true` works on faker, categorical and reference generate columns, and a table can declare `unique_together` column pairs. A domain too small for the row count is refused with the E0 codes. Faker retries reseed and stop at 1,000 attempts for each row. Nested values (such as dict parents) are matched by equality. Unique plans run resident; the pinned route refuses `unique_together`. Columns without `unique` generate the same cells as before.
 - **Engine** (`125f479b`, engine #447): SIZE-CEIL (roadmap row 7, owner rule 2026-11-10). Module-size pins are ceilings: each census entry is the file's lines plus 20, capped at 700, and a ceiling more than 40 above the file fails until it is lowered. Files already over 700 stay exact and may only shrink. Test-only.
 - **Engine** (`e82b89b8`, engine #451): main fix. The H-1 owner fixture lists `parent_keys` (added by #440) under its owner file, so the wave-b owner coverage test passes again.
 - **Engine** (`d43e2845`, engine #449): main fix. Two r3 route baseline scenarios re-pinned for the `value_similarity` and `missing_value_similarity` keys #438 added; no existing value changed.
@@ -198,7 +227,7 @@ git logs).
 - **Engine** (`bf15cd99`, engine #412): VALUE-FREE-ERRORS parts A1 and A2 (roadmap row 24a). One converter turns every config error into problem codes that name keys, tables, columns and files but never a data value or secret; new exports `ConfigProblem`, `ConfigRuleError` and `parse_pipeline_config`. Part A3 (route wiring, engine release) is next. Gate: Dennis GO, Codex GO; full suite at the tested head 37,125 passed, 0 failed, 0 new failures (42,429 collected, +53).
 - **Engine** (`c9064cbc`, engine #413): the test gate keeps its pytest temp root under a short /tmp path and the shared `root_dir` fixture uses the short path, so the file-access socket test no longer fails under a long temp path. Test tooling only. Gate: Codex to the cap, Dennis verified the fix (GO with fixes, applied); full suite 37,089 passed, 0 failed, 0 new failures.
 - **Engine** (`942dae2d`, engine #411): LIB L0.2, run row dirs use the issued scratch root. Every row directory the engine creates during a run now comes from the one scratch root issued for that run, so out-of-core and isolated runs leave no scratch folder behind after success or failure; caller-named roots are left alone. Unblocks the F25 protected-scratch build (roadmap row 58). Gate: Dennis GO, Codex GO (lib-l02-r1), PR CI gate passed; full suite on test-6 at the tested head 37,089 passed, 0 failed, 0 new failures against the main baseline (42,393 collected, +17).
-- **Engine** (`a5eb66e2`, engine #408): derived expression visibility (roadmap row 13). A `derived` expression reads exactly the columns it names, by real name; a per-row failure no longer echoes the cell value; a source with repeated field names is refused at every public entry with `duplicate_source_field_names`. Declared sources are read under their own config key through one helper, and one shared scan finds repeated names at each boundary. Registry 1.9.0. Gate: Dennis BLOCK r1 (wrong file-access key at run entry), GO r2 and r3; Codex NO-GO r1 (design: a second scan, a flat test folder), GO r2. Full suite: one failure, an edit to a released CHANGELOG section, fixed before merge; a fresh main baseline is being written.
+- **Engine** (`a5eb66e2`, engine #408): derived expression visibility (roadmap row 13). A `derived` expression reads exactly the columns it names, by real name; a failure on one row no longer echoes the cell value; a source with repeated field names is refused at every public entry with `duplicate_source_field_names`. Declared sources are read under their own config key through one helper, and one shared scan finds repeated names at each boundary. Registry 1.9.0. Gate: Dennis BLOCK r1 (wrong file-access key at run entry), GO r2 and r3; Codex NO-GO r1 (design: a second scan, a flat test folder), GO r2. Full suite: one failure, an edit to a released CHANGELOG section, fixed before merge; a fresh main baseline is being written.
 - **Engine** (`33d05c90`, engine #407): init wizard part E3. `keyed_columns_for_config` and `KeyedColumn` list each config column that needs the mask secret, so the wizard asks for a key only when the config needs one. `secret_requirements_for_config` shares the same walk and keeps its result. Gate: Dennis GO, Codex GO; full suite 0 failing (42,148 collected), promoted as the main baseline.
 - **CLI** (`e7bdae0`, #122): the CI step that fetches a pinned binary retries a timeout, a reset, a DNS try-again or a 5xx up to three times, and never retries a permanent failure. Gate: Codex GO r2, Dennis GO.
 - **Engine** (`4acac80a`, engine #406): value-free discovery, subset-seed and filter errors (roadmap row 14). A subset filter literal that does not match the column type, a discovery read failure, and several FK-key and pandas-ingest errors now name the table and column only and carry no chained library error that could quote a cell. Gate: Codex GO r2, Dennis GO; full suite on the merge head 0 failing (42,028 collected), promoted as the main baseline.

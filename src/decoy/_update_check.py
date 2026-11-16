@@ -28,7 +28,6 @@ not an action. The signed verification that gates an actual swap lives in
 from __future__ import annotations
 
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -40,7 +39,6 @@ from decoy._version import __version__
 from decoy.distribution import layout
 from decoy.distribution import version_document as vd
 
-_DEFAULT_VERSION_URL = "https://decoy.dev/cli/version.json"
 _CADENCE_SECONDS = 24 * 60 * 60  # at most one network check per day
 _FETCH_TIMEOUT = 1.5  # never make startup wait long
 _CACHE_NAME = "update-check.json"
@@ -133,7 +131,7 @@ def _fetch_latest(url: str) -> str | None:
 def check_latest(*, url: str | None = None, now: int | None = None) -> str | None:
     """Return the latest version, from cache within the cadence window or a fresh fetch.
     Updates the cache on a fetch. Returns None if unknown."""
-    url = url or os.environ.get("DECOY_VERSION_URL", _DEFAULT_VERSION_URL)
+    url = vd.resolve_version_url(url)
     now = now if now is not None else int(time.time())
     cache = _read_cache()
     if isinstance(cache, dict) and isinstance(cache.get("checked_at"), int):
