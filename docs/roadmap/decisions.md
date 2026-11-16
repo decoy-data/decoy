@@ -20,7 +20,7 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
   and overrides). The code already gates those routes at `developer`
   (`P:api/storm/detectors_router.py`, `storm.override`, `min_role="developer"`) and does not change.
   This supersedes the 2026-11-03 "STORM detector mutations stay admin-only" wording; docs that said
-  admin-only are corrected. New V2 row: detection settings profiles ([out-of-scope.md](out-of-scope.md)).
+  admin-only are corrected. New V2 row: detection settings profiles ([post-1.0-plan.md](post-1.0-plan.md)).
 - **2026-11-05 late night (OQ-1 to OQ-4).** OQ-1 = A1: X0a-h H1, H2, H4 are shared gate tooling on
   the finish-out list (now parked; see the X0a-h entry above). OQ-2 = B1: re-cut the STORM CLI half; CLI V1 ships the
   new names. OQ-3 = C1: SUB-STOP 1.6.0, STORM E1 1.7.0, then build order. OQ-4: Windows "would be

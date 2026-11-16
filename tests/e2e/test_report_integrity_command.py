@@ -76,7 +76,7 @@ def test_integrity_clean_pair_exits_zero(clean_pair: tuple[Path, Path]):
     assert "residual_pii" in report
     assert "fk_preservation" in report
     assert "policy_validation" in report
-    assert report["schema_version"] == "post-scan-integrity/v2"
+    assert report["schema_version"] == "post-scan-integrity/v3"
     # fail + error counts are zero on the clean path.
     assert report.get("fail_count", 0) == 0
     assert report.get("error_count", 0) == 0
