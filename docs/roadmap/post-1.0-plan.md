@@ -261,7 +261,6 @@ carry the V1 part). Each cut shows the unit's coverage and mutation score unchan
 | The CI lane sentry imports `_shell_tokens` by a private name; add a small public facade shared by both repos | ROADMAP row 5 (CI-L1) | Test machinery. |
 | The `decoy run` error text cap of 500 characters | ROADMAP row 65 (F31) | Text length in an error message. |
 | Atomic output: ACLs and xattrs of an old output are not copied; `_atomic.py` is over 400 lines; a second temp-create path; a `KeyboardInterrupt` during the temp chmod can leave an empty hidden temp; ENOSPC inside the writer block is not mapped to `atomic_write_failed` | ROADMAP row 21b, `docs/records/2026-11-07-atomic-output-build.md` | Defects and cleanup; the output for a working run is the same. (The `.gz` header item is in "Before 1.0 freeze".) |
-| DUP-DEFECTS B11: no scheme check on notify and `--url` | ROADMAP row 24zd, `E:plan/dup-defects` section 13 | Rejects only schemes that never worked: nothing is sent today. |
 | VALUE-FREE-ERRORS B3, FU-5 and FU-6 | ROADMAP row 24a | In the vault backlog, tagged there. |
 
 ### Platform V2 candidate plan: cleanups and validation
@@ -295,6 +294,7 @@ No item on the old V2 lists is 2.0 as designed. Two things can make one 2.0:
 | Hostile in-process hardening | decisions 2026-10-30 | it hardens internals and custom providers keep working | 2.0: it restricts what custom providers may do |
 | Phase F: re-baselined generation oracle (accelerated or streamed generation, F1 and F3) | platform V2 plan | new routes match today's output byte for byte | 2.0: generation re-freezes to a new deterministic output |
 | F2 follow-up: a sibling column that reads the FK key through `when:` | platform V2 plan | the sibling keeps seeing the source key, as today | 2.0: it would see the resolved key |
+| DUP-DEFECTS B11: no scheme check on notify and `--url` | ROADMAP row 24zd, `E:plan/dup-defects` section 13 | the check only warns, or the allowed schemes keep every scheme that works today (the census says `file://` is accepted) | 2.0: a new refusal of a URL that works today |
 
 The corrective backlog has 38 more entries of this kind. Most are a new refusal or a changed reason string that stays 1.x
 if it only warns or adds a reason beside the old one. In the vault file they read `[either: 1.x if ..., else 2.0]`.
