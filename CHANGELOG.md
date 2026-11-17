@@ -786,5 +786,5 @@ index; first publish lands with OSS.7.
 
 Tracked in `decoy/PLAN.md` so they do not rot.
 
-[Unreleased]: https://github.com/louiskeep/decoy/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/decoy-data/decoy/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/louiskeep/decoy/releases/tag/v0.1.0
