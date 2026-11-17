@@ -22,7 +22,7 @@ TOPS = ("src", "scripts", "packaging_tools")
 SIZE_ALLOWLIST: dict[str, int] = {
     "src/decoy/cli/report.py": 2299,
     "src/decoy/cli/scan.py": 1037,
-    "src/decoy/cli/preflight.py": 843,
+    "src/decoy/cli/preflight.py": 839,
     "src/decoy/cli/fit.py": 818,
 }
 
