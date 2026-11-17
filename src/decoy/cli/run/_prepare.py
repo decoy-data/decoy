@@ -392,6 +392,11 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
                 "path": str(_parquet),
             }
 
+    if not ctx.chunked and not ctx.duckdb_source and isinstance(ctx.raw, dict):
+        # The gate's preflight profiles source data, so a post-scan model that cannot load
+        # refuses first, on the config the static layers accept (the DuckDB route did it above).
+        preflight_detectors(check_static_before_acquire(ctx.raw, ctx.config, _placement(ctx)))
+
     # The whole `decoy validate` gate (config, compile, preflight) before any source
     # row is read. A refusal raises into the one handler below; a pass hands back the
     # validated config, so the run validates once. The DE-02 guard above keeps a
@@ -551,7 +556,6 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         _check_chunked_tables(ctx.config_dict)
         _note_chunked_key_check_skipped(ctx)
     else:
-        preflight_detectors(ctx.config_dict)
         ctx.sources = _load_sources_from_config(ctx.config_dict, ctx.config.parent)
     # One admission per run: the vault writer and every engine entry get this
     # provider, so the secret is read once and output and vault share one key.

@@ -92,11 +92,13 @@ def test_a_model_that_cannot_load_refuses_before_any_source_is_read(tmp_path: Pa
     with (
         mock.patch("decoy_engine.load_detectors", side_effect=refused),
         mock.patch("decoy.cli.run._prepare._load_sources_from_config") as loads,
+        mock.patch("decoy.cli.run._prepare.check_before_run") as gate,
     ):
         result = runner.invoke(app, ["run", str(cfg), "--json"])
 
     assert result.exit_code == 1, result.output
     loads.assert_not_called()
+    gate.assert_not_called()  # the full gate profiles source data; the model refuses before it
     doc = json.loads(result.stdout)
     assert [m["code"] for m in doc["messages"]] == ["classifier_unavailable"]
     expected = hint(ModelStatus("classifier", "lgbm-v1", False, None, None, refused.reason, "pack"))
