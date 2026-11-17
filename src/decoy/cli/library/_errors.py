@@ -16,6 +16,7 @@ from decoy_engine.reasons import runtime, warning
 
 __all__ = [
     "EXPORT_DESTINATION_UNSAFE",
+    "EXPORT_NOT_CLOSED",
     "LIBRARY_BUSY",
     "LIBRARY_FILE_TOO_LARGE",
     "LIBRARY_INDEX_CORRUPT",
@@ -80,6 +81,8 @@ LIBRARY_FILE_TOO_LARGE = "library_file_too_large"
 LIBRARY_UNEXPLAINED_ENTRIES = "library_unexplained_entries"
 # `export --output` names a file inside the library or its scratch area, or a symlink.
 EXPORT_DESTINATION_UNSAFE = "export_destination_unsafe"
+# export would write a set whose records link outside it; refused before anything is written.
+EXPORT_NOT_CLOSED = "export_not_closed"
 
 # Codes that describe what the user typed; every other code is the library's own state. The
 # commands exit `EXIT_USAGE` for these and `EXIT_RUNTIME` for the rest (`_cli.LibraryCommand`).

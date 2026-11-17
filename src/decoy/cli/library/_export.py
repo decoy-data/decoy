@@ -43,12 +43,20 @@ def export_command(
     out: Path = typer.Option(
         ..., "--output", "-o", metavar="FILE", help="Write the export here (0600)."
     ),
-    kind: str | None = typer.Option(None, "--kind", metavar="K", help="Only records of this kind."),
+    kind: str | None = typer.Option(
+        None,
+        "--kind",
+        metavar="K",
+        help="Start from records of this kind; every record they link to is exported too.",
+    ),
     since: str | None = typer.Option(
         None,
         "--since",
         metavar="D",
-        help="Only records made at or after D (YYYY-MM-DD or ISO time).",
+        help=(
+            "Start from records made at or after D (YYYY-MM-DD or ISO time); every record "
+            "they link to is exported too."
+        ),
     ),
     ref: str | None = typer.Option(
         None,
@@ -112,22 +120,28 @@ def export_command(
             problem = str(exc)
         if problem is not None:
             cmd.fail(problem)
-    lines: list[bytes] = []
+    made = None
     try:
         ids, refs = export_select(opened, kind=kind, since=cutoff, ref=ref, target=target)
-        lines = export_lines(opened, ids, refs, keep_paths)
-        write_export(root.path, out, b"".join(lines))
+        made = export_lines(opened, ids, refs, keep_paths)
+        write_export(root.path, out, b"".join(made.lines))
     except (LibraryError, RecordError) as exc:
         caught = exc
     if caught is not None:
         cmd.fail_library(caught)
-    header = json.loads(lines[0])
-    withheld = header.get("withheld_records") or []
-    if withheld:
+    header = json.loads(made.lines[0])
+    if made.cannot_strip:
         _notice(
             state,
-            f"withheld {len(withheld)} record(s) this version cannot strip: {', '.join(withheld)};",
+            f"withheld {len(made.cannot_strip)} record(s) this version cannot strip: "
+            f"{', '.join(made.cannot_strip)};",
             "rerun with --keep-paths to include them byte for byte",
+        )
+    if made.links_withheld:
+        _notice(
+            state,
+            f"withheld {len(made.links_withheld)} record(s) that link to a withheld record "
+            f"(an export is always closed): {', '.join(made.links_withheld)}",
         )
     if include_logs:
         _notice(state, "no job logs exist yet; none exported")
