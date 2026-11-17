@@ -27,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import secrets
 import shlex
 import subprocess
@@ -561,7 +562,7 @@ def _csv(shop: Path, rel: str) -> pd.DataFrame:
 @journey_step("CJ-01")
 def test_cj01_version(journey: Journey) -> None:
     result = checked(journey, "CJ-01")
-    assert result.runs[0].out.lower().startswith("decoy ")
+    assert re.fullmatch(r"decoy \d+(?:\.\d+)+\S*", result.runs[0].out.strip())
 
 
 @journey_step("CJ-02")
@@ -577,8 +578,12 @@ def test_cj02_project_new(journey: Journey) -> None:
 def test_cj03_init_from_file(journey: Journey) -> None:
     payload = json.loads(checked(journey, "CJ-03").runs[0].out)
     assert payload["status"] == "ok" and payload["name"] == "customers"
+    assert payload["source"] == "data/customers.csv"
     assert payload["column_count"] == len(_data_frames()[0].columns)
-    assert (journey.shop / "pipelines" / "customers" / "pipeline.yaml").is_file()
+    written = journey.shop / "pipelines" / "customers" / "pipeline.yaml"
+    columns = [c for t in yaml.safe_load(written.read_text())["tables"] for c in t["columns"]]
+    assert [c["name"] for c in columns] == _data_frames()[0].columns
+    assert all(c["strategy"] for c in columns), "a column has no starter strategy"
 
 
 @journey_step("CJ-04")
@@ -587,8 +592,10 @@ def test_cj04_scan(journey: Journey) -> None:
     tables = {t["name"]: t for t in payload["tables"]}
     assert set(tables) == {"customers", "orders"}
     assert (tables["customers"]["row_count"], tables["orders"]["row_count"]) == (CUSTOMERS, ORDERS)
-    for table in tables.values():
-        assert {"field_count", "pii_candidate_count", "reid_risk_score"} <= set(table)
+    for name, table in tables.items():
+        assert table["field_count"] == len(_data_frames()[name == "orders"].columns)
+        assert 0 <= table["reid_risk_score"] <= 1
+    assert tables["customers"]["pii_candidate_count"] >= 1, "the email column is a candidate"
     assert "SUGGESTIONS" in payload["pii_note"]
 
 
@@ -619,6 +626,8 @@ def test_cj07_subset_run(journey: Journey) -> None:
     counts = subset["tables"]
     assert counts["customers"]["source_rows"] == CUSTOMERS
     assert 0 < counts["customers"]["kept_rows"] < CUSTOMERS
+    assert counts["orders"]["source_rows"] == ORDERS
+    assert 0 < counts["orders"]["kept_rows"] < ORDERS
     assert (journey.shop / "jout" / "shop-evidence.json").is_file()
     customers, orders = (
         _csv(journey.shop, "jout/shop/customers.csv"),
@@ -683,13 +692,21 @@ def test_cj11_vault_round_trip(journey: Journey) -> None:
     )
 
 
+def test_cj12_the_failed_run_is_reported(journey: Journey) -> None:
+    """The part of CJ-12 that holds on main, so the strict xfail below cannot hide a broken setup."""
+    result = checked(journey, "CJ-12")
+    payload = json.loads(result.runs[0].out)
+    assert payload["status"] == "error"
+    assert (journey.shop / "jout" / "strict" / "orders.csv").is_dir(), "the blocker was removed"
+
+
 @journey_step("CJ-12")
 def test_cj12_strict_delivery(journey: Journey) -> None:
-    result = checked(journey, "CJ-12")
+    """Only the strict-delivery facts: nothing delivered, and the error names the table and a code."""
     strict = journey.shop / "jout" / "strict"
     left = sorted(p.relative_to(strict).as_posix() for p in strict.rglob("*") if p.is_file())
     assert left == [], "a target file of the failed run was left behind"
-    payload = json.loads(result.runs[0].out)
+    payload = json.loads(journey.results["CJ-12"].runs[0].out)
     assert "orders" in json.dumps(payload["error"]) and payload["reason"]["code"]
 
 

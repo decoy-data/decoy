@@ -173,7 +173,9 @@ def journey_step(step_id: str) -> Callable[[F], F]:
     def mark(test: F) -> F:
         test.__journey_step__ = step_id  # type: ignore[attr-defined]
         if not step.on_main:
-            return pytest.mark.xfail(strict=True, reason=f"lands with {step.lands_with}")(test)
+            return pytest.mark.xfail(
+                strict=True, raises=AssertionError, reason=f"lands with {step.lands_with}"
+            )(test)
         return test
 
     return mark
