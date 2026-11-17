@@ -116,7 +116,13 @@ def _remote_config(tmp_path: Path, kind: str) -> Path:
     )
 
 
-@pytest.mark.parametrize("kind", ["s3", "gcs"])
+def test_g5c_every_registered_cloud_type_has_a_case() -> None:
+    from decoy.cli.extras import CLOUD_ENDPOINT_TYPES
+
+    assert set(_REMOTE) == CLOUD_ENDPOINT_TYPES
+
+
+@pytest.mark.parametrize("kind", sorted(_REMOTE))
 def test_g5c_a_remote_source_is_not_opened_and_warns(
     tmp_path: Path, monkeypatch: Any, kind: str
 ) -> None:
