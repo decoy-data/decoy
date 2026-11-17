@@ -386,6 +386,24 @@ def test_report_diff_corrupt_output_require_data_hard_fails(tmp_path: Path) -> N
     assert result.exit_code != 0
 
 
+def test_report_diff_refuses_a_manifest_entry_with_no_format(tmp_path: Path) -> None:
+    """AT-D6: an output entry written before CLI-FMT (no `format`) exits 1 with its code,
+    value-free; there is no suffix rule to fall back on."""
+    csv_text = "email\nA@B.com\nC@D.com\n"
+    ev_a, manifest = _write_evidence_for_output(tmp_path, "_a", csv_text)
+    ev_b, _ = _write_evidence_for_output(tmp_path, "_b", csv_text)
+    for entry in manifest["output_fingerprints"].values():
+        assert "format" in entry  # the writer records it; the case strips it
+        del entry["format"]
+    ev_a.write_text(_json.dumps(manifest, indent=2), encoding="utf-8")
+
+    for extra in ([], ["--json"]):
+        result = runner.invoke(app, ["report", "diff", str(ev_a), str(ev_b), *extra])
+        assert result.exit_code == 1, result.output
+        assert "io.manifest_format_missing" in result.output
+        assert "A@B.com" not in result.output and "out_a.csv" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # D6c: manifest-level comparison (absorbed `report compare`) always runs
 # ---------------------------------------------------------------------------
