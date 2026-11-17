@@ -34,12 +34,13 @@ blocked until their rows allow them.
 
 ## Results
 
-Copy the group's table from the checklist, one line per check per platform. Result is `pass`,
-`fail` or `blocked`.
+Copy the group's table from the checklist, one line per check per platform. Exit observed is the
+code the command gave, or `none` when the check runs no command. Result is `pass`, `fail` or
+`blocked`.
 
-| Id | Platform | Result | Notes (value-free) |
-|---|---|---|---|
-| | | | |
+| Id | Platform | Exit observed | Result | Notes (value-free) |
+|---|---|---|---|---|
+| | | | | |
 
 ## Failures
 

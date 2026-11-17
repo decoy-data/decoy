@@ -499,7 +499,9 @@ def test_unreadable_entries_are_value_free(tmp_path: Path) -> None:
 # when init began writing the source relative to the YAML and a bare target (PROJECT-LAYOUT P7);
 # only the two path lines changed. The scan digest was re-recorded when the scan `pii_note`
 # stopped naming the retired detector (retired-name removal, slice C1); that note is the only change.
-_INIT_YAML_SHA256 = "f392a49f86f7db96d6dc9b46b2242beb0b9e9dd6c7e4466d7d25bfded55c39c8"
+# Moves only for the REVIEW wording change ("The scan found ..."); undoing that wording gives the old
+# digest f392a49f, so nothing else in the scaffold changed.
+_INIT_YAML_SHA256 = "e62ad0ab254fe83df4ba4d1f710e1f4b5c563000e9139af96c0789a75a758766"
 _SCAN_JSON_SHA256 = "0328e9e09969dcdbb5e47b9f8b520a1c69f9a04360f7b6768b172f7f462ba17e"
 
 
