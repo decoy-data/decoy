@@ -1664,9 +1664,9 @@
 <polyline fill="none" stroke="black" points="19780.12,-500.12 19913.88,-500.12"/>
 <text xml:space="preserve" text-anchor="start" x="19844.75" y="-482.82" font-family="Times,serif" font-size="14.00" fill="red"> </text>
 </g>
-<!-- decoy.cli.scan.ScanDiff -->
+<!-- decoy.cli.scanning._diff.ScanDiff -->
 <g id="node109" class="node">
-<title>decoy.cli.scan.ScanDiff</title>
+<title>decoy.cli.scanning._diff.ScanDiff</title>
 <polygon fill="none" stroke="black" points="19932.25,-414.5 19932.25,-628.25 20165.75,-628.25 20165.75,-414.5 19932.25,-414.5"/>
 <text xml:space="preserve" text-anchor="start" x="20019" y="-610.95" font-family="Times,serif" font-size="14.00">ScanDiff</text>
 <polyline fill="none" stroke="black" points="19932.25,-603 20165.75,-603"/>
