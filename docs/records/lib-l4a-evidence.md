@@ -43,7 +43,7 @@ revision 7: slice L4a-cli, sections 4.3a, 4.5 and 4.15 for `list`, `show`, `diff
     (no `payload` unless known).
 - **`diff A B [--json] [--library DIR]`** dispatches on the registry's `diff_rule` (`_diff.py`):
   - `scan-set`: the payload goes through `decoy.cli.io.scan_set_from_data` (the public
-    saved-scan reader), then `decoy.cli.scan.compute_scan_diff` runs per common table (the rules
+    saved-scan reader), then `decoy.cli.scanning.diff_scan_sets` runs per common table (the rules
     `scan diff` and `decoy ci check` share); tables added or removed are listed by name.
   - `evidence`: `decoy.cli.report.compare_manifests`, the `report diff` manifest comparison,
     with warning lists reduced to codes.
@@ -61,7 +61,7 @@ revision 7: slice L4a-cli, sections 4.3a, 4.5 and 4.15 for `list`, `show`, `diff
 - **Naming records (`_resolve.py`):** a full id, or a unique prefix of 8 or more hex digits
   (ambiguous refused); `KIND/NAME` or `KIND/SCOPE/NAME` refs; `KIND/latest` and
   `KIND/latest~N`, read from the index by `(created_at, id)`.
-- **Reuse, with no new exception:** both `compute_scan_diff` and `compare_manifests` are public
+- **Reuse, with no new exception:** both `diff_scan_sets` and `compare_manifests` are public
   names in flat `cli` modules and are imported lazily inside `_diff.py`. Same `cli` tier, no
   private import, no import-layer change, nothing copied.
 - **Startup:** `decoy --help` still imports no engine code.

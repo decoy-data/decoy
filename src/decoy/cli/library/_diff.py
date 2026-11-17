@@ -1,6 +1,6 @@
 """`decoy library diff`: compare two records of one kind, dispatched by the registry's `diff_rule`.
 
-- `scan-set`: each table common to both scans goes through `decoy.cli.scan.compute_scan_diff`,
+- `scan-set`: each table common to both scans goes through `decoy.cli.scanning.diff_scan_sets`,
   the rules `decoy scan diff` and `decoy ci check` already use, after the payload is read by
   `decoy.cli.io.scan_set_from_data`, the one saved-scan reader. Tables added or removed are
   listed by name.
@@ -38,13 +38,13 @@ def diff_payloads(
 
 def _scan_set(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict:
     from decoy.cli.io import scan_set_from_data
-    from decoy.cli.scan import compute_scan_diff
+    from decoy.cli.scanning import diff_scan_sets
 
     before = {str(t["name"]): t for t in scan_set_from_data(dict(old))["tables"]}
     after = {str(t["name"]): t for t in scan_set_from_data(dict(new))["tables"]}
     tables: dict[str, dict] = {}
     for name in sorted(set(before) & set(after)):
-        found = compute_scan_diff(before[name], after[name])
+        found = diff_scan_sets(before[name], after[name])
         tables[name] = {**dataclasses.asdict(found), "drift": found.drift}
     return {
         "tables": tables,
