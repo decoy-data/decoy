@@ -19,7 +19,7 @@ requires-python = ">=3.10"
 # FSL has no Trove classifier, hence Other/Proprietary below.
 license = "FSL-1.1-ALv2"
 license-files = ["LICENSE.md", "NOTICE"]
-authors = [{ name = "louiskeep" }]
+authors = [{ name = "Decoy", email = "decoy@trydecoy.com" }]
 
 # PyPI Trove classifiers. Bare-minimum honest set: the Python versions
 # we actually test against (3.10/3.11/3.12 in release-smoke.yml), the OS
