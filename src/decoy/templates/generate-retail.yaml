@@ -1,0 +1,98 @@
+# generate-retail -- synthetic customers, orders and order lines.
+#
+# Builds three linked tables from scratch, with no input file. Every order belongs to a
+# customer that exists, and every order line belongs to an order that exists. All values are
+# generated, so none of it is real customer data.
+#
+#   decoy run pipeline.yaml
+#
+# Edit `row_count`, the categories and the weights to match the shape you need.
+
+version: 2
+
+global_settings:
+  seed: 42
+
+sources: {}
+
+tables:
+  - name: customers
+    row_count: 1000
+    generate_columns:
+      - name: customer_id
+        type: sequence
+        start: 10000
+        step: 1
+      - name: first_name
+        type: faker
+        faker_type: first_name
+      - name: last_name
+        type: faker
+        faker_type: last_name
+      - name: email
+        type: faker
+        faker_type: email
+      - name: city
+        type: faker
+        faker_type: city
+      - name: loyalty_tier
+        type: categorical
+        categories: ["None", "Silver", "Gold"]
+        weights: [0.6, 0.3, 0.1]
+
+  - name: orders
+    row_count: 3000
+    generate_columns:
+      - name: order_id
+        type: sequence
+        start: 1
+        step: 1
+      - name: customer_id
+        type: reference
+        reference_table: customers
+        reference_column: customer_id
+      - name: ordered_on
+        type: faker
+        faker_type: date_this_year
+      - name: status
+        type: categorical
+        categories: ["New", "Paid", "Shipped", "Returned"]
+        weights: [0.1, 0.3, 0.5, 0.1]
+
+  - name: order_lines
+    row_count: 8000
+    generate_columns:
+      - name: line_id
+        type: sequence
+        start: 1
+        step: 1
+      - name: order_id
+        type: reference
+        reference_table: orders
+        reference_column: order_id
+      - name: product_category
+        type: categorical
+        categories: ["Apparel", "Home", "Electronics", "Beauty", "Grocery"]
+        weights: [0.25, 0.2, 0.15, 0.15, 0.25]
+      - name: quantity
+        type: faker
+        faker_type: random_int
+        faker_kwargs: {min: 1, max: 5}
+      - name: unit_price
+        type: faker
+        faker_type: random_int
+        faker_kwargs: {min: 3, max: 400}
+
+targets:
+  customers:
+    type: file
+    format: csv
+    path: ./customers.csv
+  orders:
+    type: file
+    format: csv
+    path: ./orders.csv
+  order_lines:
+    type: file
+    format: csv
+    path: ./order_lines.csv
