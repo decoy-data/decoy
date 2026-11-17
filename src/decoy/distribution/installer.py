@@ -78,7 +78,7 @@ _BUNDLE_INFO = "BUNDLE_INFO.json"
 
 # Pinned (non-latest) bundles are release assets: <base>/v<version>/decoy-<version>-<target>.tar.gz.
 # install.sh and install.ps1 carry the same literal; DECOY_BUNDLE_BASE overrides it everywhere.
-DEFAULT_BUNDLE_BASE = "https://github.com/louiskeep/decoy/releases/download"
+DEFAULT_BUNDLE_BASE = "https://github.com/decoy-data/decoy/releases/download"
 
 
 def resolve_bundle_base(override: str | None = None) -> str:
