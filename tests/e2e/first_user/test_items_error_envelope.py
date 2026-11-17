@@ -64,6 +64,8 @@ BAD_INPUT: dict[str, list[str]] = {
     "library list": ["library", "list", "--since", "not-a-date"],
     "library show": ["library", "show", "deadbeefdeadbeef"],
     "library diff": ["library", "diff", "deadbeefdeadbeef", "feedfacefeedface"],
+    "models install": ["models", "install", "ner", "--from", BAD_JSON, "--yes"],
+    "models list": ["models", "list", "--model", "Not/A-Model"],
 }
 
 # Commands with --json that have no bad input to give, or that fail outside this object today.
@@ -205,6 +207,7 @@ QUIET_CASES: dict[str, list[str]] = {
     "report diff": ["report", "diff", BAD_JSON, BAD_JSON],
     "report fidelity": ["report", "fidelity", BAD_CSV, GOOD_CSV],
     "report vault": ["report", "vault", GOOD_CSV, "--config", BAD_YAML],
+    "models install": ["models", "install", "ner", "--from", BAD_JSON, "--yes"],
 }
 # Converted commands that must have a quiet case above. A new emit_error caller adds its name.
 CONVERTED = {
