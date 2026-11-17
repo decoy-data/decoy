@@ -72,6 +72,20 @@ def _has_path(descriptor: Any) -> bool:
     return isinstance(descriptor, dict) and isinstance(descriptor.get("path"), str)
 
 
+def remote_source_names(config_dict: dict[str, Any]) -> list[str]:
+    """Names of the cloud-endpoint (`s3`, `gcs`) sources of a config, which an offline gate never opens."""
+    from decoy.cli.extras import CLOUD_ENDPOINT_TYPES
+
+    sources = config_dict.get("sources")
+    if not isinstance(sources, dict):
+        return []
+    return [
+        n
+        for n, d in sources.items()
+        if isinstance(d, dict) and d.get("type") in CLOUD_ENDPOINT_TYPES
+    ]
+
+
 def refusal_message(exc: Exception) -> str:
     """An engine refusal's text without its leading `code: `, for a printer that shows the code itself."""
     text = str(exc)

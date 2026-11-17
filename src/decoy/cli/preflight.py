@@ -192,13 +192,9 @@ def _check_source_files(raw: dict[str, Any], base_dir: Path, acc: _PreflightAccu
     NOT checked here (those are engine-level concerns that require a profile
     pass). This check is about the files themselves, not their contents.
 
-    Relative source paths resolve against `base_dir` (the pipeline YAML's
-    directory), the SAME way `decoy run` and `estimate_job_capacity` resolve
-    them (Codex re-gate MEDIUM). Resolving against CWD instead let a
-    same-named file in the caller's working directory mask a source that is
-    genuinely missing where the runner would look, so preflight could exit 0
-    on a job `decoy run` would fail -- and the capacity guard's
-    YAML-dir-resolved skip then hid it a second time.
+    Relative source paths resolve against `base_dir` (the pipeline YAML's directory), the SAME
+    way `decoy run` and `estimate_job_capacity` do. Resolving against CWD let a same-named file
+    in the working directory mask a source missing where the runner looks.
     """
     sources = raw.get("sources") or {}
     if not isinstance(sources, dict):
@@ -315,18 +311,11 @@ def _file_sources_missing_on_disk(raw: dict[str, Any], base_dir: Path) -> bool:
     resolution, so a source missing where the runner would look is reported
     by Step 4 as a `fail` AND skipped here, never silently passed.
 
-    Root-cause guard for a real regression: without it, a job whose source
-    is already known missing (Step 4's `_check_source_files` already
-    reported a `fail` for it) would still reach `estimate_job_capacity`,
-    which raises on an unreadable source (its own documented R3 contract,
-    "an unreadable source" propagates) -- and since that exception is no
-    longer swallowed here (R3, Codex P1-2), it would crash the WHOLE
-    `preflight` command before `_emit_preflight_result` ever runs, losing
-    every finding accumulated so far, including the one that already
-    explained the problem. Skipping the capacity estimate for a source we
-    already know cannot be read is not swallowing a defect -- it is
-    declining to run a check whose precondition is already known false,
-    exactly like the sibling non-file-source skip below.
+    Root-cause guard: a source already reported missing by Step 4 would still reach
+    `estimate_job_capacity`, which raises on an unreadable source and would crash the whole
+    command before `_emit_preflight_result` prints any finding. Skipping a check whose
+    precondition is already known false is not swallowing a defect; it matches the
+    non-file-source skip below.
     """
     sources = raw.get("sources") or {}
     if not isinstance(sources, dict):
@@ -426,19 +415,18 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
         )
         return
 
-    from decoy_engine import CapacityVerdict, ExecutionError, parse_pipeline_config
+    from decoy_engine import (
+        CapacityVerdict,
+        ExecutionError,
+        PipelineValidationError,
+        parse_pipeline_config,
+    )
     from decoy_engine.plan import PlanCompileError
 
-    # The ONE narrow catch here (R3): a source that is present but corrupt /
-    # not-the-declared-format passes the on-disk guard above (which only tests
-    # filesystem accessibility, not parseability) and fails when the estimator
-    # profiles it -- `estimate_job_capacity` raises the typed
-    # `capacity_source_unprofilable` for exactly that. Render it as a FAIL (the
-    # profile read is the first check that actually parses the source, so this
-    # is where a corrupt file legitimately surfaces) rather than crashing on a
-    # raw traceback. Any OTHER exception -- an unexpected estimator defect --
-    # still propagates, never degraded into a WARN or a false pass (Codex
-    # P1-2 / re-gate MEDIUM).
+    # Narrow catches only (R3): the estimator is the first read that parses a source, so a
+    # corrupt file (`capacity_source_unprofilable`) or a column the config and file disagree on
+    # (`source_file.*`) surfaces here as a FAIL, not a traceback. Any other exception is an
+    # estimator defect and propagates, never degraded into a WARN or a false pass.
     config_dump = parse_pipeline_config(raw).model_dump()
     try:
         estimate = _engine_execution.estimate_job_capacity(config_dump, base_dir=config_path.parent)
@@ -463,6 +451,12 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
             message=f"Cannot estimate capacity -- source not parsed ({type(exc.__cause__).__name__})",
             code=exc.code,
         )
+        return
+    except PipelineValidationError as exc:
+        # The engine's one declared-column check, with the code `decoy run` gives.
+        if not str(exc.code).startswith("source_file."):
+            raise
+        acc.add_fail(name="source.declared_columns", message=str(exc), code=exc.code)
         return
     except PlanCompileError as exc:
         # Own check name so CHUNKED's CAPACITY_CHECK downgrade cannot make it a warning.
