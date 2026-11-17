@@ -117,12 +117,14 @@ The slice changes a default (every successful run now writes under `.decoy/`) an
   (6 passed).
 - **Main baseline.** Main `4e6d60b` is green in CI. No main-side full suite ran (the rule is to
   diff against the stored baseline), so no other failing id is attributed to main.
-- **An earlier full run** on a superseded head found 17 more failures, all from the new default.
-  They are fixed in `b7c6d9f`:
+- **An earlier full run** on a superseded head found 19 failures. One was my mistake: a
+  `ruff format` over all of `src/` and `tests/` had reformatted unrelated files (`scan.py` then
+  tripped the module-size census). The two commits were rebuilt with only this slice's files.
+  The other 18 came from the new default and are fixed in `b7c6d9f`:
   - G-LIB-FS: the label's `Path.resolve` was in the library module.
   - The sentry manifest was missing the new sentry file.
   - `--all` forwarding had no `--no-library` sample.
-  - Six runs that compare two `--json` documents now ignore the per-run record id.
+  - Seven tests that compare two runs' `--json` now ignore the per-run record id.
   - Two layout guarantee tests now list the library files a run writes.
 - **Format.** No format gate is in `ci.yml`. The files this slice touches pass `ruff format --check`.
 
