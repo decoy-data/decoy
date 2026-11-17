@@ -2,7 +2,7 @@ Status: plan
 
 # GEN-CATALOG: finish the generation catalog (CLI roadmap row 24s)
 
-Owner: Cam. Author: Opus plan agent. Date: 2026-11-17. Revision 1.
+Owner: Cam. Author: Opus plan agent. Date: 2026-11-17. Revision 2 (Codex round 1 applied; section 16).
 Scope: one engine slice (GC3-E) and one CLI slice (GC3). Most of the row is already merged; this
 plan closes what is left and updates the row.
 
@@ -241,9 +241,10 @@ strings. Templates hold no real data; every value is generated. No log line is a
 
 Engine, `tests/unit/transforms/test_code_set.py` and `tests/unit/test_public_api.py` (existing):
 
-- **AT-E1** `code_set_catalog()` keys equal `SHIPPED_CODE_SETS`, in the same order, and every value
-  is a non-empty string. Catches: a hand list, or a catalog that drifts from the registry the
-  compile check uses. Fails today: no such name.
+- **AT-E1** `code_set_catalog()` equals `{name: spec.description for name, spec in
+  CODESET_REGISTRY.items()}` (every name and every description), its keys are in name order, and
+  its keys equal `SHIPPED_CODE_SETS`. Catches: a hand list or hand-written descriptions, or a
+  catalog that drifts from the registry the compile check uses. Fails today: no such name.
 - **AT-E2** `code_set_catalog` is in `decoy_engine.__all__` and on the frozen-surface map
   (`test_public_api.py` expected set; `tests/sentry/release/test_frozen_surface_map.py`).
   Catches: an export missing from the frozen map.
@@ -257,9 +258,13 @@ CLI, `tests/e2e/test_reference_command.py` (existing):
   missing kind. Fails today: unknown kind, exit 1.
 - **AT-2** `decoy list codesets` (human) exit 0 and names `icd10`. Catches: a reader that prints
   only in JSON mode.
-- **AT-3** `decoy list --help` names every key of `_LIST_READERS`, and `decoy list nope` lists
-  every key (extends `test_list_unknown_kind_lists_the_new_kinds_too`). Catches: a kind added
-  without help (G4). Fails today for `codesets`.
+- **AT-3** Each kind inventory is checked on its own, read from the registered click command
+  (`typer.main.get_command(app)`, the `list` subcommand) so terminal wrapping does not matter:
+  the set of kinds after "What to list:" in the `KIND` argument help, the set on the epilog's
+  "Kinds:" line, and the set named in the command help sentence each equal the keys of
+  `_LIST_READERS` exactly. `decoy list nope` still lists every key (extends
+  `test_list_unknown_kind_lists_the_new_kinds_too`). Catches: a kind added without help, or one
+  inventory left as a stale literal (G4). Fails today for `codesets`.
 - **AT-4** `decoy list generate-types --json`: on every entry `one_of` equals the engine catalog's
   `one_of` (so `lookup` has `["file", "codeset"]` and the rest `[]`); the human table shows
   `one of: file, codeset` on the `lookup` row; `decoy explain generation` prints
@@ -279,7 +284,8 @@ CLI, `tests/e2e/test_bundled_templates_e2e.py` (existing):
   `code_set_catalog()`. Catches: an engine rename reaching users (FM-4).
 - **AT-8** Value shapes, each checked with `re.fullmatch` (recurring-defect class 1): healthcare
   `claims.diagnosis_code` values are non-null and match `[A-Z][0-9][0-9A-Z].*`; banking
-  `transactions.merchant_category` values match `[0-9]{4}`; every money column's values match
+  `transactions.merchant_category` values match `[0-9]{4}`; healthcare `claims.procedure_code`
+  values are non-null and match `[A-Z][0-9]{4}` (HCPCS Level II); every money column's values match
   `-?[0-9]+\.[0-9]{2}` and fall within its `low` and `high`. Catches: a lookup or an output type
   silently not applied.
 - **AT-9** `test_registry_has_the_expected_set` and the release-smoke expected set are unchanged.
@@ -293,10 +299,13 @@ regenerated.
 | Mutation | Must turn red |
 |---|---|
 | Engine: `code_set_catalog` returns a literal dict without `ndc` | AT-E1 |
+| Engine: a literal dict with all names and a changed `mcc` description | AT-E1 |
 | Engine: return the module-level registry view itself | AT-E3 |
 | CLI: `_codesets_list` prints a fixed tuple of names | AT-1 |
 | CLI: drop `one_of` from `type_entries()` | AT-4 |
 | CLI: restore the literal "Kinds:" epilog without `codesets` | AT-3 |
+| CLI: restore the literal `KIND` argument help without `codesets` | AT-3 |
+| CLI: remove `codeset: hcpcs` from `procedure_code` (column falls back or is refused) | AT-5 or AT-8 |
 | CLI: healthcare `codeset: icd10` becomes `codeset: icd11` | AT-5 and AT-6 |
 | CLI: remove `output_type: decimal(2)` from banking `amount` | AT-8 |
 
@@ -430,8 +439,9 @@ says why, final line `cam`, no other trailers.
 3. GC3 builds on CLI `main` after that repin. Row 24s closes when GC3 merges.
 4. If the engine release is held, GC3 may split into GC3a (items 1 and 3 to 9 without the
    `codeset` half of AT-6) and GC3b (item 2 and that half). This is the only planned split.
-5. If FM-1 fires, the orchestrator opens a gate bug row; GC3 then lands with AT-5 on
-   `validate config` plus `validate compile`, recorded as an approved change to AT-5.
+5. If FM-1 fires, the orchestrator opens a gate bug row and GC3 waits for that fix. AT-5 stays
+   on the whole gate; it is not narrowed to let GC3 merge, because the guarantee names the
+   command a user runs.
 6. Rows 24p and 24r change nothing here. When 24p merges, `decoy list generate-types` shows
    `provider` with no CLI change, because the projection reads the catalog.
 
@@ -454,7 +464,8 @@ says why, final line `cam`, no other trailers.
 Assume it is 2026-12-01 and row 24s is still open. Likely reasons, with the guard for each:
 
 - The whole gate refused a generate-only config (FM-1) and the slice stalled. Guard: the builder
-  stops at the first T1 and reports; section 13 item 5 gives the fallback.
+  stops at the first T1 and reports; the gate fix is a prerequisite row (section 13 item 5),
+  and AT-5 is never narrowed.
 - The engine release with GC3-E slipped. Guard: section 13 item 4 splits GC3.
 - A review asked for option-value lists or the provider marker. Guard: both are non-goals with
   owner questions (OQ-1, OQ-2); findings outside the guarantee become follow-ups.
@@ -469,4 +480,8 @@ Assume it is 2026-12-01 and row 24s is still open. Likely reasons, with the guar
 
 ## 16. Review record
 
-(filled by plan review rounds)
+Round 1, Codex `review-low` on `27364ea5`: NO-GO, 2 V1, 1 DESIGN, 1 V2-LOG. Applied in revision 2:
+AT-E1 compares names and descriptions with `CODESET_REGISTRY` (V1); the AT-5 fallback that let
+GC3 merge on `validate config` plus `validate compile` is removed, so the whole gate stays
+mandatory (V1); AT-3 checks each kind inventory on its own (DESIGN); AT-8 checks
+`procedure_code` (V2-LOG, taken since it is one line).
