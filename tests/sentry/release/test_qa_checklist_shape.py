@@ -93,7 +93,7 @@ def _cells(line: str) -> tuple[str, ...]:
 
 
 def parse_checks(text: str) -> tuple[list[Check], list[tuple[int, str]]]:
-    """The check rows under the numbered group headings, and each table's group and header line.
+    """Every table row under the numbered group headings (so a malformed row is seen), and each table's group and header line.
 
     Rows are kept whole, so a wrong cell count is a test failure, not a parse error.
     """
@@ -109,8 +109,9 @@ def parse_checks(text: str) -> tuple[list[Check], list[tuple[int, str]]]:
             continue
         if line.startswith("| Id |"):
             headers.append((group, line))
-        elif _CHECK_ID.match(line[2:]):
-            checks.append(Check(group, line[2:].split(" ", 1)[0], _cells(line)))
+        elif not line.startswith("|---"):
+            cells = _cells(line)
+            checks.append(Check(group, cells[0], cells))
     return checks, headers
 
 
@@ -192,7 +193,9 @@ def test_check_tables_have_six_cells(text: str, checks: list[Check]) -> None:
         assert _cells(header) == CHECK_HEADER, header
     short = [c.id for c in checks if len(c.cells) != len(CHECK_HEADER)]
     assert not short, f"rows without six cells: {short}"
-    assert all(c.cells[0] == c.id and c.cells[5] == "" for c in checks), "id first, Pass/fail blank"
+    assert all(c.cells[5] == "" for c in checks), "Pass/fail stays blank in the checklist"
+    bad = [c.id for c in checks if not _CHECK_ID.fullmatch(c.id)]
+    assert not bad, f"rows whose first cell is not a check id: {bad}"
 
 
 def test_separator_rows_match_the_header(text: str) -> None:
