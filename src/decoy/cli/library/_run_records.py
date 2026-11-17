@@ -4,8 +4,8 @@ The run builds its `cli-local-1` manifest once (`decoy.cli.evidence.build_manife
 that same dict here, so the record payload equals the `--evidence-out` file byte for byte after
 canonicalization (amendment 2026-11-12: built once, stored as built; no path is rewritten here,
 export strips the declared path fields). The envelope carries the run's invocation id, the
-`pipeline` label (the YAML's project-relative POSIX path, what `library list --pipeline` reads)
-and the table names. Evidence links to nothing; the run-result record (RESULT C1a/C1b) will link
+`pipeline` label the run passes in (the YAML's project-relative POSIX path, what
+`library list --pipeline` reads) and the table names. Evidence links to nothing; the run-result record (RESULT C1a/C1b) will link
 to it.
 
 Records are on by default (4.16): `--no-library` or `DECOY_LIBRARY=off` skips them. A store that
@@ -47,26 +47,17 @@ class StoreOutcome:
         return out
 
 
-def _pipeline_label(yaml: Path) -> str:
-    from decoy.cli.io import find_project
-
-    resolved = yaml.resolve()
-    root = find_project(resolved.parent, None).root.resolve()
-    try:
-        return resolved.relative_to(root).as_posix()
-    except ValueError:
-        return resolved.as_posix()
-
-
 def store_evidence(
     manifest: Mapping[str, Any],
     *,
     pipeline: Path,
+    label: str,
     invocation_id: str,
     enabled: bool = True,
     environ: Mapping[str, str] | None = None,
 ) -> StoreOutcome:
-    """Put the run's manifest as an `evidence` record in the run's library. Never raises."""
+    """Put the run's manifest as an `evidence` record in the library of the run's YAML,
+    `pipeline`. `label` is the YAML's project-relative POSIX path. Never raises."""
     if not enabled:
         return StoreOutcome("skipped")
     import decoy_engine
@@ -83,7 +74,7 @@ def store_evidence(
         found = resolve_root(pipeline=pipeline, environ=environ)
         if not found.records:
             return StoreOutcome("skipped")
-        root = found.path.resolve()
+        root = found.path  # already anchored: absolute, links resolved
         check_root_budget(root)
         envelope = records.build(
             "evidence",
@@ -96,7 +87,7 @@ def store_evidence(
             invocation_id=invocation_id,
             created_at=datetime.now(timezone.utc),
             labels={
-                "pipeline": _pipeline_label(pipeline),
+                "pipeline": label,
                 "tables": sorted(manifest.get("output_fingerprints") or {}),
             },
         )

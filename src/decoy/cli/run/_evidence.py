@@ -28,6 +28,16 @@ def _marked_project_root(config: Path) -> Path | None:
     return None if found.implicit else found.root
 
 
+def _pipeline_label(config: Path) -> str:
+    """The YAML's path from its project root, POSIX: the `pipeline` label on the run's records,
+    which `decoy library list --pipeline` matches (plan 4.3). Absolute when it is outside."""
+    resolved = config.resolve()
+    try:
+        return resolved.relative_to(find_project(resolved.parent, None).root.resolve()).as_posix()
+    except (LayoutError, ValueError):
+        return resolved.as_posix()
+
+
 def write_evidence(ctx: RunContext) -> None:
     """Build the manifest once; write it to `--evidence-out` and store it in the record library.
 
@@ -72,7 +82,11 @@ def write_evidence(ctx: RunContext) -> None:
     from decoy.cli.library import store_evidence
 
     ctx.library_outcome = store_evidence(
-        manifest, pipeline=ctx.config, invocation_id=ctx.invocation_id, enabled=store
+        manifest,
+        pipeline=ctx.config,
+        label=_pipeline_label(ctx.config),
+        invocation_id=ctx.invocation_id,
+        enabled=store,
     )
     if ctx.library_outcome.status == "failed" and ctx.state.mode is not OutputMode.quiet:
         ctx.state.err_console.print(
