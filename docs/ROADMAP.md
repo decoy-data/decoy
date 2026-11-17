@@ -23,8 +23,8 @@ builder say so. Anything not checked says UNVERIFIED.
 Editing rule: status tables hold the current state only, one row per item. When a row changes,
 replace its text. Old text that must be kept goes into a dated snapshot, not into the row.
 
-Path shorthand: `E:` is the engine repo (`louiskeep/decoy-engine`), `C:` is this repo
-(`louiskeep/decoy`), `P:` is the platform repo (`louiskeep/decoy-platform`). "Vault" is
+Path shorthand: `E:` is the engine repo (`decoy-data/decoy-engine`), `C:` is this repo
+(`decoy-data/decoy`), `P:` is the platform repo (`decoy-data/decoy-platform`). "Vault" is
 `~/obsidian-vault/10_Projects/decoy/`. Build handoffs named `p05-*.md` are in the vault folder
 `handoffs/phase0.5/`; H-1 handoffs and the tracker are in `handoffs/phase1/h1/`.
 
@@ -63,7 +63,7 @@ The tokenization vault and CI use are part of the baseline on both products. Wor
 the pipeline is the only job unit. The CLI is single-user and does not self-orchestrate; it returns
 exit codes and a result document. The platform adds teams, orchestration and records.
 
-Full text: [`P:docs/product/v1-pipeline-baseline.md`](https://github.com/louiskeep/decoy-platform/blob/main/docs/product/v1-pipeline-baseline.md).
+Full text: [`P:docs/product/v1-pipeline-baseline.md`](https://github.com/decoy-data/decoy-platform/blob/main/docs/product/v1-pipeline-baseline.md).
 It stays in the platform repo next to the journeys, the capabilities page and the V1 UX map that
 link to it. The V1 UX map is `P:docs/product/v1-ux-map.md` (branch `docs/v1-ux-map`, in its own
 review); its section 8 is the source of the UX map rows below.
@@ -538,7 +538,7 @@ Owner, 2026-11-05: "finish out in flight platform work, document completely, pau
 development. Focus on CLI/engine through the entire roadmap, then once CLI V1 is out, we can work
 platform v1." Restart trigger: CLI V1 has shipped.
 
-Pause record: [`P:docs/PARKED.md`](https://github.com/louiskeep/decoy-platform/blob/main/docs/PARKED.md)
+Pause record: [`P:docs/PARKED.md`](https://github.com/decoy-data/decoy-platform/blob/main/docs/PARKED.md)
 (being written on platform branch `docs/platform-parked`) and the vault note
 `10_Projects/decoy/platform-pause-2026-11-05.md` (each finish-out merge is recorded there). On
 restart, re-check every row against main first: the engine contracts will have moved under the CLI V1

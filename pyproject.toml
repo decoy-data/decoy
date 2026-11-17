@@ -19,7 +19,7 @@ requires-python = ">=3.10"
 # FSL has no Trove classifier, hence Other/Proprietary below.
 license = "FSL-1.1-ALv2"
 license-files = ["LICENSE.md", "NOTICE"]
-authors = [{ name = "louiskeep" }]
+authors = [{ name = "Decoy", email = "decoy@trydecoy.com" }]
 
 # PyPI Trove classifiers. Bare-minimum honest set: the Python versions
 # we actually test against (3.10/3.11/3.12 in release-smoke.yml), the OS
@@ -225,12 +225,12 @@ otel = [
 # Project URLs surfaced on the PyPI sidebar. Source key is the
 # convention pip/Warehouse uses.
 [project.urls]
-Homepage = "https://github.com/louiskeep/decoy"
-Repository = "https://github.com/louiskeep/decoy"
-Documentation = "https://github.com/louiskeep/decoy/blob/main/README.md"
-Issues = "https://github.com/louiskeep/decoy/issues"
-Changelog = "https://github.com/louiskeep/decoy/blob/main/CHANGELOG.md"
-"Release smoke log" = "https://github.com/louiskeep/decoy/blob/main/docs/release/smoke-log.md"
+Homepage = "https://github.com/decoy-data/decoy"
+Repository = "https://github.com/decoy-data/decoy"
+Documentation = "https://github.com/decoy-data/decoy/blob/main/README.md"
+Issues = "https://github.com/decoy-data/decoy/issues"
+Changelog = "https://github.com/decoy-data/decoy/blob/main/CHANGELOG.md"
+"Release smoke log" = "https://github.com/decoy-data/decoy/blob/main/docs/release/smoke-log.md"
 
 [project.scripts]
 # Console script name STAYS `decoy` regardless of the distribution name.

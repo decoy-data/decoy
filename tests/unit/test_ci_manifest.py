@@ -322,7 +322,7 @@ def test_helper_manifest_text_is_valid(tmp_path: Path) -> None:
 _ANNOTATIONS = frozenset({"description", "title", "examples"})
 _NAME_MAPS = frozenset({"properties", "patternProperties", "$defs", "definitions"})
 # Computed at merge base 419572a20e2d93b7d2436267fbae7049d620c013 (origin/main when C2 was cut).
-_VALIDATION_PROJECTION_SHA256 = "b68d66502a766b1448b29cf8b1a9c6c320ad10bbb02bec4df2ad7b5456b44bf2"
+_VALIDATION_PROJECTION_SHA256 = "0091c9c928045df509eebe09d96e6744912f8393940190a797a68fc230e0f4f6"
 
 
 def _validation_projection(node, *, names: bool = False):
