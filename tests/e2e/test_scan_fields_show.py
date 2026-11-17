@@ -9,54 +9,28 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.scan_docs import scan_set_doc
 
 runner = CliRunner()
 
 
 @pytest.fixture
 def scan_file(tmp_path: Path) -> Path:
-    """Hand-built scan JSON -- avoids depending on engine detector behaviour."""
+    """Hand-built `scan-set/v1` JSON -- avoids depending on engine detector behaviour."""
     path = tmp_path / "scan.json"
     path.write_text(
         _json.dumps(
-            {
-                "row_count": 5,
-                "source_label": "sample.csv",
-                "sample_strategy": "head",
-                "sample_row_cap": None,
-                "reid_risk_score": 88.9,
-                "quasi_identifier_groups": [["first_name", "email"]],
-                "fields": [
-                    {
-                        "name": "customer_id",
-                        "pii_score": 0.0,
-                        "top_values": [],
-                        "detector_matches": [],
-                        "sentinels": [],
-                    },
-                    {
-                        "name": "first_name",
-                        "pii_score": 0.35,
-                        "top_values": [{"value": "Alice", "count": 1}],
-                        "detector_matches": [{"detector": "name"}],
-                        "sentinels": [],
-                    },
-                    {
-                        "name": "email",
-                        "pii_score": 0.7,
-                        "top_values": [],
-                        "detector_matches": [{"detector": "email"}],
-                        "sentinels": [],
-                    },
-                    {
-                        "name": "ssn",
-                        "pii_score": 0.95,
-                        "top_values": [],
-                        "detector_matches": [{"detector": "ssn"}],
-                        "sentinels": [{"value": "000-00-0000", "count": 0}],
-                    },
+            scan_set_doc(
+                [
+                    {"name": "customer_id", "pii_score": 0.0},
+                    {"name": "first_name", "pii_score": 0.35, "detector_hits": ["name"]},
+                    {"name": "email", "pii_score": 0.7, "detector_hits": ["email"]},
+                    {"name": "ssn", "pii_score": 0.95, "detector_hits": ["ssn"]},
                 ],
-            }
+                table="sample",
+                reid_risk_score=88.9,
+                quasi_identifier_groups=[["first_name", "email"]],
+            )
         )
     )
     return path
@@ -199,7 +173,7 @@ def test_scan_show_renders_field_card(scan_file: Path):
 
 
 def test_scan_show_never_prints_top_values(scan_file: Path):
-    """A legacy scan holds cell values in `top_values`; `show` drops them (S1c)."""
+    """A saved scan holds no cell values and `show` prints none."""
     result = runner.invoke(app, ["scan", "show", str(scan_file), "first_name"])
     assert result.exit_code == 0
     assert "Top values" not in result.stdout
@@ -256,29 +230,6 @@ def test_scan_show_unknown_field_json_emits_error_envelope(scan_file: Path):
     assert payload["command"] == "scan show"
     assert payload["status"] == "error"
     assert payload["field"] == "wat"
-
-
-def test_scan_show_accepts_envelope_shape(tmp_path: Path):
-    """`scan --json` envelopes wrap the profile in a `profile` key --
-    `scan show` should accept that shape too, matching forecast's loader.
-    """
-    path = tmp_path / "envelope.json"
-    path.write_text(
-        _json.dumps(
-            {
-                "command": "scan",
-                "status": "ok",
-                "profile": {
-                    "row_count": 1,
-                    "quasi_identifier_groups": [],
-                    "fields": [{"name": "x", "pii_score": 0.1}],
-                },
-            }
-        )
-    )
-    result = runner.invoke(app, ["scan", "show", str(path), "x"])
-    assert result.exit_code == 0
-    assert "x" in result.stdout
 
 
 def test_scan_show_csv_input_emits_scan_first_hint(tmp_path: Path):

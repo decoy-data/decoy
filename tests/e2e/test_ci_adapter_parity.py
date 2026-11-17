@@ -29,6 +29,7 @@ from tests.ci_support import (
     write_clean_pipeline,
 )
 from tests.run_outputs import latest_output
+from tests.scan_docs import scan_set_doc
 
 # `decoy ci` emits the fixed family token for a preflight check named after a table
 # (`target.<table>.would_overwrite` -> `target.would_overwrite`): the table name is user data.
@@ -110,20 +111,19 @@ def test_full_ci_validation_runs_config_only_checks_exactly_once(
 def test_drift_counts_equal_scan_diff_summary(tmp_path: Path) -> None:
     repo = make_repo(tmp_path / "repo")
     write_clean_pipeline(repo)
-    old = {
-        "fields": [{"name": "a", "pii_score": 0.1}, {"name": "b", "pii_score": 0.2}],
-        "quasi_identifier_groups": [],
-        "reid_risk_score": 0.1,
-    }
-    new = {
-        "fields": [
+    old = scan_set_doc(
+        [{"name": "a", "pii_score": 0.1}, {"name": "b", "pii_score": 0.2}],
+        reid_risk_score=0.1,
+    )
+    new = scan_set_doc(
+        [
             {"name": "a", "pii_score": 0.9},
             {"name": "b", "pii_score": 0.5},
             {"name": "c", "pii_score": 0.95},
         ],
-        "quasi_identifier_groups": [["a", "b"]],
-        "reid_risk_score": 0.4,
-    }
+        quasi_identifier_groups=[["a", "b"]],
+        reid_risk_score=0.4,
+    )
     write(repo, "old.json", json.dumps(old))
     write(repo, "new.json", json.dumps(new))
     direct = json.loads(run_decoy(["scan", "diff", "old.json", "new.json", "--json"], repo).stdout)
