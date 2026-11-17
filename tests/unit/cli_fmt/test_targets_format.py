@@ -9,7 +9,6 @@ import pytest
 from decoy.cli.io import _targets
 from decoy.cli.io._targets import (
     FORMAT_UNKNOWN,
-    MANIFEST_FORMAT_MISSING,
     STREAMING_UNSUPPORTED,
     SUFFIX_MISMATCH,
     UNREADABLE,
@@ -177,6 +176,10 @@ def test_input_format_refuses_an_unreadable_declaration_before_any_open(
 @pytest.mark.parametrize(
     ("entry", "expected"),
     [
+        ({"path": "o.parquet"}, ("parquet", None)),
+        ({"path": "o.PARQUET"}, ("parquet", None)),
+        ({"path": "o.pq"}, ("csv", None)),
+        ({"path": "o.dat"}, ("csv", None)),
         ({"path": "o.pq", "format": "parquet"}, ("parquet", None)),
         ({"path": "o.parquet", "format": "csv"}, ("csv", None)),
         ({"path": "o", "format": "fixed_width", "layout": _LAYOUT}, ("fixed_width", _LAYOUT)),
@@ -205,15 +208,6 @@ def test_entry_format_refuses_what_it_cannot_read(entry: dict) -> None:
         entry_format(Path(entry["path"]), {k: v for k, v in entry.items() if k != "path"})
     assert err.value.code == UNREADABLE
     assert "xml" not in str(err.value) and "o.csv" not in str(err.value)
-
-
-@pytest.mark.parametrize("path", ["o.parquet", "o.PARQUET", "o.pq", "o.dat"])
-def test_entry_format_refuses_an_entry_with_no_format(path: str) -> None:
-    """AT-D6: a manifest entry from before CLI-FMT is refused, whatever its suffix."""
-    with pytest.raises(TargetFormatError) as err:
-        entry_format(Path(path), {})
-    assert err.value.code == MANIFEST_FORMAT_MISSING == "io.manifest_format_missing"
-    assert path not in str(err.value)
 
 
 def test_every_declared_format_has_a_display_name() -> None:

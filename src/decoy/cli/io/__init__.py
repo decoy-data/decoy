@@ -130,7 +130,6 @@ from decoy.cli.io._scan_set import (
 )
 from decoy.cli.io._small_file import UnsafeFileError, read_small_file
 from decoy.cli.io._targets import (
-    MANIFEST_FORMAT_MISSING,
     TargetFormatError,
     check_output_path,
     check_target_formats,
@@ -154,7 +153,6 @@ __all__ = [
     "DECOY_DIR_GITIGNORE",
     "GATE_CODES",
     "GATE_DESCRIPTORS",
-    "MANIFEST_FORMAT_MISSING",
     "OUTPUT_DIR_UNUSABLE",
     "OUTPUT_PATH_COLLISION",
     "PIPELINES_DIR",

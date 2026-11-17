@@ -51,12 +51,6 @@ class AllowedRead:
 
 ALLOWLIST: tuple[AllowedRead, ...] = (
     AllowedRead(
-        "cli/demo.py",
-        "_run_single_demo",
-        1,
-        "Reads the bundled demo sample for the scan step; not a declared source.",
-    ),
-    AllowedRead(
         "cli/gen/_fit.py",
         "read_fit_csv",
         1,

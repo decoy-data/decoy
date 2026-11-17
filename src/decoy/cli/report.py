@@ -62,15 +62,7 @@ from decoy.cli.evidence import (
     verify_manifest,
 )
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_RUNTIME, EXIT_USAGE, exit_code_for
-from decoy.cli.io import (
-    MANIFEST_FORMAT_MISSING,
-    ReportTarget,
-    TargetFormatError,
-    entry_format,
-    pipeline_option,
-    report_dest,
-    resolve_pipeline,
-)
+from decoy.cli.io import ReportTarget, entry_format, pipeline_option, report_dest, resolve_pipeline
 from decoy.ui.output import (
     OutputMode,
     OutputState,
@@ -885,8 +877,8 @@ def compare_data(
     `path` is resolved by `evidence.resolve_manifest_path` against its own manifest's project,
     never the working directory; an entry with a null fingerprint (nothing written) counts as
     missing. Since CLI-FMT an entry records the `format` (and fixed-width `layout`) it was
-    written in; each side is read by its own entry. Raises `ManifestError` when a stored path is
-    refused, and `TargetFormatError` (`MANIFEST_FORMAT_MISSING`) for an entry with no `format`.
+    written in; each side is read by its own entry, and one without `format` takes the legacy
+    suffix rule. Raises `ManifestError` when a stored path is refused.
 
     Returns `any_data_change` (bool), `missing_files` (recorded paths not found or not
     readable) and `table_deltas`: per table, `row_count_a`/`_b`/`_delta`, `columns_added` and
@@ -954,14 +946,12 @@ def compare_data(
         if missing_files:
             continue
 
-        # Each side is read by its own recorded format; an entry with none is refused.
+        # Each side is read by its own recorded format (an old entry: the legacy suffix rule).
         rec_a, rec_b = ({k: fp[k] for k in ("format", "layout") if k in fp} for fp in (fp_a, fp_b))
         try:
             df_a = read_file(found[0], *entry_format(found[0], rec_a), table=table)
             df_b = read_file(found[1], *entry_format(found[1], rec_b), table=table)
-        except (OSError, ValueError, DecoyError) as exc:
-            if isinstance(exc, TargetFormatError) and exc.code == MANIFEST_FORMAT_MISSING:
-                raise
+        except (OSError, ValueError, DecoyError):
             # Unreadable (corrupt, truncated, or not its recorded format): treat it as missing so
             # --require-data still fails. The parser message is dropped: it can echo cell values.
             for p_str in (path_a_str, path_b_str):
@@ -1260,14 +1250,6 @@ def _diff(
         # pandas (or a parquet reader) is not installed. Treat the data level
         # as unavailable rather than failing the whole comparison.
         data_dep_error = str(_dep_err)
-    except TargetFormatError as exc:
-        # An entry written before CLI-FMT. The code and message are fixed text.
-        msg = f"{exc.code}: {exc}"
-        if state.mode is OutputMode.json:
-            emit_json(state, {"command": "report diff", "status": "error", "error": msg})
-        else:
-            state.err_console.print(error("error:"), msg)
-        raise typer.Exit(code=EXIT_USAGE) from None
 
     missing_files: list[str] = list(data_result["missing_files"]) if data_result else []
     data_available = data_result is not None and not missing_files

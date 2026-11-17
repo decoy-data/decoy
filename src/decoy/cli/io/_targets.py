@@ -46,8 +46,6 @@ SUFFIX_MISMATCH = "target_format_suffix_mismatch"
 STREAMING_UNSUPPORTED = "target_format_streaming_unsupported"
 FORMAT_UNKNOWN = "target_format_unknown"
 UNREADABLE = "target_format_unreadable"
-# A manifest entry with no `format`: written before CLI-FMT, and no suffix rule reads it now.
-MANIFEST_FORMAT_MISSING = "io.manifest_format_missing"
 
 _FORMATS = ("csv", "parquet", "fixed_width")
 _SUFFIX_FORMAT = {".csv": "csv", ".parquet": "parquet", ".pq": "parquet"}
@@ -192,6 +190,14 @@ def resolve_target_format(table: str, entry: Mapping[str, Any]) -> str:
     return str(entry["format"])
 
 
+def _legacy_format_for_path(path: Path) -> str:
+    """The format the pre-CLI-FMT writer gave a path: `.parquet` was Parquet, all else CSV.
+
+    Not `format_for_path`: the old writer put CSV bytes into a `.pq` path.
+    """
+    return "parquet" if path.suffix.lower() == ".parquet" else "csv"
+
+
 def _unreadable(fmt: object, layout: object) -> TargetFormatError | None:
     if not isinstance(fmt, str) or fmt not in _FORMATS:
         return TargetFormatError(UNREADABLE, "the file's format cannot be determined")
@@ -251,15 +257,11 @@ def entry_format(path: Path, recorded: Mapping[str, Any]) -> tuple[str, Mapping[
 
     `path` is the output already resolved from the manifest (`resolve_manifest_path`), never
     the stored text. `recorded` holds the entry's `format` and `layout` keys, without its path.
-    No `format` means a manifest written before CLI-FMT and is refused
-    (`MANIFEST_FORMAT_MISSING`). An unknown format, or fixed_width without a layout, is
-    refused too.
+    No `format` means a manifest written before CLI-FMT: the legacy suffix rule. An unknown
+    format, or fixed_width without a layout, is refused.
     """
     if "format" not in recorded:
-        raise TargetFormatError(
-            MANIFEST_FORMAT_MISSING,
-            "the manifest entry records no output format; rerun the pipeline to write a new one",
-        )
+        return _legacy_format_for_path(path), None
     layout = recorded.get("layout")
     error = _unreadable(recorded["format"], layout)
     if error is not None:
