@@ -20,6 +20,7 @@ from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from tests.ci_support import make_repo, run_decoy
 from tests.csv_sources import csv_source
+from tests.scan_docs import scan_set_doc
 
 runner = CliRunner()
 
@@ -193,8 +194,8 @@ def test_scan_reid_risk_names_its_scale_and_k(
 def test_scan_diff_reid_risk_delta_is_in_points(tmp_path: Path) -> None:
     old = tmp_path / "old.json"
     new = tmp_path / "new.json"
-    old.write_text(json.dumps({"fields": [], "reid_risk_score": 10.0}), encoding="utf-8")
-    new.write_text(json.dumps({"fields": [], "reid_risk_score": 11.5}), encoding="utf-8")
+    old.write_text(json.dumps(scan_set_doc([], reid_risk_score=10.0)), encoding="utf-8")
+    new.write_text(json.dumps(scan_set_doc([], reid_risk_score=11.5)), encoding="utf-8")
 
     result = runner.invoke(app, ["scan", "diff", str(old), str(new)])
 
