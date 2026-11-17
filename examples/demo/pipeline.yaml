@@ -1,0 +1,46 @@
+# Demo: mask customers and orders for a test copy, joins kept.
+# Full-length hashes on customer_id: truncated hashes match the MRN detector and the
+# strict post-scan gate below withholds an otherwise correct run.
+
+version: 2
+post_scan:
+  integrity: true
+global_settings:
+  seed: 42
+  mask_secret_ref: "env:DECOY_MASK_SECRET"
+
+sources:
+  customers: {type: file, format: csv, has_header: true, path: sample-data/customers.csv}
+  orders:    {type: file, format: csv, has_header: true, path: sample-data/orders.csv}
+
+tables:
+  - name: customers
+    columns:
+      - {name: customer_id, strategy: hash, namespace: customer_identity}
+      - {name: first_name, strategy: faker, provider: person_first_name}
+      - {name: last_name, strategy: faker, provider: person_last_name}
+      - {name: email, strategy: faker, provider: person_email}
+      - {name: ssn, strategy: fpe, namespace: ssn, provider_config: {charset: digits}}
+      - {name: card_number, strategy: fpe, namespace: card, provider_config: {charset: digits, checksum: luhn}}
+      - {name: dob, strategy: date_shift, namespace: dob, provider_config: {min_days: -180, max_days: 180}}
+      - {name: zip, strategy: truncate, provider_config: {length: 3}}
+      - {name: country, strategy: passthrough}
+      - {name: notes, strategy: text_redact, provider_config: {label_token: true}}
+  - name: orders
+    columns:
+      - {name: order_id, strategy: passthrough}
+      - {name: customer_id, strategy: hash, namespace: customer_identity}
+      - {name: order_date, strategy: passthrough}
+      - {name: amount, strategy: passthrough}
+      - {name: status, strategy: passthrough}
+
+relationships:
+  - parent: {table: customers, columns: [customer_id]}
+    children:
+      - {table: orders, columns: [customer_id]}
+    orphan_policy: fail
+    namespace: customer_identity
+
+targets:
+  customers: {type: file, format: csv, path: out/customers.csv}
+  orders:    {type: file, format: csv, path: out/orders.csv}

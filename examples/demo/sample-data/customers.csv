@@ -1,0 +1,201 @@
+customer_id,first_name,last_name,email,ssn,card_number,dob,zip,country,notes
+C00001,Kara,Evans,kara.evans1@example.com,504-93-1791,4181590830166131,1958-02-20,84115,US,Called from 555-664-7955 about billing
+C00002,Henry,Brown,henry.brown2@example.com,690-84-7499,4030824628194820,1959-03-31,22770,US,Verified identity with SSN 690-84-7499
+C00003,Bob,Garcia,bob.garcia3@example.com,608-97-9711,4657975432319482,1994-06-02,47740,US,Prefers contact by mail
+C00004,David,Nguyen,david.nguyen4@example.com,268-53-3490,4760189555979718,1958-05-25,17952,US,Called from 555-376-8767 about billing
+C00005,Olivia,Jones,olivia.jones5@example.com,833-59-6685,4075291703423662,1994-07-18,62644,US,Prefers contact by mail
+C00006,Erin,Nguyen,erin.nguyen6@example.com,663-45-7804,4563212233079245,1975-04-18,80069,US,Prefers contact by mail
+C00007,Kara,Evans,kara.evans7@example.com,807-75-1884,4786666176031375,1964-07-24,23419,US,Called from 555-212-6571 about billing
+C00008,Erin,Diaz,erin.diaz8@example.com,472-88-1417,4139624595711774,1993-02-05,28889,US,Called from 555-595-6109 about billing
+C00009,Kara,Ito,kara.ito9@example.com,590-98-3645,4803852808414853,1964-12-26,93419,US,Verified identity with SSN 590-98-3645
+C00010,Grace,Hughes,grace.hughes10@example.com,510-39-4275,4875004743957553,1957-03-24,71614,US,Customer asked to update email to grace.hughes10@example.com
+C00011,Kara,Garcia,kara.garcia11@example.com,594-89-1031,4751163726516767,1957-08-14,26651,US,Customer asked to update email to kara.garcia11@example.com
+C00012,Erin,Owens,erin.owens12@example.com,771-28-8771,4528820018263307,1972-08-05,86865,US,Customer asked to update email to erin.owens12@example.com
+C00013,Ivy,Nguyen,ivy.nguyen13@example.com,234-17-6796,4798682828807290,1950-05-09,28554,DE,Customer asked to update email to ivy.nguyen13@example.com
+C00014,David,Brown,david.brown14@example.com,433-97-9492,4887180334018785,1952-07-02,52678,US,Prefers contact by mail
+C00015,Ivy,Owens,ivy.owens15@example.com,620-78-8832,4838483726167511,1971-08-04,97749,US,Customer asked to update email to ivy.owens15@example.com
+C00016,David,Evans,david.evans16@example.com,833-92-6999,4242731672326865,1980-06-04,51749,US,Verified identity with SSN 833-92-6999
+C00017,Liam,Anderson,liam.anderson17@example.com,446-80-8514,4706589481131143,1974-05-25,26981,DE,Verified identity with SSN 446-80-8514
+C00018,Ivy,Miller,ivy.miller18@example.com,252-78-9434,4975140261401415,1969-12-14,69477,US,Called from 555-168-5332 about billing
+C00019,Kara,Nguyen,kara.nguyen19@example.com,374-89-3117,4083124023448343,1989-12-26,55482,US,Verified identity with SSN 374-89-3117
+C00020,Ivy,Brown,ivy.brown20@example.com,115-12-9284,4838737167868436,1970-08-06,63044,US,Customer asked to update email to ivy.brown20@example.com
+C00021,Bob,Evans,bob.evans21@example.com,114-19-5187,4620168493407222,1974-02-19,57728,US,Verified identity with SSN 114-19-5187
+C00022,Kara,Hughes,kara.hughes22@example.com,135-49-4569,4520561748338013,1973-09-13,62364,US,Customer asked to update email to kara.hughes22@example.com
+C00023,Maya,Anderson,maya.anderson23@example.com,406-48-4814,4198296572492088,1988-07-05,78649,US,Customer asked to update email to maya.anderson23@example.com
+C00024,Henry,Carter,henry.carter24@example.com,131-15-3180,4516780083740718,1995-02-15,72109,US,Called from 555-648-2506 about billing
+C00025,Carol,Ito,carol.ito25@example.com,340-36-4780,4776174093192547,1977-04-24,73231,US,Called from 555-736-3186 about billing
+C00026,Paul,Ito,paul.ito26@example.com,788-22-4566,4748477718341703,1975-12-25,45213,DE,Prefers contact by mail
+C00027,Grace,Garcia,grace.garcia27@example.com,176-84-2479,4284529841537761,1952-03-24,99337,DE,Prefers contact by mail
+C00028,Maya,Jones,maya.jones28@example.com,844-28-7818,4565150556130443,1983-05-24,87224,US,Prefers contact by mail
+C00029,Liam,Nguyen,liam.nguyen29@example.com,873-45-1790,4410423468535604,1985-11-21,20561,US,Customer asked to update email to liam.nguyen29@example.com
+C00030,Noah,Owens,noah.owens30@example.com,729-27-5689,4708227654444633,1976-12-27,31932,US,Called from 555-594-7461 about billing
+C00031,Carol,Garcia,carol.garcia31@example.com,612-73-4604,4757628331258157,1971-06-15,12632,DE,Customer asked to update email to carol.garcia31@example.com
+C00032,Maya,Nguyen,maya.nguyen32@example.com,863-77-4440,4645074952883146,1972-04-16,66601,US,Prefers contact by mail
+C00033,Alice,Evans,alice.evans33@example.com,133-64-8754,4970168773132280,1959-10-09,82286,US,Called from 555-945-8492 about billing
+C00034,Alice,Evans,alice.evans34@example.com,338-82-1615,4424861114893642,1970-01-22,80448,US,Called from 555-909-1018 about billing
+C00035,Olivia,Ito,olivia.ito35@example.com,423-92-4970,4783830640037615,1973-01-29,39725,DE,Verified identity with SSN 423-92-4970
+C00036,Bob,Kim,bob.kim36@example.com,835-63-6936,4630481373433731,1973-10-11,91736,DE,Called from 555-878-5832 about billing
+C00037,Frank,Hughes,frank.hughes37@example.com,596-63-1924,4926030926002676,1978-03-10,31709,US,Called from 555-850-2854 about billing
+C00038,Grace,Foster,grace.foster38@example.com,768-77-8661,4046557210141567,1961-02-05,56744,US,Prefers contact by mail
+C00039,Noah,Carter,noah.carter39@example.com,150-70-4206,4587355706360600,1991-08-20,35551,US,Verified identity with SSN 150-70-4206
+C00040,Kara,Lopez,kara.lopez40@example.com,378-52-1714,4454409103177644,1988-07-28,75082,US,Customer asked to update email to kara.lopez40@example.com
+C00041,Alice,Jones,alice.jones41@example.com,808-29-4868,4557591836236106,1993-03-20,31062,DE,Verified identity with SSN 808-29-4868
+C00042,David,Carter,david.carter42@example.com,371-89-2377,4316772326793812,1976-05-15,58886,US,Verified identity with SSN 371-89-2377
+C00043,Ivy,Garcia,ivy.garcia43@example.com,549-41-4043,4332493516438833,1959-01-08,23412,US,Called from 555-769-8600 about billing
+C00044,Paul,Hughes,paul.hughes44@example.com,559-57-1661,4431039931582794,1973-04-27,93552,US,Called from 555-893-1103 about billing
+C00045,Grace,Brown,grace.brown45@example.com,477-53-3316,4034093056529412,1968-04-01,18293,DE,Prefers contact by mail
+C00046,David,Miller,david.miller46@example.com,779-80-3532,4812646446049561,1987-05-13,61213,DE,Customer asked to update email to david.miller46@example.com
+C00047,Grace,Anderson,grace.anderson47@example.com,544-30-7942,4116957220082618,1983-04-09,29121,US,Customer asked to update email to grace.anderson47@example.com
+C00048,Jack,Foster,jack.foster48@example.com,633-31-2099,4167342075096195,1964-05-18,90573,US,Prefers contact by mail
+C00049,Paul,Foster,paul.foster49@example.com,678-37-1683,4682651233080511,1984-12-22,95069,DE,Verified identity with SSN 678-37-1683
+C00050,Jack,Hughes,jack.hughes50@example.com,535-59-7020,4787200977379723,1992-06-15,26836,US,Called from 555-509-2754 about billing
+C00051,Noah,Lopez,noah.lopez51@example.com,193-66-9263,4800215810862019,1959-10-31,47733,US,Prefers contact by mail
+C00052,Henry,Carter,henry.carter52@example.com,459-88-5132,4259472487394984,1971-04-20,36075,US,Called from 555-426-7099 about billing
+C00053,Maya,Foster,maya.foster53@example.com,751-45-6371,4624180578891481,1985-05-15,59248,US,Verified identity with SSN 751-45-6371
+C00054,Erin,Lopez,erin.lopez54@example.com,438-20-8246,4329048449500326,1976-02-08,77197,US,Prefers contact by mail
+C00055,Bob,Evans,bob.evans55@example.com,600-39-1746,4000954185836947,1961-12-30,30791,US,Prefers contact by mail
+C00056,Alice,Hughes,alice.hughes56@example.com,824-29-8386,4112464008599792,1996-06-08,31639,US,Customer asked to update email to alice.hughes56@example.com
+C00057,Bob,Brown,bob.brown57@example.com,644-13-7651,4232010983263899,1995-06-25,76660,US,Customer asked to update email to bob.brown57@example.com
+C00058,Carol,Jones,carol.jones58@example.com,740-16-8830,4806671723143018,1980-02-07,44863,DE,Called from 555-867-5313 about billing
+C00059,Ivy,Jones,ivy.jones59@example.com,757-37-2399,4802433253659366,1998-02-13,13475,DE,Called from 555-580-8735 about billing
+C00060,Henry,Jones,henry.jones60@example.com,317-60-2274,4922001192520000,1962-06-02,16119,US,Called from 555-809-1698 about billing
+C00061,Liam,Garcia,liam.garcia61@example.com,646-95-2080,4613331001471218,1968-05-23,65543,US,Verified identity with SSN 646-95-2080
+C00062,Alice,Lopez,alice.lopez62@example.com,362-46-1793,4559874906068155,1992-01-27,21913,US,Customer asked to update email to alice.lopez62@example.com
+C00063,Frank,Nguyen,frank.nguyen63@example.com,101-77-4310,4400571727958496,1964-04-03,75315,US,Customer asked to update email to frank.nguyen63@example.com
+C00064,David,Carter,david.carter64@example.com,602-99-2713,4551661605344682,1994-12-18,70412,US,Customer asked to update email to david.carter64@example.com
+C00065,Bob,Lopez,bob.lopez65@example.com,695-51-9548,4278527749325733,1995-07-20,90914,US,Verified identity with SSN 695-51-9548
+C00066,Erin,Hughes,erin.hughes66@example.com,840-51-9555,4523534121362246,1976-09-06,24323,US,Customer asked to update email to erin.hughes66@example.com
+C00067,Ivy,Garcia,ivy.garcia67@example.com,497-69-1555,4066384702496036,1988-07-31,97542,US,Customer asked to update email to ivy.garcia67@example.com
+C00068,Frank,Diaz,frank.diaz68@example.com,564-65-6128,4416362467709683,1966-06-04,60948,DE,Called from 555-770-6374 about billing
+C00069,David,Brown,david.brown69@example.com,357-79-4569,4238519783780583,1980-10-04,99700,US,Customer asked to update email to david.brown69@example.com
+C00070,Maya,Diaz,maya.diaz70@example.com,846-88-6824,4044660016659410,1970-02-19,61375,DE,Customer asked to update email to maya.diaz70@example.com
+C00071,Grace,Foster,grace.foster71@example.com,232-18-4164,4783256748275347,1983-09-30,98974,US,Prefers contact by mail
+C00072,Paul,Anderson,paul.anderson72@example.com,839-45-6865,4345776915246012,1979-02-17,92989,US,Verified identity with SSN 839-45-6865
+C00073,Alice,Garcia,alice.garcia73@example.com,173-93-5800,4491923275236827,1958-02-10,35869,DE,Verified identity with SSN 173-93-5800
+C00074,Grace,Carter,grace.carter74@example.com,859-66-2916,4814632778077279,1972-02-14,31018,US,Called from 555-610-3697 about billing
+C00075,Olivia,Patel,olivia.patel75@example.com,781-47-8631,4566125009051874,1993-06-25,37965,DE,Called from 555-875-3367 about billing
+C00076,Erin,Kim,erin.kim76@example.com,196-94-6999,4578834656480445,1981-11-12,53741,US,Prefers contact by mail
+C00077,Liam,Garcia,liam.garcia77@example.com,770-73-2932,4535429106868901,1985-10-01,16081,US,Called from 555-407-2777 about billing
+C00078,Paul,Brown,paul.brown78@example.com,612-79-7161,4929130721206105,1983-02-04,83675,US,Verified identity with SSN 612-79-7161
+C00079,Jack,Foster,jack.foster79@example.com,531-14-6217,4069907980169672,1956-01-12,72317,DE,Customer asked to update email to jack.foster79@example.com
+C00080,David,Carter,david.carter80@example.com,759-70-4477,4206001131270490,1971-09-26,57955,US,Called from 555-561-4070 about billing
+C00081,Carol,Jones,carol.jones81@example.com,743-81-9160,4740000091644929,1993-08-19,58177,DE,Verified identity with SSN 743-81-9160
+C00082,Paul,Foster,paul.foster82@example.com,248-24-6951,4267674954409951,1951-05-23,86633,DE,Verified identity with SSN 248-24-6951
+C00083,Henry,Miller,henry.miller83@example.com,496-97-7163,4937405446290422,1963-03-10,55462,US,Prefers contact by mail
+C00084,Paul,Miller,paul.miller84@example.com,305-39-6070,4906734906781852,1955-08-15,78401,US,Verified identity with SSN 305-39-6070
+C00085,Paul,Garcia,paul.garcia85@example.com,293-37-4150,4124599568230753,1959-07-10,30467,US,Called from 555-480-8592 about billing
+C00086,Alice,Lopez,alice.lopez86@example.com,387-76-1337,4103979934461792,1961-09-29,36344,US,Verified identity with SSN 387-76-1337
+C00087,Maya,Carter,maya.carter87@example.com,128-16-1570,4857719611459315,1995-06-11,30935,US,Prefers contact by mail
+C00088,Henry,Hughes,henry.hughes88@example.com,276-14-5192,4508004870125037,1976-10-21,71698,US,Called from 555-703-8229 about billing
+C00089,Liam,Ito,liam.ito89@example.com,499-25-7143,4762732073023192,1983-06-22,22712,DE,Prefers contact by mail
+C00090,Alice,Carter,alice.carter90@example.com,563-53-6284,4371525302782726,1973-11-25,30406,US,Customer asked to update email to alice.carter90@example.com
+C00091,Ivy,Jones,ivy.jones91@example.com,442-31-5270,4715771280387410,1973-02-16,66630,US,Verified identity with SSN 442-31-5270
+C00092,Henry,Hughes,henry.hughes92@example.com,199-59-5741,4620420785827082,1975-09-11,15314,DE,Prefers contact by mail
+C00093,Grace,Ito,grace.ito93@example.com,685-33-3262,4283239119742322,1967-03-30,11315,US,Customer asked to update email to grace.ito93@example.com
+C00094,Noah,Brown,noah.brown94@example.com,630-54-6492,4471067243295020,1983-04-20,78134,DE,Verified identity with SSN 630-54-6492
+C00095,Carol,Diaz,carol.diaz95@example.com,465-41-6258,4690417780882034,1957-12-12,23457,US,Customer asked to update email to carol.diaz95@example.com
+C00096,Ivy,Anderson,ivy.anderson96@example.com,119-22-4196,4409978371512043,1961-01-15,24423,US,Verified identity with SSN 119-22-4196
+C00097,David,Miller,david.miller97@example.com,240-79-4726,4329762066998064,1954-08-30,62521,US,Verified identity with SSN 240-79-4726
+C00098,Kara,Nguyen,kara.nguyen98@example.com,677-51-7563,4805825360518210,1979-02-06,39553,US,Called from 555-543-4289 about billing
+C00099,Noah,Miller,noah.miller99@example.com,895-68-1766,4009494809141805,1988-11-28,24816,US,Verified identity with SSN 895-68-1766
+C00100,Liam,Foster,liam.foster100@example.com,223-17-9417,4417982718246943,1974-08-05,69525,US,Verified identity with SSN 223-17-9417
+C00101,Maya,Garcia,maya.garcia101@example.com,661-56-8551,4849774035338869,1985-07-27,41266,US,Customer asked to update email to maya.garcia101@example.com
+C00102,Kara,Patel,kara.patel102@example.com,376-46-4541,4400281957086758,1959-10-20,64624,US,Customer asked to update email to kara.patel102@example.com
+C00103,Liam,Evans,liam.evans103@example.com,791-35-5534,4817426106891767,1963-06-05,59749,DE,Called from 555-527-5576 about billing
+C00104,Olivia,Jones,olivia.jones104@example.com,840-55-5799,4568896507674288,1977-04-11,85423,DE,Prefers contact by mail
+C00105,Henry,Carter,henry.carter105@example.com,438-51-4975,4536000497484894,1989-03-21,61054,DE,Prefers contact by mail
+C00106,Liam,Brown,liam.brown106@example.com,708-96-6752,4701831658689239,1987-10-16,91868,US,Prefers contact by mail
+C00107,Carol,Foster,carol.foster107@example.com,471-50-7007,4148214586284830,1995-04-19,17886,US,Customer asked to update email to carol.foster107@example.com
+C00108,Liam,Brown,liam.brown108@example.com,808-62-1175,4048046190032788,1973-11-12,85296,US,Customer asked to update email to liam.brown108@example.com
+C00109,Noah,Diaz,noah.diaz109@example.com,248-30-9493,4810112877960091,1978-12-18,46103,US,Verified identity with SSN 248-30-9493
+C00110,Bob,Ito,bob.ito110@example.com,743-22-2032,4537960036907094,1971-05-19,30893,US,Called from 555-355-4651 about billing
+C00111,Kara,Anderson,kara.anderson111@example.com,566-48-7854,4947136936467034,1957-11-06,59677,US,Verified identity with SSN 566-48-7854
+C00112,Alice,Jones,alice.jones112@example.com,505-81-6946,4158656116583635,1991-11-25,67091,US,Customer asked to update email to alice.jones112@example.com
+C00113,Ivy,Anderson,ivy.anderson113@example.com,449-29-4961,4213482877325535,1986-05-08,72384,US,Verified identity with SSN 449-29-4961
+C00114,Henry,Owens,henry.owens114@example.com,791-26-5272,4979583698321811,1998-09-05,13763,US,Prefers contact by mail
+C00115,Jack,Anderson,jack.anderson115@example.com,499-21-3900,4353118584314137,1975-11-21,56648,DE,Verified identity with SSN 499-21-3900
+C00116,Olivia,Evans,olivia.evans116@example.com,383-32-1484,4556073651241496,1969-08-31,15242,US,Prefers contact by mail
+C00117,Noah,Garcia,noah.garcia117@example.com,875-48-3559,4608429397846956,1950-02-01,86693,US,Called from 555-214-5691 about billing
+C00118,Henry,Diaz,henry.diaz118@example.com,138-50-4442,4516693481567585,1990-08-15,66144,US,Customer asked to update email to henry.diaz118@example.com
+C00119,Paul,Garcia,paul.garcia119@example.com,144-99-5279,4282384302556138,1977-11-11,97862,DE,Prefers contact by mail
+C00120,Henry,Hughes,henry.hughes120@example.com,106-75-8291,4254229935186221,1991-05-17,25004,US,Customer asked to update email to henry.hughes120@example.com
+C00121,Alice,Lopez,alice.lopez121@example.com,598-36-1711,4044314712577951,1975-12-22,11417,DE,Called from 555-272-2176 about billing
+C00122,Paul,Carter,paul.carter122@example.com,865-52-5332,4176738505149430,1957-01-04,61809,US,Called from 555-241-1453 about billing
+C00123,Jack,Lopez,jack.lopez123@example.com,290-91-9608,4214956255352855,1972-09-30,24055,DE,Called from 555-345-1945 about billing
+C00124,Bob,Garcia,bob.garcia124@example.com,606-64-9184,4249912322761072,1993-01-04,10367,US,Verified identity with SSN 606-64-9184
+C00125,Noah,Evans,noah.evans125@example.com,390-19-1906,4865170226407952,1967-07-14,77735,DE,Verified identity with SSN 390-19-1906
+C00126,Noah,Evans,noah.evans126@example.com,510-87-2334,4059499657245805,1966-12-11,29256,US,Called from 555-327-8329 about billing
+C00127,Noah,Lopez,noah.lopez127@example.com,642-40-8231,4641323813413849,1993-11-23,80939,US,Customer asked to update email to noah.lopez127@example.com
+C00128,Carol,Nguyen,carol.nguyen128@example.com,795-19-8201,4288818176823979,1958-05-10,62999,US,Called from 555-240-7117 about billing
+C00129,Bob,Lopez,bob.lopez129@example.com,142-11-4491,4741261939152553,1951-01-17,41365,US,Called from 555-945-5188 about billing
+C00130,Liam,Patel,liam.patel130@example.com,144-87-6790,4158591034537092,1989-06-18,24472,US,Prefers contact by mail
+C00131,Ivy,Foster,ivy.foster131@example.com,253-80-5751,4629484700527871,1952-11-02,33892,DE,Called from 555-919-1580 about billing
+C00132,Paul,Foster,paul.foster132@example.com,809-67-7445,4398155834299038,1965-03-24,53433,DE,Prefers contact by mail
+C00133,Maya,Lopez,maya.lopez133@example.com,421-10-6496,4975303790224647,1955-09-12,84574,US,Verified identity with SSN 421-10-6496
+C00134,Bob,Diaz,bob.diaz134@example.com,304-64-2621,4543214558358654,1955-06-04,73106,US,Verified identity with SSN 304-64-2621
+C00135,Henry,Hughes,henry.hughes135@example.com,457-29-3221,4307676942912444,1972-08-14,34934,US,Called from 555-844-6578 about billing
+C00136,Frank,Jones,frank.jones136@example.com,694-55-8665,4561752448024306,1969-08-02,36259,US,Prefers contact by mail
+C00137,David,Garcia,david.garcia137@example.com,347-17-3113,4901195203480504,1969-01-15,95056,DE,Called from 555-429-6353 about billing
+C00138,Maya,Kim,maya.kim138@example.com,278-17-7787,4019579647005952,1955-01-10,22248,US,Customer asked to update email to maya.kim138@example.com
+C00139,Erin,Garcia,erin.garcia139@example.com,246-77-2472,4556589829953944,1992-11-04,95411,DE,Verified identity with SSN 246-77-2472
+C00140,Ivy,Lopez,ivy.lopez140@example.com,635-77-5488,4240871523610927,1960-12-18,82777,US,Customer asked to update email to ivy.lopez140@example.com
+C00141,Ivy,Lopez,ivy.lopez141@example.com,855-29-3907,4280537735673505,1959-09-03,94601,DE,Called from 555-775-1252 about billing
+C00142,Liam,Brown,liam.brown142@example.com,333-82-7160,4663040463353561,1975-01-01,84648,US,Customer asked to update email to liam.brown142@example.com
+C00143,Paul,Ito,paul.ito143@example.com,869-27-5916,4415073259973905,1968-10-28,67550,US,Called from 555-971-6904 about billing
+C00144,Noah,Evans,noah.evans144@example.com,404-97-1400,4120242851276167,1980-06-18,14314,US,Verified identity with SSN 404-97-1400
+C00145,Grace,Anderson,grace.anderson145@example.com,138-27-9270,4939610051117285,1988-06-10,99835,US,Customer asked to update email to grace.anderson145@example.com
+C00146,David,Lopez,david.lopez146@example.com,608-19-6725,4331420441038066,1982-07-14,15427,DE,Verified identity with SSN 608-19-6725
+C00147,Jack,Kim,jack.kim147@example.com,806-62-5400,4665866266620394,1994-12-14,36007,US,Customer asked to update email to jack.kim147@example.com
+C00148,Carol,Brown,carol.brown148@example.com,833-16-7648,4857857907785983,1984-01-31,18404,DE,Verified identity with SSN 833-16-7648
+C00149,Ivy,Kim,ivy.kim149@example.com,173-90-9897,4394475897932182,1982-08-31,57945,US,Customer asked to update email to ivy.kim149@example.com
+C00150,Frank,Evans,frank.evans150@example.com,777-68-3911,4056561624615585,1996-10-09,46046,DE,Called from 555-409-8418 about billing
+C00151,Jack,Owens,jack.owens151@example.com,811-24-8361,4728202578395852,1984-03-11,10105,US,Customer asked to update email to jack.owens151@example.com
+C00152,Bob,Foster,bob.foster152@example.com,413-79-5498,4543471871326491,1983-05-05,58126,US,Prefers contact by mail
+C00153,Jack,Nguyen,jack.nguyen153@example.com,541-92-5207,4536929395135119,1989-12-20,75090,US,Prefers contact by mail
+C00154,David,Owens,david.owens154@example.com,573-99-8145,4672176728033686,1953-08-22,60789,DE,Verified identity with SSN 573-99-8145
+C00155,David,Carter,david.carter155@example.com,326-19-1253,4171397035708697,1962-07-31,52007,US,Customer asked to update email to david.carter155@example.com
+C00156,Grace,Anderson,grace.anderson156@example.com,290-78-5500,4841564486860448,1972-04-18,80726,US,Prefers contact by mail
+C00157,Jack,Garcia,jack.garcia157@example.com,234-16-4399,4857792553780501,1997-10-28,14628,US,Verified identity with SSN 234-16-4399
+C00158,Henry,Owens,henry.owens158@example.com,398-35-4430,4997673302610218,1994-08-08,75302,US,Customer asked to update email to henry.owens158@example.com
+C00159,Jack,Garcia,jack.garcia159@example.com,647-30-3388,4381713106347627,1955-01-31,30990,DE,Called from 555-812-3185 about billing
+C00160,Jack,Hughes,jack.hughes160@example.com,696-50-3522,4445832360562434,1998-12-17,70876,US,Customer asked to update email to jack.hughes160@example.com
+C00161,Frank,Nguyen,frank.nguyen161@example.com,441-96-7576,4105138814750711,1967-12-28,88351,US,Verified identity with SSN 441-96-7576
+C00162,Grace,Evans,grace.evans162@example.com,581-44-4722,4940991053240250,1981-06-03,53195,US,Customer asked to update email to grace.evans162@example.com
+C00163,Frank,Diaz,frank.diaz163@example.com,405-18-8454,4181296700089169,1961-11-03,59114,US,Called from 555-525-6781 about billing
+C00164,Liam,Foster,liam.foster164@example.com,778-21-6433,4074241131274881,1960-07-19,31499,US,Customer asked to update email to liam.foster164@example.com
+C00165,Ivy,Lopez,ivy.lopez165@example.com,302-46-7614,4832388310107938,1970-07-27,44625,US,Customer asked to update email to ivy.lopez165@example.com
+C00166,Noah,Miller,noah.miller166@example.com,739-76-2795,4491193339803190,1980-04-05,91035,US,Customer asked to update email to noah.miller166@example.com
+C00167,Jack,Kim,jack.kim167@example.com,186-69-3995,4056601328225230,1967-10-13,10373,DE,Called from 555-324-6424 about billing
+C00168,Bob,Patel,bob.patel168@example.com,638-52-2131,4913056159277243,1977-03-07,67058,DE,Customer asked to update email to bob.patel168@example.com
+C00169,Jack,Diaz,jack.diaz169@example.com,169-42-4802,4339783790665660,1957-10-25,49945,US,Prefers contact by mail
+C00170,Jack,Patel,jack.patel170@example.com,718-12-2812,4766947258315678,1952-12-03,45521,US,Called from 555-399-6502 about billing
+C00171,Olivia,Nguyen,olivia.nguyen171@example.com,776-78-4960,4130626452523597,1985-05-19,76421,US,Verified identity with SSN 776-78-4960
+C00172,Frank,Miller,frank.miller172@example.com,639-11-1005,4213794518862464,1956-10-23,44910,US,Prefers contact by mail
+C00173,Liam,Jones,liam.jones173@example.com,777-90-7158,4807750018674827,1991-03-03,27955,US,Prefers contact by mail
+C00174,Ivy,Evans,ivy.evans174@example.com,292-85-9322,4062943480686169,1994-03-25,52493,US,Verified identity with SSN 292-85-9322
+C00175,Paul,Brown,paul.brown175@example.com,645-54-3291,4380248240946522,1974-06-08,91358,US,Customer asked to update email to paul.brown175@example.com
+C00176,Olivia,Miller,olivia.miller176@example.com,211-97-5263,4565674139786256,1953-12-11,96685,DE,Prefers contact by mail
+C00177,Carol,Ito,carol.ito177@example.com,501-56-7480,4841470089459549,1971-11-01,89005,DE,Called from 555-171-9987 about billing
+C00178,David,Jones,david.jones178@example.com,269-92-3890,4166566755228865,1975-11-27,99378,US,Verified identity with SSN 269-92-3890
+C00179,Noah,Carter,noah.carter179@example.com,614-10-4859,4966394223381402,1984-03-05,94863,DE,Customer asked to update email to noah.carter179@example.com
+C00180,Ivy,Carter,ivy.carter180@example.com,890-87-9340,4493341591508118,1979-03-04,92475,US,Prefers contact by mail
+C00181,Olivia,Ito,olivia.ito181@example.com,615-17-8302,4989008717345581,1970-08-30,85698,US,Verified identity with SSN 615-17-8302
+C00182,Henry,Foster,henry.foster182@example.com,129-74-5391,4651419166896304,1983-04-26,19356,DE,Verified identity with SSN 129-74-5391
+C00183,Erin,Nguyen,erin.nguyen183@example.com,564-97-8449,4359316243180733,1967-08-26,83435,US,Customer asked to update email to erin.nguyen183@example.com
+C00184,Alice,Anderson,alice.anderson184@example.com,164-55-4369,4608485295541024,1981-11-15,23389,US,Prefers contact by mail
+C00185,David,Evans,david.evans185@example.com,472-70-8962,4155721894863543,1951-11-27,60351,US,Prefers contact by mail
+C00186,Noah,Evans,noah.evans186@example.com,241-11-2820,4398600170398159,1980-05-13,93816,US,Prefers contact by mail
+C00187,Alice,Hughes,alice.hughes187@example.com,309-55-7268,4119237799719073,1965-02-27,71828,US,Prefers contact by mail
+C00188,David,Patel,david.patel188@example.com,713-58-2027,4330693031300705,1986-01-24,82900,DE,Called from 555-346-4597 about billing
+C00189,Ivy,Brown,ivy.brown189@example.com,257-69-1298,4711228298518605,1956-06-21,75860,US,Called from 555-971-1486 about billing
+C00190,Bob,Jones,bob.jones190@example.com,568-60-1125,4830287313619182,1996-08-15,41317,US,Called from 555-460-2540 about billing
+C00191,Carol,Lopez,carol.lopez191@example.com,380-48-6066,4427995301101935,1996-08-30,90087,US,Prefers contact by mail
+C00192,Carol,Anderson,carol.anderson192@example.com,160-13-3212,4602947424450563,1958-07-01,95723,DE,Customer asked to update email to carol.anderson192@example.com
+C00193,Kara,Ito,kara.ito193@example.com,355-11-7757,4805385503518213,1953-03-05,92179,US,Prefers contact by mail
+C00194,Liam,Carter,liam.carter194@example.com,650-25-8504,4238083681334043,1988-09-13,90032,DE,Customer asked to update email to liam.carter194@example.com
+C00195,Frank,Jones,frank.jones195@example.com,871-60-5071,4540134992191649,1956-12-28,19627,US,Called from 555-165-2096 about billing
+C00196,Carol,Evans,carol.evans196@example.com,670-24-9088,4847214466271752,1978-12-13,60853,US,Called from 555-952-4375 about billing
+C00197,David,Garcia,david.garcia197@example.com,459-95-6497,4490311294420278,1958-09-17,43284,US,Prefers contact by mail
+C00198,Henry,Brown,henry.brown198@example.com,166-47-1242,4425582254552819,1972-04-11,59908,US,Verified identity with SSN 166-47-1242
+C00199,Henry,Garcia,henry.garcia199@example.com,324-59-6985,4374001653407773,1960-05-23,22285,DE,Prefers contact by mail
+C00200,David,Patel,david.patel200@example.com,591-32-4780,4670131457735805,1956-06-01,38294,DE,Prefers contact by mail

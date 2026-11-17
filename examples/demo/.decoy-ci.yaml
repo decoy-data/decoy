@@ -1,0 +1,14 @@
+schema_version: decoy-ci/v1
+pipelines:
+  - id: primary
+    path: pipeline.yaml
+checks:
+  validation:
+    enabled: true
+    mode: full
+    pipelines: [primary]
+    fail_on_warning: false
+  evidence:
+    - id: protected-output
+      manifest: evidence/run1.json
+  regression_suites: []
