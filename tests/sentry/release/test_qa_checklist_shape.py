@@ -5,8 +5,8 @@ the wrong number of cells, an unknown or miscounted exit code, a broken id seque
 a row-index entry that names no check, a fixture value in a check cell, a DOC-05 that does not point
 at the journey, and a run template without the `Exit observed` column.
 
-Seeded mutations (each makes the named test red): drop the Exit cell of one row (AT-Q1); set an
-Exit to `7`, or `tbd` on GATE-01 (AT-Q2); add a check row and change the document total to 205 in
+Seeded mutations (each makes the named test red): drop the Exit cell of one row, or delete a
+group's table header (AT-Q1); set an Exit to `7`, or `tbd` on GATE-01 (AT-Q2); add a check row and change the document total to 205 in
 the same edit, or duplicate RUN-05 (AT-Q3); remove DOC-05 from row 75's index line (AT-Q4); paste a
 fixture address in RUN-01 (AT-Q5); restore DOC-05's old text (AT-Q6); remove the template column
 (AT-Q7); give a row two `decoy` spans and one code, or `none` on a row with a `decoy` span (AT-Q8).
@@ -92,13 +92,13 @@ def _cells(line: str) -> tuple[str, ...]:
     return tuple(cell.strip() for cell in line.strip()[1:-1].split(" | "))
 
 
-def parse_checks(text: str) -> tuple[list[Check], list[str]]:
-    """The check rows under the numbered group headings, and the header line of each table.
+def parse_checks(text: str) -> tuple[list[Check], list[tuple[int, str]]]:
+    """The check rows under the numbered group headings, and each table's group and header line.
 
     Rows are kept whole, so a wrong cell count is a test failure, not a parse error.
     """
     checks: list[Check] = []
-    headers: list[str] = []
+    headers: list[tuple[int, str]] = []
     group = 0
     for line in text.splitlines():
         if line.startswith("## "):
@@ -108,7 +108,7 @@ def parse_checks(text: str) -> tuple[list[Check], list[str]]:
         if not group or not line.startswith("| "):
             continue
         if line.startswith("| Id |"):
-            headers.append(line)
+            headers.append((group, line))
         elif _CHECK_ID.match(line[2:]):
             checks.append(Check(group, line[2:].split(" ", 1)[0], _cells(line)))
     return checks, headers
@@ -185,8 +185,10 @@ def checks(text: str) -> list[Check]:
 
 def test_check_tables_have_six_cells(text: str, checks: list[Check]) -> None:
     _, headers = parse_checks(text)
-    assert headers, "no check table found under a group heading"
-    for header in headers:
+    assert [group for group, _ in headers] == list(range(1, EXPECTED_GROUPS + 1)), (
+        "each group needs exactly one check table"
+    )
+    for _, header in headers:
         assert _cells(header) == CHECK_HEADER, header
     short = [c.id for c in checks if len(c.cells) != len(CHECK_HEADER)]
     assert not short, f"rows without six cells: {short}"
@@ -195,9 +197,10 @@ def test_check_tables_have_six_cells(text: str, checks: list[Check]) -> None:
 
 def test_separator_rows_match_the_header(text: str) -> None:
     lines = text.splitlines()
-    for number, line in enumerate(lines):
-        if line.startswith("| Id | Command |"):
-            assert lines[number + 1] == "|" + "---|" * len(CHECK_HEADER), number + 1
+    heads = [n for n, line in enumerate(lines) if line.startswith("| Id | Command |")]
+    assert len(heads) == EXPECTED_GROUPS
+    for number in heads:
+        assert lines[number + 1] == "|" + "---|" * len(CHECK_HEADER), number + 1
 
 
 # ---- AT-Q2 and AT-Q8 ------------------------------------------------------------------------
