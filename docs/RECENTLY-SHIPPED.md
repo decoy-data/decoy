@@ -22,6 +22,7 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-17
 
+- **CLI** (CLI #306, #307): CLI V1 journey and QA checklist exit column (roadmap rows 75 and 92a). `docs/qa/cli-v1-journey.md` holds twelve steps, CJ-01 to CJ-12, each with one e2e test and an exit code read from the document. CJ-12 stays an expected failure until row 61. Every one of the 204 checklist checks now names its exit code per command, and a sentry fails on a wrong cell count, an unknown code, a broken id sequence or a fixture value in a check cell.
 - **Engine** (`5bf1fca35`, engine #626) and **CLI** (CLI #305): WF-R tombstones (roadmap row 17, closed). The three `WORKFLOW_*` reasons keep resolving and carry `deprecated_in=UNRELEASED` with a live replacement. Two explain-topic tests keep the old guide pointer and the workflow codes out of `decoy explain`.
 
 ## 2026-11-16
