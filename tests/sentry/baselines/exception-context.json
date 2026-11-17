@@ -2,9 +2,6 @@
  "sentry_id": "exception-context",
  "created_in": "B2",
  "entries": {
-  "decoy/_native_gate.py::pre_execution_gate::0": {
-   "reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"
-  },
   "decoy/_private_file.py::_restrict_directory::0": {
    "reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"
   },

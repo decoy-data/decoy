@@ -16,8 +16,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from decoy import _native_gate
-
 __all__ = ["Consumer", "ProgressFanout", "build", "run_pipeline_kwargs"]
 
 Consumer = Callable[[Any], None]
@@ -49,12 +47,12 @@ def build() -> ProgressFanout:
 
 
 def run_pipeline_kwargs(run_pipeline: Callable[..., Any], fanout: ProgressFanout | None) -> dict:
-    """`{"progress": fanout}` when this engine's `run_pipeline` takes a sink, else nothing.
+    """`{"progress": fanout}` when a sink is set, else nothing.
 
-    Asks `_native_gate.run_pipeline_accepts`, the one capability check: an engine without the
-    keyword still runs, with no events, instead of failing on it (tests/e2e/test_run_native.py
-    holds that contract).
+    `run_pipeline` is unused and stays only so the two callers in `_execute.py` need no hunk
+    here; the next edit to that file drops it.
     """
-    if fanout is None or not _native_gate.run_pipeline_accepts("progress", run_pipeline):
+    del run_pipeline
+    if fanout is None:
         return {}
     return {"progress": fanout}
