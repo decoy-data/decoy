@@ -423,8 +423,6 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
     )
     from decoy_engine.plan import PlanCompileError
 
-    from decoy.cli._sources import refusal_message
-
     # Narrow catches only (R3): the estimator is the first read that parses a source, so a
     # corrupt file (`capacity_source_unprofilable`) or a column the config and file disagree on
     # (`source_file.*`) surfaces here as a FAIL, not a traceback. Any other exception is an
@@ -458,7 +456,7 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
         # The engine's one declared-column check, with the code `decoy run` gives.
         if not str(exc.code).startswith("source_file."):
             raise
-        acc.add_fail(name="source.declared_columns", message=refusal_message(exc), code=exc.code)
+        acc.add_fail(name="source.declared_columns", message=str(exc), code=exc.code)
         return
     except PlanCompileError as exc:
         # Own check name so CHUNKED's CAPACITY_CHECK downgrade cannot make it a warning.
