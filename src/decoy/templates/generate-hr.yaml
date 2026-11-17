@@ -1,8 +1,8 @@
 # generate-hr -- synthetic departments, employees and payroll runs.
 #
 # Builds three linked tables from scratch, with no input file. Every employee belongs to a
-# department that exists, and every payroll row is paid to an employee that exists. All
-# values come from faker, so none of it is real employee data.
+# department that exists, and every payroll row is paid to an employee that exists. All values are
+# generated, so none of it is real employee data.
 #
 #   decoy run pipeline.yaml
 #
