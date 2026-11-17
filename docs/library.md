@@ -206,8 +206,9 @@ deleted, and the command exits 4; run it again once the file is closed.
 `decoy library export --output FILE [--kind K] [--since D] [--ref R] [--include-logs] [--keep-paths]`
 writes one self-verifying JSON Lines file (`decoy-library-export/v1`) that the platform can
 import. The file is 0600. `--ref R` exports R (a ref, an id or `KIND/latest`) and every record it
-links to; `--kind` and `--since` narrow a whole-library export and cannot be combined with
-`--ref`. Nothing under `scratch/` is ever exported. The output may not be a file inside
+links to; `--kind` and `--since` choose the records an export starts from and cannot be
+combined with `--ref`. **An export is always closed**: every record a chosen record links to,
+directly or through others, is exported too, whatever its kind or date. Nothing under `scratch/` is ever exported. The output may not be a file inside
 `library/` or `scratch/`, or a symlink (`export_destination_unsafe`, exit 1). Like prune, export
 refuses with `library_unexplained_entries` while any ref or record file cannot be accounted for
 (for example a record written in a newer envelope format), or while a ref or a link names a
@@ -218,8 +219,12 @@ names, which gives that record a new id, and the line names the original id as `
 and refs point at the new ids. **A default export withholds the records this Decoy cannot strip**:
 a record of a kind it does not know, or one written by a newer Decoy with payload fields it does
 not know. They are left out, listed by id in the header's `withheld_records`, and counted in a
-notice on stderr. To include them, rerun with `--keep-paths`: every record is then exported byte
-for byte, paths included, with its original id.
+notice on stderr. A record that links to a withheld record, directly or through others, is
+withheld too (so the file stays closed): it is listed in `withheld_records` as well, named in its
+own stderr notice, and a ref to it is left out of the header. Export never writes a file whose
+records link outside it; if one would, it refuses with `export_not_closed` and writes nothing. To
+include them all, rerun with `--keep-paths`: every record is then exported byte for byte, paths
+included, with its original id.
 
 `--include-logs` is accepted, but no job logs exist yet (they arrive with `decoy run` job logs),
 so none is exported.
