@@ -168,10 +168,10 @@ def _encode(raws: Sequence[Any], refs: dict[str, str], keep_paths: bool) -> list
 
 
 def _with_withheld(header_line: bytes, more: Sequence[str]) -> bytes:
-    """The header with `more` added to `withheld_records`, validated by the engine's model."""
+    """The codec's header with `more` (ids of verified records) added to `withheld_records`, in
+    the codec's canonical form; `records.read_export` validates the whole header on import."""
     from decoy_engine import records
 
     header = json.loads(header_line)
     header["withheld_records"] = [*header["withheld_records"], *more]
-    checked = records.ExportHeader.model_validate(header)
-    return records.canonical_bytes(checked.model_dump(mode="json")) + b"\n"
+    return records.canonical_bytes(header) + b"\n"
