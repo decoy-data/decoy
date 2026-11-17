@@ -22,11 +22,25 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-17
 
+- **Engine** (`dc2d397b9`, engine #622): F22 slice b2 (roadmap row 59, partly merged). `publish_unit` writes the vault first and binds the unit only after the vault is durable. W1 (Windows arm) is left.
+- **Engine** (`92b3da461`, engine #639): SCAN-ML-MD M-2a2 (roadmap row 32c, partly merged). One not-installed message for a missing NER model on every surface, and the resolved NER model in the resume fingerprint. Earlier slices: M-1 (engine #616) and M-2a1 (engine #630). M-2a3, M-2b and M-3 are left.
+- **CLI** (`d564f00f`, CLI #298): SCAN-ML C1 (roadmap row 32a, partly merged). `decoy models list`, `decoy models install ner`, a `models` step in `decoy setup`, the model-availability preflight in the shared gate and three `decoy doctor` rows. C2a is open as CLI #301.
+- **Engine** (`740281f57`, engine #633): F10 slice 78-E2 (roadmap row 78, partly merged). The synthetic probe and an optional `probe` field in `lock/v1`. 78-E1 was engine #618. The CLI slice 78-C1 waits on the engine release and repin.
+- **Engine** (`5e735d98d`, engine #631): F16 slice E2a (roadmap row 81, partly merged). The `policy` block models, selector grammar, 5-level precedence and `expand_policy`. Nothing calls it until E3.
+- **Engine** (`9f84f1fea`, engine #636): F07 slice 82-E1a (roadmap row 82, partly merged). The nested handler moved to `nested/_handler.py`; no handler line changed.
+- **Engine** (`f9cfef575`, engine #632): fit unflagged values slice E1 (roadmap row 24f, partly merged). A plain `decoy fit` snapshot floors every column the profiler did not flag at 10 rows, and is `distribution-snapshot/v2`. E0 was engine #609. C1 is left.
+- **Engine** (`b2f37cd39`, engine #637): a one-time pre-GA exception that lets the release pin and the append-only reason check accept the corrected `rules` of eight connector reason codes. No roadmap row. Engine #634 (`dda1b61f8`) repaired stale test fixtures after #624 and #630 in the same red-main fix.
+- **Engine** (`0f319af39`, engine #628) and (`902968682`, engine #621): DUP-GUARDS slices G-E3 and G-E4 (roadmap row 24ze, partly merged). Draw-site call sites are keyed by function, not line, and release prep writes the DP certified rows.
+- **Engine** (`604223dd9`, engine #627): ENGINE-DOCS-TRUTH slice A-E1 (roadmap row 24za, closed). `docs/strategies.md` has a section for every mask strategy, and the keyed text names `mask_key`, not `job_seed`.
+- **Engine** (`09f6d7c70`, engine #620): FAKER-POOL-DISTINCT slice Z-E1 (roadmap row 24z, partly merged). `--post-validate` reports faker collisions per column. Z-C1 (CLI text) is left.
+- **CLI** (`55cd4a05`, CLI #299; `419572a2`, CLI #302): GEN-CATALOG slices GC1 and GC2 (roadmap row 24s, partly merged). `decoy list generate-types` and `faker-types`, and six industry generate starter templates. GC3-E is open as engine #643.
+- **CLI** (`7dcd32c5`, CLI #210; `b1478867`, CLI #214; 2026-11-16): LIB slices L1c.2 and L1d (roadmap rows 35 and 34, both closed). Earlier on 2026-11-15: L1b.3 (CLI #206, `f9f6b680`) and L1c.1 (CLI #209, `36d83877`). CLI #215 and #219 (L4a, L4b) are open.
 - **CLI** (CLI #306, #307): CLI V1 journey and QA checklist exit column (roadmap rows 75 and 92a). `docs/qa/cli-v1-journey.md` holds twelve steps, CJ-01 to CJ-12, each with one e2e test and an exit code read from the document. CJ-12 stays an expected failure until row 61. Every one of the 204 checklist checks now names its exit code per command, and a sentry fails on a wrong cell count, an unknown code, a broken id sequence or a fixture value in a check cell.
 - **Engine** (`5bf1fca35`, engine #626) and **CLI** (CLI #305): WF-R tombstones (roadmap row 17, closed). The three `WORKFLOW_*` reasons keep resolving and carry `deprecated_in=UNRELEASED` with a live replacement. Two explain-topic tests keep the old guide pointer and the workflow codes out of `decoy explain`.
 
 ## 2026-11-16
 
+- **Engine** (`13c95c7de`, engine #607): F22 slice b1 (roadmap row 59, partly merged). Vault leaves are adopted durably and only the vault module issues a `VaultCommit`.
 - **Engine** (`cf43e35ba`, engine #558): F22 slice c2 (roadmap row 59, partly merged). The isolated subprocess route publishes through `publish_unit`, all-or-none. B1 and B2 (vault before output) and W1 (Windows arm) are left.
 - **Engine** (`2929aace8`, engine #604): RUN-STREAM E5a (roadmap row 63a, in progress). A lazy Parquet table with no sink reaches the collector lane, the collector spills under scoped engine scratch, and `bounded_admission` is the one bounded-route composition. E5b, C1l, C1a, C1b, C2 and M1 are left.
 - **CLI** (`b272beb8`, CLI #255): CONFIG-EXPLICIT C1 (roadmap row 22, closed). Every CLI reader asks the engine to check source columns against the declared tables before it reads a data row, and a new sentry keeps new readers on that choke point.
