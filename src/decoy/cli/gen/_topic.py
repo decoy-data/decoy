@@ -55,17 +55,36 @@ def _names(keys: tuple[str, ...]) -> str:
     return ", ".join(keys) if keys else "none"
 
 
-def type_lines() -> list[str]:
-    """One block per generate type: a line with the name, then its option lines."""
+def type_entries() -> list[dict[str, Any]]:
+    """One record per generate type, read live from the engine catalog.
+
+    The single projection behind both `decoy explain generation` and `decoy list generate-types`.
+    """
     from decoy_engine.config import generate_option_catalog
 
+    return [
+        {
+            "type": type_,
+            "required": list(spec.required),
+            "optional": list(spec.optional),
+            "required_when": {
+                selector: {value: list(keys) for value, keys in by_value.items()}
+                for selector, by_value in spec.required_when.items()
+            },
+        }
+        for type_, spec in generate_option_catalog().items()
+    ]
+
+
+def type_lines() -> list[str]:
+    """One block per generate type: a line with the name, then its option lines."""
     lines: list[str] = []
-    for type_, spec in generate_option_catalog().items():
-        lines += [f"  {type_}", f"      required: {_names(spec.required)}"]
-        lines.append(f"      optional: {_names(spec.optional)}")
-        for selector, by_value in spec.required_when.items():
+    for entry in type_entries():
+        lines += [f"  {entry['type']}", f"      required: {_names(tuple(entry['required']))}"]
+        lines.append(f"      optional: {_names(tuple(entry['optional']))}")
+        for selector, by_value in entry["required_when"].items():
             for value, keys in by_value.items():
-                lines.append(f"      when {selector} = {value}: requires {_names(keys)}")
+                lines.append(f"      when {selector} = {value}: requires {_names(tuple(keys))}")
     return lines
 
 

@@ -668,7 +668,8 @@ See also: decoy validate, decoy list templates.
 List the contents of one engine registry.
 
 One verb over the live registries: strategies, providers, checksums,
-validators, templates, and regulatory disguise bundles.
+validators, templates, regulatory disguise bundles, and the generate column types
+and faker types.
 
 **Usage**:
 
@@ -678,7 +679,7 @@ $ decoy list [OPTIONS] KIND
 
 **Arguments**:
 
-* `KIND`: What to list: strategies|providers|checksums|validators|templates|disguises.  [required]
+* `KIND`: What to list: strategies|providers|checksums|validators|templates|disguises|generate-types|faker-types.  [required]
 
 **Options**:
 
@@ -698,7 +699,14 @@ Examples:
   decoy list disguises
     The regulatory Disguise bundles (hipaa, gdpr, ...) with rule counts.
 
-Kinds: strategies, providers, checksums, validators, templates, disguises.
+  decoy list generate-types
+    Every generate column type with its required and optional options.
+
+  decoy list faker-types
+    Every value a generate column's `faker_type` accepts.
+
+Kinds: strategies, providers, checksums, validators, templates, disguises,
+generate-types, faker-types.
 
 See also: decoy show, decoy explain.
 
