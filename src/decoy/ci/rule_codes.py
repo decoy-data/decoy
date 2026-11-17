@@ -52,6 +52,8 @@ _CLI_GATE_CODES: frozenset[str] = frozenset(
         "compile.needs_profile",
         "compile_warning",
         "missing_extra",
+        "source.declared_columns",
+        "source.declared_columns_not_checked",
         "native.companion",
         "native.eligibility",
         "pipeline.validation_error",

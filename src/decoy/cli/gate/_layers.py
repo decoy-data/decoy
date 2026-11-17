@@ -368,6 +368,7 @@ def _run_preflight_layer(
     for name in remote_source_names(raw):
         acc.add_warn(
             name=f"source.{name}.declared_columns",
+            code="source.declared_columns_not_checked",
             message=f"Source {name!r}: declared columns not checked: remote source, checked at run.",
             location=f"sources.{name}",
         )
