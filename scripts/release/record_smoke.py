@@ -1,7 +1,7 @@
 """Append one canonical-smoke row to `docs/release/smoke-log.md` (REL-GATE design note 6).
 
     python scripts/release/record_smoke.py summary.json --candidate dist/candidate.json \\
-        --run https://github.com/louiskeep/decoy/actions/runs/123 --note "first 1.0.0 candidate"
+        --run https://github.com/decoy-data/decoy/actions/runs/123 --note "first 1.0.0 candidate"
 
 The summary is what `packaging_tools/smoke_install.py --from-dist` printed. A row is written only
 when the summary is green, its schema major is known, every field has its exact type, and it

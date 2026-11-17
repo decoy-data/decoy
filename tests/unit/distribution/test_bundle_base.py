@@ -127,7 +127,7 @@ def test_at_c6_upgrade_pin_requests_the_release_asset_path(monkeypatch, tmp_path
 
 
 def test_default_bundle_base_is_the_github_release_download_root():
-    assert installer.DEFAULT_BUNDLE_BASE == "https://github.com/louiskeep/decoy/releases/download"
+    assert installer.DEFAULT_BUNDLE_BASE == "https://github.com/decoy-data/decoy/releases/download"
     assert installer.resolve_bundle_base() == installer.DEFAULT_BUNDLE_BASE
 
 
