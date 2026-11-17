@@ -306,7 +306,7 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/louiskeep/decoy/blob/main/docs/schemas/decoy-ci-v1.schema.json",
+  "$id": "https://github.com/decoy-data/decoy/blob/main/docs/schemas/decoy-ci-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "The `decoy-ci/v1` CI manifest: strict, typed, no includes, commands, or interpolation.",

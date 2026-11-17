@@ -1,4 +1,4 @@
-# Files shared with the engine repository (louiskeep/decoy-engine). A [[vendored]] file is
+# Files shared with the engine repository (decoy-data/decoy-engine). A [[vendored]] file is
 # byte-identical there: its local sha256 must equal blob_sha256, engine_path must equal local_path,
 # and `commit` is an engine commit that holds the same bytes, which tests/sentry/
 # test_ci_lock_installs.py fetches and compares. So editing the file and this hash together, in
