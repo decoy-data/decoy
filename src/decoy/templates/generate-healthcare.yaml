@@ -1,8 +1,8 @@
 # generate-healthcare -- synthetic patients, visits and claims.
 #
 # Builds three linked tables from scratch, with no input file. Every visit points at a
-# patient that exists, and every claim points at a visit that exists. All values come from
-# faker, so none of it is real patient data.
+# patient that exists, and every claim points at a visit that exists. All values are
+# generated, so none of it is real patient data.
 #
 #   decoy run pipeline.yaml
 #

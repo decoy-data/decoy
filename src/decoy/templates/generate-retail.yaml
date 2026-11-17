@@ -1,8 +1,8 @@
 # generate-retail -- synthetic customers, orders and order lines.
 #
 # Builds three linked tables from scratch, with no input file. Every order belongs to a
-# customer that exists, and every order line belongs to an order that exists. All values
-# come from faker, so none of it is real customer data.
+# customer that exists, and every order line belongs to an order that exists. All values are
+# generated, so none of it is real customer data.
 #
 #   decoy run pipeline.yaml
 #
