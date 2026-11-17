@@ -485,3 +485,5 @@ AT-E1 compares names and descriptions with `CODESET_REGISTRY` (V1); the AT-5 fal
 GC3 merge on `validate config` plus `validate compile` is removed, so the whole gate stays
 mandatory (V1); AT-3 checks each kind inventory on its own (DESIGN); AT-8 checks
 `procedure_code` (V2-LOG, taken since it is one line).
+
+Round 2, Codex `review-low` on `6ec5e90f` (delta from round 1): GO, no findings.
