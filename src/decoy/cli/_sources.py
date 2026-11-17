@@ -73,11 +73,17 @@ def _has_path(descriptor: Any) -> bool:
 
 
 def remote_source_names(config_dict: dict[str, Any]) -> list[str]:
-    """Names of the `s3` and `gcs` sources of a config, which an offline gate never opens."""
+    """Names of the cloud-endpoint (`s3`, `gcs`) sources of a config, which an offline gate never opens."""
+    from decoy.cli.extras import CLOUD_ENDPOINT_TYPES
+
     sources = config_dict.get("sources")
     if not isinstance(sources, dict):
         return []
-    return [n for n, d in sources.items() if isinstance(d, dict) and d.get("type") in ("s3", "gcs")]
+    return [
+        n
+        for n, d in sources.items()
+        if isinstance(d, dict) and d.get("type") in CLOUD_ENDPOINT_TYPES
+    ]
 
 
 def refusal_message(exc: Exception) -> str:
