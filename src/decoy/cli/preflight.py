@@ -383,13 +383,6 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
     """
     import decoy_engine.execution as _engine_execution
 
-    if not hasattr(_engine_execution, "estimate_job_capacity"):
-        acc.add_pass(
-            name=CAPACITY_CHECK,
-            message="not checked -- capacity check needs a newer engine.",
-        )
-        return
-
     # Preserve preflight's local, no-network posture: the engine estimate reads
     # each source, which for a non-file source means opening a DB/remote
     # connection. A "local" preflight must not do that, so skip capacity when
@@ -543,40 +536,31 @@ def _check_native(raw: dict[str, Any], acc: _PreflightAccumulator) -> None:
 
     from decoy import _native_gate
 
-    probe = getattr(decoy_engine, "native_companion_status", None)
-    if probe is None:
-        # R5 capability-detect (matches `_check_capacity`'s own posture): an
-        # engine this old predates the probe entirely, not an error.
+    status = decoy_engine.native_companion_status()
+    if status.ok:
         acc.add_pass(
             name="native.companion",
-            message="not checked -- native companion health needs a newer engine.",
+            message=(
+                f"native companion present and healthy "
+                f"(v{_native_gate.sanitize_abi(status.version)})."
+            ),
+        )
+    elif status.present:
+        acc.add_warn(
+            name="native.companion",
+            message=(
+                f"native companion present but not usable ({status.reason}) -- "
+                f"expected ABI {status.abi_expected}, got "
+                f"{_native_gate.sanitize_abi(status.abi_actual)!r}. `decoy run` "
+                "fails closed on this by default; use --no-native to roll back."
+            ),
+            code=status.reason,
         )
     else:
-        status = probe()
-        if status.ok:
-            acc.add_pass(
-                name="native.companion",
-                message=(
-                    f"native companion present and healthy "
-                    f"(v{_native_gate.sanitize_abi(status.version)})."
-                ),
-            )
-        elif status.present:
-            acc.add_warn(
-                name="native.companion",
-                message=(
-                    f"native companion present but not usable ({status.reason}) -- "
-                    f"expected ABI {status.abi_expected}, got "
-                    f"{_native_gate.sanitize_abi(status.abi_actual)!r}. `decoy run` "
-                    "fails closed on this by default; use --no-native to roll back."
-                ),
-                code=status.reason,
-            )
-        else:
-            acc.add_pass(
-                name="native.companion",
-                message="native companion not installed; masking runs on the Python fallback.",
-            )
+        acc.add_pass(
+            name="native.companion",
+            message="native companion not installed; masking runs on the Python fallback.",
+        )
 
     if _native_gate.static_native_eligibility(raw):
         acc.add_pass(
