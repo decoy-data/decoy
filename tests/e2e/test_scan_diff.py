@@ -52,14 +52,14 @@ def baseline(tmp_path: Path) -> Path:
 # -- help + happy paths --------------------------------------------------
 
 
-def test_storm_diff_help_includes_examples():
+def test_scan_diff_help_includes_examples():
     result = runner.invoke(app, ["scan", "diff", "--help"])
     assert result.exit_code == 0
     assert "Examples:" in result.stdout
     assert "See also:" in result.stdout
 
 
-def test_storm_diff_identical_scans_reports_no_drift(baseline: Path, tmp_path: Path):
+def test_scan_diff_identical_scans_reports_no_drift(baseline: Path, tmp_path: Path):
     # Compare baseline against a copy of itself.
     copy = _write_scan(
         tmp_path / "copy.json",
@@ -80,7 +80,7 @@ def test_storm_diff_identical_scans_reports_no_drift(baseline: Path, tmp_path: P
 # -- categorized changes ------------------------------------------------
 
 
-def test_storm_diff_detects_added_field(baseline: Path, tmp_path: Path):
+def test_scan_diff_detects_added_field(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [
@@ -100,7 +100,7 @@ def test_storm_diff_detects_added_field(baseline: Path, tmp_path: Path):
     assert payload["drift"] is True
 
 
-def test_storm_diff_detects_removed_field(baseline: Path, tmp_path: Path):
+def test_scan_diff_detects_removed_field(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35)],
@@ -114,7 +114,7 @@ def test_storm_diff_detects_removed_field(baseline: Path, tmp_path: Path):
     assert payload["drift"] is False
 
 
-def test_storm_diff_detects_pii_bucket_increase(baseline: Path, tmp_path: Path):
+def test_scan_diff_detects_pii_bucket_increase(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         # email goes from 0.45 (med) to 0.7 (high) -- a bucket bump.
@@ -132,7 +132,7 @@ def test_storm_diff_detects_pii_bucket_increase(baseline: Path, tmp_path: Path):
     assert payload["drift"] is True
 
 
-def test_storm_diff_detects_pii_bucket_decrease(baseline: Path, tmp_path: Path):
+def test_scan_diff_detects_pii_bucket_decrease(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         # email goes from 0.45 (med) to 0.0 (none) -- masked away.
@@ -147,7 +147,7 @@ def test_storm_diff_detects_pii_bucket_decrease(baseline: Path, tmp_path: Path):
     assert payload["drift"] is False
 
 
-def test_storm_diff_detects_new_qi_group(baseline: Path, tmp_path: Path):
+def test_scan_diff_detects_new_qi_group(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],
@@ -163,7 +163,7 @@ def test_storm_diff_detects_new_qi_group(baseline: Path, tmp_path: Path):
     assert payload["drift"] is True
 
 
-def test_storm_diff_detects_qi_group_member_change(baseline: Path, tmp_path: Path):
+def test_scan_diff_detects_qi_group_member_change(baseline: Path, tmp_path: Path):
     """A QI group with different members is treated as remove + add."""
     new = _write_scan(
         tmp_path / "new.json",
@@ -177,7 +177,7 @@ def test_storm_diff_detects_qi_group_member_change(baseline: Path, tmp_path: Pat
     assert payload["summary"]["qi_groups_removed"] == 1
 
 
-def test_storm_diff_reports_reid_risk_delta(baseline: Path, tmp_path: Path):
+def test_scan_diff_reports_reid_risk_delta(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],
@@ -193,7 +193,7 @@ def test_storm_diff_reports_reid_risk_delta(baseline: Path, tmp_path: Path):
 # -- --strict + exit codes ----------------------------------------------
 
 
-def test_storm_diff_strict_no_drift_exits_zero(baseline: Path, tmp_path: Path):
+def test_scan_diff_strict_no_drift_exits_zero(baseline: Path, tmp_path: Path):
     copy = _write_scan(
         tmp_path / "copy.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],
@@ -206,7 +206,7 @@ def test_storm_diff_strict_no_drift_exits_zero(baseline: Path, tmp_path: Path):
     assert result.exit_code == 0
 
 
-def test_storm_diff_strict_pii_increase_exits_findings(baseline: Path, tmp_path: Path):
+def test_scan_diff_strict_pii_increase_exits_findings(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.7)],
@@ -218,7 +218,7 @@ def test_storm_diff_strict_pii_increase_exits_findings(baseline: Path, tmp_path:
     assert result.exit_code == EXIT_FINDINGS
 
 
-def test_storm_diff_strict_quiet_pii_increase_exits_findings_silently(
+def test_scan_diff_strict_quiet_pii_increase_exits_findings_silently(
     baseline: Path, tmp_path: Path
 ):
     new = _write_scan(
@@ -234,7 +234,7 @@ def test_storm_diff_strict_quiet_pii_increase_exits_findings_silently(
     assert result.stdout == ""
 
 
-def test_storm_diff_strict_json_pii_increase_emits_envelope_and_exits_findings(
+def test_scan_diff_strict_json_pii_increase_emits_envelope_and_exits_findings(
     baseline: Path, tmp_path: Path
 ):
     new = _write_scan(
@@ -252,7 +252,7 @@ def test_storm_diff_strict_json_pii_increase_emits_envelope_and_exits_findings(
     assert payload["drift"] is True
 
 
-def test_storm_diff_non_strict_drift_exits_zero(baseline: Path, tmp_path: Path):
+def test_scan_diff_non_strict_drift_exits_zero(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.7)],
@@ -262,7 +262,7 @@ def test_storm_diff_non_strict_drift_exits_zero(baseline: Path, tmp_path: Path):
     assert result.exit_code == 0
 
 
-def test_storm_diff_strict_pii_decrease_alone_exits_zero(
+def test_scan_diff_strict_pii_decrease_alone_exits_zero(
     baseline: Path, tmp_path: Path
 ):
     new = _write_scan(
@@ -280,7 +280,7 @@ def test_storm_diff_strict_pii_decrease_alone_exits_zero(
 # -- output modes -------------------------------------------------------
 
 
-def test_storm_diff_quiet_produces_empty_stdout(baseline: Path, tmp_path: Path):
+def test_scan_diff_quiet_produces_empty_stdout(baseline: Path, tmp_path: Path):
     copy = _write_scan(
         tmp_path / "copy.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],
@@ -293,7 +293,7 @@ def test_storm_diff_quiet_produces_empty_stdout(baseline: Path, tmp_path: Path):
     assert result.stdout == ""
 
 
-def test_storm_diff_default_renders_card_and_change_tables(
+def test_scan_diff_default_renders_card_and_change_tables(
     baseline: Path, tmp_path: Path
 ):
     new = _write_scan(
@@ -317,7 +317,7 @@ def test_storm_diff_default_renders_card_and_change_tables(
     assert "email" in result.stdout
 
 
-def test_storm_diff_no_changes_prints_no_drift_line(
+def test_scan_diff_no_changes_prints_no_drift_line(
     baseline: Path, tmp_path: Path
 ):
     copy = _write_scan(
@@ -333,21 +333,21 @@ def test_storm_diff_no_changes_prints_no_drift_line(
 # -- error paths --------------------------------------------------------
 
 
-def test_storm_diff_missing_old_exits_user_error(baseline: Path, tmp_path: Path):
+def test_scan_diff_missing_old_exits_user_error(baseline: Path, tmp_path: Path):
     result = runner.invoke(
         app, ["scan", "diff", str(tmp_path / "nope.json"), str(baseline)]
     )
     assert result.exit_code == 1
 
 
-def test_storm_diff_missing_new_exits_user_error(baseline: Path, tmp_path: Path):
+def test_scan_diff_missing_new_exits_user_error(baseline: Path, tmp_path: Path):
     result = runner.invoke(
         app, ["scan", "diff", str(baseline), str(tmp_path / "nope.json")]
     )
     assert result.exit_code == 1
 
 
-def test_storm_diff_both_stdin_exits_user_error(baseline: Path):
+def test_scan_diff_both_stdin_exits_user_error(baseline: Path):
     result = runner.invoke(app, ["scan", "diff", "-", "-"])
     assert result.exit_code == 1
     # Error message lands on stderr; Click 8.2 stopped mixing into stdout.
@@ -355,7 +355,7 @@ def test_storm_diff_both_stdin_exits_user_error(baseline: Path):
     assert "only one of OLD or NEW" in result.output
 
 
-def test_storm_diff_envelope_shape(baseline: Path, tmp_path: Path):
+def test_scan_diff_envelope_shape(baseline: Path, tmp_path: Path):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],

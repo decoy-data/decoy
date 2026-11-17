@@ -1,4 +1,4 @@
-"""Tests for the storm-themed multistage indicator."""
+"""Tests for the scan-themed multistage indicator."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def test_scan_multistage_handles_no_stages_gracefully():
     assert err.getvalue() == ""
 
 
-def test_stormy_handle_renders_cloud_and_stages():
+def test_stage_handle_renders_cloud_and_stages():
     """Direct render exercise -- no Live, no thread, just the build output."""
     handle = _StageHandle(
         live=None, stages=["Load", "Profile", "Save"], frame_state={"frame": 0}

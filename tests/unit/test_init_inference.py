@@ -157,7 +157,7 @@ def test_review_comment_format():
     the first wrapped line, plain `# ` on continuations, indent matches
     the surrounding YAML node."""
     body = _wrap_review_comment(
-        "STORM detected email addresses. Faker replaces with synthetic emails.",
+        "The scan found email addresses. Faker replaces with synthetic emails.",
         indent="      ",
     )
     lines = body.splitlines()
@@ -281,9 +281,7 @@ def test_yaml_body_parses_through_pipeline_config(tmp_path: Path):
     input_file.write_text("a,b\n1,2\n", encoding="utf-8")
     output_path = tmp_path / "input.masked.csv"
     inferences = {
-        "a": Inference(
-            strategy="faker", provider="person_email", review="email"
-        ),
+        "a": Inference(strategy="faker", provider="person_email", review="email"),
         "b": Inference(strategy="redact", review="redact b"),
     }
     body = _build_scaffold_yaml(
@@ -310,11 +308,25 @@ def test_scaffold_header_cites_oss_4c_provenance(tmp_path: Path):
         output_path=tmp_path / "customers.masked.csv",
         column_names=["email"],
         inferences={
-            "email": Inference(
-                strategy="faker", provider="person_email", review="email detected"
-            )
+            "email": Inference(strategy="faker", provider="person_email", review="email detected")
         },
         file_format="csv",
     )
     assert "decoy init customers.csv" in body
     assert "REVIEW" in body
+
+
+def test_every_review_line_reads_as_the_scan_found_it():
+    """AT-C6: the 18 detector rows lead with "The scan found ...", the fallback and the
+    multi-signal template carry the scan wording, and none of them name the retired product."""
+    from tests.sentry.release.test_retired_name_residual import RETIRED_PATTERN
+
+    from decoy.cli._init_inference import _AMBIGUOUS_TEMPLATE
+
+    assert len(_INFERENCE_TABLE) == 18
+    for det_id, inf in _INFERENCE_TABLE.items():
+        assert inf.review.startswith("The scan found "), det_id
+    assert _FALLBACK.review.startswith("The scan did not flag this column")
+    assert _AMBIGUOUS_TEMPLATE.startswith("The scan found multiple candidate signals ({signals})")
+    texts = [*(i.review for i in _INFERENCE_TABLE.values()), _FALLBACK.review, _AMBIGUOUS_TEMPLATE]
+    assert not [t for t in texts if RETIRED_PATTERN.search(t)]

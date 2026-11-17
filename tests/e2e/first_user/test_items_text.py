@@ -88,7 +88,13 @@ def test_a_real_subcommand_keeps_its_own_usage_path() -> None:
 
 # Literal strings found in these surfaces by the first-user QA. The general
 # pattern sentry over every user string is separate; these cells pin the fixes.
-_REMOVED_FROM_TOPICS = ("FC-1", f"{RETIRED_NAME}-reframe", "S22-CL", "decoy-platform")
+_REMOVED_FROM_TOPICS = (
+    "FC-1",
+    f"{RETIRED_NAME}-reframe",
+    "S22-CL",
+    "decoy-platform",
+    "cli-yaml-workflows",
+)
 
 
 @pytest.mark.parametrize("name", topic_names())
@@ -97,6 +103,16 @@ def test_explain_topics_carry_no_ticket_ids_or_platform_paths(name: str) -> None
     text = payload["summary"] + "\n" + payload["body"]
     for removed in _REMOVED_FROM_TOPICS:
         assert removed not in text, f"{name!r} topic still says {removed!r}"
+
+
+@pytest.mark.parametrize("name", topic_names())
+def test_explain_topics_name_no_workflow_reason_code(name: str) -> None:
+    # Workflows are retired and their platform reason codes are tombstones
+    # (engine #626). No topic may send a user to one.
+    payload = _topic(name)
+    text = (payload["summary"] + "\n" + payload["body"]).lower()
+    for code in ("workflow_step", "workflow_restart"):
+        assert code not in text, f"{name!r} topic names {code!r}"
 
 
 def test_init_help_carries_no_ticket_id() -> None:
