@@ -181,3 +181,29 @@ def test_a_preview_stores_no_evidence(project: Path) -> None:
     result = runner.invoke(app, ["run", str(gen), "--rows", "2"])
     assert result.exit_code == EXIT_OK, result.output
     assert _evidence_rows(project) == []
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "engine fix pending: the out-of-core route attaches out_of_core_caller_managed_residency "
+        "with an empty provider and a list in detail, which EvidencePayload refuses; rerun on the "
+        "release that makes every engine warning validate against the evidence model"
+    ),
+)
+def test_an_out_of_core_fk_run_stores_its_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The freeze snapshot's two-table FK mask run: it must store its record, not warn."""
+    from tests.e2e.release_freeze.write_shapes import SECRET_ENV, build_workspace
+
+    (tmp_path / ".git").mkdir()
+    build_workspace(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DECOY_LIBRARY", raising=False)
+    monkeypatch.setenv(SECRET_ENV, "ab" * 32)
+    result = runner.invoke(
+        app, ["run", "pipeline.yaml", "--mask-secret", f"env:{SECRET_ENV}", "--json"]
+    )
+    assert result.exit_code == EXIT_OK, result.output
+    assert json.loads(result.stdout)["library"]["status"] == "stored"
