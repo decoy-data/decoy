@@ -103,6 +103,7 @@ FACADE_NAMES: dict[str, frozenset[str]] = {
         {"gate_exit_code", "run_config_gate", "run_gate"}
     ),
     "decoy.ci.adapters -> decoy.cli.io": frozenset({"load_scan_set", "select_table"}),
+    "decoy.ci.adapters -> decoy.cli.scanning": frozenset({"diff_scan_sets"}),
     "decoy.ci.rule_codes -> decoy.cli.io": frozenset({"GATE_CODES"}),
 }
 

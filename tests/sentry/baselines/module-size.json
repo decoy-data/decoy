@@ -8,7 +8,7 @@
   },
   "src/decoy/cli/preflight.py": {
    "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink",
-   "max": 865
+   "max": 859
   },
   "src/decoy/cli/report.py": {
    "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink",
@@ -16,7 +16,7 @@
   },
   "src/decoy/cli/scan.py": {
    "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink",
-   "max": 1157
+   "max": 1037
   }
  }
 }

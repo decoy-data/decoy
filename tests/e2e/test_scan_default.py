@@ -34,15 +34,15 @@ def sample_csv(tmp_path: Path) -> Path:
     return path
 
 
-def test_storm_analyze_help_includes_examples(tmp_path: Path):
+def test_scan_help_includes_examples(tmp_path: Path):
     result = runner.invoke(app, ["scan", "--help"])
     assert result.exit_code == 0
     assert "Examples:" in result.stdout
     assert "See also:" in result.stdout
 
 
-def test_storm_fields_non_utf8_scan_prints_clean_error(tmp_path: Path):
-    """QA 2026-06-04 storm-validate-cli F1 (HIGH): a non-UTF-8 scan file must
+def test_scan_fields_non_utf8_scan_prints_clean_error(tmp_path: Path):
+    """QA 2026-06-04 scan-validate-cli F1 (HIGH): a non-UTF-8 scan file must
     produce a clean usage error, not an unhandled UnicodeDecodeError traceback
     (which would also corrupt --json output). UnicodeDecodeError is a
     ValueError, not an OSError, so it is normalised inside _load_scan_dict."""
@@ -55,7 +55,7 @@ def test_storm_fields_non_utf8_scan_prints_clean_error(tmp_path: Path):
     assert not isinstance(result.exception, UnicodeDecodeError)
 
 
-def test_storm_analyze_writes_profile_and_succeeds(sample_csv: Path, tmp_path: Path):
+def test_scan_writes_profile_and_succeeds(sample_csv: Path, tmp_path: Path):
     out_path = tmp_path / "scan.json"
     result = runner.invoke(
         app, ["scan", str(sample_csv), "--has-header", "--output", str(out_path)]
@@ -71,7 +71,7 @@ def test_storm_analyze_writes_profile_and_succeeds(sample_csv: Path, tmp_path: P
     assert payload["name"] == "sample"
 
 
-def test_storm_analyze_json_emits_envelope(sample_csv: Path, tmp_path: Path):
+def test_scan_json_emits_envelope(sample_csv: Path, tmp_path: Path):
     out_path = tmp_path / "scan.json"
     result = runner.invoke(
         app,
@@ -84,7 +84,7 @@ def test_storm_analyze_json_emits_envelope(sample_csv: Path, tmp_path: Path):
     assert payload["row_count"] == 5
 
 
-def test_storm_analyze_quiet_produces_empty_stdout(sample_csv: Path, tmp_path: Path):
+def test_scan_quiet_produces_empty_stdout(sample_csv: Path, tmp_path: Path):
     out_path = tmp_path / "scan.json"
     result = runner.invoke(
         app,
@@ -95,7 +95,7 @@ def test_storm_analyze_quiet_produces_empty_stdout(sample_csv: Path, tmp_path: P
     assert out_path.exists()
 
 
-def test_storm_analyze_strategy_random_caps_rows(sample_csv: Path, tmp_path: Path):
+def test_scan_strategy_random_caps_rows(sample_csv: Path, tmp_path: Path):
     out_path = tmp_path / "scan.json"
     result = runner.invoke(
         app,

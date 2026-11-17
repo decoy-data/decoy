@@ -114,6 +114,8 @@ _CLOUD_ENDPOINT_MODULE: dict[str, str] = {
     "s3": "boto3",
     "gcs": "google.cloud.storage",
 }
+# The source and target `type` values that name a remote endpoint, from the one registry above.
+CLOUD_ENDPOINT_TYPES: frozenset[str] = frozenset(_CLOUD_ENDPOINT_MODULE)
 
 
 class UnsupportedCloudEndpointError(Exception):
