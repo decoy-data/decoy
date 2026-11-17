@@ -360,17 +360,13 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
     "capacity: OK" here says nothing about that. See the module docstring's
     "OOM checker v1" note.
 
-    R5 capability-detect: an engine older than the one that ships
-    `estimate_job_capacity` degrades to "not checked" rather than an
-    ImportError -- the CLI's engine floor is >=0.6.0 either way.
-
     R3 (Codex P1-2): `estimate_job_capacity` returns a typed verdict
     (`UNKNOWN` for expected indeterminacy) or raises. A plan the engine
     rejects (`PlanCompileError`) becomes a `capacity.plan_uncompilable` FAIL;
     any other exception is a real defect and propagates, since folding it
-    into a WARN would report a false pass. Only the THREE guarded
-    early-returns below (capability-detect, non-file sources, a source
-    already known missing/unreadable from disk) skip the estimator. The third
+    into a WARN would report a false pass. Only the TWO guarded
+    early-returns below (non-file sources, a source already known
+    missing/unreadable from disk) skip the estimator. The second
     exists because a missing source is also one of the estimator's documented
     propagating cases: without it, a source Step 4 (`_check_source_files`)
     already flagged would crash the command before any finding is printed.
