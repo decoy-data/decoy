@@ -239,3 +239,68 @@ export of real logs waits on L5b.
 - Prune could also sweep empty fan-out folders under `objects/`.
 - The concurrent test could hold the child until the prune starts (a barrier) to also exercise
   the grace rule under concurrency.
+
+## Re-check on the main-merged head after review round 2 (2026-11-17)
+
+`b393840` merges the updated #215 (`123831d`: main at `4e6d60b`, the `diff_scan_sets` move,
+the `library path` wrap fix). The merge was clean. The checks above ran on older heads, so the
+round-2 fixes and every mutation were rerun here.
+
+- OS: Linux 6.18.44 (x86_64), ext4, uid 0 in a container.
+- `python -V`: Python 3.10.20 (`.venv`, `scripts/dev/bootstrap.sh` OK against `requirements-dev.lock`).
+- Engine: `decoy-engine` 0.27.0 (commit `ddd014a`).
+- Main: `4e6d60b`. Code head the checks ran on: `b393840`. This record is the only later commit
+  (Markdown only).
+
+**Round 2 (Codex, head `31d8ce1`).** Fixed in `399ebfd` after the red cells in `81a3dfb`:
+
+| Item | Fix | Red at `81a3dfb` (worktree, `PYTHONPATH` to its `src`) | Green at `b393840` |
+|---|---|---|---|
+| V1-A | `_inventory` counts a ref or a link that names a missing record as unexplained; `export` refuses before writing; `--ref` checks its closure is all indexed | `test_an_export_whose_record_links_to_a_missing_record_refuses` (exit 0, 1 record written), `test_an_export_with_a_dangling_ref_refuses[named-ref]` and `[whole-library]` (exit 0) | yes |
+| DESIGN-B | `_fs.write_export` is the one checked write, built on `_atomic.destination_entry`; `_exporting.py` has no path inspection; G-LIB-FS seeds `os.path.realpath` and `os.path.islink` | `test_export_writes_through_one_checked_entry_point` | yes |
+| DESIGN-C | one parser, `_index.parse_instant`, exposed through the facade and used by `_read`, `_prune` and `_exporting` | `test_one_timestamp_parser` | yes |
+
+**T1** (`scripts/dev/gates.sh --keep-going --baseline` with paths `tests/e2e/library tests/unit/library
+tests/e2e/first_user/test_items_error_envelope.py tests/e2e/release_freeze tests/unit/test_cli_surface.py
+tests/unit/test_report.py tests/e2e/test_report_diff_command.py tests/e2e/test_stateless_cli.py`;
+the sentry step runs all of `tests/sentry`):
+
+| Step | Branch `b393840` | Main `4e6d60b` |
+|---|---|---|
+| env | PASS | (same venv) |
+| ruff | PASS | PASS |
+| sentry | 1432 passed | 1432 passed |
+| layers | 23 passed | 23 passed |
+| tests | 475 passed, 7 skipped | 375 passed, 6 skipped |
+
+Failure sets: branch none; main none; branch-only none. The extra skip is the Windows-only
+`test_clean_with_a_file_held_open_on_windows`.
+
+**Mutations on `b393840`** (`mutate_l4b.py`, rewritten for the post-review code; each applied
+once by exact string replace, its tests run, the file restored; `src` clean after):
+
+| Mutation | Change | Tests | Result |
+|---|---|---|---|
+| ML4-apply | preview removes the planned files | `test_preview_lists_exact_ids_and_deletes_nothing`, `test_prune_previews_exact_ids_then_deletes_with_yes` | red (2 failed) |
+| ML4-noreach | `reachable = set(kept)` (refs and links ignored) | `test_records_reachable_from_a_ref_or_a_kept_record_survive` | red |
+| ML4-nograce | `young = set()` | `test_a_record_younger_than_an_hour_survives`, `test_prune_while_another_process_puts` | red (the unit test; the concurrent test stays green, as before) |
+| ML4-unlocked | apply on a plain autocommit SQLite connection, no lock | `test_prune_waits_for_the_lock_and_deletes_nothing_while_it_is_held` | red |
+| ML4-prune-unknown | kind rules applied to opaque rows | `test_an_opaque_record_and_what_it_links_to_are_never_pruned` | red (both cases) |
+| ML4-wide | `clean_all` also removes the whole root | `test_clean_previews_then_removes_only_scratch` | red |
+| ML4-clean-raise | `clear_tree` re-raises the `PermissionError` | `test_clean_lists_a_held_file_and_exits_4` | red |
+| ML4-paths | export always `keep_paths=True` | `test_export_then_read_gives_the_same_ids_and_strips_only_path_fields` | red |
+| ML4-scratch | scratch files handed to the codec as logs | `test_no_option_exports_scratch` | red (4 cases) |
+| ML4-skip-unknown | only `DecodedRecord`s handed to the codec | `test_an_opaque_record_is_withheld_by_default_and_kept_with_keep_paths` | red |
+| ML4-skip-unknown (notice) | withheld ids not reported | the opaque and newer export tests | red, both |
+| ML4-no-remap | records handed over in reverse link order | `test_links_and_refs_point_at_the_new_ids_after_stripping` | red |
+| ML4b-closure (V1-A) | `_inventory` stops counting dangling refs and links | the missing-link and dangling-ref cells | red (missing link and `whole-library`; `named-ref` is also held by the `--ref` closure check, so it stays green) |
+| ML4b-unexplained | `require_explained` never raises | the unreadable-ref, unreadable-kept-record and cannot-verify cells | red (3 failed) |
+| ML4b-destination (DESIGN-B) | `write_export` ignores `unsafe` | `test_export_into_the_library_is_refused`, `test_export_through_a_final_symlink_is_refused` | red (2 failed) |
+
+ML4-export-view, ML4-strip-all and ML4-verbatim-links stay engine-owned, as recorded above.
+
+**OS lanes on this head.** Linux: run. macOS: NOT RUN (no Mac runner reachable from this
+session). Windows: NOT RUN (no Windows node). The plan requires both for L4b; they are open.
+
+Not run on this head: the full suite, mypy, macOS and Windows lanes. CI: see the PR checks on the
+pushed head.
