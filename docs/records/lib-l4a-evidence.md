@@ -138,3 +138,55 @@ The full suite, and mypy from `.venv`.
 - `show` for a `run-result` could add the `links.log` state once L5b fills it.
 - `list` human output is one plain line per record; a table renderer would match the other
   read commands.
+
+## Re-check on the main-merged head (2026-11-17)
+
+The checks above ran at `7b25b76` on engine 0.22.0. Main has moved since (engine 0.27.0, the
+`compute_scan_diff` move to `decoy.cli.scanning.diff_scan_sets`), so everything below was rerun.
+
+- OS: Linux 6.18.44 (x86_64), ext4, uid 0 in a container.
+- `python -V`: Python 3.10.20 (`.venv`, `scripts/dev/bootstrap.sh` OK against `requirements-dev.lock`).
+- Engine: `decoy-engine` 0.27.0 (commit `ddd014a`).
+- Main: `4e6d60b`. Code head the checks ran on: `2d7b7b5`. This record is the only later commit
+  (Markdown only).
+
+| Commit | What |
+|---|---|
+| `36e869f` | main merged in (CHANGELOG conflict only, both entries kept) |
+| `d3e7dd5` | `_diff.py` calls `decoy.cli.scanning.diff_scan_sets` (main moved `compute_scan_diff`) |
+| `c4d769c` | red cell: `test_path_prints_a_long_root_on_one_line` |
+| `2d7b7b5` | `library path` prints the root with `soft_wrap=True, markup=False` |
+
+**The macOS-only failure was real.** `test_library_fsck.py::test_path_prints_the_root_and_where_it_came_from`
+failed on the Mac because Rich wrapped the `root:` line at 80 columns, and macOS temp paths are
+longer than Linux ones. Any user with a long root got a split path. The new cell uses a deep
+folder so it is red on Linux too (red at `c4d769c`, green at `2d7b7b5`). The bug is in #210's
+`path` command; the fix is one line there.
+
+T1 (`scripts/dev/gates.sh --keep-going --baseline` with paths `tests/e2e/library tests/unit/library
+tests/e2e/first_user/test_items_error_envelope.py tests/e2e/release_freeze tests/unit/test_cli_surface.py
+tests/unit/test_report.py tests/e2e/test_report_diff_command.py tests/e2e/test_stateless_cli.py`):
+
+| Step | Branch `2d7b7b5` | Main `4e6d60b` |
+|---|---|---|
+| env | PASS | (same venv) |
+| ruff | PASS | PASS |
+| sentry | 1432 passed | 1432 passed |
+| layers | 23 passed | 23 passed |
+| tests | 421 passed, 6 skipped | 375 passed, 6 skipped |
+
+Failure sets: branch none; main none; branch-only none. Format and mypy: no gate in `ci.yml`
+(SKIP).
+
+Mutations on `2d7b7b5` (each applied once by string replace, its tests run, the file restored;
+`src` clean after):
+
+| Mutation | Change | Test | Result |
+|---|---|---|---|
+| ML4-filter | `rows(..., pipeline=None, ...)` in `list` | `test_list_filters_by_kind_pipeline_table_and_time` | red |
+| ML4-first-match | ambiguity check replaced by `if False:` | `test_show_refuses_an_ambiguous_prefix` | red |
+| ML4-ref-nolock | `with _index.locked(...)` in `_refs.set_ref` replaced by `if True:` | `test_ref_sets_under_the_lock_and_prints` | red |
+| ML4-generic | `rule = None` at the top of `diff_payloads` | the run-result, evidence and scan-set diff tests | red, all three |
+
+Not run on this head: macOS and Windows (plan 5.1: L4a is Linux only), the full suite, mypy.
+CI: see the PR checks on the pushed head.
