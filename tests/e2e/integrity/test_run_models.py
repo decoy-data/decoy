@@ -168,3 +168,28 @@ def test_real_model_run_with_every_detector_needs_no_network(
     assert [d["source"] for d in doc["post_scan"]["detectors"]] == ["regex", "classifier", "ner"]
     assert doc["post_scan"]["counts"]["warning"] >= 1
     assert default_report(tmp_path).is_file()
+
+
+def test_a_model_that_cannot_load_refuses_before_a_duckdb_relation_is_read(tmp_path: Path) -> None:
+    import duckdb
+    from decoy_engine import ModelUnavailableError
+
+    cfg = write_pipeline(tmp_path, post=CLASSIFIER)
+    db = tmp_path / "people.duckdb"
+    con = duckdb.connect(str(db))
+    try:
+        con.execute("CREATE TABLE customers AS SELECT 1 AS id, 'a@example.invalid' AS email")
+    finally:
+        con.close()
+    refused = ModelUnavailableError("classifier_unavailable", cause="pack")
+    with (
+        mock.patch("decoy_engine.load_detectors", side_effect=refused),
+        mock.patch("decoy.cli.run._prepare.acquire_relation") as acquire,
+    ):
+        result = runner.invoke(
+            app, ["run", str(cfg), "--duckdb-source", f"customers={db}", "--json"]
+        )
+
+    assert result.exit_code == 1, result.output
+    acquire.assert_not_called()
+    assert [m["code"] for m in json.loads(result.stdout)["messages"]] == ["classifier_unavailable"]

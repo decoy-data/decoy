@@ -377,6 +377,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
             duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
         )
         check_declared_before_acquire(_probe, _flags, ctx.config.parent)
+        preflight_detectors(_probe)  # a model that cannot load refuses before any relation is read
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
