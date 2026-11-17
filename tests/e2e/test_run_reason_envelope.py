@@ -169,7 +169,12 @@ def test_required_refusals_are_cli_owned() -> None:
 
 
 def test_usage_types_single_source(tmp_path: Path) -> None:
-    from decoy_engine import ConfigError, PipelineValidationError
+    from decoy_engine import (
+        ConfigError,
+        ModelUnavailableError,
+        PipelineValidationError,
+        PostScanRouteError,
+    )
     from decoy_engine.detection.ner import NerUnavailableError
     from decoy_engine.keyprovider import MaskSecretError
     from decoy_engine.plan import PlanCompileError
@@ -183,6 +188,8 @@ def test_usage_types_single_source(tmp_path: Path) -> None:
         PlanCompileError,
         PipelineValidationError,
         ConfigError,
+        ModelUnavailableError,
+        PostScanRouteError,
         _execute._ChunkedGenerateError,
         _execute._ChunkedFixedWidthError,
         _execute._ChunkedIntegrityError,

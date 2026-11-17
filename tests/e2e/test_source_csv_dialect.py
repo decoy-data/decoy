@@ -297,7 +297,8 @@ def _report_payload(verb: str, source: Path, other: Path, config: Path | None) -
     assert result.exit_code in (0, 4), result.output
     payload = json.loads(result.stdout)
     report = payload.get("report", payload)
-    for volatile in ("generated_at", "source", "output", "masked"):
+    # `config_sha256` names the config file passed, and the two configs compared differ by design.
+    for volatile in ("generated_at", "source", "output", "masked", "config_sha256"):
         report.pop(volatile, None)
     return report
 
