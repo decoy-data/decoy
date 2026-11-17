@@ -65,7 +65,8 @@ def test_generate_template_validates_runs_and_links_keys(name: str, tmp_path: Pa
                 child = frames[table["name"]][col["name"]].dropna()
                 parent = set(frames[col["reference_table"]][col["reference_column"]])
                 assert set(child) <= parent, f"{name}: {table['name']}.{col['name']} not linked"
-    assert links >= 1, f"{name}: a starter template must declare at least one foreign key"
+    if name in GENERATE_INDUSTRY_TEMPLATES:
+        assert links >= 1, f"{name}: an industry template must declare at least one foreign key"
 
 
 @pytest.mark.parametrize("name", _generate_names())

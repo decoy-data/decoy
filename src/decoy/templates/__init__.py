@@ -26,6 +26,12 @@ _REGISTRY: tuple[tuple[str, str], ...] = (
     ("pci", "PCI DSS card-data masking: PAN via Luhn-valid format-preserving encryption, CVV redacted, deterministic transaction ids."),
     ("gdpr", "GDPR personal-data masking: name, email, phone, IP address, location."),
     ("generate", "Synthetic-data generation pipeline; no input file required."),
+    ("generate-healthcare", "Synthetic healthcare data: patients, visits and claims, linked by foreign keys."),
+    ("generate-banking", "Synthetic banking data: customers, accounts and transactions, linked by foreign keys."),
+    ("generate-insurance", "Synthetic insurance data: policyholders, policies and claims, linked by foreign keys."),
+    ("generate-retail", "Synthetic retail data: customers, orders and order lines, linked by foreign keys."),
+    ("generate-telecom", "Synthetic telecom data: subscribers, lines and call records, linked by foreign keys."),
+    ("generate-hr", "Synthetic HR data: departments, employees and payroll, linked by foreign keys."),
     # CLI.3 (2026-06-02): graph template removed. V1 `mode: graph` was
     # retired under storm-reframe-C / S22-CL-V1GRAPHRUNNER; the V2 graph
     # builder UI emits a `version: 2` PipelineConfig from node settings
