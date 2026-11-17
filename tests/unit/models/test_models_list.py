@@ -113,3 +113,11 @@ def test_list_reads_each_status_once_through_the_engine(monkeypatch: pytest.Monk
     monkeypatch.setattr("decoy.cli.models._status.ner_status", ner)
     assert _rows()[0] == 0
     assert seen == ["classifier", "ner:en_core_web_sm"]
+
+
+def test_the_ner_install_command_is_one_text_for_hints_and_missing_extra_errors() -> None:
+    from decoy.cli.extras import install_line
+    from decoy.cli.models import install_command_text
+
+    assert install_command_text() == install_line("ner")
+    assert install_command_text("en_core_web_md") == f"{install_line('ner')} --model en_core_web_md"

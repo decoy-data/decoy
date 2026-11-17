@@ -11,6 +11,8 @@ from typing import Any
 from decoy_engine import ModelStatus, classifier_status, ner_status
 from decoy_engine.detection.ner import DEFAULT_NER_MODEL
 
+from decoy.cli.extras import install_line
+
 _CLASSIFIER_HINTS = {
     "disabled": "unset DECOY_ML_DISABLED to use the classifier.",
     "import": "lightgbm or scikit-learn does not import here; on macOS run `brew install libomp`.",
@@ -20,7 +22,7 @@ _PACK_HINT = "the bundled classifier pack did not load; reinstall Decoy."
 
 def install_command_text(model: str = DEFAULT_NER_MODEL) -> str:
     suffix = "" if model == DEFAULT_NER_MODEL else f" --model {model}"
-    return f"decoy models install ner{suffix}"
+    return f"{install_line('ner')}{suffix}"  # the one text, shared with the missing-extra hints
 
 
 def hint(status: ModelStatus) -> str | None:
