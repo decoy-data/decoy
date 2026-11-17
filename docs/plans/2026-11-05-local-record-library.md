@@ -1810,14 +1810,41 @@ they do not wait for the L3a producer.
 
 Depends on L4a.
 
-**Files and sizes.**
-- `src/decoy/cli/library.py` (+~120, stays under ~420): `prune`, `export`,
-  `clean`.
-- new `src/decoy/cli/_library/_prune.py` (~150: `prune_preview`,
-  `prune_apply`, reachability, best-effort delete report).
-- `docs/cli-reference.md`, `docs/library.md`, `CHANGELOG.md`.
-- tests: `tests/e2e/test_library_destructive.py`,
-  `tests/unit/library/test_prune.py`.
+**Placement (amended 2026-11-17, review round 3 on #219).** The flat
+`src/decoy/cli/library.py` and `_library/` names above this line are
+superseded: the library is the `src/decoy/cli/library/` sub-package (`cli/` is
+frozen), commands import its facade, and every filesystem call goes through
+`_fs.py` (G-LIB-FS).
+
+| New file | Directory | Map row | Sits beside |
+|---|---|---|---|
+| `_destructive.py` (`prune` and `clean` commands) | `src/decoy/cli/library/` | existing "Local record library (LIB)" CODEMAP row | `_read.py` (L4a commands) |
+| `_prune.py` (`prune_preview`, `prune_apply`, `policy_rules`) | same | same | `_index.py` (`reachable`, the one closure walk) |
+| `_export.py` (`export` command) | same | same | `_destructive.py` |
+| `_exporting.py` (`select`, `closure`, `export_lines`, `link_order`) | same | same | `_export.py` |
+| `_inventory.py` (`take_inventory`: every ref and object accounted for under the lock) | same | same | `_index.py` |
+| `_records.py` (record builders) | `tests/e2e/library/` | existing CLI test locations | `_canary.py` |
+| `test_library_destructive.py`, `test_library_export.py`, `test_library_l4b_review.py` | `tests/e2e/library/` | same | `test_library_read_commands.py` |
+| `test_prune.py` | `tests/unit/library/` | same | `test_index.py` |
+
+Changed, not new: `_fs.py` (`remove_file`, `clear_tree`, `write_export`),
+`_index.py` (`reachable`, `parse_instant`), `_scratch.py` (`clean_preview`,
+`clean_all`), `_errors.py`, `_commands.py`, `__init__.py`;
+`docs/cli-reference.md`, `docs/library.md`, `CHANGELOG.md`.
+
+**Export closure rule (amended 2026-11-17, review round 3 on #219).** An
+export is always closed: every link of every record in the file resolves
+inside the file.
+- `--kind`, `--since` and `--ref` choose the starting records only. Export
+  then adds every record they link to, transitively, whatever its kind or
+  date.
+- If a needed record cannot be exported (an opaque kind, a newer payload
+  schema, or otherwise withheld by the codec), every record that links to it,
+  directly or indirectly, is withheld too and counted in the header's
+  `withheld_records`, with its reason on stderr. A ref to a withheld record is
+  left out of the header.
+- Export never writes a set with `external_links > 0`. As a last check it
+  refuses with `export_not_closed` before writing if the codec reports one.
 
 | Test | Asserts | Mutation |
 |---|---|---|
@@ -1828,6 +1855,9 @@ Depends on L4a.
 | L4b-export-import | export then `records.read_export` gives the same ids; `--ref` exports exactly the reachable set; only declared path fields are stripped unless `--keep-paths` | ML4-paths: keep paths by default; ML4-strip-all: strip every string that looks like a path |
 | L4b-export-remap | export a scan record and a run-result linking to it with paths stripped: the run-result's `baseline` link points at the scan line's new id, both lines verify, and header refs point at new ids | ML4-no-remap: keep old ids in links |
 | L4b-export-scratch | no export option includes scratch content | ML4-scratch |
+| L4b-export-filter-closure | `--kind` or `--since` choosing a record that links to a record outside the filter exports both; `external_links` is 0 | ML4-no-closure: export the filtered set only |
+| L4b-export-withheld-dependents | a known record linking (directly or through another) to a record the codec withholds is withheld too and listed in `withheld_records`; a ref to it is left out; `--keep-paths` exports all; `external_links` is 0 | ML4-keep-dependents: keep records that link to a withheld one |
+| L4b-export-last-check | with the closure step broken, export refuses with `export_not_closed` and writes no file | ML4-no-last-check |
 | L4b-export-newer | a record written by a newer CLI (extra payload field) and exported by this version keeps its bytes and id, is unstripped, and is named in the header's `unstripped` list | ML4-export-view: export from the typed view |
 | L4b-export-unknown | an opaque-kind record that links only to unchanged records is exported with its payload and id unchanged | ML4-skip-unknown: leave unknown kinds out |
 | L4b-export-closure | a library with a scan record (path fields), an opaque-kind record and a newer-CLI run-result both linking to it: export without `--keep-paths`, then `read_export`; every link of every line resolves to an id in the export, the opaque and newer payloads are byte for byte unchanged, every envelope verifies, `source_id` is in the wrapper and names the original ids, and `external_links` is 0 | ML4-verbatim-links: keep opaque and newer envelopes byte for byte, links included |
