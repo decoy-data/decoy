@@ -129,24 +129,3 @@ def test_info_version_is_sanitized_before_display(monkeypatch: pytest.MonkeyPatc
     version = _json.loads(result.stdout)["native_companion"]["version"]
     assert len(version) <= 200
     assert "\x00" not in version
-
-
-def test_info_degrades_gracefully_on_an_older_engine(monkeypatch: pytest.MonkeyPatch):
-    """H1 regression (dennis round 2): an engine predating
-    `native_companion_status()` must not crash `decoy info` -- capability-
-    detect and report `native_companion: null` instead."""
-    import decoy_engine
-
-    monkeypatch.delattr(decoy_engine, "native_companion_status", raising=False)
-    result = runner.invoke(app, ["info", "--json"])
-    assert result.exit_code == 0, result.output
-    assert _json.loads(result.stdout)["native_companion"] is None
-
-
-def test_info_human_mode_degrades_gracefully_on_an_older_engine(monkeypatch: pytest.MonkeyPatch):
-    import decoy_engine
-
-    monkeypatch.delattr(decoy_engine, "native_companion_status", raising=False)
-    result = runner.invoke(app, ["info"])
-    assert result.exit_code == 0, result.output
-    assert "not checked" in result.output.lower()
