@@ -13,11 +13,12 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 import typer
 from rich.cells import cell_len
 from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
+from rich.text import Text
 from rich.traceback import Trace, Traceback
 
 from decoy._env_flags import no_color
@@ -39,6 +40,27 @@ class OutputState:
     err_console: Console
 
 
+def _keep_lines_whole(console: Console) -> Console:
+    """Make a console's text-only prints soft-wrap, so a long path is never folded.
+
+    Rich folds a long line at 80 columns off a TTY, which puts a newline inside a filesystem
+    path (`root: <path>`, `OK <path>`) and breaks greps and copy-paste. A print whose
+    arguments are all plain text or `Text` is a line, so it soft-wraps and the terminal does
+    any wrapping. A print that passes a `Panel`, `Table` or other renderable keeps Rich's
+    layout, because soft wrap would crop its cells. An explicit `soft_wrap=` is honoured.
+    Wrapping the instance keeps `_make_console` the one place that constructs a `Console`.
+    """
+    plain_print = console.print
+
+    def print_line(*objects: Any, soft_wrap: bool | None = None, **kwargs: Any) -> None:
+        if soft_wrap is None:
+            soft_wrap = all(isinstance(o, (str, Text)) for o in objects)
+        plain_print(*objects, soft_wrap=soft_wrap, **kwargs)
+
+    console.print = print_line  # type: ignore[method-assign]
+    return console
+
+
 def _make_console(*, stderr: bool) -> Console:
     """Build a Rich console. This is the only place the CLI constructs one.
 
@@ -47,12 +69,14 @@ def _make_console(*, stderr: bool) -> Console:
     path, which breaks log greps. It is for lines only: no `Panel` or `Table` goes to it,
     because soft wrap would crop their cell text. Stdout keeps Rich's own layout.
     """
-    return Console(
-        stderr=stderr,
-        soft_wrap=stderr,
-        theme=DECOY_THEME,
-        no_color=no_color(),
-        highlight=False,
+    return _keep_lines_whole(
+        Console(
+            stderr=stderr,
+            soft_wrap=stderr,
+            theme=DECOY_THEME,
+            no_color=no_color(),
+            highlight=False,
+        )
     )
 
 
