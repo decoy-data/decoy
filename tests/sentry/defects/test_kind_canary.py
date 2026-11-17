@@ -36,7 +36,6 @@ class PendingKind:
 
 PENDING_ALLOWLIST: tuple[PendingKind, ...] = (
     PendingKind("scan-set", "L2-cli writes scan records and adds the scan-set canary fixture."),
-    PendingKind("evidence", "L3a-cli writes evidence records and adds the evidence canary."),
     PendingKind("run-result", "L3a-cli writes run-result records and adds the canary fixture."),
     PendingKind("sample-run", "L3b-cli writes sample-run records and adds the canary fixture."),
 )
@@ -72,7 +71,7 @@ def test_every_writable_kind_has_a_canary_or_a_pending_row() -> None:
 
 def test_pending_rows_are_unique_and_explained() -> None:
     kinds = [p.kind for p in PENDING_ALLOWLIST]
-    assert len(set(kinds)) == len(kinds) == 4
+    assert len(set(kinds)) == len(kinds) == 3
     assert all(len(p.reason.strip()) >= 15 for p in PENDING_ALLOWLIST)
 
 
