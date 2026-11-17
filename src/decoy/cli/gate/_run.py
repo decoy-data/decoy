@@ -92,6 +92,17 @@ class PreRunCheckError(Exception):
             if extra is not None:
                 error_kind = "missing_extra"
         where = f" (at {first.location})" if first.location else ""
+        if first.layer == "preflight" and first.code.startswith("source_file."):
+            # The engine's own refusal text, "code: reason", as `decoy run` printed it before
+            # the gate carried this check; the findings still hold every error.
+            return cls(
+                first.message,
+                exit_code=exit_code,
+                error_kind=error_kind,
+                code=first.code,
+                extra=extra,
+                messages=[_message(f) for f in result.findings],
+            )
         summary = (
             f"{len(errors)} error(s) found before the run; first: "
             f"{cap_error_text(first.message)}{where}. "
