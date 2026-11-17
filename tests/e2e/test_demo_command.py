@@ -3,8 +3,8 @@
 CLI.3 commit 3 (2026-06-02): rewritten against the V2 demo body.
 Pre-rewrite the file exercised the V1 demo flow (scan -> FORECAST ->
 hash-based mask via the deleted Masker class) + the --ref multi-table
-FK-via-hash flow. Both are dead under storm-reframe-C and S22-CL-
-V1GRAPHRUNNER. The new cells verify (a) help text renders, (b) the
+FK-via-hash flow. Both are dead since the V1 scan rework and the
+V1 graph runner removal. The new cells verify (a) help text renders, (b) the
 single-table demo runs end-to-end and produces customers_masked.csv,
 (c) the --ref flow exits 1 with the deferral message pointing at the
 single-table demo as the workaround.
@@ -55,7 +55,7 @@ def test_demo_help_hides_undeliverable_ref_flag():
 
 
 def test_demo_runs_end_to_end(tmp_path: Path):
-    """The new single-table demo: write customers.csv -> STORM scan ->
+    """The new single-table demo: write customers.csv -> scan ->
     V2 mask -> customers_masked.csv. The FORECAST step is dropped (no
     V2 successor); the sample CSV name changed from patients to
     customers to match the V2 demo body."""
@@ -67,7 +67,7 @@ def test_demo_runs_end_to_end(tmp_path: Path):
     assert (out_dir / "customers_masked.csv").exists()
     assert (out_dir / "scan.json").exists()
     assert (out_dir / "pipeline.yaml").exists()
-    # FORECAST step deleted under storm-reframe-C; no forecast.json.
+    # FORECAST step deleted in the V1 scan rework; no forecast.json.
     assert not (out_dir / "forecast.json").exists()
 
     masked = (out_dir / "customers_masked.csv").read_text()

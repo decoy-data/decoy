@@ -10,7 +10,7 @@ Both are read against the LIVE Typer app (`decoy.__main__.app`), via the shared
 stale: adding, removing, or re-parenting a command and forgetting to update
 the help/README fails here.
 
-The extractor resolves NESTED command paths (`storm analyze`, `validate
+The extractor resolves NESTED command paths (`scan show`, `validate
 config`, `report show`) against the registry rather than treating every token
 as a flat command -- an example line carries args, flags, and placeholders
 after the command path, and a group reference is two tokens, not one.
@@ -49,7 +49,7 @@ _ROOT_HELP_OMITTED = frozenset(
         "upgrade",
         # S3b: the four registry sub-apps folded into `list`/`show`, which ARE
         # advertised in the root help (`decoy list templates` / `show template`).
-        # S4b: `vault`, `evidence`, and `storm` are gone -- their verbs folded
+        # S4b: `vault` and `evidence` are gone, and so is the old scan group -- their verbs folded
         # into `decoy report` (vault / verify+show / integrity), so they are no
         # longer registered and must not appear here.
     }
@@ -68,7 +68,7 @@ _README_TABLE_OMITTED = frozenset(
         "upgrade",
         # S3b: the four registry sub-apps folded into `list`/`show`; the README
         # table advertises `decoy list templates` / `decoy show template`.
-        # S4b: `vault`, `evidence`, and `storm` are gone (folded into `decoy
+        # S4b: `vault`, `evidence` and the old scan group are gone (folded into `decoy
         # report`), so they are no longer registered and must not appear here.
         # `report` is now featured in the table (the post-run surface), so it
         # is no longer allowlisted out.

@@ -165,14 +165,14 @@ def _luhn_valid(number: str) -> bool:
 
 @pytest.fixture
 def csv_with_date_zip_pan_id(tmp_path: Path) -> Path:
-    """Columns that STORM should infer to date_shift, truncate, fpe, and
+    """Columns that the scan should infer to date_shift, truncate, fpe, and
     hash respectively (per `_INFERENCE_TABLE` in `_init_inference.py`):
 
       - `signup_date`: ISO dates -> iso_date detector -> date_shift
       - `zip_code`: 5-digit US ZIPs -> us_zip detector -> truncate
       - `card_number`: Luhn-valid 16-digit PANs (standard test card
         numbers) -> pan detector -> fpe
-      - `account_id`: 6-digit unique integers -> hash (whether STORM
+      - `account_id`: 6-digit unique integers -> hash (whether the scan
         routes it through a numeric-id detector or the no-detector-match
         likely-unique-integer fallback, both map to `strategy: hash` in
         `_infer_strategy_for_column`)

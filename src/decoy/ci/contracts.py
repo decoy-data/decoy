@@ -516,7 +516,7 @@ class ValidationCheck(_Strict):
 
 
 class DriftCheck(_Strict):
-    """Compare two saved STORM scan JSON files with the `scan diff` categorizer."""
+    """Compare two saved scan JSON files with the `scan diff` categorizer."""
 
     id: Id
     baseline: RepoPath

@@ -21,23 +21,20 @@ from __future__ import annotations
 
 import re
 
+from tests.sentry.release.test_retired_name_residual import RETIRED_PATTERN
+
 DEAD_STRINGS = (
-    "storm scan",
-    "storm test",
     # S2: top-level commands removed / re-parented. The space is load-bearing:
     # it keeps `decoy validate preflight` and `decoy validate compile` (the
     # live forms) from matching `decoy preflight` / `decoy compile`.
     "decoy compile",
     "decoy plan",
     "decoy preflight",
-    # S3a: `profile` + `storm analyze` merged into `decoy scan`; the saved-scan
-    # subcommands moved from `storm` to `scan`. `storm integrity` stays live and
-    # is NOT listed here.
+    # S3a: `profile` and the old analyze command merged into `decoy scan`; the saved-scan
+    # subcommands moved from the old group to `scan`. The old group's own invocation
+    # strings are covered by the retired-name pattern in `BANNED_USER_TEXT` and the
+    # residual sentry, so only `decoy profile` is listed here.
     "decoy profile",
-    "decoy storm analyze",
-    "storm fields",
-    "storm show",
-    "storm diff",
     # S3b: the `strategies`/`providers`/`checksums`/`validators` sub-apps and the
     # `templates` sub-app folded into `decoy list KIND` / `decoy show KIND`. The
     # removed top-level invocation strings are dead. `decoy templates` catches
@@ -55,40 +52,38 @@ DEAD_STRINGS = (
     # `decoy ...` form. (`decoy project` came back as the layout group in P6.)
     "decoy catalog",
     "decoy jobs",
-    # S4b: the `evidence`, `vault`, and `storm` groups and `validate
+    # S4b: the `evidence` and `vault` groups, the old scan group and `validate
     # distribution` folded into `decoy report` (verify+show / vault / integrity
     # / fidelity). The live forms are `decoy report ...`, which none of these
-    # substrings match. `storm integrity` and `validate distribution` (the
-    # exact nested paths) are dead; `decoy evidence` / `decoy vault` catch
-    # every invocation of those removed groups.
+    # substrings match. `validate distribution` (the exact nested path) is
+    # dead; `decoy evidence` / `decoy vault` catch every invocation of those
+    # removed groups.
     "decoy evidence",
     "decoy vault",
-    "storm integrity",
     "validate distribution",
 )
 
 _SCAN_PATTERN = r"(?<!\w)_scan\b"
 _GATE_PATTERN = r"(?<!\w)_gate\b"
 
-BANNED_USER_TEXT = tuple(
-    re.compile(p)
-    for p in (
-        r"OSS\.\d",
-        r"FC-\d",
-        r"CLI\.\d",
-        r"DE-\d",
-        r"SP-\d",
-        r"\bS\d+-[A-Z]",
-        r"storm-reframe",
-        r"decoy-platform/",
-        r"decoy_engine\.\w+\._",
-        _SCAN_PATTERN,
-        _GATE_PATTERN,
-        r"\b\w+\.py:\d+",
-        r"\bBF\d+\b",
-        r"the platform's",
-    )
+_USER_TEXT_PATTERNS = (
+    r"OSS\.\d",
+    r"FC-\d",
+    r"CLI\.\d",
+    r"DE-\d",
+    r"SP-\d",
+    r"\bS\d+-[A-Z]",
+    r"decoy-platform/",
+    r"decoy_engine\.\w+\._",
+    _SCAN_PATTERN,
+    _GATE_PATTERN,
+    r"\b\w+\.py:\d+",
+    r"\bBF\d+\b",
+    r"the platform's",
 )
+
+# The retired product name is the one object the residual sentry owns, so it is spelled once.
+BANNED_USER_TEXT = (*(re.compile(p) for p in _USER_TEXT_PATTERNS), RETIRED_PATTERN)
 
 # Where an exempt literal sits in the AST. Anything else with the same text is user text.
 CTX_GROUP_ARG = "make_default_group-arg"  # first positional argument of make_default_group(...)
