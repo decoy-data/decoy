@@ -21,7 +21,7 @@ from decoy.cli.gen._preview import (
     scale_row_counts,
 )
 from decoy.cli.gen._scaffold import scaffold_generate
-from decoy.cli.gen._topic import generation_body, generation_info
+from decoy.cli.gen._topic import common_options, generation_body, generation_info, type_entries
 
 __all__ = [
     "FIT_SAMPLE_SEED",
@@ -30,6 +30,7 @@ __all__ = [
     "ROWS_MIN",
     "ExactFit",
     "FitSourceError",
+    "common_options",
     "fit_exact_snapshot",
     "generation_body",
     "generation_info",
@@ -40,4 +41,5 @@ __all__ = [
     "scaffold_generate",
     "scale_row_counts",
     "strict_csv",
+    "type_entries",
 ]

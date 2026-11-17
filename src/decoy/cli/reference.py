@@ -5,7 +5,8 @@ S3b of the CLI redesign folds the former `strategies`/`providers`/`checksums`/
 verbs over the engine registries:
 
   decoy list KIND         KIND in {strategies, providers, checksums,
-                          validators, templates, disguises}
+                          validators, templates, disguises,
+                          generate-types, faker-types}
   decoy show KIND [NAME]  KIND in {strategy, provider, template} (NAME required)
                           plus `show schema` (no NAME, `--output` accepted)
 
@@ -30,6 +31,8 @@ import typer
 
 from decoy.cli.cockpit import (
     _checksums_list,
+    _faker_types_list,
+    _generate_types_list,
     _providers_inspect,
     _providers_list,
     _strategies_inspect,
@@ -111,6 +114,8 @@ _LIST_READERS: dict[str, Callable[[bool, bool, bool], None]] = {
     "validators": _validators_list,
     "templates": _templates_list,
     "disguises": _disguises_list,
+    "generate-types": _generate_types_list,
+    "faker-types": _faker_types_list,
 }
 
 _LIST_KINDS = tuple(_LIST_READERS)
@@ -127,7 +132,14 @@ Examples:
   decoy list disguises
     The regulatory Disguise bundles (hipaa, gdpr, ...) with rule counts.
 
-Kinds: strategies, providers, checksums, validators, templates, disguises.
+  decoy list generate-types
+    Every generate column type with its required and optional options.
+
+  decoy list faker-types
+    Every value a generate column's `faker_type` accepts.
+
+Kinds: strategies, providers, checksums, validators, templates, disguises,
+generate-types, faker-types.
 
 See also: decoy show, decoy explain.
 """
@@ -137,7 +149,7 @@ def list_(
     kind: str = typer.Argument(
         ...,
         metavar="KIND",
-        help="What to list: strategies|providers|checksums|validators|templates|disguises.",
+        help="What to list: strategies|providers|checksums|validators|templates|disguises|generate-types|faker-types.",
     ),
     json_: bool = typer.Option(
         False, "--json", help="Emit the listing as a JSON envelope instead of a table."
@@ -152,7 +164,8 @@ def list_(
     """List the contents of one engine registry.
 
     One verb over the live registries: strategies, providers, checksums,
-    validators, templates, and regulatory disguise bundles.
+    validators, templates, regulatory disguise bundles, and the generate column types
+    and faker types.
     """
     reader = _LIST_READERS.get(kind)
     if reader is None:
@@ -194,6 +207,8 @@ _SINGULAR_TO_PLURAL = {
     "template": "templates",
     "checksum": "checksums",
     "validator": "validators",
+    "generate-type": "generate-types",
+    "faker-type": "faker-types",
 }
 _PLURAL_TO_SINGULAR = {v: k for k, v in _SINGULAR_TO_PLURAL.items()}
 

@@ -24,6 +24,7 @@ Try one of:
   decoy report verify evidence.json  Re-hash the recorded files and report fingerprint drift.
   decoy report diff a.json b.json  Compare two manifests: fingerprints always, data when the output files exist.
   decoy ci check                   Run CI checks from .decoy-ci.yaml; JSON, SARIF, or Markdown report (see docs/ci-contracts.md).
+  decoy library fsck               Check the project&#x27;s record library (.decoy/library); `library path` shows where it is.
 
 Run `decoy --install-completion` to enable shell tab completion.
 
@@ -67,6 +68,7 @@ Generate synthetic data: decoy fit source.csv, then decoy run pipeline.yaml, the
 * `scan`: Profile a dataset for PII and...
 * `report`: The post-run surface: show / render /...
 * `ci`: CI integration: portable checks, SARIF,...
+* `library`: The project&#x27;s local record library: where...
 
 ## `decoy run`
 
@@ -666,7 +668,8 @@ See also: decoy validate, decoy list templates.
 List the contents of one engine registry.
 
 One verb over the live registries: strategies, providers, checksums,
-validators, templates, and regulatory disguise bundles.
+validators, templates, regulatory disguise bundles, and the generate column types
+and faker types.
 
 **Usage**:
 
@@ -676,7 +679,7 @@ $ decoy list [OPTIONS] KIND
 
 **Arguments**:
 
-* `KIND`: What to list: strategies|providers|checksums|validators|templates|disguises.  [required]
+* `KIND`: What to list: strategies|providers|checksums|validators|templates|disguises|generate-types|faker-types.  [required]
 
 **Options**:
 
@@ -696,7 +699,14 @@ Examples:
   decoy list disguises
     The regulatory Disguise bundles (hipaa, gdpr, ...) with rule counts.
 
-Kinds: strategies, providers, checksums, validators, templates, disguises.
+  decoy list generate-types
+    Every generate column type with its required and optional options.
+
+  decoy list faker-types
+    Every value a generate column's `faker_type` accepts.
+
+Kinds: strategies, providers, checksums, validators, templates, disguises,
+generate-types, faker-types.
 
 See also: decoy show, decoy explain.
 
@@ -1641,13 +1651,11 @@ See also: decoy report show, decoy run --evidence-out.
 
 Recompute distribution fidelity between a source and an output CSV.
 
-Wraps `decoy_engine.quality.compute_quality_report` +
-`apply_quality_policy` (report.py:97, policy.py:142): the engine owns
-every metric and the letter grade; this command computes no fidelity
-number itself. Reads both CSVs fresh on every invocation (pure,
-repeatable) -- the CLI&#x27;s local evidence manifest records file
+The engine owns every metric and the letter grade; this command
+computes no fidelity number itself. It reads both CSVs fresh on every
+run (pure, repeatable). The local evidence manifest records file
 fingerprints but not the raw frames, so recomputing from the two files
-is the only honest source for this number (BF1).
+is the only honest source for this number.
 
 Exit codes: 0 when the policy verdict is &#x27;pass&#x27; (or &#x27;warn&#x27; without
 --fail-on-warning); EXIT_FINDINGS (4) when the verdict is &#x27;fail&#x27;, or
@@ -1717,11 +1725,9 @@ See also: decoy report integrity, decoy fit, decoy run.
 
 Verify a masked file&#x27;s integrity against its pre-mask source.
 
-Wraps `decoy_engine.verification.postmask.run_post_mask`. Runs the
-three post-mask check buckets (residual_pii, fk_preservation,
-policy_validation) the platform&#x27;s mask job already runs when
-`post_scan: {integrity: true}` is declared in the pipeline; this verb lets the
-CLI user run the same checks standalone.
+Runs the three post-mask check buckets (residual_pii, fk_preservation,
+policy_validation) that `post_scan: {integrity: true}` runs inside a
+pipeline; this verb runs the same checks standalone.
 
 Distinct from `report verify` (manifest fingerprint-drift): integrity is
 post-mask residual-PII / FK / policy on a masked file plus --source.
@@ -1959,3 +1965,56 @@ Examples:
 Exit codes: 0 clean; 1 invalid input or validation errors; 2 blocking warnings;
 3 runtime failure; 4 findings; 5 capacity refusal. See docs/ci-contracts.md.
 Decoy never uploads or comments; uploads belong to your CI workflow.
+
+
+## `decoy library`
+
+The project&#x27;s local record library: where it lives, and whether it is sound.
+
+**Usage**:
+
+```console
+$ decoy library [OPTIONS] COMMAND [ARGS]...
+```
+
+**Options**:
+
+* `--help`: Show this message and exit.
+
+**Commands**:
+
+* `path`: Print the library root, where it came...
+* `fsck`: Check every record, ref, link, the index,...
+
+### `decoy library path`
+
+Print the library root, where it came from, and whether it runs in degraded mode.
+
+**Usage**:
+
+```console
+$ decoy library path [OPTIONS]
+```
+
+**Options**:
+
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library fsck`
+
+Check every record, ref, link, the index, temp files, modes and job logs.
+
+Exit 0 when clean, 4 when there are findings (warnings and notes do not count).
+
+**Usage**:
+
+```console
+$ decoy library fsck [OPTIONS]
+```
+
+**Options**:
+
+* `--repair`: Quarantine corrupt records, delete stale temp files, remove refs to missing records and rebuild the index. Never deletes a valid record.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.

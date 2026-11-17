@@ -1,0 +1,92 @@
+# generate-hr -- synthetic departments, employees and payroll runs.
+#
+# Builds three linked tables from scratch, with no input file. Every employee belongs to a
+# department that exists, and every payroll row is paid to an employee that exists. All values are
+# generated, so none of it is real employee data.
+#
+#   decoy run pipeline.yaml
+#
+# Edit `row_count`, the categories and the weights to match the shape you need.
+
+version: 2
+
+global_settings:
+  seed: 42
+
+sources: {}
+
+tables:
+  - name: departments
+    row_count: 12
+    generate_columns:
+      - name: department_id
+        type: sequence
+        start: 1
+        step: 1
+      - name: department_name
+        type: categorical
+        categories: ["Engineering", "Marketing", "Sales", "HR", "Finance", "Support"]
+      - name: cost_center
+        type: faker
+        faker_type: bothify
+        faker_kwargs: {text: "CC-####"}
+
+  - name: employees
+    row_count: 500
+    generate_columns:
+      - name: employee_id
+        type: sequence
+        start: 1000
+        step: 1
+      - name: department_id
+        type: reference
+        reference_table: departments
+        reference_column: department_id
+      - name: first_name
+        type: faker
+        faker_type: first_name
+      - name: last_name
+        type: faker
+        faker_type: last_name
+      - name: email
+        type: faker
+        faker_type: email
+      - name: job_title
+        type: faker
+        faker_type: job
+      - name: hired_on
+        type: faker
+        faker_type: date_this_decade
+
+  - name: payroll
+    row_count: 3000
+    generate_columns:
+      - name: payroll_id
+        type: sequence
+        start: 1
+        step: 1
+      - name: employee_id
+        type: reference
+        reference_table: employees
+        reference_column: employee_id
+      - name: pay_date
+        type: faker
+        faker_type: date_this_year
+      - name: gross_pay
+        type: faker
+        faker_type: random_int
+        faker_kwargs: {min: 1500, max: 12000}
+
+targets:
+  departments:
+    type: file
+    format: csv
+    path: ./departments.csv
+  employees:
+    type: file
+    format: csv
+    path: ./employees.csv
+  payroll:
+    type: file
+    format: csv
+    path: ./payroll.csv
