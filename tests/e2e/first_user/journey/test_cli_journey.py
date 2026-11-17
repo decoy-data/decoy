@@ -485,14 +485,17 @@ def _build(root: Path, mode: Mode) -> Journey:
         ],
     )
     orders_out = shop / "jout" / "shop" / "orders.csv"
-    original = orders_out.read_bytes()
+    # A failed CJ-07 leaves no file; the CJ-07 and CJ-10 tests then fail on their own exits.
+    original = orders_out.read_bytes() if orders_out.exists() else b""
 
     def change_one_byte(_: int) -> None:
-        orders_out.write_bytes(original[:-2] + b"X" + original[-1:])
+        if original:
+            orders_out.write_bytes(original[:-2] + b"X" + original[-1:])
 
     verify = ["report", "verify", "jout/shop-evidence.json", "--json"]
     journey.step("CJ-10", [verify, verify], between=change_one_byte)
-    orders_out.write_bytes(original)
+    if original:
+        orders_out.write_bytes(original)
     journey.step(
         "CJ-11",
         [
