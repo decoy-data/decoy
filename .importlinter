@@ -33,7 +33,7 @@ ignore_imports =
     decoy.ci.adapters -> decoy.cli.exit_codes
     decoy.ci.adapters -> decoy.cli.gate
     decoy.ci.adapters -> decoy.cli.io
-    decoy.ci.adapters -> decoy.cli.scan
+    decoy.ci.adapters -> decoy.cli.scanning
     decoy.ci.contracts -> decoy.cli.exit_codes
     decoy.ci.rule_codes -> decoy.cli.io
     decoy.ci.runner -> decoy.cli.exit_codes
