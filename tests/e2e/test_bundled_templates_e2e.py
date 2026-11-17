@@ -21,6 +21,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.templates import get_template, list_templates
+from tests.generate_industry_templates import GENERATE_INDUSTRY_TEMPLATES
 from tests.keyed_secret import TEST_MASK_SECRET_REF
 
 runner = CliRunner()
@@ -107,13 +108,14 @@ def _materialize(name: str, tmp_path: Path) -> tuple[Path, Path, dict]:
 
 
 class TestEveryTemplateValidatesAndRuns:
-    def test_registry_has_the_expected_five(self):
+    def test_registry_has_the_expected_set(self):
         assert [t.name for t in list_templates()] == [
             "minimal",
             "hipaa",
             "pci",
             "gdpr",
             "generate",
+            *GENERATE_INDUSTRY_TEMPLATES,
         ]
 
     @pytest.mark.parametrize("name", _MASK_TEMPLATES)

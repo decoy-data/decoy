@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import yaml
 from decoy_engine import PipelineConfig
+from tests.generate_industry_templates import GENERATE_INDUSTRY_TEMPLATES
 
 from decoy.templates import get_template, template_names
 
@@ -77,7 +78,7 @@ def test_every_template_in_registry_has_a_unit_test():
     """Canary: a new template must add its own cell to this file. Mirrors
     the providers_v2 documented-allowlist pattern -- catches drift at the
     source instead of having every downstream consumer fail mysteriously."""
-    expected = {"minimal", "hipaa", "pci", "gdpr", "generate"}
+    expected = {"minimal", "hipaa", "pci", "gdpr", "generate", *GENERATE_INDUSTRY_TEMPLATES}
     actual = set(template_names())
     missing = expected - actual
     extra = actual - expected
