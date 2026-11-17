@@ -54,7 +54,7 @@ ALLOWLIST: tuple[AllowedRead, ...] = (
         "cli/demo.py",
         "_run_single_demo",
         1,
-        "Reads the bundled demo sample for the STORM scan step; not a declared source.",
+        "Reads the bundled demo sample for the scan step; not a declared source.",
     ),
     AllowedRead(
         "cli/gen/_fit.py",

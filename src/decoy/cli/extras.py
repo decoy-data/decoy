@@ -181,7 +181,7 @@ def check_cloud_endpoints(config_dict: dict) -> None:
 
 def translate_ner_unavailable(exc: Exception) -> MissingExtraError | None:
     """Rewrite the engine's NerUnavailableError (text_mask/text_redact
-    `ner`, storm/ner.py ensure_ner_available) to point at
+    `ner`, the engine's ensure_ner_available) to point at
     `decoy models install ner` instead of `decoy-engine[ner]` -- correct for
     someone who installed decoy-engine directly, not for a decoy-cli user.
 
