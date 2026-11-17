@@ -44,7 +44,7 @@ def test_generate_template_validates_runs_and_links_keys(name: str, tmp_path: Pa
     cfg = yaml.safe_load(get_template(name).body)
     for table in cfg["tables"]:
         table["row_count"] = SMALL_ROWS
-    for table_name, target in cfg["targets"].items():
+    for target in cfg["targets"].values():
         target["path"] = str(tmp_path / Path(target["path"]).name)
     config_path = tmp_path / f"{name}.yaml"
     config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
