@@ -22,7 +22,10 @@ DP_NOTE = (
     "(dp_stack_uncertified); keep NER in a separate environment if you need both."
 )
 
-CODES = (INSTALL_FAILED, MODEL_UNPINNED, SOURCE_INVALID, ENV_CHANGED, MANAGED_RUNTIME, PIP_MISSING)
+# One list: every `models.*` constant above, found by prefix, so a new code cannot be left out.
+CODES = tuple(
+    v for v in tuple(globals().values()) if isinstance(v, str) and v.startswith("models.")
+)
 _RUNTIME = frozenset({INSTALL_FAILED, ENV_CHANGED})
 
 
