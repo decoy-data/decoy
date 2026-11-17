@@ -1,7 +1,7 @@
 """Thin adapters from Decoy's EXISTING check results to value-free `CheckOutcome`s.
 
 Nothing here re-implements a check. Each adapter calls the same seam the direct command
-uses (`validate.run_gate`, `scan.compute_scan_diff`, `evidence.verify_manifest_issues`),
+uses (`validate.run_gate`, `scanning.diff_scan_sets`, `evidence.verify_manifest_issues`),
 keeps only codes, severities, counts and logical paths from the result, and discards the
 raw prose before the report boundary. Any exception becomes a `failed` check with a fixed
 reason; its text goes to the unsafe debug sink and nowhere else.
@@ -155,14 +155,14 @@ def _load_scan(path: Path) -> dict:
 def drift_outcome(loaded: LoadedManifest, check: DriftCheck, sink: DebugSink) -> CheckOutcome:
     check_id = f"drift.{check.id}"
     try:
-        from decoy.cli.scan import compute_scan_diff
+        from decoy.cli.scanning import diff_scan_sets
 
         baseline = loaded.resolve(check.baseline)
         current = loaded.resolve(check.current)
         if not baseline.is_file() or not current.is_file():
             return refused(check_id, "drift", "ci.input_missing")
         try:
-            diff = compute_scan_diff(_load_scan(baseline), _load_scan(current))
+            diff = diff_scan_sets(_load_scan(baseline), _load_scan(current))
         except (OSError, ValueError, AttributeError, TypeError, KeyError) as exc:
             sink.add(check_id, f"unreadable scan: {exc!r}")
             return refused(check_id, "drift", "ci.drift_unreadable")

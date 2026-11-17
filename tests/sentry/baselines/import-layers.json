@@ -14,7 +14,7 @@
   "layers::decoy.ci.adapters -> decoy.cli.io": {
    "reason": "back import measured when LAYOUT C3 declared the tiers; may only shrink"
   },
-  "layers::decoy.ci.adapters -> decoy.cli.scan": {
+  "layers::decoy.ci.adapters -> decoy.cli.scanning": {
    "reason": "back import measured when LAYOUT C3 declared the tiers; may only shrink"
   },
   "layers::decoy.ci.contracts -> decoy.cli.exit_codes": {
