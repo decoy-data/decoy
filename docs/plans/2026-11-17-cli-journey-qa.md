@@ -5,6 +5,15 @@ Status: plan
 Date: 2026-11-17. Author: Opus planner. Base: CLI `origin/main` `b6f8558`. Line numbers below are
 from that head.
 
+Revision 2 (2026-11-17), after Codex round 1 NO-GO on `d0eef340`. Owner answers Q1 to Q6 stay as
+recommended. Changes: every step command checked against `docs/cli-reference.md` and the Typer
+definitions on the base, and corrected (CJ-04 scans files, not a pipeline); installed-bundle mode
+runs with a cleaned environment from a temp folder and proves the bundle, not the checkout, is
+imported (AT-J12); AT-Q3 pins an independent 204; one exit code per command, checked by an anchored
+command parser in both documents (AT-J13, AT-Q8); the shared parser and decorator move to
+`tests/cli_journey.py` (CODEMAP line 71); the allowed exit set is derived from the exported `EXIT_`
+constants and `RUN_EXIT_MAP`; CJ-12 fixes its command and exit 3 now.
+
 Rules consulted: `dev-rules/README.md`, `dev-rules/00-universal.md`,
 `dev-rules/risk-and-exceptions.md`, `dev-rules/development-loop.md` (PLAN),
 `dev-rules/profiles/local-operations.md`, `dev-rules/catalogs/recurring-defects.md`,
@@ -33,6 +42,8 @@ Guarantee:
    Each step names a baseline stage, its command, its exit codes, its expected value-free output and
    the slice it lands with.
 2. One e2e test per step cites the step id. The release smoke file cites the ids its cells cover.
+   The same test runs against an installed bundle with a cleaned environment and proves the bundle,
+   not the checkout, is imported.
 3. A sentry fails when a journey id is not cited, when a cited id does not exist, when an exit code
    is not in `decoy.cli.exit_codes`, or when a step that is not on main yet is not a strict expected
    failure.
@@ -47,9 +58,9 @@ is, owner Q4); no per-group "Open points" sections like the engine's (the CLI ch
 notes inline); no QA run. A journey step that fails on main is a finding filed as a roadmap row,
 not fixed in these slices.
 
-Size: about 1,250 lines over two slices, all tests and docs. New public names (test side only): the
-`journey_step` decorator and the `read_journey` parser in `tests/e2e/journey/journey_doc.py`. No
-production file.
+Size: about 1,300 lines over two slices, all tests and docs. New public names (test side only): the
+`journey_step` decorator, the `read_journey` parser, `parse_commands` and `allowed_exit_codes` in
+`tests/cli_journey.py`. No production file.
 
 Risk: R1 for both slices (tests and docs only, no data handling, no production code, no workflow
 change). Approver for the plan: one review round, per the proportion rule for small low-risk rows.
@@ -107,37 +118,51 @@ must fail until X lands" and to fail loudly once X lands.
 
 `docs/qa/cli-v1-journey.md`, `Status: current`. One journey: the V1 pipeline baseline on the CLI
 (source, subset, pre-scan, mask per table, post-scan, delivery), plus the vault. The user is one
-person with two related CSV files on disk (`customers`, `orders`, `orders.customer_id` referencing
-`customers.id`).
+person with two related tables on disk, `customers` and `orders` (`orders.customer_id` references
+`customers.id`). The project keeps them as CSV in `data/` and as Parquet in `data/parquet/`, written
+from the same rows, because a pipeline `subset:` reads relationship tables from Parquet (engine
+`subset_requires_parquet`, `src/decoy_engine/subset/_preflight.py` in the engine) and
+`decoy report integrity` reads CSV.
 
 Each step is a level-3 heading `### CJ-NN: <title>` followed by exactly these labelled lines:
 
 - `**Stage:**` one of `install`, `project`, `source`, `subset`, `pre-scan`, `mask`, `post-scan`,
   `delivery`, `evidence`, `vault`, `refusal`.
-- `**Command:**` the commands in backticks, written as a user types them.
-- `**Exit:**` exit codes in order of the commands, comma separated, each a value of
-  `decoy.cli.exit_codes` (0 to 6) or 130.
+- `**Command:**` one or more commands, each one backtick span that starts with `decoy `, written
+  as a user types them, in the order they run. Prose between the spans is allowed; a backtick span
+  that does not start with `decoy ` is not a command.
+- `**Exit:**` exactly one exit code per command, in the same order, comma separated. Each code is
+  in the allowed set (section 4.4).
 - `**Expected:**` what the user sees, in the user's words, value-free: tables, columns, files, counts
   and reason codes, never a cell value or the secret.
 - `**Lands with:**` `main`, or `row <N>` when the step's behaviour is not on main yet.
 
-The steps. The builder confirms each flag against `--help` at the slice base; a step that cannot run
-as written on main is reported to the planner, not reworded to pass.
+The steps, checked on the base against `docs/cli-reference.md` and the Typer definitions (the file
+and line of each command's definition is in the last column). Paths are relative to the project
+folder `shop/`. `S` stands for `--mask-secret env:JOURNEY_SECRET`.
 
-| Id | Stage | Command | Exit | Expected (value-free) | Lands with |
-|---|---|---|---|---|---|
-| CJ-01 | install | `decoy --version` | 0 | Prints `decoy` and a version | main |
-| CJ-02 | project | `decoy project new shop --json` | 0 | The project folder with `.decoy/` and `pipelines/`; JSON names paths only | main |
-| CJ-03 | source | `decoy init customers --source data/customers.csv --json -y` | 0 | `pipelines/customers/pipeline.yaml` written; the record names columns and starter strategies | main |
-| CJ-04 | pre-scan | `decoy scan shop --json` | 0 | Tables, columns, detected categories and counts; no cell value | main |
-| CJ-05 | refusal | `decoy validate bad --json` on a copy with an unknown key and a wrong-typed value | 1 | One `decoy-error/v1` object naming the key and a code; the wrong value is not echoed; no run folder | main |
-| CJ-06 | source | `decoy validate shop` | 0 | Config, compile and preflight pass | main |
-| CJ-07 | subset | `decoy run shop --mask-secret env:JOURNEY_SECRET --json` with a `subset:` block on `customers` | 0 | `--json` has a `subset` object with kept and total counts across both tables; every kept `orders` row has its parent | main |
-| CJ-08 | mask | `decoy run shop --mask-secret env:JOURNEY_SECRET --json` (the CJ-07 run; this step checks its outputs) | 0 | Masked columns differ from the input, passthrough columns match, row counts match the subset, input files unchanged | main |
-| CJ-09 | post-scan | `decoy report integrity <masked> --source <input> --json` | 0 | No residual finding; FK check clean; names and counts only | main |
-| CJ-10 | evidence | `decoy report verify <manifest>`, then the same after one output byte changes | 0, 4 | First all fingerprints match; then the changed file is named | main |
-| CJ-11 | vault | `decoy run` with `vault: true` on one column, then `decoy unmask` on its output | 0, 0 | The unmasked column equals the input (checked by the test, never printed) | main |
-| CJ-12 | delivery | `decoy run shop` with a forced failure on `orders` under strict delivery | 3 | Nothing delivered under the delivery root; the reason code names the table | row 61 |
+| Id | Stage | Command | Exit | Expected (value-free) | Lands with | Checked against |
+|---|---|---|---|---|---|---|
+| CJ-01 | install | `decoy --version` | 0 | Prints `decoy` and a version | main | root callback, `src/decoy/__main__.py` |
+| CJ-02 | project | `decoy project new shop --json` | 0 | JSON names the project root and the made folders (`pipelines/`, `out/`, `.decoy/`) | main | `new_command`, `src/decoy/cli/project/_new.py:95` (`DIR`, `--json`) |
+| CJ-03 | source | `decoy init customers --source data/customers.csv --json -y` | 0 | `pipelines/customers/pipeline.yaml` written; the record names columns and starter strategies | main | `src/decoy/cli/init.py:420` (`NAME|FILE`), `:432` (`--source`), `:454` (`-y`), `:459` (`--json`) |
+| CJ-04 | pre-scan | `decoy scan data/customers.csv data/orders.csv --has-header --json` | 0 | One table per file: row and field counts, PII candidates as suggestions, reid risk; no cell value | main | `_scan` in `src/decoy/cli/scan.py` (`SOURCES...`, `--has-header/--no-header`, `--json` at `src/decoy/cli/scan.py:549`) |
+| CJ-05 | refusal | `decoy validate bad --json`, where `pipelines/bad/pipeline.yaml` has an unknown key and a wrong-typed value that carries a marker | 1 | One `decoy-error/v1` object naming the key and a code; the marker is not echoed; no run folder | main | hidden default command of `validate_app`, `src/decoy/cli/validate.py:396` (`--json` at `:260`) |
+| CJ-06 | source | `decoy validate shop` | 0 | Config, compile and preflight pass | main | same as CJ-05 |
+| CJ-07 | subset | `decoy run shop S --out-dir jout/shop --evidence-out jout/shop-evidence.json --json`, with a `subset:` block sampling `customers` | 0 | `--json` has a `subset` object with kept and total counts; every kept `orders` row has its parent | main | `decoy run` options in `docs/cli-reference.md` (`--out-dir`, `--evidence-out`, `--mask-secret`, `--json`); subset as in `tests/e2e/test_run_subset.py` |
+| CJ-08 | mask | `decoy run shop S --out-dir jout/shop --evidence-out jout/shop-evidence.json --json` (the CJ-07 run; this step checks its outputs and does not run again) | 0 | The CSV targets exist; masked columns differ from the input, passthrough columns match, row counts match the subset, input files unchanged | main | as CJ-07 |
+| CJ-09 | post-scan | `decoy report integrity jout/shop/customers.csv --source data/customers.csv --config shop --allow-source-mismatch --json` | 0 | No residual PII finding; names and counts only | main | `_integrity`, registered at `src/decoy/cli/report.py:2294` (`MASKED`, `--source`, `--config`, `--allow-source-mismatch`, `--json`) |
+| CJ-10 | evidence | `decoy report verify jout/shop-evidence.json --json`, then `decoy report verify jout/shop-evidence.json --json` after one byte of `jout/shop/orders.csv` changes | 0, 4 | First every fingerprint matches; then the changed file is named | main | `_verify`, registered at `src/decoy/cli/report.py:2292` (`EVIDENCE_FILE`, `--json`; drift exits `EXIT_FINDINGS`) |
+| CJ-11 | vault | `decoy run vaulted S --vault jout/vault.bin --out-dir jout/vaulted --json`, then `decoy unmask pipelines/vaulted/pipeline.yaml jout/vaulted/customers.csv S --vault jout/vault.bin -o jout/customers.unmasked.csv --json` | 0, 0 | The recovered column equals the input (checked by the test, never printed) | main | `decoy run --vault`; `decoy unmask CONFIG MASKED` with `--vault`, `--mask-secret`, `-o`, `--json` (`docs/cli-reference.md`, `decoy unmask`) |
+| CJ-12 | delivery | `decoy run shop S --out-dir jout/strict --json`, where `jout/strict/orders.csv` is an existing folder, so the `orders` write fails | 3 | Strict delivery: no target file of the run is left under `jout/strict/`; the error names the table and a reason code | row 61 | `RUN_EXIT_MAP[("failed", "runtime")]` is `EXIT_RUNTIME` (`src/decoy/cli/exit_codes.py:142`) |
+
+The fixture writes three pipelines before the steps that use them: `shop` (Parquet sources from
+`data/parquet/`, CSV targets, the FK and a `subset:` block sampling `customers`), `bad` (CJ-05) and
+`vaulted` (`customers` only, `vault: true` on one `hash` column).
+
+CJ-12's command and exit are fixed now. On main the `customers` target may already be written when
+`orders` fails, so the "nothing delivered" fact fails and the step is a strict expected failure
+until row 61's stage-then-deliver slices land. Row 61 changes only `Lands with`.
 
 The sentry checks that the stages `source`, `subset`, `pre-scan`, `mask`, `post-scan`, `delivery`
 and `vault` each have at least one step, so a baseline stage cannot drop out unseen. CI use is
@@ -145,45 +170,83 @@ covered by checklist group 13, not by the journey (owner Q5).
 
 ### 4.2 The journey test
 
-`tests/e2e/journey/test_cli_journey.py`. One module fixture builds the project under
-`tmp_path_factory` once and runs the steps in id order, caching each result (exit codes, stdout,
-stderr, files written). Each test is decorated `@journey_step("CJ-NN")` and asserts only its own
-step: the exit codes read from the document through `read_journey` (never copied into the test),
+`tests/e2e/journey/test_cli_journey.py` holds the module fixture and one test per step; the package
+holds nothing else besides `__init__.py`. The fixture builds the project under `tmp_path_factory`
+once and runs the steps in id order, caching each result (exit codes, stdout, stderr, files
+written) in a frozen dataclass. Each test is decorated `@journey_step("CJ-NN")` and asserts only its
+own step: the exit codes read from the document through `read_journey` (never copied into the test),
 and the Expected facts.
 
-- Commands run as subprocesses. Default argv prefix `[sys.executable, "-m", "decoy"]`. When
-  `DECOY_JOURNEY_BIN` is set, its value is the `decoy` executable, so QA (DOC-05) and the release
-  candidate pass run the same test against the installed bundle.
-- Every text cell of the fixture data carries `jmark` plus a number; the secret is 48 random bytes
-  in `JOURNEY_SECRET`. After each step a sweep checks stdout, stderr, `--json`, evidence and the run
-  folder (not the masked data files) for any marker or the secret. A hit fails that step.
-- `journey_step(id)` reads the document once. If the step's `Lands with` is not `main` it applies
-  `pytest.mark.xfail(strict=True, reason="lands with row N")`. When the row lands the test passes,
-  strict xfail turns that into a failure, and the slice that lands the row sets `Lands with: main`.
-- `tests/e2e/test_release_smoke.py` decorates the cells that cover a step: `--version` with CJ-01
-  and the canonical run with CJ-08. A step may be cited by the release smoke and by the journey
-  module; the journey module cites each id exactly once.
+Two modes:
+
+- Source mode (default): argv prefix `[sys.executable, "-m", "decoy"]`, cwd the project folder.
+- Installed-bundle mode: `DECOY_JOURNEY_BIN` is the installed `decoy` launcher and
+  `DECOY_JOURNEY_HOME` is the `DECOY_HOME` of that install; both are required together. The
+  environment is built from scratch, the way `packaging_tools/smoke_install.py` builds its bundle
+  env: `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`, `PYTHONUSERBASE`, `VIRTUAL_ENV`, `CONDA_PREFIX`
+  and every `DECOY_*` and `XDG_*` variable of the caller are dropped; `HOME` is a temp folder;
+  `DECOY_HOME` is `DECOY_JOURNEY_HOME`; `DECOY_NO_UPDATE_CHECK=1`; `PATH` keeps only entries outside
+  the checkout and its virtual environment. Every command runs with a cwd inside the temp root,
+  never the checkout. Before the first step the fixture proves the bundle is what runs:
+  - the launcher's real path is outside the checkout and outside `sys.prefix`;
+  - `$DECOY_JOURNEY_HOME/current/python/bin/python3 -I -c` prints the real paths of
+    `decoy.__file__` and `decoy_engine.__file__`, and both are under the real path of
+    `DECOY_JOURNEY_HOME`, not under the checkout;
+  - `decoy --version` through the launcher equals the version that interpreter reports.
+  Any failure stops the module with a message naming the check, and nothing falls back to source
+  mode. A hand-built launcher that runs a different interpreter than the install's is deliberate
+  evasion and V2-LOG.
+
+Value-free sweep: every text cell of the fixture data carries `jmark` plus a number; the secret is
+48 random bytes in `JOURNEY_SECRET`. After each step a sweep checks stdout, stderr, `--json`,
+evidence and the run folder (not the masked data files) for any marker or the secret. A hit fails
+that step. Each sweep asserts it read at least one non-empty capture.
+
+`journey_step(id)` reads the document once. If the step's `Lands with` is not `main` it applies
+`pytest.mark.xfail(strict=True, reason="lands with row N")`. When the row lands the test passes,
+strict xfail turns that into a failure, and the slice that lands the row sets `Lands with: main`.
+
+`tests/e2e/test_release_smoke.py` decorates the cells that cover a step: `--version` with CJ-01 and
+the canonical run with CJ-08. A step may be cited by the release smoke and by the journey module;
+the journey module cites each id exactly once.
 
 ### 4.3 The checklist Exit column
 
 Every check table in `docs/qa/cli-v1-checklist.md` gets the header
-`| Id | Command | Exit | Expected | Rows | Pass/fail |`. The Exit cell grammar (full match):
+`| Id | Command | Exit | Expected | Rows | Pass/fail |`. Command and Exit use the same parser as the
+journey (`parse_commands` in `tests/cli_journey.py`):
 
-- a comma-separated list of codes, one per command in the check, in order, each 0 to 6 or 130; or
-- `none` when the check runs no `decoy` command (reading a document, a CI result); or
-- `tbd` only on a check whose Expected starts with `**Not built.**`; the code is set when its row
-  merges, before its group's pass.
+- Each command the check runs is one backtick span that full-matches the command grammar:
+  `decoy` with optional arguments, or the installer forms `sh install.sh` and `install.ps1` with
+  optional leading `NAME=value` assignments and trailing arguments (group 1). Prose and other spans
+  (file names, flags, YAML keys) are not commands. Where a check runs one command over many
+  inputs ("`decoy <command> --help` on every command"), the span is written once and has one code.
+- The Exit cell is either one code per command span, comma separated, in span order; or `none`
+  when the cell has no command span (reading a document, a CI result, an installer script); or
+  `tbd` only on a check whose Expected starts with `**Not built.**`, which may also have no span
+  yet. A count mismatch is a sentry failure.
+- The journey uses the same parser with the `decoy` form only; an installer span in the journey is
+  refused.
 
-Exit codes move out of the Expected text where they were written there, so each code is stated
-once. The builder sets each code from the code path at the slice base (`exit_code_for`,
-`RUN_EXIT_MAP`, the command's own exits), not from memory; "non-zero" (RUN-03 and others) becomes
-the exact code. A built check whose exit the builder cannot find in code is listed in the slice
-report as a finding for the planner, not set to `tbd`.
+Checks that run `decoy` but describe it in prose today (GATE-02 "A CSV source with no
+`has_header`", RUN-02 and others) are rewritten so each command is a `decoy ...` span. Exit codes move
+out of the Expected text where they were written there, so each code is stated once. The builder
+sets each code from the code path at the slice base (`exit_code_for`, `RUN_EXIT_MAP`, the command's
+own exits), not from memory; "non-zero" (RUN-03 and others) becomes the exact code. A built check
+whose exit the builder cannot find in code is listed in the slice report as a finding for the
+planner, not set to `tbd`.
 
-DOC-05 changes from "Not built" to: "Run `tests/e2e/journey/` with `DECOY_JOURNEY_BIN` set to the
-installed `decoy`; every step passes or is an expected failure for its row. Steps in
-[cli-v1-journey.md](cli-v1-journey.md)." The run template's Results table gains an `Exit observed`
-column.
+DOC-05 changes from "Not built" to: "Run `tests/e2e/journey/` with `DECOY_JOURNEY_BIN` and
+`DECOY_JOURNEY_HOME` set to the installed `decoy`; every step passes or is an expected failure for
+its row. Steps in [cli-v1-journey.md](cli-v1-journey.md)." The run template's Results table gains an
+`Exit observed` column.
+
+### 4.4 The allowed exit set
+
+`allowed_exit_codes()` in `tests/cli_journey.py` returns the values of every name in
+`decoy.cli.exit_codes.__all__` that starts with `EXIT_`, together with the values of
+`decoy.cli.exit_codes.RUN_EXIT_MAP`. That gives 0 to 6 and 130 (the `("cancelled", "cancelled")`
+entry) without copying any integer. Both sentries and the journey test use it.
 
 ## 5. Failure modes
 
@@ -197,8 +260,16 @@ column.
   Sentry: the journey module compares no `returncode` with an integer literal (AST check).
 - The sweep checks the wrong files and passes vacuously. Each sweep asserts it read at least one
   non-empty capture.
-- `DECOY_JOURNEY_BIN` points at a missing file: the fixture fails with a message naming the
-  variable and never falls back to the source tree.
+- `DECOY_JOURNEY_BIN` points at a missing file, or `DECOY_JOURNEY_HOME` is missing: the fixture
+  fails with a message naming the variable and never falls back to the source tree.
+- The installed-bundle run imports the checkout instead of the bundle (a leaked `PYTHONPATH`, a
+  virtual environment with an editable install, a cwd inside the checkout), so the RC pass tests
+  the source tree. The cleaned environment, the temp cwd and the import-location probe close it
+  (AT-J12).
+- A step or check lists two commands and one exit code, so the second command's result is never
+  stated. The anchored command parser counts commands (AT-J13, AT-Q8).
+- A count that the sentry reads only from the document can be moved with the rows it counts. AT-Q3
+  pins its own 204.
 - Checklist: a row with a missing or extra cell, which renders and reads wrong. Sentry counts cells.
 - An exit code not in the registry (`7`), or a stale `tbd` on a built check. Sentry.
 - A pasted fixture value in a check cell, which would teach a tester that echoing is fine. Sentry.
@@ -210,10 +281,11 @@ column.
 
 ### Exit paths
 
-- Codes the journey and the checklist may name: `EXIT_OK` to `EXIT_PARTIAL`
-  (`src/decoy/cli/exit_codes.py:45`, `src/decoy/cli/exit_codes.py:82`,
-  `src/decoy/cli/exit_codes.py:103`) and 130 (`src/decoy/cli/exit_codes.py:111`). The sentries
-  import the public `EXIT_` names and add 130; they keep no list of their own.
+- Codes the journey and the checklist may name: the values of the exported `EXIT_` names
+  (`src/decoy/cli/exit_codes.py:45` to `src/decoy/cli/exit_codes.py:103`, exported in `__all__` at
+  `src/decoy/cli/exit_codes.py:308`) and the values of `RUN_EXIT_MAP`
+  (`src/decoy/cli/exit_codes.py:135`), which add 130 through the cancelled entry
+  (`src/decoy/cli/exit_codes.py:144`). `allowed_exit_codes()` reads both; no integer is copied.
 - Journey exits used: 0 (CJ-01 to CJ-11), 1 (CJ-05), 4 (CJ-10, second command), 3 (CJ-12).
 - Sentry outcomes: pytest pass or fail only. No new process exit anywhere.
 
@@ -222,7 +294,10 @@ column.
 - In-memory `decoy run`: CJ-07, CJ-08, CJ-11. The chunked route refuses `subset:`
   (`config.subset_run_unsupported`, see the docstring at `tests/e2e/test_run_subset.py:6`), so the
   journey does not use `--chunked`; route coverage stays with checklist group 5.
-- Source checkout (default) and installed bundle (`DECOY_JOURNEY_BIN`): the same test on both.
+- Source checkout (default) and installed bundle (`DECOY_JOURNEY_BIN` with `DECOY_JOURNEY_HOME`,
+  cleaned environment, temp cwd): the same test on both. The bundle environment follows
+  `_bundle_env` and `_env` in `packaging_tools/smoke_install.py:158` and
+  `packaging_tools/smoke_install.py:611`.
 
 ### FK shapes
 
@@ -255,7 +330,7 @@ Classes from the plan contract catalog, cross-checked with `dev-rules/catalogs/r
 | 1 | Value-bearing output | Fixture cells carry markers; every step sweeps its captures; the checklist sentry refuses fixture values in check cells | AT-J6, AT-Q5 | Make `emit_error` in `src/decoy/ui/output.py` append the offending value (local, not committed); paste `qamark0001@example.invalid` in an Expected cell |
 | 2 | Cleanup missing | Every journey file lives under `tmp_path_factory`; the fixture asserts nothing was written under the repo or `$HOME` | AT-J7 | Point the project root at the repo checkout |
 | 3 | State and ordering between steps | One module fixture runs steps in id order and caches results; a test reads only its own step | AT-J8 | Run CJ-08's check before CJ-07 in the fixture |
-| 4 | Route parity and silent fallback | `DECOY_JOURNEY_BIN` set means the installed binary only; a missing binary fails | AT-J9 | Fall back to `python -m decoy` when the path is missing |
+| 4 | Route parity and silent fallback | Installed-bundle mode uses only the launcher, a cleaned environment and a temp cwd, and proves the bundle's `decoy` and `decoy_engine` are imported; a missing variable fails | AT-J9, AT-J12 | Fall back to `python -m decoy` when the path is missing; point the mode at a launcher and home that run the checkout's editable install |
 | 5 | Referential integrity | CJ-07 checks every kept `orders` row has a kept parent after masking | AT-J6 (CJ-07 cell) | Drop the FK from the journey YAML so `orders` subsets on its own |
 | 6 | Untrusted producer | The two parsers read only repo docs, full-match every field and refuse an unknown label | AT-J1, AT-Q1 | Accept an unknown `**Owner:**` label silently |
 | 7 | Check then use on a path | N/A: the slices read repo documents and `tmp_path` files they wrote themselves; no path is checked and then opened by another party |
@@ -266,8 +341,8 @@ Classes from the plan contract catalog, cross-checked with `dev-rules/catalogs/r
 From the dev-rules catalog: class 1 (anchored validation) applies to every id, stage and exit token,
 all checked with `re.fullmatch`. Class 5 (normalized scanners) applies to the citation scanner,
 which reads decorator calls through the AST and covers `journey_step("CJ-01")`, an import alias
-(`from tests.e2e.journey.journey_doc import journey_step as js`) and the attribute form
-(`journey_doc.journey_step(...)`). Ids built at run time are deliberate evasion, V2-LOG. Class 11
+(`from tests.cli_journey import journey_step as js`) and the attribute form
+(`cli_journey.journey_step(...)`). Ids built at run time are deliberate evasion, V2-LOG. Class 11
 (no raised caps): no cap, pin, baseline or allowlist moves.
 
 ## 8. Hostile corpus / acceptance tests red first
@@ -283,14 +358,16 @@ Slice JQ-1 (journey):
 | AT-J1 | `tests/sentry/release/test_journey_ids.py::test_journey_doc_shape`: ids `CJ-01` to `CJ-NN` contiguous and unique; each step has the five labels once; Stage, Exit and Lands with full-match their grammar; the seven baseline stages each have a step | The document does not exist | Delete the pre-scan step; add a stray token after an Exit value |
 | AT-J2 | `test_every_journey_id_is_cited`: each id is cited exactly once in `tests/e2e/journey/` | No citations exist | Remove `@journey_step("CJ-04")` |
 | AT-J3 | `test_every_cited_id_exists`: every `journey_step` call under `tests/` names a document id | No scanner | Cite `CJ-99` in `test_release_smoke.py` |
-| AT-J4 | `test_exit_tokens_are_registered`: every Exit token is a public `EXIT_` value or 130 | No document | Set CJ-05's Exit to `7` |
+| AT-J4 | `test_exit_tokens_are_registered`: every Exit token is in `allowed_exit_codes()`, which reads the exported `EXIT_` names and `RUN_EXIT_MAP`; a self-test asserts the set is exactly what those two give and that the helper module holds no integer literal outside 0 and 1 used as indexes | No document | Set CJ-05's Exit to `7`; hard-code `{0, 1, 2, 3, 4, 5, 6, 130}` in the helper |
 | AT-J5 | `test_unbuilt_steps_are_strict_xfail`: `journey_step` on a `row N` step yields an `xfail` mark with `strict=True`, and on a `main` step yields none | No decorator | Drop `strict=True` in the decorator |
 | AT-J6 | `tests/e2e/journey/test_cli_journey.py`, one test per step, each asserting its exit codes, its Expected facts and a clean sweep | No module | The class 1 and class 5 mutations in section 7 |
 | AT-J7 | The fixture asserts the repo tree and `$HOME` gained no file during the module | No fixture | Point the project root at the repo |
 | AT-J8 | The fixture records step order; CJ-08's test asserts CJ-07 ran first | No fixture | Swap the order |
-| AT-J9 | With `DECOY_JOURNEY_BIN` set to a missing path the fixture errors with a message naming the variable | No fixture | Fall back to `python -m decoy` |
+| AT-J9 | With `DECOY_JOURNEY_BIN` set to a missing path, or without `DECOY_JOURNEY_HOME`, the fixture errors with a message naming the variable | No fixture | Fall back to `python -m decoy` |
 | AT-J10 | `test_journey_module_reads_exits_from_doc`: the journey module's AST has no `returncode` compared with an int literal | No module | Write `assert r.returncode == 0` |
 | AT-J11 | `test_release_smoke_cites_journey`: `test_release_smoke.py` cites CJ-01 and CJ-08 | No citations | Remove one decorator |
+| AT-J12 | `tests/e2e/journey/test_cli_journey.py::test_bundle_mode_refuses_the_checkout`: a temp home whose `current/python/bin/python3` is a link to the checkout's interpreter and a launcher script that runs `python -m decoy` with it. With `PYTHONPATH` set to the checkout's `src` in the caller's environment and the cwd at the checkout, the bundle-mode setup refuses, naming the import-location check; the cleaned environment has no `PYTHONPATH`, `PYTHONHOME` or `VIRTUAL_ENV`, and every step cwd is under the temp root | No bundle mode | Each alone turns the test red: keep the caller's `PYTHONPATH` in the built env (the env assertion fails); skip the import-location probe (the setup accepts the checkout); run steps with the checkout as cwd (the cwd assertion fails) |
+| AT-J13 | `test_one_exit_per_command`: for each step, the number of `decoy ` spans that `parse_commands` finds equals the number of Exit codes; the parser full-matches each span and ignores other spans | No parser | CJ-10 with two commands and Exit `0`; a span `` `decoyx run` `` counted as a command |
 
 Slice JQ-2 (checklist):
 
@@ -298,11 +375,12 @@ Slice JQ-2 (checklist):
 |---|---|---|---|
 | AT-Q1 | `tests/sentry/release/test_qa_checklist_shape.py::test_check_tables_have_six_cells`: every table under a group heading has the six-cell header and six cells per row | The header has five cells today | Drop the Exit cell of one row |
 | AT-Q2 | `test_exit_cells_parse`: full-match grammar; codes from the registry; `tbd` only with `**Not built.**` | No Exit column | `7`; `tbd` on GATE-01 |
-| AT-Q3 | `test_ids_and_counts`: ids unique and contiguous per prefix; each group's range in the Groups table matches its rows; the total in "Sixteen groups, 204 checks." equals the row count | No sentry (true today, guarded from now) | Duplicate RUN-05; change 204 to 205 |
+| AT-Q3 | `test_ids_and_counts`: the sentry owns `EXPECTED_CHECKS = 204` and `EXPECTED_GROUPS = 16`; it asserts the parsed check rows and groups equal them, and that the document's "Sixteen groups, 204 checks." states the same; ids unique and contiguous per prefix; each group's range in the Groups table matches its rows | No sentry (true today, guarded from now) | Add one check row and change the document's total to 205 in the same edit: red, because the sentry's 204 did not move. Also: duplicate RUN-05 |
 | AT-Q4 | `test_row_index_names_real_checks`: every id or range in the row index exists, and each check's Rows cell lists rows whose index line names that check | No sentry | Remove DOC-05 from row 75's index line |
 | AT-Q5 | `test_check_cells_are_value_free`: no check cell holds `qamark` plus digits, an `@example.invalid` address or a `QA_SECRET=` assignment | No sentry | Paste a fixture address in RUN-01 |
 | AT-Q6 | `test_doc05_points_at_the_journey`: DOC-05 links `cli-v1-journey.md` and is not marked Not built | DOC-05 is Not built | Restore the old text |
 | AT-Q7 | `test_run_template_has_exit_column` | The template has no column | Remove the column |
+| AT-Q8 | `test_one_exit_per_command`: for every check, the Exit cell has one code per command span that `parse_commands` finds, `none` only with no span, `tbd` only with **Not built.** | No Exit column | EXIT-02-style row with two `decoy` spans and Exit `0`; `none` on a row with a `decoy` span |
 
 Frozen check (both slices):
 
@@ -325,11 +403,13 @@ list, not a cap.
 | New file | Directory | CODEMAP line that places it | Neighbor |
 |---|---|---|---|
 | `cli-v1-journey.md` | `docs/qa/` | "QA checklists and run templates" (CODEMAP line 80); the row text gains the journey and its test package | `docs/qa/cli-v1-checklist.md` |
-| `__init__.py`, `journey_doc.py`, `test_cli_journey.py` | `tests/e2e/journey/` | e2e groups go in a package, not the flat `tests/e2e/` (as "First-user QA item tests", CODEMAP line 68) | `tests/e2e/first_user/` |
+| `cli_journey.py` (parser, decorator, command parser, allowed exit set) | `tests/` | "Shared cross-suite test helpers", one module per concern (CODEMAP line 71); used by `tests/e2e/` and `tests/sentry/release/` | `tests/keyed_secret.py`, `tests/command_tree.py` |
+| `__init__.py`, `test_cli_journey.py` (the module fixture and the step tests only) | `tests/e2e/journey/` | e2e groups go in a package, not the flat `tests/e2e/` (as "First-user QA item tests", CODEMAP line 68) | `tests/e2e/first_user/` |
 | `test_journey_ids.py`, `test_qa_checklist_shape.py` | `tests/sentry/release/` | "Sentry test" row: release-gate sentries in `tests/sentry/release/` (CODEMAP line 69) | `test_frozen_surface_map.py` |
 
-Fan-out: `tests/sentry/release/` goes from 2 to 4 modules; `tests/e2e/journey/` is new with 3. Both
-stay under the 25-module cap. Every new file stays under 400 lines (cap 800). The CODEMAP row for
+Fan-out: `tests/sentry/release/` goes from 2 to 4 modules; `tests/e2e/journey/` is new with 2;
+`tests/` gains one top-level module. All stay under the 25-module cap (the `tests/` top level
+counts its existing helper modules and packages, well under it). Every new file stays under 400 lines (cap 800). The CODEMAP row for
 `docs/qa/` is edited to name the journey document and its test package;
 `tests/sentry/layout/test_codemap_paths.py` checks those paths exist.
 
@@ -337,7 +417,8 @@ stay under the 25-module cap. Every new file stays under 400 lines (cap 800). Th
 
 New structure: one document parser and one decorator. Principle: one place per fact. Exit codes live
 in the journey document and the test reads them; the stage list and field grammar live in
-`journey_doc.py` and the sentry reads them. Patterns followed: the platform journey guard for the
+`tests/cli_journey.py` and the sentries read them; the allowed exit set is derived from
+`decoy.cli.exit_codes`, never copied. Patterns followed: the platform journey guard for the
 document shape and the `Lands with` mark, and requirement-id markers (jamb, pytest-mark-ac) for
 citations. Choke point: `journey_step` is the only way a test cites a step; AT-J3 is the guard; its
 mutation is a citation of `CJ-99`. House style: typed results for cached steps (a small frozen
@@ -354,7 +435,7 @@ why, final line `cam`. No logging of values, paths or secrets.
 
 | Slice | Content | Production files | Lines | Risk | Depends on |
 |---|---|---|---|---|---|
-| JQ-1 | `docs/qa/cli-v1-journey.md`; `tests/e2e/journey/` (parser, decorator, journey module); `tests/sentry/release/test_journey_ids.py`; decorators on two cells of `tests/e2e/test_release_smoke.py`; `SENTRIES` entry; CODEMAP `docs/qa/` row | 0 | about 700 | R1 (Codex only) | none; CJ-12 waits on row 61 as a strict xfail |
+| JQ-1 | `docs/qa/cli-v1-journey.md`; `tests/cli_journey.py` (parser, decorator, command parser, allowed exit set); `tests/e2e/journey/` (fixture and step tests); `tests/sentry/release/test_journey_ids.py`; decorators on two cells of `tests/e2e/test_release_smoke.py`; `SENTRIES` entry; CODEMAP `docs/qa/` row | 0 | about 750 | R1 (Codex only) | none; CJ-12 waits on row 61 as a strict xfail |
 | JQ-2 | Exit column on all 204 checks, DOC-05 text, run template column; `tests/sentry/release/test_qa_checklist_shape.py`; `SENTRIES` entry; roadmap rows 75 and 92a and `docs/RECENTLY-SHIPPED.md` | 0 | about 550 (about 210 changed table rows) | R1 (Codex only) | JQ-1 (AT-Q6 needs the journey document) |
 
 If the owner answers Q1 with option (b), a third slice JQ-3 edits `packaging_tools/` on the release
@@ -377,9 +458,11 @@ strict delivery sets CJ-12 to `Lands with: main` in the same change; strict xfai
 
 ## 14. Pre-mortem
 
-- A step fails on main because a command's real flags differ from section 4.1. Counter: the builder
-  confirms each against `--help` at the base and reports a mismatch before writing the test; the
-  step is corrected in the plan, not bent to pass.
+- A step fails on main because a command's behaviour differs from section 4.1 although its flags
+  match (revision 2 checked every flag against the Typer definitions). Counter: the builder reports
+  it before writing the test; the step is corrected in the plan, not bent to pass.
+- The Parquet-source, CSV-target subset run (CJ-07) is refused at run time. Counter: the same
+  report; the planner picks Parquet targets and moves CJ-09 to a CSV pipeline.
 - A step fails on main because of a real defect (for example a value echoed in CJ-05). Counter: file
   a row and mark the step `Lands with: row N`; never delete the assertion (memory
   builders-route-around-divergence).
@@ -391,6 +474,5 @@ strict delivery sets CJ-12 to `Lands with: main` in the same change; strict xfai
 
 ## 15. Open items
 
-- CJ-12's exact refusal code and delivery root come from the DELIV plan (`E:plan/deliv`, CLI slices
-  C2a and C2b). The row 61 slice that ships it sets CJ-12's Expected text then.
+- CJ-12's command and exit (3) are fixed in this plan. Row 61 changes only its `Lands with` line.
 - The canonical bundle smoke citation (Q1 option b) is a follow-up if the owner wants it.
