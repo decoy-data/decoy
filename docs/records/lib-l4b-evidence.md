@@ -304,3 +304,74 @@ session). Windows: NOT RUN (no Windows node). The plan requires both for L4b; th
 
 Not run on this head: the full suite, mypy, macOS and Windows lanes. CI: see the PR checks on the
 pushed head.
+
+## Review round 3 (Codex, head `e334e2c`): export closure
+
+**Finding (V1).** Export could exit 0 with a set that is not closed, in two ways:
+- `--kind` and `--since` filtered records without adding what they link to.
+- The codec could withhold an opaque or newer dependency while keeping a known record that links
+  to it.
+
+Both gave `external_links > 0` against the closure contract above.
+
+**Rule (also written into the plan's L4b section, `plan/local-record-library` `b08b091`).**
+- Filters (`--kind`, `--since`, `--ref`) choose the starting records only. Export then adds every
+  record they link to, transitively, whatever its kind or date (`_exporting.closure`, over
+  `_index.reachable`, the walk prune uses).
+- If the codec withholds a record, every record that links to it, directly or not, is withheld
+  too. It is listed in the header's `withheld_records` and named in its own stderr notice, and a
+  ref to any withheld record is left out of the header.
+- As a last check, export refuses with `export_not_closed` before writing if the codec reports
+  `external_links > 0`.
+
+**How.**
+- `export_lines` runs the codec once and reads which records it withheld.
+- In link order, it marks every record that links to a withheld one.
+- It reruns the codec without those records, with the refs to any withheld record removed.
+- It adds the marked ids to the header's `withheld_records`, keeping the header in the codec's
+  canonical form. The header is not revalidated in the CLI (G-config-error-routes forbids a
+  CLI-side engine model validation); `records.read_export` validates it on import, and every test
+  reads exports through it.
+- The codec still decides what it can strip: the CLI does not repeat that rule.
+
+| Commit | What |
+|---|---|
+| `76e2609` | red cells (on `e334e2c`): `test_a_filter_pulls_in_every_record_a_kept_record_links_to[--kind, --since]`, `test_a_record_that_links_to_a_withheld_record_is_withheld_too`, `test_export_refuses_before_writing_a_set_that_would_not_be_closed`; 4 failed, for the stated reasons (linked records missing; dependents exported; no refusal) |
+| `ff0b77b` | the fix: `closure`, withheld dependents, `export_not_closed`, `ExportLines`, the two stderr notices, `--kind`/`--since` help |
+| `f0b5074` | merge of #215 at `9609f8d` (main `c558e2f`); `docs/cli-reference.md` regenerated |
+| `d51c5ac` | `docs/library.md`, CHANGELOG |
+| `cfbe3f0` | the header is extended without a CLI-side `ExportHeader.model_validate` (T1 on `d51c5ac` caught it: `tests/sentry/defects/test_config_error_routes.py`) |
+
+**Environment.** Linux 6.18.44 (x86_64), ext4, uid 0 in a container; Python 3.10.20; engine
+0.27.0 (`ddd014a`); main `c558e2f`.
+
+**T1 on `cfbe3f0`** (`scripts/dev/gates.sh --keep-going --baseline`, same paths as above):
+
+| Step | Branch `cfbe3f0` | Main `c558e2f` |
+|---|---|---|
+| env | PASS | (same venv) |
+| ruff | PASS | PASS |
+| sentry | 1433 passed | 1433 passed |
+| layers | 23 passed | 23 passed |
+| tests | 482 passed, 7 skipped | 378 passed, 6 skipped |
+
+Failure sets: branch none; main none; branch-only none. The one branch-only id on `d51c5ac`
+(`test_config_error_routes.py::test_no_raw_validation_error_route_in_src`) is fixed in `cfbe3f0`.
+
+**Mutations on `cfbe3f0`** (all applied once by exact string replace, tests run, file restored; `src` clean after):
+
+| Mutation | Change | Result |
+|---|---|---|
+| ML4-apply, -noreach, -nograce, -unlocked, -prune-unknown, -wide, -clean-raise | as in the round-2 table | red, each (ML4-nograce: the unit test; the concurrent test stays green, as before) |
+| ML4-paths, -scratch, -skip-unknown (both forms), -no-remap | as in the round-2 table | red, each |
+| ML4b-closure (V1-A) | `_inventory` stops counting dangling refs and links | red (the missing-link cell). Both dangling-ref cases are now also refused by the closure check (`chosen <= rows`), so they stay green under this mutation |
+| ML4b-unexplained, ML4b-destination | as in the round-2 table | red, each |
+| ML4-no-closure | `chosen = set(start)` | red (both filter cells) |
+| ML4-keep-dependents | records linking to a withheld one are never marked | red |
+| ML4-no-last-check | the `external_links` refusal removed | red (the last-check cell) |
+
+ML4-no-last-check is red only through the cell that breaks the closure step on purpose: with the
+closure and withholding correct, the check cannot fire, by construction.
+
+**Not run on this head.** macOS lane: no runner reachable from this session. Windows lane: no
+node. CI: none, because the base is the #215 branch. The full suite.
