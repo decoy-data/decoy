@@ -22,10 +22,12 @@ from decoy_engine import NativeCompanionStatus
 
 from decoy._native_gate import (
     NativeGateError,
+    PreGateResult,
     classify_route,
     is_unified_slice_candidate,
     post_run_verify,
     pre_execution_gate,
+    run_pipeline_kwargs,
     sanitize_abi,
     static_native_eligibility,
 )
@@ -797,3 +799,15 @@ def test_post_run_verify_fails_closed_on_non_applicable_route():
     with pytest.raises(NativeGateError) as exc_info:
         post_run_verify(intent="require", route=non_candidate_route)
     assert exc_info.value.code == "native_require_no_evidence"
+
+
+def _run_pipeline_without_the_keywords(config, sources=None, *, engine_version):
+    raise AssertionError("never called")
+
+
+def test_no_native_passes_the_keyword_whatever_the_run_pipeline_signature(monkeypatch):
+    monkeypatch.setattr("decoy_engine.run_pipeline", _run_pipeline_without_the_keywords)
+    assert run_pipeline_kwargs(PreGateResult(unified_slice_enabled=False)) == {
+        "unified_slice_enabled": False
+    }
+    assert run_pipeline_kwargs(PreGateResult(unified_slice_enabled=True)) == {}
