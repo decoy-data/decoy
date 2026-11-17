@@ -68,8 +68,8 @@ pip install -e ".[dev]"
 ```
 
 The source package has optional extras: `cloud` (S3 and GCS SDKs), `ner` (spaCy detection for
-`text_mask` and `text_redact`, plus `python -m spacy download en_core_web_sm`), `ml` (the field
-classifier) and `otel` (trace export). If a pipeline needs an extra that is missing, `decoy`
+`text_mask` and `text_redact`; install it with `decoy models install ner`, which also installs the
+pinned model) and `otel` (trace export). If a pipeline needs an extra that is missing, `decoy`
 stops and prints the exact install line.
 
 ## First run
@@ -106,6 +106,7 @@ presets are `minimal`, `hipaa`, `pci`, `gdpr` and `generate`. The file
 | `decoy run <path>`               | Run a pipeline: read sources, mask or generate, write targets. `--all` runs every pipeline of a project. |
 | `decoy project new <dir>`        | Make a project folder (`decoy.yaml`, `pipelines/`, `out/`). `decoy project show` and `list` inspect projects. |
 | `decoy setup`                    | Set the maximum memory and threads for this machine. `--max-memory` and `--threads` override one run. |
+| `decoy models list`              | Show which detector models can run here; `decoy models install ner` installs spaCy and the pinned model. |
 | `decoy tokenize <path>`          | Replace each `strategy: tokenize` column with a deterministic surrogate. Record the mapping in a local vault. A mask secret is required. |
 | `decoy detokenize <path> <file>` | Reverse a tokenized file from its vault. Fails closed on a missing or wrong vault. |
 | `decoy fit <source.csv>`         | Fit a distribution snapshot of a CSV for `statistical` generate columns. Sensitive columns keep no cell values. |
