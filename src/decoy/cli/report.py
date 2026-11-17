@@ -891,12 +891,6 @@ def compare_data(
     EVIDENCE-SAFE: reports aggregate counts only. Raw row/cell values are
     never included in the output.
     """
-    try:
-        import pandas  # noqa: F401  (the dependency guard; the readers import it themselves)
-    except ImportError as _err:
-        raise RuntimeError(
-            "pandas is required for data-level diff. Install with: pip install pandas"
-        ) from _err
     from decoy_engine import DecoyError
 
     output_fps_a: dict[str, Any] = manifest_a.get("output_fingerprints") or {}

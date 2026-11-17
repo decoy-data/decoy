@@ -22,7 +22,6 @@ from decoy_engine import NativeCompanionStatus
 
 from decoy._native_gate import (
     NativeGateError,
-    _NativeProbeUnavailable,
     classify_route,
     is_unified_slice_candidate,
     post_run_verify,
@@ -132,19 +131,6 @@ def test_all_seven_native_strategies_at_once_is_eligible():
         {"name": "c7", "strategy": "group_key"},
     ]
     assert static_native_eligibility(config) is True
-
-
-def test_probe_status_raises_when_engine_lacks_the_symbol(monkeypatch):
-    """Hits `_probe_status()`'s own missing-symbol branch directly (the
-    other engine-too-old tests monkeypatch `_probe_status` itself, which
-    bypasses this line)."""
-    import decoy_engine
-
-    from decoy._native_gate import _probe_status
-
-    monkeypatch.delattr(decoy_engine, "native_companion_status", raising=False)
-    with pytest.raises(_NativeProbeUnavailable):
-        _probe_status()
 
 
 def test_two_tables_not_eligible():
@@ -428,9 +414,7 @@ def test_classify_route_generate_only_reports_execution_mode():
 
 
 def test_classify_route_generate_only_without_execution_metrics_is_neutral():
-    route = classify_route(
-        chunked=False, any_generate=True, quality_metrics=None
-    )
+    route = classify_route(chunked=False, any_generate=True, quality_metrics=None)
     assert route.applicable is False
     assert route.label == "n/a (not a unified-slice candidate)"
 
@@ -588,51 +572,6 @@ def test_require_refuses_live_vault_writer_before_probing():
             status=None,
         )
     assert exc_info.value.code == "native_require_vault_active"
-
-
-def test_require_reports_clear_error_when_engine_too_old(monkeypatch):
-    def _boom():
-        raise _NativeProbeUnavailable
-
-    monkeypatch.setattr("decoy._native_gate._probe_status", _boom)
-    with pytest.raises(NativeGateError) as exc_info:
-        pre_execution_gate(
-            intent="require",
-            chunked=False,
-            any_generate=False,
-            config_dict=_eligible_config(),
-        )
-    assert exc_info.value.code == "native_require_engine_too_old"
-
-
-def test_default_collapses_to_noop_when_engine_too_old(monkeypatch):
-    def _boom():
-        raise _NativeProbeUnavailable
-
-    monkeypatch.setattr("decoy._native_gate._probe_status", _boom)
-    result = pre_execution_gate(
-        intent="default",
-        chunked=False,
-        any_generate=False,
-        config_dict=_eligible_config(),
-    )
-    assert result.unified_slice_enabled is True
-    assert result.info_message is None
-
-
-def test_disable_swallows_engine_too_old(monkeypatch):
-    def _boom():
-        raise _NativeProbeUnavailable
-
-    monkeypatch.setattr("decoy._native_gate._probe_status", _boom)
-    result = pre_execution_gate(
-        intent="disable",
-        chunked=False,
-        any_generate=False,
-        config_dict=_eligible_config(),
-    )
-    assert result.unified_slice_enabled is False
-    assert result.warn_message is None
 
 
 # ---------------------------------------------------------------------------

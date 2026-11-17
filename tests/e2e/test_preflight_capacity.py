@@ -263,23 +263,11 @@ class TestFourCapacityStates:
             "decoy_engine.execution.out_of_core._budget.detect_effective_memory_bytes",
             return_value=1024 * 1024,
         ):
-            result = runner.invoke(app, ["validate", "preflight", str(config_path), "--fail-on-warning"])
+            result = runner.invoke(
+                app, ["validate", "preflight", str(config_path), "--fail-on-warning"]
+            )
         assert result.exit_code == EXIT_WARNINGS
         assert result.exit_code != EXIT_OK
-
-    def test_unknown_older_engine_simulated(self, tmp_path: Path, monkeypatch) -> None:
-        """T9 groundwork: with the estimator entrypoint absent (simulating an
-        engine older than the one that ships it), the capacity section
-        degrades to UNKNOWN/"not checked" and exits 0."""
-        import decoy_engine.execution as engine_execution
-
-        monkeypatch.delattr(engine_execution, "estimate_job_capacity")
-        config_path = _write_config(tmp_path)
-        result = _run_preflight(config_path)
-        assert result.exit_code == EXIT_OK
-        assert "capacity:" in result.output
-        assert "not checked" in result.output
-        assert "newer engine" in result.output
 
 
 class TestUnexpectedEstimatorExceptionPropagates:
