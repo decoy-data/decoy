@@ -1,8 +1,8 @@
 """`decoy demo` -- 30-second end-to-end walkthrough on bundled sample data.
 
-Default flow: a small single-table CSV, scanned (STORM) -> masked via the V2
+Default flow: a small single-table CSV, scanned -> masked via the V2
 PipelineConfig spine. All artifacts land in `./decoy_demo/`. The legacy
-FORECAST recommender step was removed under storm-reframe-C / S22; do not
+FORECAST recommender step was removed in the V1 scan rework; do not
 re-introduce.
 
 With `--ref`: deferred to a follow-up sprint and currently exits with a usage
@@ -139,12 +139,12 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
     """V2 one-CSV walkthrough.
 
     CLI.3 commit 2 (2026-06-02): rewritten against the V2 spine.
-    Pre-rewrite the demo called `recommend` (FORECAST, retired under
-    storm-reframe-C) and `Masker(...).mask()` (V1 surface deleted under
-    S22-CL-V1GRAPHRUNNER). The new walkthrough: write a sample CSV ->
-    STORM analyze -> V2 PipelineConfig validate -> compile_plan ->
+    Pre-rewrite the demo called `recommend` (FORECAST, retired in
+    the V1 scan rework) and `Masker(...).mask()` (V1 surface deleted with
+    the V1 graph runner). The new walkthrough: write a sample CSV ->
+    scan -> V2 PipelineConfig validate -> compile_plan ->
     select_execution_adapter().run(...) -> write masked output.
-    The FORECAST step is dropped (no V2 successor); the STORM scan
+    The FORECAST step is dropped (no V2 successor); the scan
     still surfaces PII counts so the operator gets the same gut-check
     on what the engine saw in their data.
     """
@@ -158,7 +158,7 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
     _write_sample_csv(sample_csv)
 
     if state.mode is OutputMode.default:
-        state.console.print(accent("[2/3]"), "Scanning with STORM...")
+        state.console.print(accent("[2/3]"), "Scanning...")
     import pandas as pd
     from decoy_engine import profile_columns, profile_document
 
