@@ -1,11 +1,11 @@
-"""SP-16: storm analyze parquet + fixed-width format dispatch.
+"""SP-16: scan parquet + fixed-width format dispatch.
 
 Tests run BEFORE the implementation so they fail first (TDD requirement).
 
 Assertions:
-B1. storm analyze reads a parquet fixture and produces a valid STORM profile.
-B2. storm analyze reads a fixed-width fixture WITH a layout spec.
-B3. storm analyze fixed-width WITHOUT a layout fails closed with a clear error.
+B1. scan reads a parquet fixture and produces a valid scan profile.
+B2. scan reads a fixed-width fixture WITH a layout spec.
+B3. scan fixed-width WITHOUT a layout fails closed with a clear error.
 B4. --format parquet flag dispatches to the parquet loader.
 B5. --format delimited (explicit) still works (delimited is the zero-config default).
 B6. Extension-based detection: .parquet extension uses parquet loader without --format.
@@ -33,7 +33,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def parquet_fixture(tmp_path: Path) -> Path:
-    """A small parquet file with PII-ish columns for STORM analysis."""
+    """A small parquet file with PII-ish columns for scan analysis."""
     path = tmp_path / "members.parquet"
     pd.DataFrame(
         {
@@ -77,12 +77,12 @@ def fwf_fixture(tmp_path: Path) -> tuple[Path, Path]:
 
 
 # ---------------------------------------------------------------------------
-# B1. Parquet fixture -> valid STORM profile
+# B1. Parquet fixture -> valid scan profile
 # ---------------------------------------------------------------------------
 
 
-def test_storm_analyze_reads_parquet_fixture(parquet_fixture: Path, tmp_path: Path):
-    """B1: storm analyze on a .parquet file produces a valid STORM profile JSON."""
+def test_scan_reads_parquet_fixture(parquet_fixture: Path, tmp_path: Path):
+    """B1: scan on a .parquet file produces a valid scan profile JSON."""
     out = tmp_path / "scan.json"
     result = runner.invoke(
         app,
@@ -97,7 +97,7 @@ def test_storm_analyze_reads_parquet_fixture(parquet_fixture: Path, tmp_path: Pa
     assert payload["name"] == "members"
 
 
-def test_storm_analyze_parquet_json_output(parquet_fixture: Path):
+def test_scan_parquet_json_output(parquet_fixture: Path):
     """B1 extension: parquet with --json emits a structured envelope."""
     result = runner.invoke(
         app,
@@ -111,12 +111,12 @@ def test_storm_analyze_parquet_json_output(parquet_fixture: Path):
 
 
 # ---------------------------------------------------------------------------
-# B2. Fixed-width WITH layout -> valid STORM profile
+# B2. Fixed-width WITH layout -> valid scan profile
 # ---------------------------------------------------------------------------
 
 
-def test_storm_analyze_reads_fixed_width_with_layout(fwf_fixture: tuple[Path, Path], tmp_path: Path):
-    """B2: storm analyze on a fixed-width file with --layout produces a valid STORM profile."""
+def test_scan_reads_fixed_width_with_layout(fwf_fixture: tuple[Path, Path], tmp_path: Path):
+    """B2: scan on a fixed-width file with --layout produces a valid scan profile."""
     fwf_path, layout_path = fwf_fixture
     out = tmp_path / "scan.json"
     result = runner.invoke(
@@ -138,7 +138,7 @@ def test_storm_analyze_reads_fixed_width_with_layout(fwf_fixture: tuple[Path, Pa
     assert "email" in field_names
 
 
-def test_storm_analyze_fixed_width_json_output(fwf_fixture: tuple[Path, Path]):
+def test_scan_fixed_width_json_output(fwf_fixture: tuple[Path, Path]):
     """B2 extension: fixed-width + layout with --json emits a valid envelope."""
     fwf_path, layout_path = fwf_fixture
     result = runner.invoke(
@@ -161,7 +161,7 @@ def test_storm_analyze_fixed_width_json_output(fwf_fixture: tuple[Path, Path]):
 # ---------------------------------------------------------------------------
 
 
-def test_storm_analyze_fixed_width_without_layout_fails_closed(fwf_fixture: tuple[Path, Path]):
+def test_scan_fixed_width_without_layout_fails_closed(fwf_fixture: tuple[Path, Path]):
     """B3: a fixed-width file WITHOUT --layout must fail closed with a clear error.
 
     Column boundaries are ambiguous without a layout spec; guessing would produce
@@ -183,7 +183,7 @@ def test_storm_analyze_fixed_width_without_layout_fails_closed(fwf_fixture: tupl
     )
 
 
-def test_storm_analyze_fwf_extension_without_layout_fails_closed(tmp_path: Path):
+def test_scan_fwf_extension_without_layout_fails_closed(tmp_path: Path):
     """B3 extension: a .fwf extension file without --layout also fails closed.
 
     Extension-based detection must not silently fall back to CSV guessing.
@@ -207,7 +207,7 @@ def test_storm_analyze_fwf_extension_without_layout_fails_closed(tmp_path: Path)
 # ---------------------------------------------------------------------------
 
 
-def test_storm_analyze_explicit_format_parquet(parquet_fixture: Path, tmp_path: Path):
+def test_scan_explicit_format_parquet(parquet_fixture: Path, tmp_path: Path):
     """B4: --format parquet explicitly selects the parquet loader (overrides extension)."""
     out = tmp_path / "scan.json"
     result = runner.invoke(
@@ -229,7 +229,7 @@ def test_storm_analyze_explicit_format_parquet(parquet_fixture: Path, tmp_path: 
 # ---------------------------------------------------------------------------
 
 
-def test_storm_analyze_explicit_format_delimited(tmp_path: Path):
+def test_scan_explicit_format_delimited(tmp_path: Path):
     """B5: --format delimited explicitly selects CSV loader (default stays working)."""
     csv_path = tmp_path / "data.csv"
     pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]}).to_csv(csv_path, index=False)
@@ -255,7 +255,7 @@ def test_storm_analyze_explicit_format_delimited(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-def test_storm_analyze_parquet_extension_auto_detects(parquet_fixture: Path, tmp_path: Path):
+def test_scan_parquet_extension_auto_detects(parquet_fixture: Path, tmp_path: Path):
     """B6: .parquet extension triggers parquet loader without needing --format parquet."""
     out = tmp_path / "scan.json"
     # No --format flag -- extension should be enough

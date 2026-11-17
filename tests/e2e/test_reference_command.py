@@ -236,3 +236,69 @@ def test_show_help_includes_examples_and_see_also():
     assert result.exit_code == 0
     assert "Examples:" in result.stdout
     assert "See also:" in result.stdout
+
+
+# ---------------------------------------------------------------------------
+# list generate-types / list faker-types -- GEN-14, read the live engine catalogs
+# ---------------------------------------------------------------------------
+
+
+def test_list_generate_types_names_exactly_the_catalog_keys():
+    from decoy_engine.config import generate_option_catalog
+
+    catalog = generate_option_catalog()
+    result = runner.invoke(app, ["list", "generate-types", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.stdout)
+    assert payload["command"] == "list generate-types"
+    assert payload["status"] == "ok"
+    assert payload["count"] == len(catalog)
+    assert [t["type"] for t in payload["generate_types"]] == list(catalog)
+    for entry in payload["generate_types"]:
+        spec = catalog[entry["type"]]
+        assert entry["required"] == list(spec.required)
+        assert entry["optional"] == list(spec.optional)
+    assert payload["common_options"] == list(next(iter(catalog.values())).common)
+
+
+def test_list_generate_types_human_output_names_each_type():
+    from decoy_engine.config import generate_option_catalog
+
+    result = runner.invoke(app, ["list", "generate-types"])
+    assert result.exit_code == 0, result.output
+    for type_ in generate_option_catalog():
+        assert type_ in result.stdout
+
+
+def test_list_faker_types_equals_the_engine_provider_list():
+    from decoy_engine import list_generate_faker_providers
+
+    result = runner.invoke(app, ["list", "faker-types", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.stdout)
+    assert payload["command"] == "list faker-types"
+    assert payload["status"] == "ok"
+    assert payload["faker_types"] == list(list_generate_faker_providers())
+    assert payload["count"] == len(payload["faker_types"])
+
+
+def test_list_faker_types_human_output_names_a_provider():
+    from decoy_engine import list_generate_faker_providers
+
+    first = next(iter(list_generate_faker_providers()))
+    result = runner.invoke(app, ["list", "faker-types"])
+    assert result.exit_code == 0, result.output
+    assert first in result.stdout
+
+
+def test_list_unknown_kind_lists_the_new_kinds_too():
+    result = runner.invoke(app, ["list", "bogus"])
+    assert result.exit_code == EXIT_USAGE
+    assert "generate-types" in result.stderr
+    assert "faker-types" in result.stderr
+
+
+def test_list_singular_generate_type_cross_suggests_plural():
+    result = runner.invoke(app, ["list", "generate-type"])
+    assert result.exit_code == EXIT_USAGE
+    assert "decoy list generate-types" in result.stderr

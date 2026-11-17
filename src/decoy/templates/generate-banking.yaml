@@ -1,0 +1,100 @@
+# generate-banking -- synthetic customers, accounts and transactions.
+#
+# Builds three linked tables from scratch, with no input file. Every account belongs to a
+# customer that exists, and every transaction posts to an account that exists. All values are
+# generated, so none of it is real account data.
+#
+#   decoy run pipeline.yaml
+#
+# Edit `row_count`, the categories and the weights to match the shape you need.
+
+version: 2
+
+global_settings:
+  seed: 42
+
+sources: {}
+
+tables:
+  - name: customers
+    row_count: 1000
+    generate_columns:
+      - name: customer_id
+        type: sequence
+        start: 100000
+        step: 1
+      - name: first_name
+        type: faker
+        faker_type: first_name
+      - name: last_name
+        type: faker
+        faker_type: last_name
+      - name: email
+        type: faker
+        faker_type: email
+      - name: city
+        type: faker
+        faker_type: city
+      - name: segment
+        type: categorical
+        categories: ["Retail", "Premier", "Private"]
+        weights: [0.75, 0.2, 0.05]
+
+  - name: accounts
+    row_count: 1800
+    generate_columns:
+      - name: account_id
+        type: sequence
+        start: 5000000
+        step: 1
+      - name: customer_id
+        type: reference
+        reference_table: customers
+        reference_column: customer_id
+      - name: account_type
+        type: categorical
+        categories: ["Checking", "Savings", "Credit card", "Loan"]
+        weights: [0.45, 0.3, 0.15, 0.1]
+      - name: opened_on
+        type: faker
+        faker_type: date_this_decade
+      - name: currency
+        type: constant
+        value: "USD"
+
+  - name: transactions
+    row_count: 10000
+    generate_columns:
+      - name: transaction_id
+        type: sequence
+        start: 1
+        step: 1
+      - name: account_id
+        type: reference
+        reference_table: accounts
+        reference_column: account_id
+      - name: posted_on
+        type: faker
+        faker_type: date_this_year
+      - name: amount
+        type: faker
+        faker_type: random_int
+        faker_kwargs: {min: 1, max: 4000}
+      - name: channel
+        type: categorical
+        categories: ["Card", "Transfer", "ATM", "Direct debit", "Cheque"]
+        weights: [0.5, 0.2, 0.1, 0.15, 0.05]
+
+targets:
+  customers:
+    type: file
+    format: csv
+    path: ./customers.csv
+  accounts:
+    type: file
+    format: csv
+    path: ./accounts.csv
+  transactions:
+    type: file
+    format: csv
+    path: ./transactions.csv

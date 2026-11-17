@@ -68,7 +68,7 @@ def _fixture(tmp_path: Path, kind: str) -> Path:
 
 TARGETS = {
     "validation": ("decoy.cli.gate", "run_gate"),
-    "drift": ("decoy.cli.scan", "compute_scan_diff"),
+    "drift": ("decoy.cli.scanning", "diff_scan_sets"),
     "evidence": ("decoy.cli.evidence", "verify_manifest_issues"),
     "staged": ("decoy.ci.runner", "scan_staged"),
 }
