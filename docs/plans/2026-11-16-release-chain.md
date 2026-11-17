@@ -324,6 +324,10 @@ none.
 
 ## 7. Row 78: F10, runtime lock and environment report
 
+78-E1 merged (engine #618). The executable plan for 78-E2 and 78-C1 is now the engine plan
+`E:plan/f10-lock-envelope` (`docs/plans/2026-11-17-f10-lock-envelope.md`, revision 2), which
+replaces the rest of this section where they differ.
+
 ### Scope
 
 From the row and MASTER F10:
