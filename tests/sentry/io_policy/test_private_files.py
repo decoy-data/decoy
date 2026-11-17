@@ -112,7 +112,11 @@ _RESTORED = _E2E + "test_unmask_and_detokenize_outputs_are_private"
 _VAULT = _E2E + "test_tokenize_vault_and_its_journal_are_private"
 _LIBRARY = _UNIT + "test_library_files_and_folders_are_owner_only_under_umask_zero"
 _LIBRARY_LOCK = _UNIT + "test_library_lock_and_ref_files_are_owner_only_under_umask_zero"
+_MODELS = _UNIT + "test_models_install_folders_and_files_are_owner_only_under_umask_zero"
 PRIVATE_CASES: dict[str, str] = {
+    "cli/models/_private.py::make_private_dir::create_private_directory::1": _MODELS,
+    "cli/models/_private.py::write_private::open_private::1": _MODELS,
+    "cli/models/_private.py::write_private::write_bytes::1": _MODELS,
     "api.py::_stage_source_entry::create_private_temp::1": _SPOOL,
     "api.py::_stage_source_entry::write_table::1": _SPOOL,
     "ci/debug.py::DebugSink.flush::write_local_target::1": _CI,
@@ -597,14 +601,14 @@ def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
     assert run(files) == []
 
 
-def test_the_census_is_59_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_63_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 59
-    assert len([s for s in sinks if is_entry(s)]) == 24
+    assert len(sinks) == 63
+    assert len([s for s in sinks if is_entry(s)]) == 26
     counts: dict[str, int] = {}
     for r in ROWS:
         counts[r.disposition] = counts.get(r.disposition, 0) + 1
-    assert counts == {"public": 23, "private": 3, "staged": 3, "temp": 2, "read": 4}
+    assert counts == {"public": 23, "private": 4, "staged": 3, "temp": 2, "read": 5}
 
 
 def test_the_baseline_has_two_rows_with_exits() -> None:

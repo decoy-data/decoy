@@ -57,6 +57,14 @@ DYNAMIC: dict[str, list[str]] = {
 }
 OPAQUE: dict[str, dict[str, str]] = {
     "info": {"/native_companion": "null|object"},
+    # Each row's fields are null or text by whether that model can run on this host.
+    "models list": {
+        "/models/version": "null|string",
+        "/models/runtime_version": "null|string",
+        "/models/reason": "null|string",
+        "/models/cause": "null|string",
+        "/models/hint": "null|string",
+    },
     "run": {"/warnings": "array"},
 }
 OPTIONAL: dict[str, list[str]] = {
@@ -279,6 +287,47 @@ def build_workspace(root: Path) -> None:
     pd.DataFrame({"id": range(1, 21), "cust_id": [i % 10 + 1 for i in range(20)]}).to_parquet(
         root / "orders.parquet"
     )
+    wheels = root / "wheels"
+    wheels.mkdir()
+    for name in ("en_core_web_sm-3.8.0-py3-none-any.whl", "spacy-3.8.18-py3-none-any.whl"):
+        (wheels / name).write_bytes(b"not a real wheel")
+
+
+@contextlib.contextmanager
+def _fake_installer() -> Iterator[None]:
+    """`models install` with its one installer seam replaced: no network, nothing installed.
+
+    The success document is the real one; only the subprocess and the probes it reads are fakes.
+    """
+    from unittest import mock
+
+    from decoy_engine import ModelStatus
+
+    from decoy.cli.models import _install
+
+    done = {"ran": False}
+    before = (("decoy-cli", "0.1.0"), ("numpy", "2.2.6"))
+    after = (*before, ("en-core-web-sm", "3.8.0"), ("spacy", "3.8.18"))
+
+    def run(argv: list[str]) -> int:
+        done["ran"] = True
+        return 0
+
+    def status(model: str = "en_core_web_sm") -> ModelStatus:
+        if done["ran"]:
+            return ModelStatus("ner", model, True, "3.8.0", "3.8.18", None)
+        return ModelStatus("ner", model, False, None, None, "provider.ner_spacy_not_installed")
+
+    with (
+        mock.patch.object(_install, "run_installer", run),
+        mock.patch.object(_install, "pip_available", lambda: True),
+        mock.patch.object(_install, "managed_home", lambda: None),
+        mock.patch.object(_install, "ner_status", status),
+        mock.patch.object(
+            _install, "installed_distribution_set", lambda: after if done["ran"] else before
+        ),
+    ):
+        yield
 
 
 @contextlib.contextmanager
@@ -335,6 +384,8 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("list", ["list", "templates"]),
         ("show", ["show", "template", "minimal"]),
         ("info", ["info"]),
+        ("models list", ["models", "list"]),
+        ("models install", ["models", "install", "ner", "--from", "wheels", "--yes"]),
         ("demo", ["demo"]),
         ("init", ["init", "--preset", "minimal", "-o", "minimal.yaml"]),
         ("fit", ["fit", "patients.csv"]),
@@ -418,6 +469,10 @@ def capture(root: Path) -> dict[str, Any]:
                 _seed_library(root / "lib")
             if name == "project show":
                 os.chdir(root / "proj")
+            if name == "models install":
+                with _fake_installer():
+                    docs[name] = call(argv)
+                continue
             docs[name] = call(argv)
     return docs
 
