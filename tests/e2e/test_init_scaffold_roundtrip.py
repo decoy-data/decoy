@@ -2,17 +2,17 @@
 
 The shape pinned here is the operator's golden path:
 
-    decoy scan customers.csv --has-header      # see what STORM sees
+    decoy scan customers.csv --has-header      # see what the scan sees
     decoy init customers.csv --output p.yaml      # scaffold with REVIEW comments
     decoy validate p.yaml                      # engine accepts the schema
     decoy run p.yaml                           # masks the data
-    decoy storm integrity customers.masked.csv --source customers.csv
+    decoy report integrity customers.masked.csv --source customers.csv
 
 If this test starts failing, the friction the user hits when trying out
 the CLI for the first time just went up; investigate the regression
 before merging.
 
-Tests touch a real (tiny) DataFrame and run real STORM scans, but no
+Tests touch a real (tiny) DataFrame and run real scans, but no
 network and no cloud storage. The masked output lands under tmp_path.
 """
 
@@ -34,7 +34,7 @@ runner = CliRunner()
 def csv_with_pii(tmp_path: Path) -> Path:
     """Tiny CSV with two well-known PII detector hits + one neutral column.
 
-    STORM should flag `email` (email detector) and `ssn` (ssn detector),
+    The scan should flag `email` (email detector) and `ssn` (ssn detector),
     leaving `note` to fall through to the redact fallback. That mix
     exercises both branches of `_infer_strategy_for_column`.
     """
@@ -74,11 +74,9 @@ def test_init_scaffolds_yaml_with_review_comments(csv_with_pii: Path, tmp_path: 
 def test_init_json_mode_reports_column_count(csv_with_pii: Path, tmp_path: Path):
     """--json emits a structured record (command, status, source, column_count)
     suitable for piping into another tool. column_count == number of fields
-    STORM found in the CSV."""
+    the scan found in the CSV."""
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", str(csv_with_pii), "--output", str(out), "--json"]
-    )
+    result = runner.invoke(app, ["init", str(csv_with_pii), "--output", str(out), "--json"])
     assert result.exit_code == 0, result.stdout + result.stderr
     payload = _json.loads(result.stdout)
     assert payload["command"] == "init"
@@ -92,9 +90,7 @@ def test_init_validate_then_run_smoke(csv_with_pii: Path, tmp_path: Path):
     """Roundtrip: scaffold a YAML, validate it, and read the body to
     confirm sources/tables/targets are present in the expected shape."""
     out = tmp_path / "pipeline.yaml"
-    init_result = runner.invoke(
-        app, ["init", str(csv_with_pii), "--output", str(out), "--quiet"]
-    )
+    init_result = runner.invoke(app, ["init", str(csv_with_pii), "--output", str(out), "--quiet"])
     assert init_result.exit_code == 0
 
     # Sources + tables + targets are present and reference the input file.
@@ -106,16 +102,12 @@ def test_init_validate_then_run_smoke(csv_with_pii: Path, tmp_path: Path):
 
     # `decoy validate` exits 0 against the scaffolded YAML.
     validate_result = runner.invoke(app, ["validate", "config", str(out), "--quiet"])
-    assert validate_result.exit_code == 0, (
-        validate_result.stdout + validate_result.stderr
-    )
+    assert validate_result.exit_code == 0, validate_result.stdout + validate_result.stderr
 
 
 def test_init_stdout_with_dash(csv_with_pii: Path, tmp_path: Path):
     """`--output -` writes the YAML body to stdout instead of a file."""
-    result = runner.invoke(
-        app, ["init", str(csv_with_pii), "--output", "-"]
-    )
+    result = runner.invoke(app, ["init", str(csv_with_pii), "--output", "-"])
     assert result.exit_code == 0, result.stdout + result.stderr
     assert "version: 2" in result.stdout
     assert "# REVIEW:" in result.stdout
@@ -144,10 +136,30 @@ def test_init_preset_still_works_unchanged(tmp_path: Path):
     with `--preset` (and no positional file) still scaffolds from the
     bundled template."""
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "minimal", "--output", str(out), "--json"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "minimal", "--output", str(out), "--json"])
     assert result.exit_code == 0, result.stdout + result.stderr
     payload = _json.loads(result.stdout)
     assert payload["preset"] == "minimal"
     assert "rule_count" in payload
+
+
+def test_scaffold_review_lines_use_the_scan_wording_and_still_validate(
+    csv_with_pii: Path, tmp_path: Path
+):
+    """AT-C6: every `# REVIEW:` the scaffold writes says what the scan found, and the
+    scaffold passes `validate`."""
+    out = tmp_path / "pipeline.yaml"
+    result = runner.invoke(app, ["init", str(csv_with_pii), "--output", str(out), "--quiet"])
+    assert result.exit_code == 0, result.stdout + result.stderr
+    reviews = [
+        ln
+        for ln in out.read_text(encoding="utf-8").splitlines()
+        if ln.lstrip().startswith("# REVIEW:")
+    ]
+    assert len(reviews) == 3
+    assert all(
+        "# REVIEW: The scan found " in ln or "# REVIEW: The scan did not flag " in ln
+        for ln in reviews
+    ), reviews
+    validate = runner.invoke(app, ["validate", "config", str(out), "--quiet"])
+    assert validate.exit_code == 0, validate.stdout + validate.stderr

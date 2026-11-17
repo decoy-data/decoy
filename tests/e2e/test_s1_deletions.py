@@ -1,6 +1,6 @@
 """S1 slice A: the deleted CLI surfaces are actually gone.
 
-Three Typer subcommands (`storm scan`, `storm test`, `jobs watch`) and the
+Three Typer subcommands (the retired-name `scan`, the retired-name `test`, `jobs watch`) and the
 `forge` console-script shim module were removed in the CLI-redesign S1
 foundations sprint (docs/plans/2026-10-23-cli-redesign-s1-foundations.md).
 This locks the removals in: each subcommand must resolve to a Typer
@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.sentry.release.test_retired_name_residual import RETIRED_NAME
 
 runner = CliRunner()
 
@@ -23,8 +24,8 @@ runner = CliRunner()
 @pytest.mark.parametrize(
     "argv",
     [
-        ["storm", "scan"],
-        ["storm", "test"],
+        [RETIRED_NAME, "scan"],
+        [RETIRED_NAME, "test"],
         ["jobs", "watch"],
     ],
 )
