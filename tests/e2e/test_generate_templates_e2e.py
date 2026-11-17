@@ -93,3 +93,16 @@ def test_generate_templates_carry_no_real_looking_seeds():
         body = get_template(name).body
         assert "x-derived-from-disguise" not in body
         assert "snapshot_file" not in body
+
+
+@pytest.mark.parametrize("name", GENERATE_INDUSTRY_TEMPLATES)
+def test_industry_template_key_columns_are_all_references(name: str):
+    """A column named like another table's key must be a `reference`, never a free column."""
+    cfg = yaml.safe_load(get_template(name).body)
+    keys = {t["name"]: t["generate_columns"][0]["name"] for t in cfg["tables"]}
+    for table in cfg["tables"]:
+        for col in table["generate_columns"][1:]:
+            owners = [t for t, key in keys.items() if key == col["name"] and t != table["name"]]
+            if owners:
+                assert col["type"] == "reference", f"{name}.{table['name']}.{col['name']}"
+                assert col["reference_table"] == owners[0]
