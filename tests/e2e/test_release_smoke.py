@@ -40,6 +40,7 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.generate_industry_templates import GENERATE_INDUSTRY_TEMPLATES
 
 runner = CliRunner()
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -77,7 +78,7 @@ def test_templates_list_json_returns_v2_template_set():
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     names = {t["name"] for t in payload["templates"]}
-    expected = {"minimal", "hipaa", "pci", "gdpr", "generate"}
+    expected = {"minimal", "hipaa", "pci", "gdpr", "generate", *GENERATE_INDUSTRY_TEMPLATES}
     assert expected == names, f"template registry drift: expected={expected} got={names}"
 
 
