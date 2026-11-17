@@ -147,7 +147,7 @@ folder `shop/`. `S` stands for `--mask-secret env:JOURNEY_SECRET`.
 | CJ-02 | project | `decoy project new shop --json` | 0 | JSON names the project root and the made folders (`pipelines/`, `out/`, `.decoy/`) | main | `new_command`, `src/decoy/cli/project/_new.py:95` (`DIR`, `--json`) |
 | CJ-03 | source | `decoy init customers --source data/customers.csv --json -y` | 0 | `pipelines/customers/pipeline.yaml` written; the record names columns and starter strategies | main | `src/decoy/cli/init.py:420` (`NAME|FILE`), `:432` (`--source`), `:454` (`-y`), `:459` (`--json`) |
 | CJ-04 | pre-scan | `decoy scan data/customers.csv data/orders.csv --has-header --json` | 0 | One table per file: row and field counts, PII candidates as suggestions, reid risk; no cell value | main | `_scan` in `src/decoy/cli/scan.py` (`SOURCES...`, `--has-header/--no-header`, `--json` at `src/decoy/cli/scan.py:549`) |
-| CJ-05 | refusal | `decoy validate bad --json`, where `pipelines/bad/pipeline.yaml` has an unknown key and a wrong-typed value that carries a marker | 1 | One `decoy-error/v1` object naming the key and a code; the marker is not echoed; no run folder | main | hidden default command of `validate_app`, `src/decoy/cli/validate.py:396` (`--json` at `:260`) |
+| CJ-05 | refusal | `decoy validate bad --json`, where `pipelines/bad/pipeline.yaml` has an unknown key and a wrong-typed value that carries a marker | 1 | The aggregate validation envelope `{command, status, config, messages}` (`src/decoy/cli/validate.py:317`), with `status` failed and a message naming the key, its code and its location; the marker is not in the envelope; no run folder | main | hidden default command of `validate_app`, `src/decoy/cli/validate.py:396` (`--json` at `:260`) |
 | CJ-06 | source | `decoy validate shop` | 0 | Config, compile and preflight pass | main | same as CJ-05 |
 | CJ-07 | subset | `decoy run shop S --out-dir jout/shop --evidence-out jout/shop-evidence.json --json`, with a `subset:` block sampling `customers` | 0 | `--json` has a `subset` object with kept and total counts; every kept `orders` row has its parent | main | `decoy run` options in `docs/cli-reference.md` (`--out-dir`, `--evidence-out`, `--mask-secret`, `--json`); subset as in `tests/e2e/test_run_subset.py` |
 | CJ-08 | mask | `decoy run shop S --out-dir jout/shop --evidence-out jout/shop-evidence.json --json` (the CJ-07 run; this step checks its outputs and does not run again) | 0 | The CSV targets exist; masked columns differ from the input, passthrough columns match, row counts match the subset, input files unchanged | main | as CJ-07 |
@@ -170,7 +170,7 @@ covered by checklist group 13, not by the journey (owner Q5).
 
 ### 4.2 The journey test
 
-`tests/e2e/journey/test_cli_journey.py` holds the module fixture and one test per step; the package
+`tests/e2e/first_user/journey/test_cli_journey.py` holds the module fixture and one test per step; the package
 holds nothing else besides `__init__.py`. The fixture builds the project under `tmp_path_factory`
 once and runs the steps in id order, caching each result (exit codes, stdout, stderr, files
 written) in a frozen dataclass. Each test is decorated `@journey_step("CJ-NN")` and asserts only its
@@ -236,7 +236,7 @@ own exits), not from memory; "non-zero" (RUN-03 and others) becomes the exact co
 whose exit the builder cannot find in code is listed in the slice report as a finding for the
 planner, not set to `tbd`.
 
-DOC-05 changes from "Not built" to: "Run `tests/e2e/journey/` with `DECOY_JOURNEY_BIN` and
+DOC-05 changes from "Not built" to: "Run `tests/e2e/first_user/journey/` with `DECOY_JOURNEY_BIN` and
 `DECOY_JOURNEY_HOME` set to the installed `decoy`; every step passes or is an expected failure for
 its row. Steps in [cli-v1-journey.md](cli-v1-journey.md)." The run template's Results table gains an
 `Exit observed` column.
@@ -356,17 +356,17 @@ Slice JQ-1 (journey):
 | Id | Test | Fails before | Mutation |
 |---|---|---|---|
 | AT-J1 | `tests/sentry/release/test_journey_ids.py::test_journey_doc_shape`: ids `CJ-01` to `CJ-NN` contiguous and unique; each step has the five labels once; Stage, Exit and Lands with full-match their grammar; the seven baseline stages each have a step | The document does not exist | Delete the pre-scan step; add a stray token after an Exit value |
-| AT-J2 | `test_every_journey_id_is_cited`: each id is cited exactly once in `tests/e2e/journey/` | No citations exist | Remove `@journey_step("CJ-04")` |
+| AT-J2 | `test_every_journey_id_is_cited`: each id is cited exactly once in `tests/e2e/first_user/journey/` | No citations exist | Remove `@journey_step("CJ-04")` |
 | AT-J3 | `test_every_cited_id_exists`: every `journey_step` call under `tests/` names a document id | No scanner | Cite `CJ-99` in `test_release_smoke.py` |
 | AT-J4 | `test_exit_tokens_are_registered`: every Exit token is in `allowed_exit_codes()`, which reads the exported `EXIT_` names and `RUN_EXIT_MAP`; a self-test asserts the set is exactly what those two give and that the helper module holds no integer literal outside 0 and 1 used as indexes | No document | Set CJ-05's Exit to `7`; hard-code `{0, 1, 2, 3, 4, 5, 6, 130}` in the helper |
 | AT-J5 | `test_unbuilt_steps_are_strict_xfail`: `journey_step` on a `row N` step yields an `xfail` mark with `strict=True`, and on a `main` step yields none | No decorator | Drop `strict=True` in the decorator |
-| AT-J6 | `tests/e2e/journey/test_cli_journey.py`, one test per step, each asserting its exit codes, its Expected facts and a clean sweep | No module | The class 1 and class 5 mutations in section 7 |
+| AT-J6 | `tests/e2e/first_user/journey/test_cli_journey.py`, one test per step, each asserting its exit codes, its Expected facts and a clean sweep | No module | The class 1 and class 5 mutations in section 7 |
 | AT-J7 | The fixture asserts the repo tree and `$HOME` gained no file during the module | No fixture | Point the project root at the repo |
 | AT-J8 | The fixture records step order; CJ-08's test asserts CJ-07 ran first | No fixture | Swap the order |
 | AT-J9 | With `DECOY_JOURNEY_BIN` set to a missing path, or without `DECOY_JOURNEY_HOME`, the fixture errors with a message naming the variable | No fixture | Fall back to `python -m decoy` |
 | AT-J10 | `test_journey_module_reads_exits_from_doc`: the journey module's AST has no `returncode` compared with an int literal | No module | Write `assert r.returncode == 0` |
 | AT-J11 | `test_release_smoke_cites_journey`: `test_release_smoke.py` cites CJ-01 and CJ-08 | No citations | Remove one decorator |
-| AT-J12 | `tests/e2e/journey/test_cli_journey.py::test_bundle_mode_refuses_the_checkout`: a temp home whose `current/python/bin/python3` is a link to the checkout's interpreter and a launcher script that runs `python -m decoy` with it. With `PYTHONPATH` set to the checkout's `src` in the caller's environment and the cwd at the checkout, the bundle-mode setup refuses, naming the import-location check; the cleaned environment has no `PYTHONPATH`, `PYTHONHOME` or `VIRTUAL_ENV`, and every step cwd is under the temp root | No bundle mode | Each alone turns the test red: keep the caller's `PYTHONPATH` in the built env (the env assertion fails); skip the import-location probe (the setup accepts the checkout); run steps with the checkout as cwd (the cwd assertion fails) |
+| AT-J12 | `tests/e2e/first_user/journey/test_cli_journey.py::test_bundle_mode_refuses_the_checkout`: a temp home whose `current/python/bin/python3` is a link to the checkout's interpreter and a launcher script that runs `python -m decoy` with it. With `PYTHONPATH` set to the checkout's `src` in the caller's environment and the cwd at the checkout, the bundle-mode setup refuses, naming the import-location check; the cleaned environment has no `PYTHONPATH`, `PYTHONHOME` or `VIRTUAL_ENV`, and every step cwd is under the temp root | No bundle mode | Each alone turns the test red: keep the caller's `PYTHONPATH` in the built env (the env assertion fails); skip the import-location probe (the setup accepts the checkout); run steps with the checkout as cwd (the cwd assertion fails) |
 | AT-J13 | `test_one_exit_per_command`: for each step, the number of `decoy ` spans that `parse_commands` finds equals the number of Exit codes; the parser full-matches each span and ignores other spans | No parser | CJ-10 with two commands and Exit `0`; a span `` `decoyx run` `` counted as a command |
 
 Slice JQ-2 (checklist):
@@ -404,10 +404,10 @@ list, not a cap.
 |---|---|---|---|
 | `cli-v1-journey.md` | `docs/qa/` | "QA checklists and run templates" (CODEMAP line 80); the row text gains the journey and its test package | `docs/qa/cli-v1-checklist.md` |
 | `cli_journey.py` (parser, decorator, command parser, allowed exit set) | `tests/` | "Shared cross-suite test helpers", one module per concern (CODEMAP line 71); used by `tests/e2e/` and `tests/sentry/release/` | `tests/keyed_secret.py`, `tests/command_tree.py` |
-| `__init__.py`, `test_cli_journey.py` (the module fixture and the step tests only) | `tests/e2e/journey/` | e2e groups go in a package, not the flat `tests/e2e/` (as "First-user QA item tests", CODEMAP line 68) | `tests/e2e/first_user/` |
+| `__init__.py`, `test_cli_journey.py` (the module fixture and the step tests only) | `tests/e2e/first_user/journey/` | CODEMAP line 68 places first-user QA tests under `tests/e2e/first_user/`; it already has 23 direct files, so the journey gets a named sub-package | `tests/e2e/first_user/` |
 | `test_journey_ids.py`, `test_qa_checklist_shape.py` | `tests/sentry/release/` | "Sentry test" row: release-gate sentries in `tests/sentry/release/` (CODEMAP line 69) | `test_frozen_surface_map.py` |
 
-Fan-out: `tests/sentry/release/` goes from 2 to 4 modules; `tests/e2e/journey/` is new with 2;
+Fan-out: `tests/sentry/release/` goes from 2 to 4 modules; `tests/e2e/first_user/journey/` is new with 2;
 `tests/` gains one top-level module. All stay under the 25-module cap (the `tests/` top level
 counts its existing helper modules and packages, well under it). Every new file stays under 400 lines (cap 800). The CODEMAP row for
 `docs/qa/` is edited to name the journey document and its test package;
@@ -435,7 +435,7 @@ why, final line `cam`. No logging of values, paths or secrets.
 
 | Slice | Content | Production files | Lines | Risk | Depends on |
 |---|---|---|---|---|---|
-| JQ-1 | `docs/qa/cli-v1-journey.md`; `tests/cli_journey.py` (parser, decorator, command parser, allowed exit set); `tests/e2e/journey/` (fixture and step tests); `tests/sentry/release/test_journey_ids.py`; decorators on two cells of `tests/e2e/test_release_smoke.py`; `SENTRIES` entry; CODEMAP `docs/qa/` row | 0 | about 750 | R1 (Codex only) | none; CJ-12 waits on row 61 as a strict xfail |
+| JQ-1 | `docs/qa/cli-v1-journey.md`; `tests/cli_journey.py` (parser, decorator, command parser, allowed exit set); `tests/e2e/first_user/journey/` (fixture and step tests); `tests/sentry/release/test_journey_ids.py`; decorators on two cells of `tests/e2e/test_release_smoke.py`; `SENTRIES` entry; CODEMAP `docs/qa/` row | 0 | about 750 | R1 (Codex only) | none; CJ-12 waits on row 61 as a strict xfail |
 | JQ-2 | Exit column on all 204 checks, DOC-05 text, run template column; `tests/sentry/release/test_qa_checklist_shape.py`; `SENTRIES` entry; roadmap rows 75 and 92a and `docs/RECENTLY-SHIPPED.md` | 0 | about 550 (about 210 changed table rows) | R1 (Codex only) | JQ-1 (AT-Q6 needs the journey document) |
 
 If the owner answers Q1 with option (b), a third slice JQ-3 edits `packaging_tools/` on the release
