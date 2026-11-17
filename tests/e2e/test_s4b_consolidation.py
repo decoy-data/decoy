@@ -1,7 +1,7 @@
 """E2E guard for the S4b `report` consolidation.
 
 Every post-run verb now lives under `decoy report`; the old homes are gone:
-  - the `evidence`, `vault`, and `storm` top-level groups,
+  - the `evidence` and `vault` top-level groups and the old scan group,
   - `validate distribution` (validate is purely pre-run now),
   - `report compare` and `report summarize` (folded into `report diff`/`show`).
 """
@@ -12,11 +12,12 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.sentry.release.test_retired_name_residual import RETIRED_NAME
 
 runner = CliRunner()
 
 
-@pytest.mark.parametrize("sub", ["evidence", "vault", "storm"])
+@pytest.mark.parametrize("sub", ["evidence", "vault", RETIRED_NAME])
 def test_removed_top_level_group_is_no_such_command(sub: str) -> None:
     result = runner.invoke(app, [sub], catch_exceptions=False)
     assert result.exit_code != 0

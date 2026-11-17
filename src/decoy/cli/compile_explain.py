@@ -77,7 +77,7 @@ See also: decoy validate, decoy validate config, decoy scan.
 
 # Rationale templates: strategies come from explicit user declarations in the
 # config. The engine does NOT auto-assign strategies (the old FORECAST recommender
-# was retired under storm-reframe-C, 2026-05-30). The compile checks then VERIFY
+# was retired in the V1 scan rework, 2026-05-30). The compile checks then VERIFY
 # the declared config (provider exists, namespaces consistent, etc.) but do not
 # change any decisions.
 _RATIONALE_DECLARED = "declared in pipeline config"

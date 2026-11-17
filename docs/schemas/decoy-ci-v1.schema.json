@@ -46,7 +46,7 @@
     },
     "DriftCheck": {
       "additionalProperties": false,
-      "description": "Compare two saved STORM scan JSON files with the `scan diff` categorizer.",
+      "description": "Compare two saved scan JSON files with the `scan diff` categorizer.",
       "properties": {
         "baseline": {
           "maxLength": 1024,
