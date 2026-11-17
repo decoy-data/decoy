@@ -44,6 +44,7 @@ FORWARD_SWITCHES = (  # sent when on
     ("-v", "verbose"),
     ("--chunked", "chunked"),
     ("--no-subset", "no_subset"),
+    ("--no-library", "no_library"),
     ("--native", "native"),
     ("--no-native", "no_native"),
     ("--explain-plan", "explain_plan"),

@@ -241,6 +241,15 @@ def run(
             "See: decoy report show."
         ),
     ),
+    no_library: bool = typer.Option(
+        False,
+        "--no-library",
+        help=(
+            "Store no record of this run in the project's record library (.decoy/library). "
+            "By default a successful run stores its evidence record there; "
+            "DECOY_LIBRARY=off does the same for every command."
+        ),
+    ),
     out_dir: Path = out_dir_option(),
     notify: list[str] = typer.Option(
         [],
@@ -415,6 +424,7 @@ def run(
             vault=vault,
             key_label=key_label,
             evidence_out=evidence_out,
+            no_library=no_library,
             out_dir=out_dir,
             notify=notify,
             notify_on=notify_on,
