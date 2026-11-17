@@ -19,7 +19,7 @@ The integer 2 is also what Click exits on a usage error; `decoy run` maps its pa
 failures to that same integer, not the same meaning (see the `RUN_EXIT_MAP` comment).
 
 OSS.4b (2026-06-02) added EXIT_FINDINGS=4 to support `decoy report integrity`
-(which began under the now-retired `storm` group, relocated in S4b), which has
+(which began under an old scan group, relocated in S4b), which has
 a meaningful 4th state distinct from the existing three: the
 operation ran cleanly, but the data being checked has issues the integrity
 runner flagged. Adding a new constant is a MINOR-eligible additive change per
