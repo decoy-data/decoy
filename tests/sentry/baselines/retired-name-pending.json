@@ -26,10 +26,6 @@
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 1
   },
-  "docs/cli-reference.md": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 2
-  },
   "docs/qa/cli-v1-checklist.md": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 2
