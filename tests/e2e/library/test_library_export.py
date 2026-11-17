@@ -278,3 +278,78 @@ def test_export_refuses_an_unknown_ref(root: Path, tmp_path: Path) -> None:
     out = tmp_path / "x.jsonl"
     result = _export(root, out, "--ref", "scan-set/missing")
     assert result.exit_code == EXIT_USAGE and not out.exists()
+
+
+# -- review round 3 on #219: filters choose starting records; the export is always closed -------
+
+
+def _links_outside(lines: list[Any]) -> int:
+    exported = {x.record.id for x in lines}
+    return sum(1 for x in lines for link in x.record.raw["links"] if link["id"] not in exported)
+
+
+@pytest.mark.parametrize("flags", [("--kind", "run-result"), ("--since", "2026-11-15")])
+def test_a_filter_pulls_in_every_record_a_kept_record_links_to(
+    root: Path, tmp_path: Path, flags: tuple[str, ...]
+) -> None:
+    """A filter picks the run-result; the sample it links to (other kind, older) comes along."""
+    base = _put(root, sample(1, 2))[0]
+    middle = _put(
+        root, run_result(10, "succeeded", [table(0, "orders", 3)], links=[("baseline", base)])
+    )[0]
+    top = _put(
+        root, run_result(20, "succeeded", [table(0, "orders", 4)], links=[("baseline", middle)])
+    )[0]
+    _put(root, sample(2, 3))  # neither chosen nor linked: stays out
+    out = tmp_path / "f.jsonl"
+    result = _export(root, out, *flags)
+    assert result.exit_code == EXIT_OK, result.output
+    header, lines = _read(out)
+    assert {_original(x) for x in lines} == {base, middle, top}  # `other` stays out
+    assert header.external_links == _links_outside(lines) == 0
+
+
+def test_a_record_that_links_to_a_withheld_record_is_withheld_too(
+    root: Path, tmp_path: Path
+) -> None:
+    """The codec withholds the opaque record; what links to it, directly or not, is withheld and
+    counted, and a ref to a withheld record is left out of the header."""
+    future = _opaque(root)
+    direct = _put(
+        root, run_result(17, "succeeded", [table(0, "orders", 3)], links=[("baseline", future)])
+    )[0]
+    indirect = _put(
+        root, run_result(18, "succeeded", [table(0, "orders", 4)], links=[("baseline", direct)])
+    )[0]
+    free = _put(root, sample(3, 12))[0]
+    ref = runner.invoke(app, ["library", "ref", "run-result/main", direct, "--library", str(root)])
+    assert ref.exit_code == EXIT_OK, ref.output
+    out = tmp_path / "w.jsonl"
+    result = _export(root, out)
+    assert result.exit_code == EXIT_OK, result.output
+    header, lines = _read(out)
+    assert {_original(x) for x in lines} == {free}
+    assert set(header.withheld_records) == {future, direct, indirect}
+    assert header.external_links == _links_outside(lines) == 0
+    assert "run-result/main" not in header.refs
+    assert "2 record(s) that link to a withheld record" in result.stderr
+    kept = tmp_path / "k.jsonl"
+    assert _export(root, kept, "--keep-paths").exit_code == EXIT_OK
+    header, lines = _read(kept)
+    assert {_original(x) for x in lines} == {future, direct, indirect, free}
+    assert header.withheld_records == () and header.external_links == 0
+
+
+def test_export_refuses_before_writing_a_set_that_would_not_be_closed(
+    root: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last check: with the closure step broken, export refuses and writes nothing."""
+    from decoy.cli.library import _exporting
+
+    base = _put(root, sample(1, 2))[0]
+    _put(root, run_result(20, "succeeded", [table(0, "orders", 3)], links=[("baseline", base)]))
+    monkeypatch.setattr(_exporting, "closure", lambda start, rows: set(start))
+    out = tmp_path / "n.jsonl"
+    result = _export(root, out, "--kind", "run-result")
+    assert result.exit_code != EXIT_OK and "export_not_closed" in result.output
+    assert not out.exists()
