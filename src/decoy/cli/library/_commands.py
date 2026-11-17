@@ -32,7 +32,8 @@ def path_command(library: Path | None = library_option()) -> None:
     state = cmd.state
     root = cmd.root(library)
     opened = cmd.library(root.path)
-    state.console.print("root:", str(root.path))
+    # A path is printed whole (no wrap at the terminal width) and never read as Rich markup.
+    state.console.print("root:", str(root.path), soft_wrap=True, markup=False, highlight=False)
     state.console.print("from:", SOURCE[root.source])
     state.console.print("records:", "on" if root.records else "off (DECOY_LIBRARY=off)")
     if opened.degraded is None:
