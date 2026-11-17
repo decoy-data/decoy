@@ -7,7 +7,7 @@ iterate on. The body of every preset comes from `decoy.templates`, so
 same YAML up to input/output path edits.
 
 OSS.4c (2026-06-02) added a column-aware path: `decoy init <file>` runs
-STORM against the input, picks a starter strategy per column from the
+the scan against the input, picks a starter strategy per column from the
 inference table in `_init_inference.py`, and emits the YAML with
 `# REVIEW:` comments above every auto-inferred entry. Source patterns:
 dbt init (template scaffold + ask user to review) and cookiecutter
@@ -53,7 +53,7 @@ _INIT_EPILOG = """\
 Examples:
 
   decoy init members-mask --source data/members.csv
-    STORM reads the file, picks a starter strategy per column, and writes
+    The scan reads the file, picks a starter strategy per column, and writes
     pipelines/members-mask/pipeline.yaml with `# REVIEW:` comments above every inferred entry.
     Read and edit before running. `decoy init members.csv` names it `members`.
 
@@ -167,7 +167,7 @@ def _rule_count(body: str) -> int:
 
 # --- Column-aware scaffolding (OSS.4c) -------------------------------------
 #
-# `decoy init <file>` scans the input with STORM and writes a starter
+# `decoy init <file>` scans the input and writes a starter
 # pipeline.yaml with one column entry per detected field. The YAML is
 # hand-emitted (no full YAML round-tripper) so REVIEW comments land in
 # the exact positions we need them; the body is smoke-validated through
@@ -208,7 +208,7 @@ def _scaffold_source(input_file: Path) -> dict[str, Any]:
 
 
 def _load_dataframe(input_file: Path):
-    """Read the user's input file into a pandas DataFrame for STORM.
+    """Read the user's input file into a pandas DataFrame for the scan.
 
     Supports the two formats the v1 launch covers: CSV (and TSV) and Parquet. The suffix
     is the dispatch hint, through `_scaffold_source`; csv reads through the CLI's one CSV
@@ -338,7 +338,7 @@ def _scaffold_from_file(
     destination: Placement,
     state,
 ) -> tuple[str, int]:
-    """Run STORM against `input_file` and produce the scaffold YAML body.
+    """Run the scan against `input_file` and produce the scaffold YAML body.
 
     Returns a (yaml_body, column_count) tuple so JSON-mode callers can
     report column_count without re-parsing the body. Callers handle
@@ -375,7 +375,7 @@ def _scaffold_from_file(
 
         profile = profile_columns(df, source_label=str(input_file))
     except Exception as exc:
-        emit_error(state, "init", f"STORM scan failed: {type(exc).__name__}.")
+        emit_error(state, "init", f"Scan failed: {type(exc).__name__}.")
         raise typer.Exit(code=EXIT_RUNTIME) from exc
 
     column_names = [fs.name for fs in profile.fields]
@@ -422,7 +422,7 @@ def _init(
         metavar="[NAME|FILE]",
         help=(
             "A short name, or a .csv, .tsv or .parquet data file to take the name from. "
-            "With a data file and no --preset, STORM scans it and scaffolds a column-aware "
+            "With a data file and no --preset, the scan reads it and scaffolds a column-aware "
             "pipeline with `# REVIEW:` comments above every auto-inferred column."
         ),
         show_default=False,
@@ -498,7 +498,7 @@ def _init(
         return
 
     # Column-aware scaffolding (OSS.4c): an input file without --preset
-    # routes through STORM-driven inference instead of the template path.
+    # routes through scan-driven inference instead of the template path.
     # If both are given, --preset wins (explicit user override).
     if input_file is not None and preset is None:
         out_is_stdout = destination.is_stdout
