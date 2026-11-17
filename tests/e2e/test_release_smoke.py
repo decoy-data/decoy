@@ -40,6 +40,7 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.cli_journey import journey_step
 from tests.generate_industry_templates import GENERATE_INDUSTRY_TEMPLATES
 
 runner = CliRunner()
@@ -51,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # --------------------------------------------------------------------------
 
 
+@journey_step("CJ-01")
 def test_decoy_module_invocation_succeeds():
     """`python -m decoy --version` is the smoke that catches a botched
     package install or a broken `__main__`."""
@@ -110,6 +112,7 @@ def test_demo_json_produces_expected_artifacts(tmp_path: Path):
 # --------------------------------------------------------------------------
 
 
+@journey_step("CJ-08")
 def test_release_smoke_runs_bundled_minimal_template(tmp_path: Path):
     """CLI.3 spec DoD 8 canonical smoke. Pulls the bundled minimal
     template, rewrites its source/target paths to point into tmp_path,
