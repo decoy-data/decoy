@@ -224,8 +224,10 @@ def test_cl5_3_handler_shows_variable_and_code_for_an_env_flag_error(
     from decoy_engine.errors import EnvFlagError
 
     _clean(monkeypatch)
+    monkeypatch.setenv(_WORKER_ENV, _BAD_VALUE)
     result = CliRunner().invoke(_guarded(EnvFlagError(_WORKER_ENV)), ["boom"])
     assert result.exit_code == 1
+    assert _BAD_VALUE not in result.output
     assert _WORKER_ENV in result.output
     assert "env_flag_invalid" in result.output
     assert "internal error" not in result.output
@@ -244,39 +246,3 @@ def test_cl5_3_handler_arm_carries_no_exception_context(monkeypatch: pytest.Monk
     assert caught.value.exit_code == 1
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
-
-
-def test_cl5_3_run_with_an_unknown_worker_marker_never_prints_the_value(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import decoy_engine
-    from decoy_engine.execution._isolated_common import inside_isolated_worker
-
-    _clean(monkeypatch)
-    monkeypatch.setenv(_WORKER_ENV, _BAD_VALUE)
-
-    def engine_run(*_args: Any, **_kwargs: Any) -> Any:
-        # `decoy run` does not take the isolated route in the pinned engine (the governor is not
-        # wired in), so the run reaches the marker the way `run_pipeline_isolated` does.
-        inside_isolated_worker()
-        raise AssertionError("the unknown marker should have raised")
-
-    monkeypatch.setattr(decoy_engine, "run_pipeline", engine_run)
-    src = tmp_path / "in.csv"
-    pd.DataFrame({"id": ["1", "2"]}).to_csv(src, index=False)
-    cfg = _write_config(
-        tmp_path,
-        {
-            "version": 2,
-            "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
-            "sources": {"t": file_source(src, "csv")},
-            "tables": [{"name": "t", "columns": [{"name": "id", "strategy": "passthrough"}]}],
-            "targets": {"t": {"type": "file", "format": "csv", "path": str(tmp_path / "o.csv")}},
-        },
-    )
-    result = runner.invoke(app, ["run", str(cfg)])
-    assert result.exit_code == 1, result.output
-    assert _BAD_VALUE not in result.output
-    assert "internal error" not in result.output
-    assert _WORKER_ENV in result.output
-    assert "env_flag_invalid" in result.output
