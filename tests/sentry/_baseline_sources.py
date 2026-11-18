@@ -105,8 +105,8 @@ READERS: dict[str, FromFile | FromScan] = {
     "import-layers": FromFile(".importlinter", import_layer_reasons),
 }
 
-# Committed data files a sentry reads besides its baseline.
-DATA_FILES = frozenset({"file_sinks.toml"})
+# Committed data files a sentry reads besides its baseline. The snapshot goes with C-G2.
+DATA_FILES = frozenset({"file_sinks.toml", "allowlist-before.json"})
 
 # Allowlist-shaped constants a sentry holds that are a closed contract, not a bypass list.
 NOT_A_LIST_CONSTS: dict[tuple[str, str], str] = {
