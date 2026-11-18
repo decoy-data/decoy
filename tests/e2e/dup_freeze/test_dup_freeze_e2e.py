@@ -246,3 +246,29 @@ def test_cl5_3_handler_arm_carries_no_exception_context(monkeypatch: pytest.Monk
     assert caught.value.exit_code == 1
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
+
+
+def test_cl5_3_a_failing_engine_import_keeps_the_original_crash_line(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The EnvFlagError check must not replace the failure it classifies: with the engine errors
+    # module unimportable, a plain crash still gets the one-line internal-error exit.
+    import sys
+
+    _clean(monkeypatch)
+    monkeypatch.setitem(sys.modules, "decoy_engine.errors", None)
+    result = CliRunner().invoke(_guarded(RuntimeError(_BAD_VALUE)), ["boom"])
+    assert result.exit_code == 1
+    assert result.output.startswith("error: internal error (RuntimeError)")
+    assert "hint: rerun with --verbose for the full traceback." in result.output
+    assert "Traceback" not in result.output
+    assert _BAD_VALUE not in result.output
+    assert "ImportError" not in result.output
+
+    group = typer.main.get_command(_guarded(RuntimeError(_BAD_VALUE)))
+    with pytest.raises(typer.Exit) as caught:
+        with group.make_context("decoy", ["boom"]) as ctx:
+            group.invoke(ctx)
+    assert caught.value.exit_code == 1
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
