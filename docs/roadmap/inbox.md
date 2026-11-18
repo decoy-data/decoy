@@ -38,13 +38,8 @@ Carried from the old open-questions list:
 
 Triaged 2026-11-18. The freeze-list items with no row became the 1.0 rows FREEZE-SURFACE (health),
 FREEZE-OUTPUT (run) and FAKER-MIGRATE (mask). The default-on choices (F11, F38, F08, profiling
-aggregates, the sibling FK key) stay opt-in and are listed in [2.0-holding.md](2.0-holding.md). One
-choice is still open:
-
-- An experimental tier. The compatibility contract has none, so every command, flag and API name
-  that ships in 1.0 is frozen on day one. Candidates to label experimental (may change in a 1.x minor):
-  the Python API (`decoy.mask`, `decoy.scan`), custom providers and the connector SDK, and the
-  `decoy library` commands. Owner decision pending.
+aggregates, the sibling FK key) stay opt-in and are listed in [2.0-holding.md](2.0-holding.md). The
+experimental tier is the 1.0 row EXPERIMENTAL-TIER (release). Nothing is left to triage here.
 
 ## Open owner questions
 

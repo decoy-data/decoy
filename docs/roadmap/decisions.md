@@ -9,7 +9,10 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
   1.0 is done in v1: rows FREEZE-SURFACE, FREEZE-OUTPUT and FAKER-MIGRATE. Faker moves to 40.31 before
   the freeze, not after R1. The unreferenced platform reason codes (audit B9) stay in the registry as
   the platform wire contract, with the platform consumer recorded beside each (row 24zj). Default-on
-  choices (F11, F38, F08) stay opt-in. The experimental tier is still open.
+  choices (F11, F38, F08) stay opt-in.
+- **2026-11-18 (experimental tier).** 1.0 labels two surfaces experimental, so they may change in a 1.x
+  minor: the Python API (`decoy.mask`, `decoy.scan`) and custom providers with the connector SDK. The
+  `decoy library` commands are decided at the release gate. Row EXPERIMENTAL-TIER.
 - **2026-11-18 (1.0 scope cut and roadmap split).** 1.0 is the rows in the 1.0 tables of the group
   files (`roadmap/groups/`), not the whole track; this replaces the 2026-11-05 "CLI 1.0 scope" entry
   below. A row blocks 1.0 only on freeze, safety or broken-today; additive rows are Later (1.x) and

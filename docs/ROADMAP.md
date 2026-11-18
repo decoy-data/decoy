@@ -83,7 +83,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-50 rows block 1.0, 29 are Later and 13 are Maintenance (2026-11-18). Each cell lists the row
+51 rows block 1.0, 29 are Later and 13 are Maintenance (2026-11-18). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its v1+
 candidates that have no plan yet (88 in all), and the health file lists 32 maintenance candidates.
 
@@ -97,7 +97,7 @@ candidates that have no plan yet (88 in all), and the health file lists 32 maint
 | [Local record library](roadmap/groups/library.md) | 34 L1b-cli, 36 L2-cli, 37 L3a-cli, 39 L4a-cli, 40 L4b-cli | 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02 | none |
 | [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10 | none |
-| [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL | 6 WIN-RUNNER, 89 WIN-FEAS, 90a REL-IMAGE | 24zr SETUP-NER-JSON |
+| [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER | 6 WIN-RUNNER, 89 WIN-FEAS, 90a REL-IMAGE | 24zr SETUP-NER-JSON |
 | [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, 24zx MAC-WHEEL-RUNNERS, FREEZE-SURFACE | none | 24ze DUP-GUARDS, 24zl PROP-GUARDS, 24zq NESTED-INIT-REG, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
 
 Build order inside 1.0 follows each row's After column and the sequencing rules in
