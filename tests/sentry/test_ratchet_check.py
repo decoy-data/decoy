@@ -442,9 +442,31 @@ def test_each_ceiling_field_is_checked_on_its_own(
     assert "a: max raised or dropped for key(s): m::f" in res.stderr
 
 
-def test_a_lowered_ceiling_with_an_extra_field_stays_green(repo: Path) -> None:
-    _write(repo, A, _entry_baseline("a", {"count": 3}))
+@pytest.mark.parametrize(
+    ("base", "head"),
+    [
+        ({"count": 3}, {"count": 2, "max": 99}),
+        ({"sites": 4}, {"sites": 1, "count": 50}),
+        ({"max": 5}, {"max": 4, "sites": 9}),
+    ],
+    ids=["count-lowered-max-added", "sites-lowered-count-added", "max-lowered-sites-added"],
+)
+def test_a_new_ceiling_field_beside_an_old_one_is_refused(
+    repo: Path, base: dict[str, object], head: dict[str, object]
+) -> None:
+    """Lowering the old field while adding another would move the cap to the new field."""
+    _write(repo, A, _entry_baseline("a", base))
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "ceiling")
-    _write(repo, A, _entry_baseline("a", {"count": 2, "max": 9}))
+    _write(repo, A, _entry_baseline("a", head))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def test_an_entry_with_no_ceiling_may_gain_one(repo: Path) -> None:
+    _write(repo, A, _entry_baseline("a", {}))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", {"count": 2}))
     assert _run(repo).returncode == 0
