@@ -24,6 +24,8 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
 - **R1 gate:** canonical CLI release smoke with recorded runs (G3: `smoke-log.md` had no green runs);
   a filled `release-readiness.md` instance; claims and license checkpoint; docs honesty; local gates
   and the worker-bootstrap gates (R1-d).
+- **Experimental tier:** decide whether the `decoy library` commands ship labelled experimental or frozen
+  (row EXPERIMENTAL-TIER; the Python API and custom providers are already labelled, owner 2026-11-18).
 - Review item (not adopted): a threat model for the CLI installer and upgrade boundary and the local
   token vault.
 
