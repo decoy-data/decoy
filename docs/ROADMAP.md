@@ -630,6 +630,7 @@ state.
 | [roadmap/feature-checklist.md](roadmap/feature-checklist.md) | the 29 Council-V1 features and where each lands |
 | [roadmap/decisions.md](roadmap/decisions.md) | dated owner decisions |
 | [roadmap/branch-register.md](roadmap/branch-register.md) | engine and CLI branches with no row, and their disposition |
+| [roadmap/1.0-triage.md](roadmap/1.0-triage.md) | proposal: which open track rows block 1.0 and which move to 1.x; not in force until the owner marks it |
 | [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md) | After 1.0: every V2, V2-LOG and post-V1 item as before 1.0 freeze, 1.x minor, 1.x patch or 2.0 |
 | [roadmap/v2-v3-expansion-candidates.md](roadmap/v2-v3-expansion-candidates.md) | Core expansion candidates (formats, masks, generators, documents, media), placed V1+, V2 or V3; proposal, not scheduled. Release buckets are in post-1.0-plan.md |
 | [roadmap/sources.md](roadmap/sources.md) | source documents |
