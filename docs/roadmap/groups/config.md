@@ -22,6 +22,16 @@ Additive. Not scheduled until a 1.x release picks it up.
 
 None.
 
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| F18 config composition (includes, inheritance) | Council features | New optional keys; complete inline configs unchanged. |
+| F19 semantic diff and repair | Council features | New command; no change to how a reviewed pipeline runs. |
+| F41 expression evaluator preview | Council features | New command. |
+
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.

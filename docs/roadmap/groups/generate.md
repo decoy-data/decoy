@@ -29,6 +29,23 @@ Additive. Not scheduled until a 1.x release picks it up.
 | 24r | GEN-INHERIT (owner 2026-11-08): a child column takes a parent row's attribute (`claims.state` = the member's state); conditional categoricals declared in YAML, not only from a fitted snapshot | engine | NOT STARTED. Plan passed 2026-11-10 (`E:plan/gen-inherit`); build not started | [GEN completeness audit](../../records/2026-11-08-generation-completeness-audit.md) B | row 24n |
 | 24s | GEN-CATALOG (owner 2026-11-08): a CLI command that lists every generate type and option, and every provider, from the engine's registries (no hand-kept list); one generate starter template per industry (healthcare, banking, insurance, retail, telecom, HR) | CLI, engine | PARTLY MERGED. Plan `C:plan/gen-catalog` (2026-11-17). GC1 MERGED (CLI #299, `55cd4a05`, 2026-11-17): `decoy list generate-types` and `decoy list faker-types`, read from the engine's live catalogs. GC2 MERGED (CLI #302, `419572a2`, 2026-11-17): six industry generate starter templates (healthcare, banking, insurance, retail, telecom, HR). GC3-E is open (engine #643, `code_set_catalog()`). Left: GC3-E, then GC3 (CLI code-set listing), which waits on an engine release with GC3-E pinned on CLI main | [GEN completeness audit](../../records/2026-11-08-generation-completeness-audit.md) C | rows 24o, 24p, 24q |
 
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| F46 reusable QA scenarios | Council features | New scenario compiler and case library. |
+| F48 statistical synthesis | Council features | New opt-in backend and evaluation; existing generation unchanged. |
+| X-14 Joint-distribution synthesis (Gaussian copula) | Expansion candidates X-01 to X-25 | New generation method; existing configs unchanged. |
+| X-15 Multi-table synthesis | Expansion candidates X-01 to X-25 | New generation method. |
+| X-16 Generate from a schema | Expansion candidates X-01 to X-25 | New source of generation specs. |
+| X-17 Edge-case test data | Expansion candidates X-01 to X-25 | New generators. |
+| X-18 Sequential and event data synthesis | Expansion candidates X-01 to X-25 | New generation method. |
+| A certified DP stack for normal users (a DP fit on a default install works) | ROADMAP row 24g | Turns the `dp_stack_uncertified` message into a success. Exit code 3 stays for the cases still refused. |
+| GEN-PROVIDERS per-provider options and `unique` | ROADMAP row 24p | New optional keys on `type: provider`. |
+| F2 follow-up: dirty generated output (nullable, NaN, nested) on the mixed route | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Lifts a decline. |
+
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.

@@ -83,3 +83,17 @@ docs (run at a quiet point, never mid-stack); the V1 role set (user PATCH accept
 the `sso` license gate is defined but not enforced; the dev license key defaults to the business tier;
 flaky tests on platform main (1.x patch backlog); UX map Q19, Q21, Q25; X0a-h H3 and H5. Platform main
 known failures live in the stored baseline `baselines/decoy-platform-main.json` in the vault.
+
+## Later candidates (platform only)
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| F27 governed schedules | Council features | Platform trigger path for a pinned pipeline. Companion scope says V1: check. |
+| 16 `decoy-admin` log query | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New admin command. |
+| 17 Archive old logs and audit rows to Parquet | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New admin feature. |
+| 21 DuckDB-Wasm in-browser preview | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New web feature. |
+| Login rate limit, lockout and password policy (F45) | findings-register, after V1 | New platform feature. |
+| Multi-process API support | findings-register, after V1 | New platform capability. |
+| 4 MCP server in the platform (`/mcp`) | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | New endpoint. |

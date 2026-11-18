@@ -32,6 +32,20 @@ Additive. Not scheduled until a 1.x release picks it up.
 | 32 | DRIFT: opt-in pre-scan drift check at run start against a SCAN-LIB baseline (`on_drift: warn` or `fail`) | engine, CLI | NOT STARTED | none | SCAN-LIB |
 | 80 | F15: bound-baseline object, strict-drift publication block; scan-diff moves into an engine `scan-diff/v1` | engine, CLI | NOT STARTED | none | NAME-REMOVAL; SCAN-LIB |
 
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| DETECT-PROFILES: Detection settings profiles: named sets of detection settings (detectors, overrides, thresholds, ML on or off) that a pipeline picks by name. | owner, 2026-11-05 | New optional config key; pipelines without it are unchanged. |
+| Value-based FK discovery (SCAN-MULTI plan section 7; DuckDB #14 is the same idea) | Post-V1 on demand (old list) | New scan option; declared relationships keep priority. |
+| X-09 Secrets detection | Expansion candidates X-01 to X-25 | New detector. |
+| 14 Relationship (PK and FK) discovery (same idea as value-based FK discovery) | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | See above. |
+| 18 Trend and drift analytics across scans and reports | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New report. |
+| DUP-DEFECTS A6: `fromisoformat` with `Z` on Python 3.10 | ROADMAP row 24zd, `E:plan/dup-defects` section 13 | A hand-made profile that is refused with exit 1 today is accepted. |
+| Record the detector set version a scan ran with | compatibility contract read, 2026-11-18 | New field. It lets a better default detector arrive later as a named set a config selects. |
+
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.

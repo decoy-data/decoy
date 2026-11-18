@@ -4,6 +4,12 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-18 (release buckets and freeze work).** Anything that does not break the contract is v1+;
+  anything that breaks it is v2 (`roadmap/2.0-holding.md`). Work that would be a breaking change after
+  1.0 is done in v1: rows FREEZE-SURFACE, FREEZE-OUTPUT and FAKER-MIGRATE. Faker moves to 40.31 before
+  the freeze, not after R1. The unreferenced platform reason codes (audit B9) stay in the registry as
+  the platform wire contract, with the platform consumer recorded beside each (row 24zj). Default-on
+  choices (F11, F38, F08) stay opt-in. The experimental tier is still open.
 - **2026-11-18 (1.0 scope cut and roadmap split).** 1.0 is the rows in the 1.0 tables of the group
   files (`roadmap/groups/`), not the whole track; this replaces the 2026-11-05 "CLI 1.0 scope" entry
   below. A row blocks 1.0 only on freeze, safety or broken-today; additive rows are Later (1.x) and

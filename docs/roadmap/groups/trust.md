@@ -24,6 +24,19 @@ Additive. Not scheduled until a 1.x release picks it up.
 | 72 | F33 CLI verifier and engine signature envelope | engine, CLI | plan in review: rev 9 (V1 scope E1a, E1b, C1a, C1b; owner 2026-11-11) | `P:plan/f33-v1-scope` `bba8b625`; engine PR #335 (OPEN) | plan review |
 | 78 | F10: lock envelope (`lock/v1` with `key_version`), synthetic probe, CLI environment report, fleet comparison | engine, CLI | PARTLY MERGED. Plan `E:plan/f10-lock-envelope` (revision 3). 78-E1 MERGED (engine #618, `1b721aa41`, 2026-11-17): the `lock/v1` runtime lock envelope with `key_version`. 78-E2 MERGED (engine #633, `a50dc56ce`, 2026-11-17): the synthetic probe and an optional `probe` field in `lock/v1`. Left: the engine release and CLI repin, then 78-C1 (CLI environment report and fleet comparison) | `E:plan/f10-lock-envelope` | Phase 1 rows |
 
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| F12 customer regression suites | Council features | New command and artifact. |
+| F37 post-mask privacy risk | Council features | New report under a new tag; k-anonymity and QI in `decoy scan` stay as they are. |
+| F39 OpenLineage export | Council features | New export. |
+| X-12 Formal anonymity enforcement | Expansion candidates X-01 to X-25 | New opt-in gate. |
+| 8 Source-versus-output compare and leak check | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New command or report. |
+| 20 Support bundle as Parquet | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New format. Stays 1.x only while the old bundle format stays readable and the default. |
+
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.

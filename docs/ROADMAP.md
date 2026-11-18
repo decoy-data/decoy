@@ -73,29 +73,32 @@ The reasons and the day-to-day steps are in the handoff
    the row. Rows carried from the old track are trimmed to this shape when they are next touched.
 5. **A finished row leaves.** When its last slice merges, add it to the shipped log and delete the
    row in the same change.
-6. **1.x releases are themed.** Each minor release takes one headline group from Later plus what fits
-   a fixed time budget. Its compatibility bucket is in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md).
-   2.0 is a holding list of breaking changes and is cut only when the list is worth a break.
+6. **Three release buckets** (owner, 2026-11-18). v1 is the 1.0 tables. Anything that does not break
+   the contract is v1+: a 1.x release, planned as themed minors (one headline group from Later plus
+   what fits a fixed time budget). Anything that breaks the contract is v2 and waits in
+   [roadmap/2.0-holding.md](roadmap/2.0-holding.md). The contract and the tests that decide are in
+   [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md).
 7. **Process rules are not here.** The dev loop, the choke-point rules and the sequencing rules are in
    [roadmap/working-rules.md](roadmap/working-rules.md).
 
 ## 4. Scope by feature group
 
-47 rows block 1.0, 29 are Later and 13 are Maintenance (2026-11-18). Each cell lists the row
-number and short name; the row itself is in the group file.
+50 rows block 1.0, 29 are Later and 13 are Maintenance (2026-11-18). Each cell lists the row
+number and short name; the row itself is in the group file. Each group file also lists its v1+
+candidates that have no plan yet (88 in all), and the health file lists 32 maintenance candidates.
 
 | Group | 1.0 (open) | Later (1.x) | Maintenance |
 |---|---|---|---|
 | [Scan and detection](roadmap/groups/scan.md) | 16 NAME-REMOVAL E1, 24zm PROFILE-UNFLAGGED-VALUES, 24zu REPORT-INTEGRITY-DEMO, 27 SCAN-MULTI S1c-cli, 29 SCAN-MULTI S3-cli, 32a SCAN-ML, 32c SCAN-ML-MD, 56 NAME-REMOVAL, CLI half | 30 SCAN-LIB, 31 DIST-INTEGRITY, 32 DRIFT, 80 F15 | none |
 | [Config, validation and the init wizard](roadmap/groups/config.md) | 24b QA-GATE, 24e CLI-QA1, 32b INIT-WIZARD | none | none |
-| [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 24z FAKER-POOL-DISTINCT, 24zb DATE-SHIFT-UNKEYED, 79 F09 | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters | none |
+| [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 24z FAKER-POOL-DISTINCT, 24zb DATE-SHIFT-UNKEYED, 79 F09, FAKER-MIGRATE | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters | none |
 | [Fit and generate](roadmap/groups/generate.md) | 24f QA-FIT-REDACT, 24n GEN-REL, 24zp FIT-YEAR-CODING | 24p GEN-PROVIDERS, 24q GEN-TYPES, 24r GEN-INHERIT, 24s GEN-CATALOG | none |
-| [Run, publication and results](roadmap/groups/run.md) | 24zs F26-RESERVED-NAME, 24zv REPORT-FIDELITY-PLACEHOLDERS, 24zw REPORT-VAULT-HELP, 58 F25, 59 F22, 61 CLI delivery, 62 RESULT, 63 SAMPLE CLI half, 63a RUN-STREAM, 66 F29 remainder, 74 F26 CLI local cleanup and engine part | 84 F24 engine half, 85 F23 resume, CLI half | none |
+| [Run, publication and results](roadmap/groups/run.md) | 24zs F26-RESERVED-NAME, 24zv REPORT-FIDELITY-PLACEHOLDERS, 24zw REPORT-VAULT-HELP, 58 F25, 59 F22, 61 CLI delivery, 62 RESULT, 63 SAMPLE CLI half, 63a RUN-STREAM, 66 F29 remainder, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT | 84 F24 engine half, 85 F23 resume, CLI half | none |
 | [Local record library](roadmap/groups/library.md) | 34 L1b-cli, 36 L2-cli, 37 L3a-cli, 39 L4a-cli, 40 L4b-cli | 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02 | none |
 | [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10 | none |
 | [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL | 6 WIN-RUNNER, 89 WIN-FEAS, 90a REL-IMAGE | 24zr SETUP-NER-JSON |
-| [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, 24zx MAC-WHEEL-RUNNERS | none | 24ze DUP-GUARDS, 24zl PROP-GUARDS, 24zq NESTED-INIT-REG, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
+| [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, 24zx MAC-WHEEL-RUNNERS, FREEZE-SURFACE | none | 24ze DUP-GUARDS, 24zl PROP-GUARDS, 24zq NESTED-INIT-REG, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
 
 Build order inside 1.0 follows each row's After column and the sequencing rules in
 [roadmap/working-rules.md](roadmap/working-rules.md). The release rows (90 to 94) come last.
@@ -110,7 +113,8 @@ Platform V1 is parked until CLI V1 ships: [roadmap/platform-parked.md](roadmap/p
 | [roadmap/inbox.md](roadmap/inbox.md) | untriaged items and open owner questions |
 | [roadmap/working-rules.md](roadmap/working-rules.md) | how work moves, develop correctly, sequencing rules |
 | [roadmap/platform-parked.md](roadmap/platform-parked.md) | Platform V1, parked, with its rows for the restart |
-| [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md) | the compatibility rule: what is a 1.x minor, a 1.x patch or 2.0 |
+| [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md) | the compatibility rule: what breaks the contract (v2) and what does not (v1+) |
+| [roadmap/2.0-holding.md](roadmap/2.0-holding.md) | v2: accepted breaks, items that are v2 only if built the breaking way, and what is fixed for the life of 1.x |
 | [roadmap/v2-v3-expansion-candidates.md](roadmap/v2-v3-expansion-candidates.md) | expansion candidates (formats, masks, generators, documents, media); a source for Later |
 | [roadmap/release-gates.md](roadmap/release-gates.md) | R1 (CLI V1) and R2 (Platform V1) completion gates |
 | [roadmap/row-detail.md](roadmap/row-detail.md) | detail, sources and FRAME findings for the track rows |

@@ -36,7 +36,7 @@
   },
   "docs/roadmap/post-1.0-plan.md": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 2
+   "max": 1
   },
   "docs/roadmap/release-gates.md": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",

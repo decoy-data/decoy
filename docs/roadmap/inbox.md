@@ -36,39 +36,15 @@ Carried from the old open-questions list:
 
 ## Freeze candidates (decide before REL-GATE)
 
-Added 2026-11-18. Each of these is cheap before 1.0 and a breaking change (2.0) after it. Sources:
-the "Before 1.0 freeze" and "2.0 only if built the other way" tables of [post-1.0-plan.md](post-1.0-plan.md),
-and a read of the engine compatibility contract. "Check" means the fact is not verified yet.
+Triaged 2026-11-18. The freeze-list items with no row became the 1.0 rows FREEZE-SURFACE (health),
+FREEZE-OUTPUT (run) and FAKER-MIGRATE (mask). The default-on choices (F11, F38, F08, profiling
+aggregates, the sibling FK key) stay opt-in and are listed in [2.0-holding.md](2.0-holding.md). One
+choice is still open:
 
-On the freeze list with no 1.0 row:
-
-- Audit C10: two-level strategy base classes with one live subclass. Decide the base class custom providers subclass.
-- Audit C16: hidden `--ref` and `--rows` flags of `decoy demo` that only print "deferred". Remove.
-- Audit J2: `api.scan` uses a different profile call than the CLI. Make them one before the result freezes.
-- Partition-stable `when:` on number-with-blanks columns (precision loss at 2**53 and above). Changes output.
-- The `.gz` header can store the staging basename. Changes output bytes.
-- `run_mask_chunked` writes a pass-through `large_string` column as `large_string`; other routes write `string`.
-- Rename the reason `layout.report_source_ambiguous` out of the `layout.` namespace.
-- The detection taxonomy split: the list of public renames is not written down in this repo. Check that rows 16 and 56 carry all of them.
-- The F22 publication names: not listed. Check that row 59 settles them.
-- Audit B9: 68 of 69 platform reason codes are unreferenced. Row 24zj expects to keep them; that is an owner question.
-
-Decide the default now, so the feature can arrive later as a 1.x option:
-
-- F11 output ordering and byte reproducibility: if it should be the default, it must be the default in 1.0.
-- F38 dataset metadata: preserve or strip by default.
-- F08 coherent free-text identity binding: default on or off for text masks.
-- Whole-file profiling aggregates (DuckDB 9): which profile numbers are part of a versioned report tag.
-- Notify and `--url` schemes (DUP-DEFECTS B11): `file://` is accepted today. Restrict the allowed schemes now.
-- A sibling column that reads an FK key through `when:`: source key (today) or resolved key.
-
-Structure that buys room later:
-
-- An experimental tier. The contract has none, so every command, flag and API name that ships in 1.0 is frozen on day one. Name the surfaces that are new and unproven (candidates: the `library` commands, the init wizard's generated YAML, the Python API, custom providers) and state that they may change in a minor.
-- `when:` reserved names: the contract says any addition after GA is breaking. Reserve now every name the grammar may need.
-- Custom provider surface: hardening later may restrict what a provider can do. Narrow it now or put it in the experimental tier.
-- Faker version: the launch engine freezes on Faker 40.23.0 and the 40.31 migration is planned after R1. Check whether a Faker upgrade changes deterministic output; if it does, migrate before 1.0 or it waits for 2.0.
-- Default NER model and detector set: a better default detector later changes findings for existing configs. Check whether a scan records the detector set version it ran, so a new default can be selected by name.
+- An experimental tier. The compatibility contract has none, so every command, flag and API name
+  that ships in 1.0 is frozen on day one. Candidates to label experimental (may change in a 1.x minor):
+  the Python API (`decoy.mask`, `decoy.scan`), custom providers and the connector SDK, and the
+  `decoy library` commands. Owner decision pending.
 
 ## Open owner questions
 
