@@ -20,15 +20,23 @@ Blocks the 1.0 release.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
+Additive. Not scheduled until a 1.x release picks it up. The proposed order of the 1.x releases is in
+[releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 38 | L3b-cli: sample-run records and scratch lifecycle (~450 lines); three OS lanes | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L1c; SAMPLE |
 | 41 | L5a-cli: wire the engine `ProgressSink` into `decoy run` (~380 lines) | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L1c |
 | 42 | L5b-cli: job logs (~500 lines); three OS lanes | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L5a, L3a |
-| USER-LIBRARY | A user-level library store beside the project library (LIB Q7) | CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 39 |
-| LOCAL-CATALOG | A local catalog of scans, runs and evidence (DuckDB opportunity 15) | CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | USER-LIBRARY |
+
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| User-level library store (LIB Q7) | Post-V1 on demand (old list) | New location for the library; the project library is unchanged. |
+| 15 Local catalog of scans, runs and evidence | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New local store. |
 
 ## Maintenance
 

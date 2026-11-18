@@ -23,32 +23,43 @@ Blocks the 1.0 release.
 | 63a | RUN-STREAM: one fast run path. Plain `decoy run` streams large sources from disk by itself when the config can be processed in pieces; relationship jobs larger than memory use the out-of-core (DuckDB) route; `--chunked` becomes a strict switch (must stream, fail with a clear reason if the config cannot) on the same code path. Resources (owner 2026-11-06): Decoy settings hold max memory and max threads (CPU), set in the CLI setup step so each box and job type can be configured, with per-run flag and config overrides; defaults use the machine (all cores, multithreaded native and DuckDB paths, a memory share chosen for speed with a safety margin) instead of today's one native thread and 25% of RAM; the run summary says which route ran and why. Goal: Decoy runs as fast as the box allows | engine, CLI | IN PROGRESS. E2 MERGED (engine #437, `35719f55`, 2026-11-09): a CSV backend for the lazy source, read in chunks with file identity checks. E1a MERGED (engine #439, `fbc42f14`, 2026-11-09): `run_pipeline(execution_mode="stream")` must stream or fails with `runtime.streaming_unavailable` (registry 1.18.0). E1b MERGED (engine #442, `97a1cbbd`, 2026-11-10): `decoy_engine.detect_usable_cpus` (cgroup-aware usable cores), `run_pipeline(out_of_core_threads=...)` caps the DuckDB threads of the out-of-core route, `resolve_conservative_ooc_budget_bytes` (25% of the memory ceiling), registry 1.21.0 (`runtime.cpu_detection_failed`); in engine 0.20.0, which the CLI pins since CLI #164, and its CLI half C3 MERGED (CLI #165, `a14ed8ca`, 2026-11-10): `decoy run --max-memory` and `--threads`, `DECOY_MAX_MEMORY` and `DECOY_THREADS`, and `$DECOY_HOME/settings.json` written by a new `decoy setup` step, each key resolved flag, then environment, then file, then the engine's `auto`; `decoy doctor` shows each value and its source; `--chunked` ignores them until C2. E3 MERGED (engine #459, `fad62a69`, 2026-11-10): `route_summary(quality_metrics)` says which route ran and why, the native status, and the thread and memory caps the route applied; a configured cap without evidence is never shown as applied. In engine `v0.21.0` (#466). E5 MERGED (engine #601, `368b3157`, 2026-11-16): a plain `auto` run with `resident_fallback=True` reads whole each lazy input that routing cannot keep lazy, instead of refusing before the read; one routing-facts builder feeds the run context and the pre-pass. E5a MERGED (engine #604, `00e19eb10`, 2026-11-16): a lazy Parquet table with no sink reaches the collector lane through `run_pipeline`, the collector spills its hold-back under scoped engine scratch, and `bounded_admission` is the one bounded-route composition. Left: E5b (lazy collector arena, in build), C1l (waits on the engine release and the CLI repin), C1a, C1b, C2 and M1. The row stays in progress (plan `plan/run-stream`, `docs/plans/2026-11-08-run-stream.md`). Owner 2026-11-06: V1; plan first measures how far plain `decoy run` already streams Parquet and CSV, and the speedup from threads on the GCP VMs and the Mac | none | SUB-RUN (same run path) |
 | 66 | F29 remainder: CLI consumers (C1, which carries RESULT) and the F31 hook | engine, CLI | C0 MERGED (engine #367) | `E:plan/f29-errors-progress-remainder` | none |
 | 74 | F26 CLI local cleanup and engine part | engine, CLI | Plan `E:plan/f26-v1-rescope` (revision 5). Engine E1 (engine #638) and E2a (engine #641) are open; CLI PR #68 is open. F22 b2 is merged, so the reserved name check can be built (row 24zs) | engine PR #337, CLI PR #68 (OPEN) | F22 (settled for V1 except W1) |
+| FREEZE-OUTPUT | Output fixes that change the bytes or types of existing configs, so they are 2.0 after 1.0. (1) Partition-stable `when:` on number-with-blanks columns: precision is lost on integers of 2**53 or more. (2) Atomic output: the `.gz` header can store the staging basename. (3) `run_mask_chunked` writes a pass-through `large_string` column as `large_string` where the other routes write `string`; make every route write the same Arrow type | engine, CLI | NOT STARTED | none; sources: platform V2 plan item 12, `C:docs/records/2026-11-07-atomic-output-build.md`, corrective backlog (DUP E3 review) | none; merges before row 93 |
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
+Additive. Not scheduled until a 1.x release picks it up. The proposed order of the 1.x releases is in
+[releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 84 | F24 engine half: full-lifecycle estimate including the ingestion peak; advisory only | engine | IN REVIEW. Plan `E:plan/f24-lifecycle-estimate` (revision 5). 84-E1 is open (engine #635): `estimate_job` returns `lifecycle_peak_bytes`, `limiting_phase` and `phase_bytes` for mask jobs. Left: 84-E1 merge, 84-E2 (generate jobs) | `E:plan/f24-lifecycle-estimate` | estimator (engine #328, merged) |
 | 85 | F23 resume, CLI half: `decoy run --resume RUN_DIR`, table-level: tables that finished are kept, the failed table runs again from its start (owner UX map Q12, 2026-11-08) and the engine checkpoint store | engine, CLI | IN PROGRESS. Plan `C:plan/f23-resume` (`docs/plans/2026-11-13-f23-resume.md`). E1 MERGED (engine #562, `8c9c1162`, 2026-11-13): resume run fingerprint, `binding_digest` and the HMAC key check, plus the `decoy/resume_*` reason codes; nothing calls it yet, and it ships in the next engine release. E2 MERGED (engine #603, `9c666d6a1`, 2026-11-16): the store records `decoy-resume-run/v1` and `decoy-resume-table/v1` and `plan_resume`; F22's strict reader declaration classes moved unchanged to a shared private module, and nothing calls `plan_resume` yet. Left: the engine release that carries E1 and E2 with the CLI repin, then CLI slices C0, C1, C2a, C2b and C3 (plan section 10) | `C:plan/f23-resume` `ea36ced` | F22, CLI delivery |
-| NOTIFY-OUTCOME | Job-outcome notifications on success and on both, and a CLI `--notify` flag | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 7) | none |
-| NOTIFY-SCHEME | Scheme check on notify and `--url` (DUP-DEFECTS B11) | engine, CLI | NOT STARTED. 1.x if the check only warns, or keeps every scheme that works today, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (row 24zd) | none |
-| DRY-RUN | Deterministic sample preview and `decoy run --dry-run` (DuckDB opportunity 10; the inbox QA suggestion is the same item) | CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 63 |
-| F11 | Output ordering and byte reproducibility | engine | NOT STARTED. 1.x if it is an opt-in option, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
-| F42 | Unix streams as input and output | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
-| CHUNK-RESUME | Chunk-level resume (the table-level `--resume` is row 85) | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 85 |
-| ROUTE-COV2 | Route coverage phase 2: out-of-core address faker, FPE FK key on the out-of-core route, a resident escape hatch option, out-of-core quarantine | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | none |
-| FK-MULTIHOP | Composite multi-hop FK chains; turns a coded decline into a success | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 6) | none |
-| FK-CYCLES | Cross-table FK cycles on the bounded sequential route; needs one job-wide memory-eligibility rule first | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 8) | none |
-| FK-REORDER | Bounded reorder for large parents (partitioned or blocked join) | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 9) | none |
-| OOC-NESTED-REL | Nested and arbitrary-N relationships on the out-of-core route | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan, secondary) | none |
-| MIXED-ROUTE | Mixed-job composite FK keys and the mixed-job out-of-core mask driver | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Phase F deferrals) | none |
+
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| F28 local execution node | Council features | New daemon beside the CLI and platform workers. |
+| Route-coverage phase 2: out-of-core address faker | Post-V1 on demand (old list) | Turns a refusal into a success. |
+| Route-coverage phase 2: FPE foreign-key key on the out-of-core route | Post-V1 on demand (old list) | Same. |
+| Route-coverage phase 2: resident escape hatch | Post-V1 on demand (old list) | New option. |
+| Route-coverage phase 2: out-of-core quarantine | Post-V1 on demand (old list) | Same refusal-to-success shape. |
+| Chunk-level resume (the table-level `--resume` is row 85, V1) | Post-V1 on demand (old list) | New option. |
+| X-07 Streaming and change-data-capture masking | Expansion candidates X-01 to X-25 | New run mode. Model-free; keeps the current determinism claim. |
+| 10 Deterministic sample preview and dry run | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | New option. |
+| 19 Subset from non-Parquet sources | DuckDB opportunities (vault `v2/duckdb/`, platform `plan/v2-duckdb-plans`) | Turns a refusal into a success. |
+| 6 Composite multi-hop FK chains | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a coded decline into a success. |
+| 7 Job-outcome notifications (success and both) and CLI `--notify` | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | New condition and new flag. |
+| 8 Cross-table FK cycles on the bounded sequential route | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a decline into a success; needs one job-wide memory-eligibility rule first. |
+| 9 Bounded reorder for large parents (partitioned or blocked join) | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a demotion past the parent-size ceiling into a bounded run. |
+| Secondary: nested and arbitrary-N relationships on the out-of-core route (deferred at OOC-B) | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a decline into a success. |
+| Phase F deferral: mixed-job composite FK keys | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a typed decline into a success. |
+| Phase F deferral: mixed-job out-of-core mask driver | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Same. |
 
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.
 
-| # | Item | Repo | State | Branch, plan or handoff | After |
-|---|---|---|---|---|---|
-| RUN-PATCH | The `decoy run` error text cap of 500 characters (row 65); atomic-output tails (ACLs and xattrs, a second temp path, interrupt during chmod, ENOSPC mapping; row 21b); an all-null chunk breaking string-output strategies on the chunked route; chunk-local row indices in chunked audit evidence; cross-chunk warning aggregation and the kernel-ABI witness harness; the width-aware reorder ceiling; 200M scale proofs and the thread-versus-memory policy (GAP9) | engine, CLI | NOT STARTED. 1.x patch | [post-1.0-plan](../post-1.0-plan.md); `E:docs/backlog/all-null-chunk-string-output-limitation.md`, `E:docs/backlog/chunked-audit-evidence-row-indices.md` | none |
+None.

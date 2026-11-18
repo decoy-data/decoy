@@ -19,15 +19,14 @@ Blocks the 1.0 release.
 | 24zk | PROP-SHIMS (proportionality audit 2026-11-15, package D; owner 2026-11-15): re-exports left after module splits, readers for formats written before a rename, and CLI probes for engine features that the exact `decoy-engine` pin already guarantees (D1 to D13). Importers move to the real module and the shim is deleted; each probe becomes a plain import or keyword. This is the pre-GA hard-delete rule. Report: `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` section 7 | engine, CLI | NOT STARTED | none | none |
 | 24zo | CI-SELECT-GAP (process, found 2026-11-17 while engine main was red): an engine PR's CI runs only the `fast` job, which runs no tests, unless the `gate-selfhosted` job is dispatched by hand. A PR that breaks tests can merge with green checks. CI must run tests on every engine PR | engine | NOT STARTED | engine #634 and #637 (the red-main fixes) | none |
 | 24zx | MAC-WHEEL-RUNNERS (process, 2026-11-17): the GitHub-hosted macOS jobs that build the companion wheel are repeatedly not picked up by a runner, so merges that need them wait or fail. Stop merges from waiting on them. V1 | engine, CI | NOT STARTED | seen on merges of 2026-11-16 and 2026-11-17 | none |
+| FREEZE-SURFACE | Public names and refusals that cost a 2.0 to change after 1.0 and have no other row. (1) Audit C10: `BaseMaskingStrategy` sits between `MaskingStrategy` and one live subclass; settle the one base class a custom provider subclasses. (2) Audit C16: remove the hidden `--ref` and `--rows` flags of `decoy demo`, which only print "deferred". (3) Audit J2: `api.scan` and `decoy scan` use one profile call, so the public scan result cannot drift from the CLI's. (4) Rename the reason `layout.report_source_ambiguous` out of the `layout.` namespace. (5) `when:` reserved names: add every name the grammar may need, because an addition after 1.0 refuses configs that use the name as a column. (6) Notify and `--url` schemes (DUP-DEFECTS B11): refuse every scheme except the supported ones now; `file://` is accepted today. (7) Write down the public renames of the detection taxonomy split and the F22 publication names, and confirm rows 16, 56 and 59 carry all of them | engine, CLI | NOT STARTED | none; sources: proportionality audit `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md`, the old "Before 1.0 freeze" table | none; merges before row 93 |
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
+Additive. Not scheduled until a 1.x release picks it up. The proposed order of the 1.x releases is in
+[releases-1x.md](../releases-1x.md).
 
-| # | Item | Repo | State | Branch, plan or handoff | After |
-|---|---|---|---|---|---|
-| HARDEN-INPROC | Hostile in-process hardening (out of the V1 threat model) | engine | NOT STARTED. 1.x if it hardens internals and custom providers keep working, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (decisions 2026-10-30) | none |
-| WIDE-SIGNATURES | Config objects in place of wide signatures (`run_pipeline`, `stream_table`); split `fit()` and `report.py` by cohesion | engine, CLI | NOT STARTED. 1.x if the old keywords keep working, else 2.0 | [outside review](../post-1.0-plan.md) (docs PR #319) | row 24zj |
+None.
 
 ## Maintenance
 
@@ -47,9 +46,48 @@ No user-visible change. Merges at any time and never gates a release.
 | 52 | H-1 E2 and E4 | engine | handoff not written | none | E0r |
 | 53 | H-1 C3 | CLI | handoff not written | none | NAME-REMOVAL CLI half; CLI branches (an identifier kept in the pre-split snapshot), `claude/vibrant-feynman-1khw1v` settled |
 | 54 | H-1 E7: split files as their blockers merge | engine | not planned in detail | none | per file |
-| PROP-CLEANUP | Proportionality audit packages not in rows 24zi to 24zl: C1 to C8, C11, C12, C14, C15, C17 (C13 is planned LIB work), F (comment history), G (defensive code), H (size splits), I (test reductions), J1 and J3 to J6 (CLI thin-wrapper copies), K2 to K4 (docs) | engine, CLI | NOT STARTED. 1.x patch | `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` | none |
-| FINDINGS-PATCH | CLI `scan` fixed-width divergence test (G5); native-kernel fallback telemetry; the `data_discovery` keyword denylist; secret retention in `KeyboardInterrupt` args; a public facade for the CI lane sentry's `_shell_tokens` (row 5); the memory-fraction constant duplicated across repos and the `--duckdb-source` audit (DuckDB 6, 7) | engine, CLI | NOT STARTED. 1.x patch | [post-1.0-plan](../post-1.0-plan.md) | none |
-| OUTSIDE-REVIEW-CI | A coverage floor in CI; a type checker on the CLI; the size rule reworded to "split by reason to change"; a wider public and internal boundary sentry so the CLI stops importing engine internals; a test that runs every README flow and bundled example in a clean install | engine, CLI | NOT STARTED. 1.x patch | [outside review](../post-1.0-plan.md) (docs PR #319) | none |
+
+### Maintenance candidates
+
+Fixes and cleanups with no user-visible change, from the audits and the old V2 lists. Any group's code may be touched; they are listed here once.
+
+| Item | Source | Why it is maintenance |
+|---|---|---|
+| A2, A5, A6, A7, A9 (package A): Quiet fallbacks: a reference table that fails to load becoming `{}` (A2), a native-lane exception rerun on pandas (A5), `except Exception: return None` (A6, A7), a hint that always returns None (A9) | Proportionality audit (2026-11-15) | Each is a defect on a broken install or an internal bug; a working config sees no change. (A1, A3, A4 and A8 are in "Before 1.0 freeze".) |
+| C1 to C8: Internal modules with no production caller: `MemoryMonitor`, `ProgressLogger`, `ConfigValidator`, five operator Protocols, pass-through adapters, `_route_diagnostics.py`, `_ner_rate.py` (check against row 32c), `_pool_quality.py` (check the platform caller) | Proportionality audit (2026-11-15) | Private paths, no public name. |
+| C11, C12, C14, C15, C17: `mimesis/_parity.py` moves to tests; `reject_unsafe_text_mask_source_dtype`; `progress_bar`; `env_int` and `prune_old_versions`; pandas loaders used only by `api.scan` | Proportionality audit (2026-11-15) | Private or test-only. |
+| C13: `cli/library/`, nine files with no importer outside the package | Proportionality audit (2026-11-15) | Not a cleanup: planned work for row LIB. Stays. |
+| D1 to D5: Old-engine capability probes and `hasattr` checks for names that exist in the pinned engine; the `pandas` import guard; report keywords omitted for an older engine | Proportionality audit (2026-11-15) | Dead branches under the exact engine pin. |
+| D7, D8, D10, D11, D12, D13: Re-export shims, a 23-line delegate module, an always-true predicate, a `TypeError` fallback for old loggers, a V2 custom-provider table kept until the V1 stack goes | Proportionality audit (2026-11-15) | Private paths. |
+| E1 to E8 (package E): Guard-test bookkeeping: hand lists of guard paths, allowlists kept four times, a 720-line permitted-diff allowlist, exact line counts instead of ceilings, bespoke CI shell parser | Proportionality audit (2026-11-15) | Test and process machinery. |
+| Package F: Comment and docstring history sweeps | Proportionality audit (2026-11-15) | Comments only. |
+| G1 to G9 (package G): Defensive code for states that cannot occur | Proportionality audit (2026-11-15) | No reachable behavior. |
+| Package H: Mechanical size-cap splits | Proportionality audit (2026-11-15) | Same code, new files. |
+| I1 to I12 (package I): Test reductions | Proportionality audit (2026-11-15) | Tests only. |
+| J1, J3 to J6: CLI thin-wrapper violations: `demo` composing its own run, a 90-line mirror of the engine's admission rules, diff statistics in the CLI, a private-global reset, chunked refusals split across modules | Proportionality audit (2026-11-15) | Same results from fewer copies. (J2 is in "Before 1.0 freeze".) |
+| K1 to K4 (package K): Docs and process: committed diagrams, archive shipped plans, one place for shipped state (K4, owner 2026-11-15) | Proportionality audit (2026-11-15) | Docs. |
+| Section 15 guards: Re-export and no-production-caller guards | Proportionality audit (2026-11-15) | Test machinery. |
+| CLI `scan` parses fixed width with `pd.read_fwf`; divergence from the engine reader is untested (G5) | findings-register | A test. |
+| Native-kernel fallback telemetry beyond a warning | findings-register | Telemetry only. |
+| GCS and S3 conditional writes | findings-register | Safer writes; the output is the same. |
+| The `data_discovery` keyword denylist | findings-register | Internal. |
+| Secret retention in `KeyboardInterrupt(secret)` args | decisions 2026-10-30 | Hardening, no output change. |
+| "V2 audit after V1 from the V2 log; phases 1 to 3 are hardening" | decisions 2026-11-03 | This page and the vault backlog are that audit. |
+| Flaky tests on platform main | ROADMAP, V2 backlog | Tests. |
+| DuckDB 5 Data viewer SQL tab; 6 memory-fraction constant duplicated across repos; 7 `--duckdb-source` audit | DuckDB master note | "Needs change" items that keep results and names the same. |
+| The CI lane sentry imports `_shell_tokens` by a private name; add a small public facade shared by both repos | ROADMAP row 5 (CI-L1) | Test machinery. |
+| The `decoy run` error text cap of 500 characters | ROADMAP row 65 (F31) | Text length in an error message. |
+| Atomic output: ACLs and xattrs of an old output are not copied; `_atomic.py` is over 400 lines; a second temp-create path; a `KeyboardInterrupt` during the temp chmod can leave an empty hidden temp; ENOSPC inside the writer block is not mapped to `atomic_write_failed` | ROADMAP row 21b, `docs/records/2026-11-07-atomic-output-build.md` | Defects and cleanup; the output for a working run is the same. (The `.gz` header item is in "Before 1.0 freeze".) |
+| VALUE-FREE-ERRORS B3, FU-5 and FU-6 | ROADMAP row 24a | In the vault backlog, tagged there. |
+| 5 FPE checksum-mode native acceleration (luhn, npi, iban, vin, isbn13, ean13, gtin) | platform V2 plan | Same output, KAT-locked to python-stdnum; removes a speed cliff. |
+| 10 Width-aware reorder ceiling | platform V2 plan | Guard counts bytes, not keys; same results. |
+| D5 certification coverage; flaky cgroup-launcher tests that hang | platform V2 plan | Tests. |
+| Secondary: Joinable-CDR telco demo config; `text_redact` full-Unicode Rust path | platform V2 plan | Demo and speedup with the same output. |
+| Phase F: 200M generation and masking scale proofs (one pre-release run); GAP9 thread-count-versus-memory policy | platform V2 plan | Validation and a speed policy. |
+| F2 follow-up: cross-chunk warning aggregation; kernel-ABI backend-witness harness | platform V2 plan | Makes the chunked warning match the oracle's single warning; a test harness. |
+| An upper cap on `duckdb`; declare the imports the CLI and engine use without declaring them (yaml, pandas, pyarrow, numpy) | outside review, 2026-11-18 (docs PR #319) | Install metadata only. |
+| A coverage floor in CI; a type checker on the CLI; a wider public and internal boundary sentry so the CLI stops importing engine internals; a test that runs every README flow and bundled example in a clean install | outside review, 2026-11-18 (docs PR #319) | Test and CI machinery. |
+| Chunked-route tails: an all-null chunk breaking string-output strategies; chunk-local row indices in chunked audit evidence; HC-1 out-of-core all-null `code_set` evidence parity | `E:docs/backlog/all-null-chunk-string-output-limitation.md`, `E:docs/backlog/chunked-audit-evidence-row-indices.md`, `E:docs/backlog/hc-1-codeset-slice2-and-hardening-tail.md` section 2 | Fixes that bring the chunked route in line with the in-memory route. |
 
 ## Notes carried from the track
 

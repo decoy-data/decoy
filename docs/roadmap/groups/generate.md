@@ -16,11 +16,12 @@ Blocks the 1.0 release.
 | 24n | GEN-REL (owner 2026-11-08, all V1): a date window anchored to a parent column; per-parent `derived_aggregate`; self-reference (`manager_id`) as a hierarchy, not a cycle; an empty parent fails under `orphan_policy: fail`; impossible or contradictory `min/max_per_parent` refused; weighted `reference` with no weights refused. Fan-out from a fit is row 24h | engine | IN PROGRESS (remote session). Plan on `E:plan/gen-rel`. Slice 0 MERGED (engine #506, `7d2cd2dc`, 2026-11-12): pending reason codes and the release stamp. Slice 1 open as engine #523 | [GEN QA report](../../records/2026-11-08-cli-qa-generation.md) High | row 24h |
 | 24zp | FIT-YEAR-CODING (follow-up of row 24f E1, engine #632): datetime years in a plain fit snapshot are folded into ranges but the lowest and highest years are not bottom and top coded, so one extreme year can still point at one row. V1 | engine | NOT STARTED | engine #632 | row 24f E1 |
 
-Row 24n is split. 1.0 holds only the new failures (an empty parent under `orphan_policy: fail`, impossible settings). The new capabilities (a date window anchored to a parent column, per-parent aggregates, self-reference as a hierarchy) are Later, in row 24n-later.
+Row 24n is split. 1.0 holds only the new failures (an empty parent under `orphan_policy: fail`, impossible settings). The new capabilities (a date window anchored to a parent column, per-parent aggregates, self-reference as a hierarchy) are Later.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
+Additive. Not scheduled until a 1.x release picks it up. The proposed order of the 1.x releases is in
+[releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
@@ -28,18 +29,24 @@ Additive. Not scheduled until a 1.x release picks it up. The release each row is
 | 24q | GEN-TYPES (owner 2026-11-08): new generate types and options: `constant`; parametric `distribution` (normal, lognormal, uniform, exponential, poisson, beta, zipf), which makes the capability matrix's 12th type real; a weighted lookup list from a file; per-column output type (int, decimal(n), date, bool); conditional `derived` (`if()`) | engine | IN PROGRESS. Plan passed 2026-11-10 (`E:plan/gen-types`). E1 MERGED (engine #467, `45533490`, 2026-11-10): `constant`, and `distribution` with the `uniform` family only, drawn from a new `dist` RNG family; normal, lognormal, exponential, poisson, beta and zipf are refused at compile (`generate_option_value_unknown`) and move to E1b. Owner answer (recommended, standing approval, 2026-11-10): drop the families that are not portable instead of adding a per-architecture caveat. E1 is in engine `v0.22.0` (#472). E2 MERGED (engine #477, `82d00f4e`, 2026-11-11): `output_type` on generate columns. Next: E1b (more families) needs a portable-sampling design first; E3 MERGED (engine #501, `ee156764`, 2026-11-12): the `lookup` generate type. E4 MERGED (engine #490, `72b75489`, 2026-11-12): `if()` and lazy conditionals in derived columns. Left: E1b (more distribution families), which needs a portable-sampling design first | [GEN completeness audit](../../records/2026-11-08-generation-completeness-audit.md) A | rows 24i, 24j, 24k |
 | 24r | GEN-INHERIT (owner 2026-11-08): a child column takes a parent row's attribute (`claims.state` = the member's state); conditional categoricals declared in YAML, not only from a fitted snapshot | engine | NOT STARTED. Plan passed 2026-11-10 (`E:plan/gen-inherit`); build not started | [GEN completeness audit](../../records/2026-11-08-generation-completeness-audit.md) B | row 24n |
 | 24s | GEN-CATALOG (owner 2026-11-08): a CLI command that lists every generate type and option, and every provider, from the engine's registries (no hand-kept list); one generate starter template per industry (healthcare, banking, insurance, retail, telecom, HR) | CLI, engine | PARTLY MERGED. Plan `C:plan/gen-catalog` (2026-11-17). GC1 MERGED (CLI #299, `55cd4a05`, 2026-11-17): `decoy list generate-types` and `decoy list faker-types`, read from the engine's live catalogs. GC2 MERGED (CLI #302, `419572a2`, 2026-11-17): six industry generate starter templates (healthcare, banking, insurance, retail, telecom, HR). GC3-E is open (engine #643, `code_set_catalog()`). Left: GC3-E, then GC3 (CLI code-set listing), which waits on an engine release with GC3-E pinned on CLI main | [GEN completeness audit](../../records/2026-11-08-generation-completeness-audit.md) C | rows 24o, 24p, 24q |
-| 24n-later | GEN-REL Later part: a date window anchored to a parent column, per-parent `derived_aggregate`, self-reference (`manager_id`) as a hierarchy. The 1.0 part stays in row 24n | engine | NOT STARTED. 1.x minor | row 24n plan | row 24n |
-| GEN-PROVIDER-OPTS | Per-provider options and `unique` on `type: provider` (excluded from row 24p) | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (row 24p) | row 24p |
-| HC5-FIT-CLI | `decoy fit` wiring for `high_cardinality_columns`; the engine half is merged | CLI | NOT STARTED. 1.x minor | `E:docs/backlog/hc-5-cli-fit-wiring.md` | none |
-| DP-CERT | A certified DP stack on a default install, so a DP fit works for normal users instead of `dp_stack_uncertified`. The engine DP accountant is built | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (row 24g); `E:docs/backlog/dps-dp-synthetic-implementation.md` | none |
-| F48 | Statistical synthesis: an opt-in backend and evaluation | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
-| X-14 | Joint-distribution synthesis (Gaussian copula) | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F48 |
-| X-15 | Multi-table synthesis | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | X-14 |
-| X-16 | Generate from a schema | engine, CLI | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | none |
-| X-17 | Edge-case test data | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F46 |
-| X-18 | Sequential and event data synthesis | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | X-14 |
-| GEN-ORACLE | Accelerated or streamed generation (Phase F, F1 and F3) | engine | NOT STARTED. 1.x if new routes match today's output byte for byte, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan) | none |
-| GEN-MIXED-DIRTY | Dirty generated output (nullable, NaN, nested) on the mixed route; lifts a decline | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (F2 follow-up) | none |
+
+### Candidates with no plan yet
+
+Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| F46 reusable QA scenarios | Council features | New scenario compiler and case library. |
+| F48 statistical synthesis | Council features | New opt-in backend and evaluation; existing generation unchanged. |
+| X-14 Joint-distribution synthesis (Gaussian copula) | Expansion candidates X-01 to X-25 | New generation method; existing configs unchanged. |
+| X-15 Multi-table synthesis | Expansion candidates X-01 to X-25 | New generation method. |
+| X-16 Generate from a schema | Expansion candidates X-01 to X-25 | New source of generation specs. |
+| X-17 Edge-case test data | Expansion candidates X-01 to X-25 | New generators. |
+| X-18 Sequential and event data synthesis | Expansion candidates X-01 to X-25 | New generation method. |
+| A certified DP stack for normal users (a DP fit on a default install works) | ROADMAP row 24g | Turns the `dp_stack_uncertified` message into a success. Exit code 3 stays for the cases still refused. |
+| GEN-PROVIDERS per-provider options and `unique` | ROADMAP row 24p | New optional keys on `type: provider`. |
+| F2 follow-up: dirty generated output (nullable, NaN, nested) on the mixed route | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Lifts a decline. |
+| HC5-FIT-CLI: `decoy fit` wiring for `high_cardinality_columns`; the engine half is merged | `E:docs/backlog/hc-5-cli-fit-wiring.md` | A new option on `fit`. |
 
 ## Maintenance
 
