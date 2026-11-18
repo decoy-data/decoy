@@ -10,6 +10,9 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
   the freeze, not after R1. The unreferenced platform reason codes (audit B9) stay in the registry as
   the platform wire contract, with the platform consumer recorded beside each (row 24zj). Default-on
   choices (F11, F38, F08) stay opt-in.
+- **2026-11-18 (Windows is 1.0).** WIN-FEAS (row 89) and WIN-RUNNER (row 6) are back in 1.0: the owner
+  must be able to download the CLI and demo it on a Windows machine. This reverses the same day's move
+  of Windows to 1.x.
 - **2026-11-18 (experimental tier).** 1.0 labels two surfaces experimental, so they may change in a 1.x
   minor: the Python API (`decoy.mask`, `decoy.scan`) and custom providers with the connector SDK. The
   `decoy library` commands are decided at the release gate. Row EXPERIMENTAL-TIER.
