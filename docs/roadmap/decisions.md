@@ -14,6 +14,9 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
     do not. The URL scheme check moves to 1.0 (FREEZE-SURFACE).
   - Source metadata reaches masked output on the out-of-core route. This is a leak and blocks 1.0:
     row OUTPUT-METADATA-LEAK.
+  - Chunked and whole-file profiles do not disagree (no route merges chunks), but sampled numbers are
+    shown as if whole-file and can wrongly flag a key column. Fixed before the freeze: row
+    PROFILE-SAMPLE-LABELS.
 - **2026-11-18 (release buckets and freeze work).** Anything that does not break the contract is v1+;
   anything that breaks it is v2 (`roadmap/2.0-holding.md`). Work that would be a breaking change after
   1.0 is done in v1: rows FREEZE-SURFACE, FREEZE-OUTPUT and FAKER-MIGRATE. Faker moves to 40.31 before
