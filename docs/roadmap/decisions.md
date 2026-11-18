@@ -4,6 +4,13 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-18 (1.0 scope cut and roadmap split).** 1.0 is the rows in the 1.0 tables of the group
+  files (`roadmap/groups/`), not the whole track; this replaces the 2026-11-05 "CLI 1.0 scope" entry
+  below. A row blocks 1.0 only on freeze, safety or broken-today; additive rows are Later (1.x) and
+  internal cleanup is Maintenance. INIT-WIZARD stays in 1.0: a user cannot be asked to hand build
+  complex YAML on a new product they do not yet trust. CLI-CLOUD, CLI-DB-SRC, F01, the additive GEN
+  rows and Windows move to 1.x. New work enters through `roadmap/inbox.md`. Record:
+  [2026-11-18-1.0-scope-triage.md](../records/2026-11-18-1.0-scope-triage.md).
 - **2026-11-05 (this move).** CLI V1 complete, then platform; the roadmap moves to the CLI repo and
   the platform links to it. Develop correctly: central registries for cross-cutting concerns and
   correctly sized files and directories (ROADMAP section 4). Registry slices may build in parallel with

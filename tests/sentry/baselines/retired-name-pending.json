@@ -18,10 +18,6 @@
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 2
   },
-  "docs/ROADMAP.md": {
-   "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
-   "max": 17
-  },
   "docs/ci-contracts.md": {
    "reason": "file still carries the retired name; a later slice rewrites it and the count may only fall",
    "max": 1

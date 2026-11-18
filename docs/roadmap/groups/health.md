@@ -1,0 +1,51 @@
+# Codebase health and CI
+
+Status: current
+
+Part of the roadmap: [ROADMAP.md](../../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
+
+Rows keep their number from the pre-split track. A row number or section number that is not in a group file is a closed row or old section in the [snapshot](../../archive/2026-11-18-roadmap-before-split.md).
+
+## 1.0
+
+Blocks the 1.0 release.
+
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| 3 | CI-E2: restore engine CI triggers, nightly `determinism`, `ci/required-jobs.toml`, `ci/unlaned.toml`, marker and trigger sentry, retire `engine-v2-substrate-matrix.yml` | engine | PARTLY: E2a MERGED (engine #491, `426e6d05`, 2026-11-12): PR and nightly triggers restored, `determinism` job, `ci/required-jobs.toml`, `ci/unlaned.toml` and the lane sentry, substrate workflow retired. E2b MERGED (engine #504, `4bb95063`, 2026-11-12): `scripts/dev/required_checks.py` (`contexts` prints the merge-tier check names, `verify` checks a head against its tier) and its test `tests/unit/scripts/test_required_checks.py`; the lane sentry also reads `.yaml` workflows. Owner Q1 (yes, 2026-11-12) applied: engine `main` branch protection requires the 25 merge-tier checks. Left: the plan's live check AT-23, `verify --tier nightly` on main after the first scheduled nightly run (none has run since E2a restored the trigger). The plan file is on `plan/ci-e2`, not on engine main | `E:plan/ci-e2` | CI-E1, CI-E1s (until CI-E1s, CI-E2's gate exempts `security.yml`) |
+| 24zf | DUP-FREEZE (duplication census 2026-11-12, package C; owner 2026-11-12): settle the surfaces that freeze at REL-GATE. One CLI error emitter and `--json` error shape, one exception-to-exit-code map, one canonical JSON rule for digests, the seed derivations from 24zd (including A1, per-group `joint_mask` seeds), one config loader, `--json` only through `emit_json`, one flag truthiness rule per repo, one generated-at shape, one NER mismatch message, the identifier locale rule (C1 to C10). Builds after the hot `run/` lanes (RESULT, F29 C1, RUN-STREAM C1) merge and before REL-GATE. Report: `C:docs/records/2026-11-12-duplication-census/REMEDIATION.md` | engine, CLI | PARTLY. MERGED 2026-11-14: E1 (engine #581, `b1254eb1`) one canonical JSON owner; E3 (engine #580, `8a77c8b6`) one flag registry; E4 (engine #577, `61aa9d8e`) one NER mismatch raise and one generated-at shape; CL0 (CLI #242, `1f36e1ed`, 2026-11-13) the D7 error-site inventory; CL1 (CLI #244, `50da81e6`) one error emitter and one `--json` error shape; CL2 (CLI #243, `af9b07fc`) one env flag rule and one JSON document writer. E3 and E4 are in the `v0.24.0` tag (`5aeda26f`, release prep #576); E1 merged after the tag and ships in the next release; the CLI repin to 0.24.0 merged (CLI #245, `41986152`, 2026-11-14). E1 is in engine 0.25.0, which the CLI pins since CLI #261. CL3 MERGED (CLI #246, `f876137f`, 2026-11-14): one config loader, one exception-to-exit-code map and one secret-ref rule. E2 (seed derivations, engine #582) is open and parked on an owner decision. Not started: CL4 and CL5 | 24zd; rows 62, 63a and 66 for C1, C2, C5 |
+| 24zi | PROP-FALLBACK (proportionality audit 2026-11-15, package A; owner 2026-11-15): nine places where a failure becomes a quieter result and the run still reports success (A1 to A9, plus the `E:context.py` emit helpers and the broad catches in `E:execution/_chunked_fk_dtype_safety.py`). A read-only reachability pass comes first. Each confirmed item then lets the error propagate or catches only the named error. A confirmed item that can change output is V1. A5 (the native lane catch) waits for RUN-STREAM E5a; A7 to A9 are in `cli/run/` hot files and go with the row that holds them. Report: `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` section 4 | engine, CLI | NOT STARTED | none | none (A5: row 63a E5a) |
+| 24zj | PROP-SURFACE (proportionality audit 2026-11-15, package B; owner 2026-11-15): public engine names that nothing in the engine or CLI uses (B1 to B9): kept bindings, a deprecated hash, `ExecutionContext` leftovers from the old graph runner, and `run_pipeline` keywords that only tests pass. Each name is checked against the platform repo. A name with no consumer is deleted; a platform consumer is recorded beside the name. B9 (platform reason codes) is expected to stay as the platform wire contract. Report: `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` section 5 | engine, CLI | NOT STARTED | none | none; merges before row 93 |
+| 24zk | PROP-SHIMS (proportionality audit 2026-11-15, package D; owner 2026-11-15): re-exports left after module splits, readers for formats written before a rename, and CLI probes for engine features that the exact `decoy-engine` pin already guarantees (D1 to D13). Importers move to the real module and the shim is deleted; each probe becomes a plain import or keyword. This is the pre-GA hard-delete rule. Report: `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` section 7 | engine, CLI | NOT STARTED | none | none |
+| 24zo | CI-SELECT-GAP (process, found 2026-11-17 while engine main was red): an engine PR's CI runs only the `fast` job, which runs no tests, unless the `gate-selfhosted` job is dispatched by hand. A PR that breaks tests can merge with green checks. CI must run tests on every engine PR | engine | NOT STARTED | engine #634 and #637 (the red-main fixes) | none |
+| 24zx | MAC-WHEEL-RUNNERS (process, 2026-11-17): the GitHub-hosted macOS jobs that build the companion wheel are repeatedly not picked up by a runner, so merges that need them wait or fail. Stop merges from waiting on them. V1 | engine, CI | NOT STARTED | seen on merges of 2026-11-16 and 2026-11-17 | none |
+
+## Later (1.x)
+
+Additive. Not scheduled until a 1.x release picks it up.
+
+None.
+
+## Maintenance
+
+No user-visible change. Merges at any time and never gates a release.
+
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| 24ze | DUP-GUARDS (duplication census 2026-11-12, packages D and G; owner 2026-11-12): sentries with a shrink-only baseline of today's sites for RNG construction, digest JSON, hmac, Arrow text predicates, environment reads, CLI error text, config loads, stdout writes, literal exit codes and file operations (D2 to D11; jscpd, D1, may move to V1+), plus two churn reducers: draw-site catalogue keyed by function or marker instead of `file:line` (G1) and the release script writing the DP certified-stack row (G2). No behavior change. Report: `C:docs/records/2026-11-12-duplication-census/REMEDIATION.md` | engine, CLI | PARTLY MERGED. G-E3 MERGED (engine #628, `db018471a`, 2026-11-17): draw-site call sites are keyed `path::function`, not by line (G1). G-E4 MERGED (engine #621, `80c381b5c`, 2026-11-17): `stamp_release.py` writes the DP certified rows at release prep (G2). Left: G-E1 and G-E2 (the engine sentries D2, D4 to D6) and G-C1 (the CLI sentries D9 to D11), which wait on the proportionality rows | `E:plan/factcheck-pins-guards` | none |
+| 24zl | PROP-GUARDS (proportionality audit 2026-11-15, packages E and K1 and the first section 15 guard; owner 2026-11-15): keep each guard fact in one place so ordinary changes stop hand-editing pins. E2 first (the baseline JSON becomes the only allowlist source), then E1 (glob the sentry manifest), E4 (drop the CODEMAP `KINDS` title pins), E6 (six repeated baseline-header pins), E7 (two guards with nothing left to guard) and E3 (the engine `execution/` byte-identical diff gate is replaced by the import-direction tests it already holds; owner 2026-11-15). Then the comment-history guard (task ids, review rounds, dates, reviewer names) with a baseline of today's files, built on E2's single source. K1: the three CLI architecture SVGs publish as a CI artifact instead of a commit after each push. E5 is not in scope: the four legacy CLI files keep exact line pins until V1 (owner 2026-11-15). E8 is V1+. Plan together with row 24ze, which uses the same baseline machinery. Report: `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` sections 8, 14 and 15 | engine, CLI | NOT STARTED | none | none; plan with 24ze |
+| 24zq | NESTED-INIT-REG (found in engine #636 review): `nested/__init__.py` had to be added to `permitted_non_physical` in the physical-seam sentry by hand because the plan's list missed it. Register every `__init__` of a nested package in one place, so a new package cannot fail the sentry by omission. V1 | engine | NOT STARTED | engine #636 | none |
+| 46 | H-1 C0: CLI size census and checker port | CLI | handoff not written | none | E0; fold into FILE-SIZE if the plans overlap |
+| 47 | H-1 C1: split `C:src/decoy/cli/distribution/installer.py` | CLI | handoff not written | none | C0 |
+| 48 | H-1 E1.1 | engine | handoff not written | none | E0 |
+| 49 | H-1 E6a (and E6b) | engine | handoff not written | none | E0 |
+| 50 | H-1 E0r: F29 producer inventory regeneration | engine | handoff not written | none | F06 #338 (merged) |
+| 51 | H-1 E1.2, then E1.3 | engine | handoff not written | none | A-4 (merged) |
+| 52 | H-1 E2 and E4 | engine | handoff not written | none | E0r |
+| 53 | H-1 C3 | CLI | handoff not written | none | NAME-REMOVAL CLI half; CLI branches (an identifier kept in the pre-split snapshot), `claude/vibrant-feynman-1khw1v` settled |
+| 54 | H-1 E7: split files as their blockers merge | engine | not planned in detail | none | per file |
+
+## Notes carried from the track
+
+H-1 tracker: vault `handoffs/phase1/h1/H1-TRACKER.md`. Plan: `P:docs/plans/2026-11-01-h1-wave-b-code-organization.md`
+on `P:plan/h1-wave-b` `944fb295` (Codex GO). Only files no live branch touches.
