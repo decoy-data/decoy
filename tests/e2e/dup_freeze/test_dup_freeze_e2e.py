@@ -94,16 +94,26 @@ def test_cl5_1_two_joint_mask_groups_draw_separate_streams(tmp_path: Path) -> No
     assert coupled < _N // 2, f"{coupled} of {_N} rows picked one shared reference row"
 
 
-# AT-CL5-1 (E3): a profile file's generated_at has one shape, +00:00.
-def test_cl5_1_profile_generated_at_ends_utc_offset(tmp_path: Path) -> None:
-    src = tmp_path / "in.csv"
-    pd.DataFrame({"name": ["a", "b", "c"], "n": ["1", "2", "3"]}).to_csv(src, index=False)
-    out = tmp_path / "scan.json"
-    result = runner.invoke(app, ["scan", str(src), "--has-header", "--output", str(out)])
-    assert result.exit_code == 0, result.output
-    stamp = json.loads(out.read_text(encoding="utf-8"))["generated_at"]
+def _stamps(node: Any) -> list[str]:
+    """Every `generated_at` string in a nested JSON document."""
+    if isinstance(node, dict):
+        found = [v for k, v in node.items() if k == "generated_at" and isinstance(v, str)]
+        return found + [s for v in node.values() for s in _stamps(v)]
+    if isinstance(node, list):
+        return [s for v in node for s in _stamps(v)]
+    return []
+
+
+# AT-CL5-1 (E3): a profile's generated_at has one shape, +00:00. No pinned-CLI command writes a
+# bare profile any more (`scan` writes `scan-set/v1`), so the check calls the engine call the CLI
+# used to make; the legacy `Z` fixture still loads through `scan show` (test_scan_saved.py).
+def test_cl5_1_profile_generated_at_ends_utc_offset() -> None:
+    from decoy_engine import profile_columns
+
+    frame = pd.DataFrame({"name": ["a", "b", "c"], "n": ["1", "2", "3"]})
+    profile = profile_columns(frame, source_label="x.csv", sample_strategy="head")
+    stamp = profile.to_dict()["generated_at"]
     assert stamp.endswith("+00:00"), stamp
-    assert not stamp.endswith("Z")
 
 
 # AT-CL5-1 (E1): the plan's config digest writes non-ASCII text as UTF-8, not as \uXXXX.
@@ -145,7 +155,7 @@ def test_cl5_1_plan_config_hash_writes_non_ascii_as_utf8(tmp_path: Path) -> None
     assert compiled_hash("donnees") != _GOLDEN_NON_ASCII_PLAN_HASH
 
 
-_GOLDEN_NON_ASCII_PLAN_HASH = "PLACEHOLDER"
+_GOLDEN_NON_ASCII_PLAN_HASH = "633a7cf81ef1f013810887ab98284567191dcf963414f5f4d5ac4a4c583a159b"
 
 
 # AT-CL5-2: control, the CLI evidence manifest hash keeps its bytes for non-ASCII text.
@@ -239,8 +249,19 @@ def test_cl5_3_handler_arm_carries_no_exception_context(monkeypatch: pytest.Monk
 def test_cl5_3_run_with_an_unknown_worker_marker_never_prints_the_value(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import decoy_engine
+    from decoy_engine.execution._isolated_common import inside_isolated_worker
+
     _clean(monkeypatch)
     monkeypatch.setenv(_WORKER_ENV, _BAD_VALUE)
+
+    def engine_run(*_args: Any, **_kwargs: Any) -> Any:
+        # `decoy run` does not take the isolated route in the pinned engine (the governor is not
+        # wired in), so the run reaches the marker the way `run_pipeline_isolated` does.
+        inside_isolated_worker()
+        raise AssertionError("the unknown marker should have raised")
+
+    monkeypatch.setattr(decoy_engine, "run_pipeline", engine_run)
     src = tmp_path / "in.csv"
     pd.DataFrame({"id": ["1", "2"]}).to_csv(src, index=False)
     cfg = _write_config(
