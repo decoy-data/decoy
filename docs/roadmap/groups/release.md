@@ -1,0 +1,65 @@
+# Install, packaging and release
+
+Status: current
+
+Part of the roadmap: [ROADMAP.md](../../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
+
+Rows keep their number from the pre-split track. A row number or section number that is not in a group file is a closed row or old section in the [snapshot](../../archive/2026-11-18-roadmap-before-split.md).
+
+## 1.0
+
+Blocks the 1.0 release. Windows is in 1.0 (owner 2026-11-18): the CLI must download, install and run the demo on a Windows machine.
+
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| 24zc | CERT-PIN-CVES (automated QA scan 2026-11-11, finding F1; owner 2026-11-11): the certified runtime pins in `requirements-certified.txt` carry known advisories. Repin to exactly certifi 2026.10.18, cryptography 50.0.0, pyasn1 0.6.5 and urllib3 2.8.0 (no other line moves, no version above these). The repin changes the DP certified fingerprint (`d5898d1f...`), so the engine must first ship the new CLI-profile row in `_CERTIFIED_STACKS`, then the CLI repins the engine and the four pins together. Plan on CLI branch `plan/certified-pin-cves`. Feature group: fit, fidelity and differential privacy (engine QA checklist section 13); build at that group's QA pass (owner rule 2026-11-11). V1 release blocker | engine, CLI | NOT STARTED | none | an engine release with the new row |
+| 88 | F44 CLI half: signed bundles, `decoy upgrade` preflight, rollback and offline signature path, release-time SBOM | engine, CLI | SBOM generators MERGED (engine #355, CLI #75; polish #359). Key custody decided (owner 2026-11-12): a GitHub Environment secret (`native-release`) with a required approver, plus an offline backup; creating the key and the Environment remain owner tasks | `C:docs/plans/2026-10-22-cli-distribution-and-packaging-spec.md` | B-2 (merged); R1-c key before the first signed bundle |
+| 89 | WIN-FEAS: Windows for the CLI and engine (private file ACLs instead of 0600, atomic replace with open files, file-access path handling, installer and signing); a blocker goes back to the owner | engine, CLI | NOT STARTED | none | before CLI-REL; LIB L1b gives the first evidence |
+| 6 | WIN-RUNNER: Windows self-hosted runner on a GCP VM; spend approved by the owner; stopped when idle (`~/bin/vm-reap`) | infra | NOT STARTED; provision when CI-L1 or LIB L1b first needs a Windows lane | LIB plan section 5 OS lanes | none |
+| 90 | REL-PKG: packaging. Signed per-platform bundles with a managed runtime, Ed25519 signer and key custody, SHA-256 manifest, verify before extract, install script, offline archive; native companion wheels (engine #353 workflow, never run); NOTICE, SBOM, `--version` (G2) | engine, CLI | PARTLY MERGED. B-2 MERGED (CLI #66, #67; engine #353). MAC-V1b MERGED (CLI #281, `074e6256`, 2026-11-15): SSHSIG sidecars and key checks in the signer. Left: MAC-V1a (the `install.sh` verifier that stock macOS runs). Key custody decided (owner 2026-11-12): a GitHub Environment secret (`native-release`) with a required approver, plus an offline backup. Owner tasks open: create the signing key and the `native-release` Environment, `native-v*` tag rule, qemu SHA pin | packaging spec above | F44 CLI half (row 88); WIN-FEAS for Windows |
+| 91 | REL-WEB: website download page on decoy-web, update-check endpoint with its privacy contract (no data, no identifiers, no telemetry), `/proof` synced (B-3) | web, CLI | PARTLY MERGED. Plan written 2026-11-15, revision 3 (`plan/rel-web`, `53e0e77c`), not yet gated. It also owns the CLI update-check client fixes: RW-C1 (fixed headers, no redirects, a 64 KiB cap; needs no owner answer) MERGED (CLI #272, `4f5887f3`, 2026-11-15). RW-C2a MERGED (CLI #279, `d36ba1e4`, 2026-11-15): update host on trydecoy.com, pins on GitHub releases. Left: RW-C2b (one host and bundle base; wait on owner Q1 domain and Q2 bundle host, both needed by 2026-11-28; merge before REL-GATE G2) and the decoy-web download page. If Q1 or Q2 is not answered by 2026-11-28, RW-C2b becomes a named G0 exception | plan `docs/plans/2026-11-15-rel-web.md` on branch `plan/rel-web`; decoy-web | REL-PKG |
+| 92 | REL-DOCS: public CLI docs (Fumadocs at decoy.dev/docs, decoy-web PR #18) with the P0 pages from the CLI doc audit, install and upgrade docs, release notes, security contact; D-5 launch-gate flip | web, CLI | docs held draft. The `decoy.dev/docs` host is pending REL-WEB owner Q1 (row 91): the site and mail are on `trydecoy.com`. decoy-web `src/_data/site.json` (main `5137913e`) still says "CLI BUSL-1.1" and "Engine Apache-2.0", while the owner-chosen license is FSL-1.1-ALv2 (owner 2026-11-10); the REL-WEB plan's slice RW-D changes that line | decoy-web PR #18 | the commands they document |
+| 93 | REL-GATE: R1 gates. D-4 launch engine freeze, R1-c signing key and license values (owner and counsel), versioning freeze (exit codes including 6, result schema, YAML schema, reason registry), canonical release smoke with recorded runs, a filled release-readiness instance, claims and license checkpoint. Install and license wording: the engine says `pip install` and Apache-2.0 (`E:pyproject.toml`, `E:README.md`) while `C:docs/install.md` says signed bundle and FSL-1.1-ALv2 (engine QA checklist fact-check 2026-11-11 (Codex, engine branch `claude/sharp-cori-um7k6i`)); R1-c settles the license and REL-DOCS (row 92) makes both repos say the same | engine, CLI, web | PARTLY MERGED. Plan written 2026-11-15, revision 3 (`plan/rel-gate`, `7c73c75`). Merged 2026-11-15: RG-X (one exit-code table and precedence for `run --all`, `ci` and the docs, CLI #270, `a2db34d9`); RG-R (readiness template and `readiness_check`, CLI #275, `5f642e0f`); RG-S (canonical release smoke, CLI #277, `de4cdeea`); RG-F2 CLI half (frozen-surface map, CLI #273, `4db0ec88`); RG-F3 (launch pin check, CLI #274, `e716f445`); RG-L (versioning and license wording, CLI #276, `73482905`, and engine #600, `72ff5089`); the `scan diff --strict` exit 4 (plan Q8 (a), CLI #278, `6a3adca5`). RG-F1 MERGED 2026-11-16 (engine #599, `b3117d5b3`): `docs/frozen-surfaces.md` maps every frozen engine surface to its owning code and pinning test, a sentry checks the map, and committed JSON schemas of `PipelineConfig` and `RunResult` are snapshotted. Left: RG-GA and RG-GA-C (wait on owner Q3), RG-RUN (after 2026-12-04). Owner 2026-11-12: D-4 engine freeze is the last daily engine release after build-complete on 2026-12-04; launch version `1.0.0`; customer releases monthly plus security fixes; macOS Intel unsupported in V1. Still open with the owner and counsel: the licensor entity and a contributor license agreement (the license is FSL-1.1-ALv2) | plan `docs/plans/2026-11-15-rel-gate.md` on branch `plan/rel-gate`; [roadmap/release-gates.md](../release-gates.md) | every row above |
+| 94 | CLI-REL: the CLI V1 release. Final engine release and repin, publication to the download host, smoke install from the published artifact on each supported platform (Linux x86_64 and aarch64, macOS arm64, Windows x86_64 subject to WIN-FEAS). Precondition slice CLI-REL S0: the build-and-sign workflow (every target's bundle, signed with the `native-release` key), `SHA256SUMS`, the version document and the `packaging_tools/candidate.py` call; due before REL-GATE G5, not required at G0 (REL-GATE plan revision 3, X6 and FU-6). The REL-WEB plan gives S0 its `publish`, `resign` and `rollback` modes, which open the decoy-web PR with the signed version document, and the credential for that PR (REL-WEB owner Q8) | engine, CLI, web | NOT STARTED. Download host decided (owner 2026-11-12): a static site plus CDN on the website's host | none | rows 89 to 93 |
+| EXPERIMENTAL-TIER | Add an experimental tier to the compatibility contract (owner 2026-11-18): a surface that ships and works but whose names and shape may change in a 1.x minor. Labelled experimental in 1.0: (1) the Python API of the CLI package (`decoy.mask`, `decoy.scan` and their error classes); (2) custom providers and the connector SDK (`BaseMaskingStrategy`, `FileSource`, `FileSink` and the hooks a user-written provider or connector uses). Output from a custom provider stays under the determinism rule. The tier is written into `E:docs/compatibility-contract.md` and both frozen-surface maps, and each labelled surface says so in its docs and docstring. The `decoy library` commands are decided at the release gate (row 93): labelled if they land late with little use, frozen otherwise; the stored records under `.decoy/` are frozen either way | engine, CLI | NOT STARTED | none | none; merges before row 93 |
+
+## Later (1.x)
+
+Additive. Not scheduled until a 1.x release picks it up.
+
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| 90a | REL-IMAGE: official container image for pipelines (owner 2026-11-07: ship the download plus an official image; a GitHub Action, Helm chart and Terraform wait until after V1). Built on each release from the same signed Linux bundle (x86_64 and aarch64), signed and version-pinned by digest; a slim default tag plus a `-ner` tag with the NER model included; runs as a non-root user; recipes for GitHub Actions, GitLab CI and a Kubernetes job in the public docs. Registry and pull access (owner 2026-11-08): a public image that refuses to run without a valid license | CLI | NOT STARTED; needs a plan | none | REL-PKG (row 90); SCAN-ML model install (row 32a) for the `-ner` tag |
+
+## Maintenance
+
+No user-visible change. Merges at any time and never gates a release.
+
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| 24zr | SETUP-NER-JSON (found in CLI #298 review): `decoy setup --ner skip --json` without `--yes`, run off a terminal, exits 1 although `--ner skip` needs no answer, so it should not need `--yes`. V1 fix | CLI | NOT STARTED | CLI #298 | none |
+
+## Notes carried from the track
+
+### 1.0 release scope
+
+Source: `C:docs/plans/2026-10-22-cli-distribution-and-packaging-spec.md`.
+
+- The final engine release and CLI repin.
+- Signed per-platform bundles and the installer, published to the download host, then a smoke install
+  from the published artifact on each supported platform.
+- The official container image (row 90a), built from the signed Linux bundle, with a smoke run from
+  the published image.
+- The update-check endpoint and its privacy contract; the F30 opt-in statement.
+- Platform matrix: Linux x86_64 and aarch64, macOS arm64, Windows x86_64 subject to WIN-FEAS (owner
+  OQ-4). This supersedes the F22 "Linux and macOS only" note.
+- Native companion wheels through the engine native-release workflow and the B-2 owner tasks.
+- Versioning freeze at V1: exit codes (including 6), the result document schema, the YAML schema, the
+  reason registry. Exit 6 is planned, not shipped: DELIV slice C3 (row 61) adds `EXIT_PARTIAL = 6`
+  for a best-effort run that delivers some tables and drops others.
+- CLI `--version` (literal `0.1.0` today, G2), CLI NOTICE and SBOM, security contact, release notes.
+- Public docs, download page, install and upgrade docs.
+- License: FSL-1.1-ALv2 for the engine, native companion and CLI (owner decision 2026-11-10,
+  replacing BUSL-1.1 on the CLI and Apache-2.0 on the engine); counsel confirms the licensor entity
+  and a contributor license agreement in R1-c. Plain-English terms: [LICENSING.md](../../../LICENSING.md).
+- Production-readiness checks.
