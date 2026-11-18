@@ -1773,11 +1773,12 @@
 <!-- decoy.cli.io._scan_set.ScanSetFormatError -->
 <g id="node117" class="node">
 <title>decoy.cli.io._scan_set.ScanSetFormatError</title>
-<polygon fill="none" stroke="black" points="21688.38,-496.12 21688.38,-546.62 21853.62,-546.62 21853.62,-496.12 21688.38,-496.12"/>
-<text xml:space="preserve" text-anchor="start" x="21696.38" y="-529.33" font-family="Times,serif" font-size="14.00" fill="red">ScanSetFormatError</text>
-<polyline fill="none" stroke="black" points="21688.38,-521.38 21853.62,-521.38"/>
-<polyline fill="none" stroke="black" points="21688.38,-521.38 21853.62,-521.38"/>
-<text xml:space="preserve" text-anchor="start" x="21768.75" y="-504.07" font-family="Times,serif" font-size="14.00" fill="red"> </text>
+<polygon fill="none" stroke="black" points="21688.38,-483.5 21688.38,-559.25 21853.62,-559.25 21853.62,-483.5 21688.38,-483.5"/>
+<text xml:space="preserve" text-anchor="start" x="21696.38" y="-541.95" font-family="Times,serif" font-size="14.00" fill="red">ScanSetFormatError</text>
+<polyline fill="none" stroke="black" points="21688.38,-534 21853.62,-534"/>
+<text xml:space="preserve" text-anchor="start" x="21712.12" y="-516.7" font-family="Times,serif" font-size="14.00" fill="red">code : str | None</text>
+<polyline fill="none" stroke="black" points="21688.38,-508.75 21853.62,-508.75"/>
+<text xml:space="preserve" text-anchor="start" x="21768.75" y="-491.45" font-family="Times,serif" font-size="14.00" fill="red"> </text>
 </g>
 <!-- decoy.cli.scanning._multi.ScanUsageError -->
 <g id="node118" class="node">
