@@ -113,6 +113,18 @@ def _from_the_baseline_only(node: ast.expr) -> bool:
     return False
 
 
+def _combines_entries(value: ast.expr | None) -> bool:
+    """An operator expression (``a | b``, ``a + b``) that mixes the loader or a collection in.
+
+    A plain path join such as ``ROOT / "tests" / "x.json"`` has neither and is not shaped.
+    """
+    if not isinstance(value, ast.BinOp):
+        return False
+    return any(
+        _is_loader_call(n) or _is_collection(n) for n in ast.walk(value) if isinstance(n, ast.expr)
+    )
+
+
 def inline_allowlists(sources: dict[str, str], closed: set[tuple[str, str]]) -> list[str]:
     """Allowlist-shaped module constants that hold their own entries instead of the baseline."""
     found = []
@@ -124,7 +136,7 @@ def inline_allowlists(sources: dict[str, str], closed: set[tuple[str, str]]) -> 
             value = getattr(node, "value", None)
             for t in targets:
                 is_list = isinstance(t, ast.Name) and LIST_NAME.search(t.id)
-                shaped = _is_collection(value) or isinstance(value, ast.BinOp)
+                shaped = _is_collection(value) or _combines_entries(value)
                 if (
                     is_list
                     and shaped
