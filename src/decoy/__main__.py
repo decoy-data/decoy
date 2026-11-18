@@ -132,6 +132,22 @@ def _parsed_verbose(ctx: Any) -> bool:
     return any(bool(c.params.get("verbose")) for c in seen)
 
 
+def _env_flag_report(exc: Exception) -> tuple[str, str, int] | None:
+    """`(message, code, exit)` for an engine `EnvFlagError`, else None. Never raises.
+
+    The engine text names the variable, never its value. The import is lazy so a normal run
+    never pays for it; a failed import or classification must not replace the original failure.
+    """
+    try:
+        from decoy_engine.errors import EnvFlagError
+
+        if not isinstance(exc, EnvFlagError):
+            return None
+        return str(exc), exc.code, exit_code_for(exc)
+    except Exception:
+        return None
+
+
 class _GuardedGroup(TyperGroup):
     """Root group that keeps a Python traceback from reaching the user.
 
@@ -161,13 +177,12 @@ class _GuardedGroup(TyperGroup):
             verbose = _parsed_verbose(ctx)
             state = setup_output(json_=False, quiet=False, verbose=verbose)
             # An engine flag with an unknown spelling is the user's to fix, not a crash: show
-            # the variable name and code. The engine text names the variable, never its value.
-            # Imported here, after a failure, so a normal run never pays for the engine import.
-            from decoy_engine.errors import EnvFlagError
-
-            if isinstance(exc, EnvFlagError):
-                emit_error(state, ctx.invoked_subcommand or "decoy", str(exc), code=exc.code)
-                exit_code = exit_code_for(exc)
+            # the variable name and code. Decided before anything prints; any failure while
+            # deciding falls back to the plain crash line below.
+            flag = _env_flag_report(exc)
+            if flag is not None:
+                message, code, exit_code = flag
+                emit_error(state, ctx.invoked_subcommand or "decoy", message, code=code)
             else:
                 exit_code = _EXIT_CRASH
                 name = type(exc).__name__
