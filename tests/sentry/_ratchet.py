@@ -124,19 +124,23 @@ def _int_field(entry: dict[str, object], field: str) -> int | None:
 
 
 def max_raised(head: object, base: object) -> bool:
-    """True when a ceiling field (``max``, ``count`` or ``sites``) of the base entry rose or went.
+    """True when the ceiling of an entry rose, was dropped, or moved to another field.
 
-    Each field the base entry holds as an integer is checked on its own, so adding a lower field
-    or swapping one field for another cannot hide growth.
+    Each ceiling field (``max``, ``count``, ``sites``) the base entry holds as an integer is
+    checked on its own. An entry that had a ceiling may not gain a ceiling field it did not have:
+    lowering ``count`` while adding ``max`` would move the cap to the new field.
     """
     if not isinstance(base, dict):
         return False
-    for field in CEILING_FIELDS:
-        old = _int_field(base, field)
-        if old is None:
-            continue
-        new = _int_field(head, field) if isinstance(head, dict) else None
-        if new is None or new > old:
+    held = [f for f in CEILING_FIELDS if _int_field(base, f) is not None]
+    if not held:
+        return False
+    head_entry = head if isinstance(head, dict) else {}
+    if any(_int_field(head_entry, f) is not None for f in CEILING_FIELDS if f not in held):
+        return True
+    for field in held:
+        old, new = _int_field(base, field), _int_field(head_entry, field)
+        if old is not None and (new is None or new > old):
             return True
     return False
 
