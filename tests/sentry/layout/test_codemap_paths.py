@@ -1,8 +1,7 @@
 """AT-1 (map, C1): every concrete path in the CODEMAP "Where Things Go" section exists.
 
-The section is the one place that says where a new file goes. A path that stops existing fails
-here, so the map cannot drift from the tree. Row titles are not pinned: a renamed or dropped row
-does not fail, but a row kept twice does. Path grammar lives in
+The section is the one place that says where a new file goes. A path that stops existing, or a
+row that is dropped, fails here so the map cannot drift from the tree. Path grammar lives in
 ``map_paths`` (vendored from the engine's LAYOUT E2 commit ``66d0f879``); the engine's own tests
 cover each grammar case, so this file checks the CLI's map and the one CLI-specific wiring.
 """
@@ -19,6 +18,45 @@ ROOT = Path(__file__).resolve().parents[3]
 LAYOUT_COLUMNS = (1, 2, 3, 4)
 LAYOUT_HEADING = "## Where Things Go"
 HEADER = ("Kind", "Goes in", "File naming", "Tests", "Sentries and registries")
+# Every kind the map names, so a dropped or renamed row is red with its name. Adding a row means
+# adding its kind here in the same reviewed diff.
+KINDS = frozenset(
+    {
+        "Command module",
+        "Command-private helpers",
+        "Local record library (LIB): root rule, store, and later refs, index, scratch and logs; commands import the facade, never its `_` modules",
+        "Generation CLI helpers (the exact fit shared by `fit` and `init`, the `run --rows` preview, the CSV generate scaffold; the flat `cli/` is frozen)",
+        "`decoy run` internals (phases, error arm, summary, evidence, notifications, vault commit)",
+        "`decoy scan` internals (argument resolution, engine call, card and `--json`)",
+        "Pre-run check gate shared by `validate`, `ci check` and `run`",
+        "Source readers and target writers (owner rule 2026-11-06: new ones go here from now on)",
+        "Project layout services: project root finder and `.decoy/` setup, pipeline names and claims, run folders, `out/`, the Windows path budget, the `layout.*` descriptors. Everything outside `src/decoy/cli/io/` imports them from the public `decoy.cli.io` package",
+        "Exit codes",
+        "Python API",
+        "CI integration",
+        "Terminal output",
+        "Versioned schema artifacts",
+        "User-facing CLI text and crash handling",
+        "Shipped install and update",
+        "Build-host release tools (not shipped in the wheel)",
+        "Packaged templates",
+        "Private shared filesystem or process primitives used by more than one package",
+        "Notifications, telemetry",
+        "First-user QA item tests, grouped by behavior",
+        "Sentry test",
+        "Layer contracts",
+        "Shared cross-suite test helpers (constants and lookups used by more than one test folder)",
+        "Developer environment scripts",
+        "Release scripts",
+        "Release runbooks, logs and maps",
+        "CI install, vendor and lane policy",
+        "Composite CI actions",
+        "Task-oriented user guides (one folder per topic, with a `README.md` index)",
+        "Root legal files (license text, notice, licensing FAQ, trademark policy)",
+        "Roadmap, plans, records",
+        "QA checklists and run templates",
+    }
+)
 # Paths the map marks `(target)`. A new or misspelled target is red. None is open since C3
 # created the layer files.
 TARGETS: frozenset[str] = frozenset()
@@ -40,9 +78,11 @@ def test_the_codemap_layout_table_has_the_five_named_columns() -> None:
     assert all(len(r) == len(HEADER) for r in rows), "a row has a different number of cells"
 
 
-def test_the_codemap_layout_section_names_each_kind_once() -> None:
+def test_the_codemap_layout_section_keeps_its_kinds() -> None:
     kinds = [r[0] for r in _table()[2:]]
     assert len(kinds) == len(set(kinds)), "a kind appears twice"
+    assert set(kinds) - KINDS == set(), "a row kind is new or renamed: add it to KINDS"
+    assert KINDS - set(kinds) == set(), "the map lost or renamed a row"
 
 
 def test_the_codemap_target_paths_are_the_approved_ones() -> None:

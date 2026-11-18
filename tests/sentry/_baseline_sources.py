@@ -106,14 +106,16 @@ READERS: dict[str, FromFile | FromScan] = {
 }
 
 # Committed data files a sentry reads besides its baseline. The snapshot goes with C-G2.
-DATA_FILES = frozenset({"file_sinks.toml", "allowlist-before.json"})
+DATA_FILES = frozenset(
+    {"tests/sentry/io_policy/file_sinks.toml", "tests/sentry/allowlist-before.json"}
+)
 
 # Allowlist-shaped constants a sentry holds that are a closed contract, not a bypass list.
 NOT_A_LIST_CONSTS: dict[tuple[str, str], str] = {
-    ("test_notify_redaction.py", "_ALLOWED_EVENT_FIELDS"): (
+    ("tests/sentry/test_notify_redaction.py", "_ALLOWED_EVENT_FIELDS"): (
         "closed notification fact set, pinned by test_notify_redaction lane 1"
     ),
-    ("test_engine_import_surface.py", "_GUARD_EXCEPTIONS"): (
+    ("tests/sentry/test_engine_import_surface.py", "_GUARD_EXCEPTIONS"): (
         "exception names the import guard recognises, not a bypass list"
     ),
 }
