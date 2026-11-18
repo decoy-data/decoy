@@ -18,9 +18,15 @@ Blocks the 1.0 release.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up.
+Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
 
-None.
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| EXAMPLES-FIX | `examples/mask_example.yaml` fails `decoy validate`; `decoy init --preset generate` fails on the demo's own CSV | CLI | NOT STARTED. 1.x patch | [outside review](../post-1.0-plan.md) (docs PR #319) | none |
+| F18 | Config composition: includes and inheritance | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| F19 | Semantic config diff and repair command | CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| F20 | Config migration (`decoy migrate`) | engine, CLI | NOT STARTED. 1.x if it adds a new schema version, `migrate` writes it, and old configs still load, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| F41 | Expression evaluator preview command | CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
 
 ## Maintenance
 

@@ -14,7 +14,7 @@ None.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up.
+Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
@@ -23,9 +23,25 @@ Additive. Not scheduled until a 1.x release picks it up.
 | 82 | F07: bounded path-observation discovery, nested-path relations, JSONB coverage | engine | PARTLY MERGED. Plan `E:plan/f07-path-discovery` (revision 3). 82-E1a MERGED (engine #636, `2d01b91af`, 2026-11-17): the nested handler moved to `nested/_handler.py`, no handler line changed. Left: 82-E1, E2a, E2b, E3a, E3b, E4a, E4b, E5 | `E:plan/f07-path-discovery` | NAME-REMOVAL |
 | 86 | F01: PostgreSQL application-ready write target (staging, constraint, index and sequence restore, atomic publish) and the type-mapping report | engine, CLI | NOT STARTED; owner 2026-11-06: CLI V1 | none | Phase 2 rows; F22 |
 | 87 | F02: SFTP, cloud scan, subset against cloud; retry executor; content digest on `WriteResult` | engine, CLI | NOT STARTED. Plan written 2026-11-17 (revision 3, Dennis round 2 applied): `E:plan/f02-sftp-cloud`, six engine slices E1 to E6, then the release and four CLI slices C1 to C4. No slice is merged | `E:plan/f02-sftp-cloud` | CLI-CLOUD; F22 adapter |
+| SQL-FILTER | SQL filters on sources, as a new optional source key (DuckDB opportunity 13) | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 64b |
+| SUBSET-ANY-SOURCE | Subset from non-Parquet sources (DuckDB opportunity 19) | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | none |
+| SFTP-HOSTKEY | SFTP host-key fingerprint pinning as an option (pinning by default would refuse connections that work today) | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (findings register) | row 87 |
+| X-01 | Avro and ORC files | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | none |
+| X-02 | JSON and JSONL with nested path masking | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F07, F03 |
+| X-03 | Excel workbooks | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | none |
+| X-04 | XML with path masking | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | X-02 |
+| X-05 | Delta Lake and Apache Iceberg tables | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F22 |
+| X-06 | More databases (MySQL, SQL Server, Snowflake, BigQuery; MongoDB later), read and write. DuckDB opportunities 11 and 12 are the same item | engine, CLI | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F01, row 64b |
+| X-07 | Streaming and change-data-capture masking | engine, CLI | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F42 |
+| F03 | File unions: several files as one logical table | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| F05 | Fixed-width streaming; turns a refusal on large fixed-width files into a success | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| X-19 | File metadata scrubbing as an option; the default stays | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | F38 |
+| F38 | Dataset metadata preserve and redact | engine | NOT STARTED. 1.x if preserving metadata is opt-in, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
 
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.
 
-None.
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| CLOUD-COND-WRITES | GCS and S3 conditional writes; the output is the same | engine | NOT STARTED. 1.x patch | [post-1.0-plan](../post-1.0-plan.md) (findings register) | row 64 |

@@ -22,9 +22,12 @@ Blocks the 1.0 release.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up.
+Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
 
-None.
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| HARDEN-INPROC | Hostile in-process hardening (out of the V1 threat model) | engine | NOT STARTED. 1.x if it hardens internals and custom providers keep working, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (decisions 2026-10-30) | none |
+| WIDE-SIGNATURES | Config objects in place of wide signatures (`run_pipeline`, `stream_table`); split `fit()` and `report.py` by cohesion | engine, CLI | NOT STARTED. 1.x if the old keywords keep working, else 2.0 | [outside review](../post-1.0-plan.md) (docs PR #319) | row 24zj |
 
 ## Maintenance
 
@@ -44,6 +47,9 @@ No user-visible change. Merges at any time and never gates a release.
 | 52 | H-1 E2 and E4 | engine | handoff not written | none | E0r |
 | 53 | H-1 C3 | CLI | handoff not written | none | NAME-REMOVAL CLI half; CLI branches (an identifier kept in the pre-split snapshot), `claude/vibrant-feynman-1khw1v` settled |
 | 54 | H-1 E7: split files as their blockers merge | engine | not planned in detail | none | per file |
+| PROP-CLEANUP | Proportionality audit packages not in rows 24zi to 24zl: C1 to C8, C11, C12, C14, C15, C17 (C13 is planned LIB work), F (comment history), G (defensive code), H (size splits), I (test reductions), J1 and J3 to J6 (CLI thin-wrapper copies), K2 to K4 (docs) | engine, CLI | NOT STARTED. 1.x patch | `C:docs/records/2026-11-15-proportionality-audit/REMEDIATION.md` | none |
+| FINDINGS-PATCH | CLI `scan` fixed-width divergence test (G5); native-kernel fallback telemetry; the `data_discovery` keyword denylist; secret retention in `KeyboardInterrupt` args; a public facade for the CI lane sentry's `_shell_tokens` (row 5); the memory-fraction constant duplicated across repos and the `--duckdb-source` audit (DuckDB 6, 7) | engine, CLI | NOT STARTED. 1.x patch | [post-1.0-plan](../post-1.0-plan.md) | none |
+| OUTSIDE-REVIEW-CI | A coverage floor in CI; a type checker on the CLI; the size rule reworded to "split by reason to change"; a wider public and internal boundary sentry so the CLI stops importing engine internals; a test that runs every README flow and bundled example in a clean install | engine, CLI | NOT STARTED. 1.x patch | [outside review](../post-1.0-plan.md) (docs PR #319) | none |
 
 ## Notes carried from the track
 

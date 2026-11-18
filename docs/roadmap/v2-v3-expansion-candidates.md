@@ -5,6 +5,8 @@ Status: proposal (for the V2/V3 planning discussion; nothing here is scheduled)
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 Indexed from [post-1.0-plan.md](post-1.0-plan.md). The placement tags below (V1+, V2, V3) say how big a candidate is and in what
 order to build it. The release bucket (1.x minor, 1.x patch, 2.0) is in that page.
+Each X-item is now a Later row in a [group file](groups/) (X-22 to X-24 share the row MEDIA, X-25 is F40); its
+release is in [releases-1x.md](releases-1x.md). This page keeps the detail.
 
 This document proposes features that widen Decoy's core: more kinds of input and output, more mask
 and privacy techniques, more generators, documents, and media (images, video, audio). Each entry

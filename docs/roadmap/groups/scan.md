@@ -23,7 +23,7 @@ Blocks the 1.0 release.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up.
+Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
@@ -31,6 +31,12 @@ Additive. Not scheduled until a 1.x release picks it up.
 | 31 | DIST-INTEGRITY: opt-in pre-scan distribution capture plus a post-scan check within n%; a breach blocks in strict mode | engine, CLI | NOT STARTED | none | SCAN-LIB, POSTSCAN-STREAM |
 | 32 | DRIFT: opt-in pre-scan drift check at run start against a SCAN-LIB baseline (`on_drift: warn` or `fail`) | engine, CLI | NOT STARTED | none | SCAN-LIB |
 | 80 | F15: bound-baseline object, strict-drift publication block; scan-diff moves into an engine `scan-diff/v1` | engine, CLI | NOT STARTED | none | NAME-REMOVAL; SCAN-LIB |
+| DETECT-PROFILES | Detection settings profiles: named sets of detectors, overrides, thresholds and ML on or off that a pipeline picks by name | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (owner 2026-11-05) | row 32a |
+| FK-DISCOVER | Value-based FK discovery in `decoy scan`; declared relationships keep priority (SCAN-MULTI plan section 7; DuckDB opportunity 14 is the same idea) | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 29 |
+| X-09 | Secrets detection (keys, tokens, passwords in columns and text) | engine | NOT STARTED. 1.x minor | [expansion page](../v2-v3-expansion-candidates.md) | none |
+| X-11 | Better free-text detection | engine | NOT STARTED. 1.x if it is a new opt-in detector or profile, else 2.0 | [expansion page](../v2-v3-expansion-candidates.md) | DETECT-PROFILES; F08 |
+| SCAN-TRENDS | Trend and drift analytics across saved scans and reports, under a new report tag (DuckDB opportunity 18) | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 32 |
+| SCAN-PROFILE-AGG | Whole-file profiling aggregates (DuckDB opportunity 9) | engine | NOT STARTED. 1.x if the aggregates are an option or new fields, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) | none |
 
 ## Maintenance
 

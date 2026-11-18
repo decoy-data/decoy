@@ -5,6 +5,10 @@ Status: plan
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 This page replaces `out-of-scope.md`. Owner direction, 2026-11-16.
 
+Since 2026-11-18 the items below are rows in the Later and Maintenance tables of the [group files](groups/), and
+the order they ship in is in [releases-1x.md](releases-1x.md). The tables here stay as the record of each item's bucket
+and the reason for it.
+
 ## The rule
 
 After the CLI ships 1.0.0, any change that keeps the contract the same is a 1.x release, whatever the

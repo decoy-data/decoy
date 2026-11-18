@@ -26,15 +26,29 @@ Blocks the 1.0 release.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up.
+Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 84 | F24 engine half: full-lifecycle estimate including the ingestion peak; advisory only | engine | IN REVIEW. Plan `E:plan/f24-lifecycle-estimate` (revision 5). 84-E1 is open (engine #635): `estimate_job` returns `lifecycle_peak_bytes`, `limiting_phase` and `phase_bytes` for mask jobs. Left: 84-E1 merge, 84-E2 (generate jobs) | `E:plan/f24-lifecycle-estimate` | estimator (engine #328, merged) |
 | 85 | F23 resume, CLI half: `decoy run --resume RUN_DIR`, table-level: tables that finished are kept, the failed table runs again from its start (owner UX map Q12, 2026-11-08) and the engine checkpoint store | engine, CLI | IN PROGRESS. Plan `C:plan/f23-resume` (`docs/plans/2026-11-13-f23-resume.md`). E1 MERGED (engine #562, `8c9c1162`, 2026-11-13): resume run fingerprint, `binding_digest` and the HMAC key check, plus the `decoy/resume_*` reason codes; nothing calls it yet, and it ships in the next engine release. E2 MERGED (engine #603, `9c666d6a1`, 2026-11-16): the store records `decoy-resume-run/v1` and `decoy-resume-table/v1` and `plan_resume`; F22's strict reader declaration classes moved unchanged to a shared private module, and nothing calls `plan_resume` yet. Left: the engine release that carries E1 and E2 with the CLI repin, then CLI slices C0, C1, C2a, C2b and C3 (plan section 10) | `C:plan/f23-resume` `ea36ced` | F22, CLI delivery |
+| NOTIFY-OUTCOME | Job-outcome notifications on success and on both, and a CLI `--notify` flag | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 7) | none |
+| NOTIFY-SCHEME | Scheme check on notify and `--url` (DUP-DEFECTS B11) | engine, CLI | NOT STARTED. 1.x if the check only warns, or keeps every scheme that works today, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (row 24zd) | none |
+| DRY-RUN | Deterministic sample preview and `decoy run --dry-run` (DuckDB opportunity 10; the inbox QA suggestion is the same item) | CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 63 |
+| F11 | Output ordering and byte reproducibility | engine | NOT STARTED. 1.x if it is an opt-in option, else 2.0 | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| F42 | Unix streams as input and output | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Council scope) | none |
+| CHUNK-RESUME | Chunk-level resume (the table-level `--resume` is row 85) | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | row 85 |
+| ROUTE-COV2 | Route coverage phase 2: out-of-core address faker, FPE FK key on the out-of-core route, a resident escape hatch option, out-of-core quarantine | engine, CLI | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) | none |
+| FK-MULTIHOP | Composite multi-hop FK chains; turns a coded decline into a success | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 6) | none |
+| FK-CYCLES | Cross-table FK cycles on the bounded sequential route; needs one job-wide memory-eligibility rule first | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 8) | none |
+| FK-REORDER | Bounded reorder for large parents (partitioned or blocked join) | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan 9) | none |
+| OOC-NESTED-REL | Nested and arbitrary-N relationships on the out-of-core route | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (platform V2 plan, secondary) | none |
+| MIXED-ROUTE | Mixed-job composite FK keys and the mixed-job out-of-core mask driver | engine | NOT STARTED. 1.x minor | [post-1.0-plan](../post-1.0-plan.md) (Phase F deferrals) | none |
 
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.
 
-None.
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| RUN-PATCH | The `decoy run` error text cap of 500 characters (row 65); atomic-output tails (ACLs and xattrs, a second temp path, interrupt during chmod, ENOSPC mapping; row 21b); an all-null chunk breaking string-output strategies on the chunked route; chunk-local row indices in chunked audit evidence; cross-chunk warning aggregation and the kernel-ABI witness harness; the width-aware reorder ceiling; 200M scale proofs and the thread-versus-memory policy (GAP9) | engine, CLI | NOT STARTED. 1.x patch | [post-1.0-plan](../post-1.0-plan.md); `E:docs/backlog/all-null-chunk-string-output-limitation.md`, `E:docs/backlog/chunked-audit-evidence-row-indices.md` | none |

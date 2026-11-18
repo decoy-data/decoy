@@ -22,13 +22,16 @@ Blocks the 1.0 release.
 
 ## Later (1.x)
 
-Additive. Not scheduled until a 1.x release picks it up.
+Additive. Not scheduled until a 1.x release picks it up. The release each row is planned for is in [releases-1x.md](../releases-1x.md).
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 6 | WIN-RUNNER: Windows self-hosted runner on a GCP VM; spend approved by the owner; stopped when idle (`~/bin/vm-reap`) | infra | NOT STARTED; provision when CI-L1 or LIB L1b first needs a Windows lane | LIB plan section 5 OS lanes | none |
 | 89 | WIN-FEAS: Windows for the CLI and engine (private file ACLs instead of 0600, atomic replace with open files, file-access path handling, installer and signing); a blocker goes back to the owner | engine, CLI | NOT STARTED | none | before CLI-REL; LIB L1b gives the first evidence |
 | 90a | REL-IMAGE: official container image for pipelines (owner 2026-11-07: ship the download plus an official image; a GitHub Action, Helm chart and Terraform wait until after V1). Built on each release from the same signed Linux bundle (x86_64 and aarch64), signed and version-pinned by digest; a slim default tag plus a `-ner` tag with the NER model included; runs as a non-root user; recipes for GitHub Actions, GitLab CI and a Kubernetes job in the public docs. Registry and pull access (owner 2026-11-08): a public image that refuses to run without a valid license | CLI | NOT STARTED; needs a plan | none | REL-PKG (row 90); SCAN-ML model install (row 32a) for the `-ner` tag |
+| README-FIX | The README gives the wrong output location and exit-code meanings. Row 92 (REL-DOCS) may fix it first | CLI | NOT STARTED. 1.x patch | [outside review](../post-1.0-plan.md) (docs PR #319) | none |
+| PYPI | Publish the engine and the CLI on PyPI, beside the signed bundle | engine, CLI | NOT STARTED. 1.x minor | [outside review](../post-1.0-plan.md) (docs PR #319) | row 94 |
+| PY-VERSIONS | Support Python 3.11 to 3.13 | engine, CLI | NOT STARTED. 1.x minor | [outside review](../post-1.0-plan.md) (docs PR #319) | none |
 
 ## Maintenance
 
@@ -37,6 +40,7 @@ No user-visible change. Merges at any time and never gates a release.
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 24zr | SETUP-NER-JSON (found in CLI #298 review): `decoy setup --ner skip --json` without `--yes`, run off a terminal, exits 1 although `--ner skip` needs no answer, so it should not need `--yes`. V1 fix | CLI | NOT STARTED | CLI #298 | none |
+| INSTALL-METADATA | An upper cap on `duckdb`; declare the imports the CLI and engine use without declaring them (yaml, pandas, pyarrow, numpy) | engine, CLI | NOT STARTED. 1.x patch | [outside review](../post-1.0-plan.md) (docs PR #319) | none |
 
 ## Notes carried from the track
 

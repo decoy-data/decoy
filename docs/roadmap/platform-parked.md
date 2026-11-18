@@ -83,3 +83,20 @@ docs (run at a quiet point, never mid-stack); the V1 role set (user PATCH accept
 the `sso` license gate is defined but not enforced; the dev license key defaults to the business tier;
 flaky tests on platform main (1.x patch backlog); UX map Q19, Q21, Q25; X0a-h H3 and H5. Platform main
 known failures live in the stored baseline `baselines/decoy-platform-main.json` in the vault.
+
+## 6.4 Platform items from the post-1.0 plan (2026-11-18)
+
+Moved here from the candidate lists when the 1.x schedule was written ([releases-1x.md](releases-1x.md)). Each
+keeps its bucket from [post-1.0-plan.md](post-1.0-plan.md). The F45 login limit and password policy are already in
+the F45 row above, and the flaky platform tests are under "Also parked".
+
+| Item | Source | Bucket |
+|---|---|---|
+| F27 governed schedules (owner question 3: the companion scope says V1) | Council scope | 1.x minor |
+| F28 local execution node | Council scope | 1.x minor |
+| Multi-process API support (beyond the G17 single-process guard) | findings register | 1.x minor |
+| MCP server at `/mcp` | platform V2 plan 4 | 1.x minor |
+| Vault de-tokenize half (MG-5); waits on the auth-model decision (owner question 7) | platform V2 plan 1 | 1.x minor |
+| DuckDB opportunities 16 (`decoy-admin` log query), 17 (archive old logs to Parquet), 21 (DuckDB-Wasm preview) | vault `v2/duckdb/` | 1.x minor |
+| Web client honors `default_by` for `geo_generalize` | corrective backlog | 1.x minor |
+| DuckDB 5 data viewer SQL tab; D5 certification coverage; cgroup launcher tests that hang | DuckDB note; platform V2 plan | 1.x patch |
