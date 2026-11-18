@@ -1,10 +1,11 @@
-"""Every committed baseline or allowlist a CLI sentry reads is registered and mirrored.
+"""Every committed baseline or allowlist a CLI sentry reads is registered and checked once.
 
-The ratchet only protects what ``sentry_registry.toml`` names. This test ties each live source
-to its registered baseline (same key set, both directions; a numeric source's ``max`` values
-too) and fails when any file in the
-``SENTRIES`` manifest (``tests/unit`` sentries included) holds an allowlist-shaped constant or
-reads a committed list that is not registered, so a new allowlist cannot sit beside the ratchet.
+The ratchet only protects what ``sentry_registry.toml`` names. Each registry row has a ``kind``:
+``json`` rows are read by their sentry through ``load_allowlist`` (the baseline is the only copy);
+``from_scan`` and ``from_file`` rows are tied to their reader's live keys, both directions. Every
+baseline header is checked here once. A sentry in the ``SENTRIES`` manifest (``tests/unit``
+sentries included) that holds an inline allowlist-shaped constant, or reads a committed data file
+that is not registered, fails, so a new allowlist cannot sit beside the ratchet.
 
 Ported from decoy-engine ``tests/sentry/test_baseline_registry.py`` (X0a).
 """
@@ -33,35 +34,41 @@ DATA_LITERAL = re.compile(r"[\w.\-]+\.(?:json|toml)$")
 SENTRIES: tuple[str, ...] = bs.load_module(bs.SENTRY / "test_sentry_manifest.py").SENTRIES
 
 
-def registry() -> dict[str, str]:
+def registry_rows() -> list[dict[str, str]]:
     text = bs.REGISTRY.read_text(encoding="utf-8")
-    return {r["id"]: r["baseline"] for r in tomllib.loads(text).get("sentry", [])}
+    return list(tomllib.loads(text).get("sentry", []))
 
 
-@pytest.mark.parametrize("src", bs.SOURCES, ids=lambda s: s.sentry_id)
-def test_source_matches_its_registered_baseline(src: bs.Source) -> None:
-    rel = registry().get(src.sentry_id)
-    assert rel == f"tests/sentry/baselines/{src.sentry_id}.json", "sentry not registered"
-    doc = json.loads((bs.ROOT / rel).read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == src.sentry_id
-    live, recorded = src.keys(), set(doc["entries"])
+def registry() -> dict[str, str]:
+    return {r["id"]: r["baseline"] for r in registry_rows()}
+
+
+def _doc(sentry_id: str) -> dict[str, object]:
+    path = bs.ROOT / registry()[sentry_id]
+    return json.loads(path.read_text(encoding="utf-8"))  # type: ignore[no-any-return]
+
+
+@pytest.mark.parametrize("row", registry_rows(), ids=lambda r: r["id"])
+def test_every_baseline_has_its_header_and_file_name(row: dict[str, str]) -> None:
+    """The one header check: ``sentry_id`` is the registry id and ``created_in`` is named."""
+    assert row["baseline"] == f"tests/sentry/baselines/{row['id']}.json"
+    assert row.get("kind") in bs.KINDS, "registry row has no known kind"
+    doc = _doc(row["id"])
+    assert doc["sentry_id"] == row["id"]
+    created_in = doc["created_in"]
+    assert isinstance(created_in, str) and created_in.strip()
+
+
+def test_only_recomputed_sentries_have_a_reader() -> None:
+    kinds = {r["id"]: r["kind"] for r in registry_rows()}
+    assert {i for i, k in kinds.items() if k != "json"} == set(bs.READERS)
+
+
+@pytest.mark.parametrize("sentry_id", sorted(bs.READERS))
+def test_recomputed_keys_match_the_registered_baseline(sentry_id: str) -> None:
+    live, recorded = bs.READERS[sentry_id](), set(_doc(sentry_id)["entries"])  # type: ignore[call-overload]
     assert live - recorded == set(), "live entries missing from the baseline"
     assert recorded - live == set(), "stale baseline entries (shrink the baseline)"
-    maxes = src.maxes()
-    if maxes is not None:
-        assert {k: doc["entries"][k].get("max") for k in recorded} == maxes, (
-            "a numeric entry's recorded max differs from its live value"
-        )
-
-
-def test_every_numeric_source_declares_its_max() -> None:
-    """A source whose entries are counts must emit them as ``max`` so the ratchet sees them."""
-    numeric = {s.sentry_id for s in bs.SOURCES if s.maxes() is not None}
-    assert numeric == {"module-size", "package-fanout"}
-
-
-def test_registry_has_no_source_less_sentry() -> None:
-    assert set(registry()) == {s.sentry_id for s in bs.SOURCES}
 
 
 def _is_collection(value: ast.expr | None) -> bool:
@@ -70,26 +77,41 @@ def _is_collection(value: ast.expr | None) -> bool:
     return isinstance(value, (ast.Dict, ast.Tuple, ast.List, ast.Set))
 
 
-def unregistered_readers(
-    sources: dict[str, str],
-    data_files: set[str],
-    covered_consts: set[tuple[str, str]],
-    covered_files: set[str],
-) -> list[str]:
-    """Allowlist-shaped module constants and committed data files read but not registered."""
+def _reads_the_baseline(value: ast.expr | None) -> bool:
+    """Whether the value is built by ``load_allowlist``, so it holds no second copy."""
+    return value is not None and any(
+        isinstance(n, ast.Name) and n.id == "load_allowlist" for n in ast.walk(value)
+    )
+
+
+def inline_allowlists(sources: dict[str, str], closed: set[tuple[str, str]]) -> list[str]:
+    """Allowlist-shaped module constants that hold their own entries instead of the baseline."""
     found = []
     for name, text in sources.items():
-        tree = ast.parse(text)
-        for node in tree.body:
+        for node in ast.parse(text).body:
             targets = (
                 node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
             )
+            value = getattr(node, "value", None)
             for t in targets:
                 is_list = isinstance(t, ast.Name) and LIST_NAME.search(t.id)
-                is_coll = _is_collection(getattr(node, "value", None))
-                if is_list and is_coll and (name, t.id) not in covered_consts:
+                if (
+                    is_list
+                    and _is_collection(value)
+                    and not _reads_the_baseline(value)
+                    and (name, t.id) not in closed
+                ):
                     found.append(f"{name}: constant {t.id}")
-        for node in ast.walk(tree):
+    return sorted(set(found))
+
+
+def unregistered_data_files(
+    sources: dict[str, str], data_files: set[str], covered_files: set[str]
+) -> list[str]:
+    """Committed data files a sentry reads that no registry row or reader names."""
+    found = []
+    for name, text in sources.items():
+        for node in ast.walk(ast.parse(text)):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 base = node.value.rsplit("/", 1)[-1]
                 if (
@@ -101,13 +123,8 @@ def unregistered_readers(
     return sorted(set(found))
 
 
-def _covered() -> tuple[set[tuple[str, str]], set[str]]:
-    consts = {
-        (s.keys.name, s.keys.constant) for s in bs.SOURCES if isinstance(s.keys, bs.InCode)
-    } | set(bs.NOT_A_LIST_CONSTS)
-    files = {Path(p).name for p in registry().values()}
-    files |= {Path(s.data_file).name for s in bs.SOURCES if s.data_file}
-    return consts, files
+def _covered_files() -> set[str]:
+    return {Path(p).name for p in registry().values()} | set(bs.DATA_FILES)
 
 
 def _data_files() -> set[str]:
@@ -120,7 +137,7 @@ def _data_files() -> set[str]:
 
 
 def _manifest_sources() -> dict[str, str]:
-    # Keyed by basename, as NOT_A_LIST_CONSTS and InCode are; the names must not collide.
+    # Keyed by basename, as NOT_A_LIST_CONSTS is; the names must not collide.
     names = [Path(s).name for s in SENTRIES]
     assert len(set(names)) == len(names), "two manifest files share a basename"
     out = {Path(s).name: (bs.ROOT / s).read_text(encoding="utf-8") for s in SENTRIES}
@@ -134,9 +151,12 @@ def test_scan_reaches_the_tests_unit_sentries() -> None:
     assert unit <= set(_manifest_sources())
 
 
+def test_no_sentry_holds_an_inline_allowlist() -> None:
+    assert inline_allowlists(_manifest_sources(), set(bs.NOT_A_LIST_CONSTS)) == []
+
+
 def test_no_sentry_reads_an_unregistered_baseline() -> None:
-    consts, files = _covered()
-    assert unregistered_readers(_manifest_sources(), _data_files(), consts, files) == []
+    assert unregistered_data_files(_manifest_sources(), _data_files(), _covered_files()) == []
 
 
 def test_not_a_list_consts_still_exist() -> None:
@@ -161,30 +181,33 @@ def test_not_a_list_consts_still_exist() -> None:
         'NEW_ALLOWLIST = {"a"}',
         'NEW_ALLOWLIST: frozenset[str] = frozenset({"a"})',
         '_NEW_OMITTED = frozenset({"a"})',
+        '_ALLOWED: dict[str, str] = {"a": "b"}',
     ],
 )
-def test_seeded_unregistered_constants_are_caught(seed: str) -> None:
-    consts, files = _covered()
+def test_seeded_inline_allowlists_are_caught(seed: str) -> None:
     name = seed.split(" ", 1)[0].rstrip(":")
-    assert unregistered_readers({"test_new.py": seed + "\n"}, set(), consts, files) == [
-        f"test_new.py: constant {name}"
-    ]
+    found = inline_allowlists({"test_new.py": seed + "\n"}, set(bs.NOT_A_LIST_CONSTS))
+    assert found == [f"test_new.py: constant {name}"]
+
+
+def test_an_allowlist_built_from_the_baseline_passes() -> None:
+    seed = 'ALLOWLIST = tuple(Row(k, e["reason"]) for k, e in load_allowlist("x").items())\n'
+    assert inline_allowlists({"test_new.py": seed}, set()) == []
 
 
 def test_seeded_unregistered_readers_are_caught() -> None:
-    consts, files = _covered()
     seeded_file = {"test_new.py": 'P = ROOT / "tests" / "fixtures" / "fresh-list.json"\n'}
-    assert unregistered_readers(seeded_file, {"fresh-list.json"}, consts, files) == [
+    assert unregistered_data_files(seeded_file, {"fresh-list.json"}, _covered_files()) == [
         "test_new.py: data file fresh-list.json"
     ]
 
 
 def test_a_registered_data_file_passes_and_an_unregistered_one_is_caught() -> None:
-    consts, files = _covered()
+    files = _covered_files()
     assert "file_sinks.toml" in files
     registered = {"test_new.py": 'P = HERE / "file_sinks.toml"\n'}
-    assert unregistered_readers(registered, {"file_sinks.toml"}, consts, files) == []
+    assert unregistered_data_files(registered, {"file_sinks.toml"}, files) == []
     unregistered = {"test_new.py": 'P = HERE / "other_sinks.toml"\n'}
-    assert unregistered_readers(unregistered, {"other_sinks.toml"}, consts, files) == [
+    assert unregistered_data_files(unregistered, {"other_sinks.toml"}, files) == [
         "test_new.py: data file other_sinks.toml"
     ]

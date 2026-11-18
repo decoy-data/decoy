@@ -186,8 +186,6 @@ def load_rows(text: str) -> list[Row]:
 
 ROWS = load_rows(ROWS_FILE.read_text(encoding="utf-8"))
 # The shrink-only baseline source (`tests/sentry/_baseline_sources.py`): rows that carry an exit.
-BASELINE_ROWS = tuple((r.key, r.reason) for r in ROWS if r.exit)
-
 
 # --- the scan -----------------------------------------------------------------------------
 
@@ -613,8 +611,6 @@ def test_the_census_is_63_watched_sinks(files: dict[str, str]) -> None:
 
 def test_the_baseline_has_two_rows_with_exits() -> None:
     doc = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "private-file-sinks"
-    assert doc["created_in"] == "X7c-S3"
     assert len(doc["entries"]) == 2
     assert all(e["exit"] for e in doc["entries"].values())
     assert doc["entries"] == baseline_entries(ROWS)

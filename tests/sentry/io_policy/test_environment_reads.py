@@ -16,7 +16,6 @@ import json
 from tests.sentry.io_policy import _env_read_sites as sites
 
 BASELINE = sites.ROOT / "tests" / "sentry" / "baselines" / "env-reads.json"
-REGISTRY = sites.ROOT / "scripts" / "dev" / "sentry_registry.toml"
 
 
 def _recorded() -> set[str]:
@@ -27,13 +26,6 @@ def test_baseline_equals_the_source_inventory() -> None:
     live, recorded = sites.inventory(), _recorded()
     assert live - recorded == set(), "environment reads outside the baseline (use decoy._env_flags)"
     assert recorded - live == set(), "stale baseline entries (shrink the baseline)"
-
-
-def test_baseline_is_registered_as_cl2() -> None:
-    doc = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "env-reads"
-    assert doc["created_in"] == "CL2"
-    assert 'id = "env-reads"' in REGISTRY.read_text(encoding="utf-8")
 
 
 def test_the_flag_module_exists_and_reads_the_environment() -> None:

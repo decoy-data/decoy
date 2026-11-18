@@ -27,6 +27,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -69,7 +70,7 @@ def parse_registry(text: str) -> tuple[dict[str, str], list[str]]:
     return out, findings
 
 
-def load_allowlist(sentry_id: str, root: Path | None = None) -> dict[str, dict[str, object]]:
+def load_allowlist(sentry_id: str, root: Path | None = None) -> dict[str, dict[str, Any]]:
     """The entries of the baseline the registry names for ``sentry_id``: ``{key: entry}``."""
     base = root if root is not None else Path(__file__).resolve().parents[2]
     registered, _ = parse_registry((base / REGISTRY).read_text(encoding="utf-8"))
