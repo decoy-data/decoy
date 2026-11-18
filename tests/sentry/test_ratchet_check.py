@@ -411,3 +411,40 @@ def test_count_and_sites_are_ceilings_like_max(
     assert (res.returncode == 1) is red, res.stdout + res.stderr
     if red:
         assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def _entry_baseline(sid: str, entry: dict[str, object]) -> str:
+    return json.dumps(
+        {"sentry_id": sid, "created_in": "S0", "entries": {"m::f": {"reason": REASON, **entry}}}
+    )
+
+
+@pytest.mark.parametrize(
+    ("base", "head"),
+    [
+        ({"count": 3}, {"count": 99, "max": 1}),
+        ({"sites": 4}, {"sites": 9, "count": 0}),
+        ({"max": 5, "count": 3}, {"max": 1, "count": 4}),
+        ({"count": 3}, {"max": 1}),
+    ],
+    ids=["count-up-max-added", "sites-up-count-added", "second-field-up", "field-swapped"],
+)
+def test_each_ceiling_field_is_checked_on_its_own(
+    repo: Path, base: dict[str, object], head: dict[str, object]
+) -> None:
+    """Adding a lower field beside a raised one, or swapping fields, must not hide growth."""
+    _write(repo, A, _entry_baseline("a", base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", head))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def test_a_lowered_ceiling_with_an_extra_field_stays_green(repo: Path) -> None:
+    _write(repo, A, _entry_baseline("a", {"count": 3}))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", {"count": 2, "max": 9}))
+    assert _run(repo).returncode == 0

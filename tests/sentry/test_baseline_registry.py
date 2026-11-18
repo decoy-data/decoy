@@ -182,6 +182,13 @@ def test_not_a_list_consts_still_exist() -> None:
         'NEW_ALLOWLIST: frozenset[str] = frozenset({"a"})',
         '_NEW_OMITTED = frozenset({"a"})',
         '_ALLOWED: dict[str, str] = {"a": "b"}',
+        'NEW_ALLOWLIST = {**load_allowlist("csv-read-allow"), "cli/new.py::f": {"reason": "x"}}',
+        'NEW_ALLOWLIST = frozenset(set(load_allowlist("x")) | {"extra"})',
+        'NEW_ALLOWLIST = (*load_allowlist("x"), "extra")',
+        'NEW_ALLOWLIST = load_allowlist("x") | {"extra": {}}',
+        'NEW_ALLOWLIST = tuple(load_allowlist("x")) + ("extra",)',
+        'NEW_ALLOWLIST = dict(a=1)',
+        '_allowed = {"a": "b"}',
     ],
 )
 def test_seeded_inline_allowlists_are_caught(seed: str) -> None:
@@ -190,9 +197,18 @@ def test_seeded_inline_allowlists_are_caught(seed: str) -> None:
     assert found == [f"test_new.py: constant {name}"]
 
 
-def test_an_allowlist_built_from_the_baseline_passes() -> None:
-    seed = 'ALLOWLIST = tuple(Row(k, e["reason"]) for k, e in load_allowlist("x").items())\n'
-    assert inline_allowlists({"test_new.py": seed}, set()) == []
+@pytest.mark.parametrize(
+    "seed",
+    [
+        'ALLOWLIST = tuple(Row(k, e["reason"]) for k, e in load_allowlist("x").items())',
+        'ALLOWLIST = frozenset(load_allowlist("x"))',
+        'ALLOWLIST = tuple(sorted(load_allowlist("x")))',
+        'ALLOWLIST = {k: e["max"] for k, e in load_allowlist("x").items()}',
+        'ALLOWLIST = [Row(*k.split("::")) for k in load_allowlist("x")]',
+    ],
+)
+def test_an_allowlist_built_only_from_the_baseline_passes(seed: str) -> None:
+    assert inline_allowlists({"test_new.py": seed + "\n"}, set()) == []
 
 
 def test_seeded_unregistered_readers_are_caught() -> None:
