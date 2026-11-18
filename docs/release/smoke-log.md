@@ -20,24 +20,24 @@ before 2026-07-20 failed and are not listed.
 
 | Date | SHA | Branch | Event | Python | Run |
 |------|-----|--------|-------|--------|-----|
-| 2026-07-20 | ab16941241ae | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/29728499791 |
-| 2026-07-27 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/30253997852 |
-| 2026-08-03 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/30799545625 |
-| 2026-08-10 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/31364569169 |
-| 2026-08-17 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/32002021842 |
-| 2026-08-24 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/32697864584 |
-| 2026-08-31 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/33389923445 |
-| 2026-09-07 | 079bd1428f44 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/34114162914 |
-| 2026-09-14 | 4d16363f4158 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/34836851424 |
-| 2026-09-21 | 4d16363f4158 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/35593603543 |
-| 2026-09-28 | b8274b019474 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/36420806688 |
-| 2026-10-05 | d766d50234db | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/37313038857 |
-| 2026-10-12 | 70869ea4b4bb | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/38258305653 |
-| 2026-10-19 | 70869ea4b4bb | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/39244936135 |
-| 2026-10-26 | f05b50135618 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/40317780423 |
-| 2026-11-02 | b4f19bade389 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/41458730272 |
-| 2026-11-06 | 0503fb465d74 | fix/ci-l1-cli-ci | workflow_dispatch | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/42239072431 |
-| 2026-11-09 | 9f752825d140 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/42636594411 |
+| 2026-07-20 | f7d0a49150fd | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/29728499791 |
+| 2026-07-27 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/30253997852 |
+| 2026-08-03 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/30799545625 |
+| 2026-08-10 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/31364569169 |
+| 2026-08-17 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/32002021842 |
+| 2026-08-24 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/32697864584 |
+| 2026-08-31 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/33389923445 |
+| 2026-09-07 | 47e0caf4ee2f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/34114162914 |
+| 2026-09-14 | cd02411fa03f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/34836851424 |
+| 2026-09-21 | cd02411fa03f | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/35593603543 |
+| 2026-09-28 | 5442b9029b13 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/36420806688 |
+| 2026-10-05 | 281c8506e162 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/37313038857 |
+| 2026-10-12 | 1cfebe473ea8 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/38258305653 |
+| 2026-10-19 | 1cfebe473ea8 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/39244936135 |
+| 2026-10-26 | 0d2802c22845 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/40317780423 |
+| 2026-11-02 | f1832e3344a4 | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/41458730272 |
+| 2026-11-06 | 133a27119bd2 | fix/ci-l1-cli-ci | workflow_dispatch | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/42239072431 |
+| 2026-11-09 | 318990dd29cb | main | schedule | 3.10, 3.11, 3.12 | https://github.com/louiskeep/decoy/actions/runs/42636594411 |
 
 ## Release candidate smoke
 
