@@ -3,6 +3,12 @@
   "distribution/first_install.py": {"reason": "Moves the unpacked bundle into place on first install; not a file write.", "sites": 1},
   "distribution/installer.py": {"reason": "Moves a staged runtime directory into versions/ and writes the 0755 launcher shim (temp file, chmod, replace); a directory move and an executable-mode write, not a 0600 data write.", "sites": 3}
  },
+ "banned-text-allow": {
+  "cli/scan.py::_scan::make_default_group-arg": {"count": 1, "pattern": "_SCAN_PATTERN", "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy scan` by the default-group context, so no user reads the name"},
+  "cli/scan.py::_scan::name-kwarg": {"count": 1, "pattern": "_SCAN_PATTERN", "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy scan` by the default-group context, so no user reads the name"},
+  "cli/validate.py::_gate::make_default_group-arg": {"count": 1, "pattern": "_GATE_PATTERN", "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy validate` by the default-group context, so no user reads the name"},
+  "cli/validate.py::_gate::name-kwarg": {"count": 1, "pattern": "_GATE_PATTERN", "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy validate` by the default-group context, so no user reads the name"}
+ },
  "canonical-json-allow": {
   "ci/manifest.py": {"reason": "Pretty-printed committed JSON Schema (indent=2) drift-tested against its file; a stable display form, never hashed.", "sites": 1},
   "cli/report.py": {"reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Move to records.canonical_bytes when report.py is next split.", "sites": 1},

@@ -20,7 +20,9 @@ exempt text, or that also trips a different pattern, still fails.
 from __future__ import annotations
 
 import re
+from typing import Any
 
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.release.test_retired_name_residual import RETIRED_PATTERN
 
 DEAD_STRINGS = (
@@ -89,30 +91,22 @@ BANNED_USER_TEXT = (*(re.compile(p) for p in _USER_TEXT_PATTERNS), RETIRED_PATTE
 CTX_GROUP_ARG = "make_default_group-arg"  # first positional argument of make_default_group(...)
 CTX_NAME_KWARG = "name-kwarg"  # value of a `name=` keyword argument in a call
 
-_HIDDEN_DEFAULT_REASON = (
-    "registration name of the hidden default command; the usage path is rewritten to "
-    "`decoy {group}` by the default-group context, so no user reads the name"
-)
-
 # (path under src/decoy, exact full string constant, pattern source it is exempt from, AST
 # context) -> (number of sites expected, reason it is not user text). Matching is
 # `text == exact` in that context, only that one pattern is skipped, and the number of exempted
-# sites must equal the expected count, so a new literal of the same text fails the sentry.
-ALLOWLIST: dict[tuple[str, str, str, str], tuple[int, str]] = {
-    ("cli/scan.py", "_scan", _SCAN_PATTERN, CTX_GROUP_ARG): (
-        1,
-        _HIDDEN_DEFAULT_REASON.format(group="scan"),
-    ),
-    ("cli/scan.py", "_scan", _SCAN_PATTERN, CTX_NAME_KWARG): (
-        1,
-        _HIDDEN_DEFAULT_REASON.format(group="scan"),
-    ),
-    ("cli/validate.py", "_gate", _GATE_PATTERN, CTX_GROUP_ARG): (
-        1,
-        _HIDDEN_DEFAULT_REASON.format(group="validate"),
-    ),
-    ("cli/validate.py", "_gate", _GATE_PATTERN, CTX_NAME_KWARG): (
-        1,
-        _HIDDEN_DEFAULT_REASON.format(group="validate"),
-    ),
-}
+# sites must equal the expected count, so a new literal of the same text fails the sentry. The
+# entries live in `baselines/banned-text-allow.json` (key `path::exact::context`, `count`, the
+# name of the `pattern` constant, `reason`) so the ratchet lets them only shrink.
+_PATTERNS = {"_SCAN_PATTERN": _SCAN_PATTERN, "_GATE_PATTERN": _GATE_PATTERN}
+
+
+def _allow_entry(
+    key: str, entry: dict[str, Any]
+) -> tuple[tuple[str, str, str, str], tuple[int, str]]:
+    rel, exact, ctx = key.split("::")
+    return (rel, exact, _PATTERNS[entry["pattern"]], ctx), (entry["count"], entry["reason"])
+
+
+ALLOWLIST: dict[tuple[str, str, str, str], tuple[int, str]] = dict(
+    _allow_entry(key, e) for key, e in load_allowlist("banned-text-allow").items()
+)
