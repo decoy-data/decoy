@@ -1,5 +1,5 @@
 # F43 Slice 0 fail-before evidence
-baseline: 574aa1e9ec2b95f9ba8af5eb8112c1a3c0fcf434 (production tree untouched; only tests/ + vendored schema added)
+baseline: 1ee6e1d1dd1e1864163a39a614d87a06962d0e1a (production tree untouched; only tests/ + vendored schema added)
 engine: decoy-engine==0.15.1 (v0.15.1, fd51be10)
 python: Python 3.12.3  pytest: pytest 9.2.0
 date: 2026-10-29T22:46:23Z
