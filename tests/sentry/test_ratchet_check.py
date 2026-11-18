@@ -359,10 +359,10 @@ _CASES = pytest.mark.parametrize(
 )
 
 
-def _max_baseline(sid: str, max_value: int | None) -> str:
+def _max_baseline(sid: str, max_value: int | None, field: str = "max") -> str:
     entry: dict[str, object] = {"reason": REASON}
     if max_value is not None:
-        entry["max"] = max_value
+        entry[field] = max_value
     return json.dumps({"sentry_id": sid, "created_in": "S0", "entries": {"m::f": entry}})
 
 
@@ -395,3 +395,19 @@ def test_a_rename_may_not_raise_a_numeric_max(
     assert (res.returncode == 1) is red, res.stdout + res.stderr
     if red:
         assert "replacement or split of a raised or dropped max for key(s): m::f" in res.stderr
+
+
+@pytest.mark.parametrize("field", ["count", "sites"])
+@_CASES
+def test_count_and_sites_are_ceilings_like_max(
+    repo: Path, field: str, base_max: int | None, head_max: int | None, red: bool
+) -> None:
+    """A moved ``count`` or ``sites`` entry must not rise unseen (it was invisible to the ratchet)."""
+    _write(repo, A, _max_baseline("a", base_max, field))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _max_baseline("a", head_max, field))
+    res = _run(repo)
+    assert (res.returncode == 1) is red, res.stdout + res.stderr
+    if red:
+        assert "a: max raised or dropped for key(s): m::f" in res.stderr

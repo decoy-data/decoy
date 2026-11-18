@@ -3,8 +3,10 @@
 A baseline is a JSON file ``{"sentry_id", "created_in", "entries": {key: {"reason"}}}``
 under ``tests/sentry/baselines/``. ``scripts/dev/sentry_registry.toml`` binds each sentry id to
 exactly one baseline path. ``check`` compares the working tree with a base commit and returns
-findings; an empty list means the ratchet holds. An entry that carries a numeric ``max`` may keep
-or lower it, never raise or drop it (see ``max_raised``). Messages carry ids, paths and keys only.
+findings; an empty list means the ratchet holds. An entry that carries a numeric ceiling
+(``max``, else ``count``, else ``sites``) may keep or lower it, never raise or drop it (see
+``max_raised``). Messages carry ids, paths and keys only. ``load_allowlist`` is the one reader a
+sentry uses for its allowlist: the registered baseline JSON, which is the only copy.
 
 Ported from decoy-engine ``tests/sentry/_ratchet.py`` (X0a), plus the platform's
 ``created_in`` rules: every baseline names a non-empty ``created_in``, and a first inventory
@@ -35,6 +37,8 @@ REGISTRY = "scripts/dev/sentry_registry.toml"
 BASELINE_DIR = "tests/sentry/baselines"
 MIN_REASON = 15
 PLACEHOLDERS = frozenset({"todo", "tbd", "fixme", "xxx", "n/a", "none"})
+# Numeric fields a baseline entry may carry as a count the ratchet lets only fall, first match wins.
+CEILING_FIELDS = ("max", "count", "sites")
 
 
 @dataclass(frozen=True)
@@ -63,6 +67,14 @@ def parse_registry(text: str) -> tuple[dict[str, str], list[str]]:
         if not path.startswith(BASELINE_DIR + "/"):
             findings.append(f"registry: baseline {path} is outside {BASELINE_DIR}/")
     return out, findings
+
+
+def load_allowlist(sentry_id: str, root: Path | None = None) -> dict[str, dict[str, object]]:
+    """The entries of the baseline the registry names for ``sentry_id``: ``{key: entry}``."""
+    base = root if root is not None else Path(__file__).resolve().parents[2]
+    registered, _ = parse_registry((base / REGISTRY).read_text(encoding="utf-8"))
+    doc = json.loads((base / registered[sentry_id]).read_text(encoding="utf-8"))
+    return dict(doc["entries"])
 
 
 def parse_baseline(text: str) -> Baseline:
@@ -106,12 +118,17 @@ def _base_entries(root: Path, ref: str, path: str) -> dict[str, object]:
 
 
 def _max_of(entry: object) -> int | None:
-    value = entry.get("max") if isinstance(entry, dict) else None
-    return value if isinstance(value, int) else None
+    if not isinstance(entry, dict):
+        return None
+    for field in CEILING_FIELDS:
+        value = entry.get(field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
 
 
 def max_raised(head: object, base: object) -> bool:
-    """True when a numeric ``max`` rose, or was dropped, against the base entry."""
+    """True when a numeric ceiling (``max``, ``count`` or ``sites``) rose or was dropped."""
     old, new = _max_of(base), _max_of(head)
     return old is not None and (new is None or new > old)
 
