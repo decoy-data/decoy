@@ -28,8 +28,8 @@ if sys.version_info >= (3, 11):
 else:
     import tomli as tomllib
 
-LIST_NAME = re.compile(r"ALLOW|EXEMPT|WAIVER|BASELINE|EXCEPTIONS|OMIT")
-COLLECTION_CALLS = frozenset({"frozenset", "set", "tuple", "list"})
+LIST_NAME = re.compile(r"ALLOW|EXEMPT|WAIVER|BASELINE|EXCEPTIONS|OMIT", re.IGNORECASE)
+COLLECTION_CALLS = frozenset({"frozenset", "set", "tuple", "list", "dict"})
 DATA_LITERAL = re.compile(r"[\w.\-]+\.(?:json|toml)$")
 SENTRIES: tuple[str, ...] = bs.load_module(bs.SENTRY / "test_sentry_manifest.py").SENTRIES
 
@@ -77,11 +77,40 @@ def _is_collection(value: ast.expr | None) -> bool:
     return isinstance(value, (ast.Dict, ast.Tuple, ast.List, ast.Set))
 
 
-def _reads_the_baseline(value: ast.expr | None) -> bool:
-    """Whether the value is built by ``load_allowlist``, so it holds no second copy."""
-    return value is not None and any(
-        isinstance(n, ast.Name) and n.id == "load_allowlist" for n in ast.walk(value)
+_WRAPPERS = frozenset({"frozenset", "set", "tuple", "list", "sorted", "dict"})
+_VIEWS = frozenset({"items", "keys", "values"})
+
+
+def _is_loader_call(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "load_allowlist"
     )
+
+
+def _from_the_baseline_only(node: ast.expr) -> bool:
+    """Whether every entry of the value comes from ``load_allowlist`` and nothing else.
+
+    Accepted: the bare call or one of its ``.items()``/``.keys()``/``.values()`` views; a wrapper
+    (``frozenset``, ``set``, ``tuple``, ``list``, ``sorted``, ``dict``) with one such argument;
+    a comprehension with one generator over such a source. Anything with literal elements, a
+    ``*`` or ``**`` unpack or an operator is a second copy.
+    """
+    if _is_loader_call(node):
+        return True
+    if isinstance(node, ast.Call):
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in _VIEWS:
+            return not node.args and _is_loader_call(func.value)
+        if isinstance(func, ast.Name) and func.id in _WRAPPERS:
+            return (
+                len(node.args) == 1 and not node.keywords and _from_the_baseline_only(node.args[0])
+            )
+        return False
+    if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
+        return len(node.generators) == 1 and _from_the_baseline_only(node.generators[0].iter)
+    return False
 
 
 def inline_allowlists(sources: dict[str, str], closed: set[tuple[str, str]]) -> list[str]:
@@ -95,10 +124,11 @@ def inline_allowlists(sources: dict[str, str], closed: set[tuple[str, str]]) -> 
             value = getattr(node, "value", None)
             for t in targets:
                 is_list = isinstance(t, ast.Name) and LIST_NAME.search(t.id)
+                shaped = _is_collection(value) or isinstance(value, ast.BinOp)
                 if (
                     is_list
-                    and _is_collection(value)
-                    and not _reads_the_baseline(value)
+                    and shaped
+                    and not _from_the_baseline_only(value)
                     and (name, t.id) not in closed
                 ):
                     found.append(f"{name}: constant {t.id}")
@@ -187,7 +217,7 @@ def test_not_a_list_consts_still_exist() -> None:
         'NEW_ALLOWLIST = (*load_allowlist("x"), "extra")',
         'NEW_ALLOWLIST = load_allowlist("x") | {"extra": {}}',
         'NEW_ALLOWLIST = tuple(load_allowlist("x")) + ("extra",)',
-        'NEW_ALLOWLIST = dict(a=1)',
+        "NEW_ALLOWLIST = dict(a=1)",
         '_allowed = {"a": "b"}',
     ],
 )

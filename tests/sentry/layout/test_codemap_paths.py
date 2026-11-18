@@ -1,7 +1,8 @@
 """AT-1 (map, C1): every concrete path in the CODEMAP "Where Things Go" section exists.
 
-The section is the one place that says where a new file goes. A path that stops existing, or a
-row that is dropped, fails here so the map cannot drift from the tree. Path grammar lives in
+The section is the one place that says where a new file goes. A path that stops existing fails
+here, so the map cannot drift from the tree. Row titles are not pinned: a renamed or dropped row
+does not fail, but a row kept twice does. Path grammar lives in
 ``map_paths`` (vendored from the engine's LAYOUT E2 commit ``66d0f879``); the engine's own tests
 cover each grammar case, so this file checks the CLI's map and the one CLI-specific wiring.
 """

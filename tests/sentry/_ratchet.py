@@ -4,7 +4,7 @@ A baseline is a JSON file ``{"sentry_id", "created_in", "entries": {key: {"reaso
 under ``tests/sentry/baselines/``. ``scripts/dev/sentry_registry.toml`` binds each sentry id to
 exactly one baseline path. ``check`` compares the working tree with a base commit and returns
 findings; an empty list means the ratchet holds. An entry that carries a numeric ceiling
-(``max``, else ``count``, else ``sites``) may keep or lower it, never raise or drop it (see
+(``max``, ``count`` or ``sites``, each on its own) may keep or lower it, never raise or drop it (see
 ``max_raised``). Messages carry ids, paths and keys only. ``load_allowlist`` is the one reader a
 sentry uses for its allowlist: the registered baseline JSON, which is the only copy.
 
@@ -38,7 +38,7 @@ REGISTRY = "scripts/dev/sentry_registry.toml"
 BASELINE_DIR = "tests/sentry/baselines"
 MIN_REASON = 15
 PLACEHOLDERS = frozenset({"todo", "tbd", "fixme", "xxx", "n/a", "none"})
-# Numeric fields a baseline entry may carry as a count the ratchet lets only fall, first match wins.
+# Numeric fields a baseline entry may carry as a count the ratchet lets only fall, each checked.
 CEILING_FIELDS = ("max", "count", "sites")
 
 
@@ -118,20 +118,27 @@ def _base_entries(root: Path, ref: str, path: str) -> dict[str, object]:
     return dict(parse_baseline(text).reasons) if text is not None else {}
 
 
-def _max_of(entry: object) -> int | None:
-    if not isinstance(entry, dict):
-        return None
-    for field in CEILING_FIELDS:
-        value = entry.get(field)
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value
-    return None
+def _int_field(entry: dict[str, object], field: str) -> int | None:
+    value = entry.get(field)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def max_raised(head: object, base: object) -> bool:
-    """True when a numeric ceiling (``max``, ``count`` or ``sites``) rose or was dropped."""
-    old, new = _max_of(base), _max_of(head)
-    return old is not None and (new is None or new > old)
+    """True when a ceiling field (``max``, ``count`` or ``sites``) of the base entry rose or went.
+
+    Each field the base entry holds as an integer is checked on its own, so adding a lower field
+    or swapping one field for another cannot hide growth.
+    """
+    if not isinstance(base, dict):
+        return False
+    for field in CEILING_FIELDS:
+        old = _int_field(base, field)
+        if old is None:
+            continue
+        new = _int_field(head, field) if isinstance(head, dict) else None
+        if new is None or new > old:
+            return True
+    return False
 
 
 def _base_baseline(root: Path, ref: str, path: str) -> Baseline | None:
