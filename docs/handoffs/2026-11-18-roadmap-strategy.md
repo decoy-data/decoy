@@ -11,7 +11,7 @@ Rules consulted: 00-universal, documentation, scope-discipline, proportionality
 - The roadmap is now a short index. Rows live in ten feature-group files.
 - There are three release buckets. **v1** is what blocks 1.0. **v1+** is anything that does not break
   the contract, shipped in 1.x releases. **v2** is anything that breaks it.
-- 1.0 scope is cut: 53 rows block 1.0. It was "every row on the track", which had no end.
+- 1.0 scope is cut: 55 rows block 1.0. It was "every row on the track", which had no end.
 - New work enters through one inbox and becomes a row only at triage.
 - Work that would be a breaking change after 1.0 is done in v1. Four new rows carry it.
 - Two surfaces ship in 1.0 labelled experimental, so changing them later is not a v2.
@@ -66,7 +66,7 @@ engine's `docs/compatibility-contract.md`.
 
 | Bucket | Count on 2026-11-18 | Where |
 |---|---|---|
-| v1 | 53 rows | the 1.0 tables |
+| v1 | 55 rows | the 1.0 tables |
 | v1+ | 27 planned rows and 88 candidates | Later in the group files; 7 platform-only candidates in the parked page |
 | Maintenance | 13 rows and 32 candidates | Maintenance tables; the candidates are in `groups/health.md` |
 | v2 | nothing scheduled | the 2.0 holding list |
@@ -166,8 +166,11 @@ All are in the decisions log.
 7. The Python API and custom providers are experimental in 1.0; the library commands are decided at
    the release gate.
 8. Options that could be on by default (output ordering and byte reproducibility F11, dataset
-   metadata F38, free-text identity binding F08) stay opt-in, so they are v1+. This one was applied
-   without an explicit owner answer; flipping any of them to default-on must happen before 1.0.
+   metadata F38, free-text identity binding F08) stay opt-in, so they are v1+. The owner confirmed
+   this on 2026-11-18 (option A).
+9. The update channel gets a backup release key in 1.0 (owner, option B; row UPGRADE-KEY).
+10. Source metadata leaking into output on the out-of-core route is a 1.0 leak (row
+    OUTPUT-METADATA-LEAK).
 
 These rows moved to v1+ although an earlier owner decision said V1, and the owner has not objected:
 CLI-CLOUD (64), CLI-DB-SRC (64b), F01 (86), GEN-PROVIDERS (24p), the remaining GEN-TYPES families
