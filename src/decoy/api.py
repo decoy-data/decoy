@@ -682,10 +682,11 @@ def scan(
 
     Returns:
         The in-memory `decoy_engine.ColumnProfile`, which holds cell values
-        (top values, modes, ranges). `decoy scan --output` writes only the
-        value-free `scan-set/v1` core. To save the profile, write
-        `decoy_engine.profile_document(profile)`, which redacts the
-        sensitive columns.
+        (top values, modes, ranges). To save a scan that `decoy scan fields`,
+        `show` and `diff` can read, run `decoy scan --output scan.json`: it
+        writes the value-free `scan-set/v1` core. A profile saved with
+        `decoy_engine.profile_document(profile)` is not that format and
+        those commands refuse it.
     """
     from decoy_engine import profile_columns
 

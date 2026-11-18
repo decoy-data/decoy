@@ -207,20 +207,17 @@ def test_c1_demo_scan_file_redacts_sensitive_values(demo_dir: Path) -> None:
     text = (demo_dir / "scan.json").read_text(encoding="utf-8")
     doc = json.loads(text)
 
-    assert doc["value_policy"] == "flagged-redacted/v1"
-    redacted = doc["redacted_columns"]
-    assert redacted
-    by_name = {f["name"]: f for f in doc["fields"]}
-    tops = [t for name in redacted for t in by_name[name].get("top_values") or []]
-    assert tops, "no redacted column kept its top-value slots, so the check proves nothing"
-    assert {t["value"] for t in tops} == {"[redacted]"}
-    for cell in ("alice@example.com", "111-22-3333"):
+    # The saved scan is the value-free `scan-set/v1` core: no top values, so no cell to redact.
+    assert doc["scan_schema"].startswith("scan-set/v1")
+    assert "top_values" not in text and "value_policy" not in doc
+    assert doc["tables"][0]["fields"], "an empty scan proves nothing"
+    for cell in ("alice@example.com", "111-22-3333", "Alice", "Anderson", "1990-01-15"):
         assert cell not in text
 
 
 def test_c1_demo_scan_file_reads_back(demo_dir: Path) -> None:
     doc = json.loads((demo_dir / "scan.json").read_text(encoding="utf-8"))
-    column = doc["redacted_columns"][0]
+    column = next(f["name"] for f in doc["tables"][0]["fields"] if f["pii_candidate"])
     result = runner.invoke(app, ["scan", "show", str(demo_dir / "scan.json"), column])
     assert result.exit_code == 0, result.output
 

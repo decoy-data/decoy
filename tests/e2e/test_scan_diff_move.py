@@ -23,41 +23,48 @@ from tests.ci_support import (
     write,
     write_clean_pipeline,
 )
+from tests.scan_docs import scan_set_doc
 
 GOLDEN = Path(__file__).parent.parent / "fixtures" / "scan_diff_move" / "golden.json"
 
-OLD = {
-    "row_count": 5,
-    "source_label": "s.csv",
-    "reid_risk_score": 10.0,
-    "quasi_identifier_groups": [["a", "b"], ["x", "y"]],
-    "fields": [
-        {"name": "none_to_low", "pii_score": 0.0},
-        {"name": "low_to_med", "pii_score": 0.1},
-        {"name": "med_to_high", "pii_score": 0.3},
-        {"name": "high_to_med", "pii_score": 0.7},
-        {"name": "med_to_low", "pii_score": 0.4},
-        {"name": "same", "pii_score": 0.65},
-        {"name": "gone_high", "pii_score": 0.9},
-        {"name": "gone_none", "pii_score": None},
+
+def _doc(risk: float, groups: list[list[str]], fields: list[tuple[str, float | None]]) -> dict:
+    return scan_set_doc(
+        [{"name": n, "pii_score": s} for n, s in fields],
+        table="s",
+        reid_risk_score=risk,
+        quasi_identifier_groups=groups,
+    )
+
+
+OLD = _doc(
+    10.0,
+    [["a", "b"], ["x", "y"]],
+    [
+        ("none_to_low", 0.0),
+        ("low_to_med", 0.1),
+        ("med_to_high", 0.3),
+        ("high_to_med", 0.7),
+        ("med_to_low", 0.4),
+        ("same", 0.65),
+        ("gone_high", 0.9),
+        ("gone_none", None),
     ],
-}
-NEW = {
-    "row_count": 5,
-    "source_label": "s.csv",
-    "reid_risk_score": 35.5,
-    "quasi_identifier_groups": [["b", "a"], ["p", "q"]],
-    "fields": [
-        {"name": "none_to_low", "pii_score": 0.05},
-        {"name": "low_to_med", "pii_score": 0.3},
-        {"name": "med_to_high", "pii_score": 0.6},
-        {"name": "high_to_med", "pii_score": 0.59},
-        {"name": "med_to_low", "pii_score": 0.2999},
-        {"name": "same", "pii_score": 0.99},
-        {"name": "new_high", "pii_score": 0.8},
-        {"name": "new_none", "pii_score": 0},
+)
+NEW = _doc(
+    35.5,
+    [["b", "a"], ["p", "q"]],
+    [
+        ("none_to_low", 0.05),
+        ("low_to_med", 0.3),
+        ("med_to_high", 0.6),
+        ("high_to_med", 0.59),
+        ("med_to_low", 0.2999),
+        ("same", 0.99),
+        ("new_high", 0.8),
+        ("new_none", 0),
     ],
-}
+)
 
 
 def collect(tmp: Path) -> dict:
@@ -94,7 +101,7 @@ def test_output_byte_equal_to_pre_move_golden(tmp_path: Path) -> None:
 def test_facade_exports_the_rules() -> None:
     from decoy.cli.scanning import ScanDiff, diff_scan_sets
 
-    diff = diff_scan_sets(OLD, NEW)
+    diff = diff_scan_sets(OLD["tables"][0], NEW["tables"][0])
     assert isinstance(diff, ScanDiff)
     assert dataclasses.is_dataclass(diff)
     assert diff.drift is True

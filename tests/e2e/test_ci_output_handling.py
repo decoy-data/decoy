@@ -23,6 +23,7 @@ from tests.ci_support import (
     write,
     write_clean_pipeline,
 )
+from tests.scan_docs import scan_set_doc
 
 PATTERN = {
     "id": "pii.seeded-test-identifier",
@@ -142,7 +143,7 @@ def test_precommit_context_marks_artifact_checks_not_applicable(tmp_path: Path) 
 
 def test_drift_inputs_that_cannot_be_compared_are_refused_not_ignored(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
-    good = {"fields": [{"name": "a", "pii_score": 0.1}], "quasi_identifier_groups": []}
+    good = scan_set_doc([{"name": "a", "pii_score": 0.1}])
     write(repo, "good.json", json.dumps(good))
     write(repo, "broken.json", "{not json")
     write(repo, "shape.json", json.dumps({"fields": 5}))
