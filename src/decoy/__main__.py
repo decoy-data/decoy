@@ -170,7 +170,8 @@ class _GuardedGroup(TyperGroup):
                 exit_code = exit_code_for(exc)
             else:
                 exit_code = _EXIT_CRASH
-                state.err_console.print(error("error:"), f"internal error ({type(exc).__name__})")
+                name = type(exc).__name__
+                state.err_console.print(error("error:"), f"internal error ({name})")
                 state.err_console.print(
                     " ", hint("hint:"), "rerun with --verbose for the full traceback."
                 )
