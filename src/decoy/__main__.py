@@ -19,7 +19,7 @@ from decoy.cli.ci import ci_app
 from decoy.cli.cockpit import DOCTOR_EPILOG, doctor
 from decoy.cli.demo import DEMO_EPILOG
 from decoy.cli.demo import _demo as demo_command
-from decoy.cli.exit_codes import _EXIT_CRASH
+from decoy.cli.exit_codes import _EXIT_CRASH, exit_code_for
 from decoy.cli.explain import EXPLAIN_EPILOG
 from decoy.cli.explain import explain as explain_command
 from decoy.cli.fit import FIT_EPILOG
@@ -48,7 +48,7 @@ from decoy.cli.unmask import unmask as unmask_command
 from decoy.cli.upgrade import UPGRADE_EPILOG
 from decoy.cli.upgrade import upgrade as upgrade_command
 from decoy.cli.validate import validate_app
-from decoy.ui.output import print_traceback, setup_output
+from decoy.ui.output import emit_error, print_traceback, setup_output
 from decoy.ui.theme import error, hint
 
 # Quick-start hints embedded in the root help. Picked up by Typer's
@@ -158,21 +158,30 @@ class _GuardedGroup(TyperGroup):
                 raise
             if debug:
                 raise
-            name = type(exc).__name__
             verbose = _parsed_verbose(ctx)
             state = setup_output(json_=False, quiet=False, verbose=verbose)
-            state.err_console.print(error("error:"), f"internal error ({name})")
-            state.err_console.print(
-                " ", hint("hint:"), "rerun with --verbose for the full traceback."
-            )
-            if verbose:
+            # An engine flag with an unknown spelling is the user's to fix, not a crash: show
+            # the variable name and code. The engine text names the variable, never its value.
+            # Imported here, after a failure, so a normal run never pays for the engine import.
+            from decoy_engine.errors import EnvFlagError
+
+            if isinstance(exc, EnvFlagError):
+                emit_error(state, ctx.invoked_subcommand or "decoy", str(exc), code=exc.code)
+                exit_code = exit_code_for(exc)
+            else:
+                exit_code = _EXIT_CRASH
+                state.err_console.print(error("error:"), f"internal error ({type(exc).__name__})")
                 state.err_console.print(
-                    hint("(--verbose: traceback below; diagnostic output may contain row data)")
+                    " ", hint("hint:"), "rerun with --verbose for the full traceback."
                 )
-                print_traceback(state)
+                if verbose:
+                    state.err_console.print(
+                        hint("(--verbose: traceback below; diagnostic output may contain row data)")
+                    )
+                    print_traceback(state)
         # Raised outside the `except` block so the safe exit carries neither the original
         # exception as __cause__ nor as __context__.
-        raise typer.Exit(_EXIT_CRASH)
+        raise typer.Exit(exit_code)
 
 
 # The generation path in one place: `fit` is in the Generate panel, but `run` and the fidelity
