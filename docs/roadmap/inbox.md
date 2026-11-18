@@ -18,6 +18,14 @@ Triage empties this page. Each item gets exactly one outcome:
 
 ## Untriaged
 
+- 2026-11-18, engine #695 review (FAKER-MIGRATE S1): masking with Faker `address_city` (and the
+  reflected `city`) in locale `it_IT` is not deterministic across processes. The same seed and key
+  give different output under different `PYTHONHASHSEED` values, on the real `run_pipeline` route,
+  in both deterministic and positional mode. Cause: Faker builds the it_IT city list from a set, so
+  its order follows the string hash. en_US is stable. Likely blocks 1.0 (broken today: same-seed
+  masking must be reproducible). Separately, unseeded module-level `random` makes `passport_*` and
+  some es_ES, es_MX, uk_UA, sv_SE, th and el_GR providers non-reproducible in generation.
+
 Carried from the track on 2026-11-18 (the "V2-LOG" list found at the 2026-11-17 merges):
 
 - 24f one-year bucket: the one-year datetime bucket in a plain fit snapshot (engine #632 review).
