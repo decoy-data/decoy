@@ -409,7 +409,7 @@ programs, agree the syntax, then build.
 | 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. **Built:** `when` conditions, nested `{key: value}` option values, fixed-width sources. An expression is only delimited by the compiler and sent to the engine as one line of text; the engine's grammars decide what is valid. Strategy options that hold an expression (`derived(expression: "age * 12")`) are still quoted strings. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
 | 3 | Group C transforms. **Built:** `where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`; a generator in a masked table is refused. The engine checks `where` and `=` expressions at plan compile, so the compiler does not report mistakes inside them yet. Group E: **built:** `<-` foreign keys with composite keys and `orphans`, `{a, b} : rule` coherent groups; a test runs a compiled link through the engine and checks the join. The top-level `namespaces:` block has no syntax yet. | A multi-table foreign-key pipeline compiles |
 | 4 | Group F generation. **Built:** `generate` blocks with generator calls, expressions, `<-` references and `unique`. | All seven `generate-*` templates compile to identical YAML (done) |
-| 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. | **v0.1: usable for real pipelines** |
+| 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. **Built, experimental:** `python -m decoy.lang pipeline.decoy > pipeline.yaml`, then the usual `decoy validate` and `decoy run` on the YAML. No `decoy` command reads `.decoy` yet: `validate` and `run` read the config text in more than one place and report findings by YAML line, so reading `.decoy` directly needs those to use the compiler's source map. The escape hatch is not built. | **v0.1: usable for real pipelines** |
 | 6 | Group J checks. Group H policy and `use`. Group I subset. | Full coverage of `PipelineConfig` |
 | 7 | Formatter, YAML converter, round-trip test, coverage test. | Safe to hand to others |
 | 8 | Wizard writes `.decoy`; review marker (section 11). Docs set. | Ready to ship |
@@ -472,7 +472,7 @@ test says by how much. It can never be ahead of it or disagree with it.
 | D3 | Which file is committed to a project | The `.decoy` file; compiled YAML goes with run outputs |
 | D4 | Release bucket | After 1.0 (it adds, breaks nothing); can ship earlier behind an experimental flag |
 | D5 | Review marker `?` | Yes, timed with the wizard work |
-| D6 | Does `decoy init` default to `.decoy` | Not until step 8 is done and the agent trial passes |
+| D6 | Does `decoy init` default to `.decoy` | **Direction (owner, 2026-11-19):** yes, after 1.0 and once the language has earned it. Pipelines become code first: a `.decoy` file is what a project writes and commits, and the wizard is the quick route for simple pipelines. YAML stays as the compiled form the engine reads and as a supported input. The bar is in section 14 |
 
 ## 13. Risks
 
@@ -483,3 +483,21 @@ test says by how much. It can never be ahead of it or disagree with it.
 | The language grows into a programming language | Section 1 non-goals; any loop or function proposal needs its own decision record |
 | Error messages worse than YAML's | Source map is in step 1, not an afterthought |
 | Distracts from 1.0 | Not on the 1.0 path; goes through the roadmap inbox like any other idea |
+
+## 14. Before pipelines become code first
+
+Direction (owner, 2026-11-19): after 1.0, a `.decoy` file is the main way to write a pipeline, and
+`decoy init` is the quick route for simple ones. That flips the default for every user, so it waits
+for all of these:
+
+| # | Bar | State |
+|---|---|---|
+| 1 | Everything `PipelineConfig` accepts can be written: checks, policy and disguises, subsetting, the `namespaces` block, the escape hatch | Not built |
+| 2 | `decoy validate`, `decoy run` and the other pipeline commands read `.decoy` directly, with findings on `.decoy` lines | Not built; today it is a separate compile step |
+| 3 | A converter turns any existing pipeline YAML into `.decoy`, and the round-trip test holds | Not built |
+| 4 | The coverage test fails when the engine adds a config field the language cannot write | Not built |
+| 5 | A formatter, so every file has one layout | Not built |
+| 6 | The docs set in section 7, including the one-page agent card | Not built |
+| 7 | The agent trial in section 9: agents get a valid pipeline first time more often in `.decoy` than in YAML | Not run |
+| 8 | `decoy init` writes `.decoy` | Not built |
+| 9 | The syntax is frozen under the compatibility rules, with `decoy 1` as its version | Syntax still changing |

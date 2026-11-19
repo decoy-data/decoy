@@ -45,7 +45,7 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
         width = len(error.token) if isinstance(error, UnexpectedToken) else 1
         span = Span(error.line, error.column, error.line, error.column + max(1, width))
         if isinstance(error, UnexpectedToken):
-            found = "end of file" if error.token.type == "$END" else f"`{error.token}`"
+            found = _found(error.token)
         else:
             found = f"`{text[error.pos_in_stream]}`"
     expected: set[str] = set()
@@ -70,6 +70,16 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
         quoted = f"`{word}` is a word of the language; for a column of that name write '{word}'"
         hint = f"{hint}. {quoted}" if hint else quoted
     return fail("lang.syntax", message, span, hint)
+
+
+def _found(token: Token) -> str:
+    """How an unexpected token is named. A number or quoted text is named by kind, not shown:
+    it may be a seed or a path, and an error never quotes a config value."""
+    if token.type == "$END":
+        return "end of file"
+    if token.type in ("NUMBER", "DQ_STRING", "SQ_STRING"):
+        return DISPLAY[token.type]
+    return f"`{token}`"
 
 
 def _one_of(items: list[str]) -> str:
