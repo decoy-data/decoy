@@ -308,9 +308,12 @@ and reset serial are written in the same atomic write (R1-B2, R2-H1, TUF 5.3.11)
 `serial` only rises and a no-document write cannot lower it. Unknown top-level fields are kept as they were read
 (R1-M8): a 1.0 runtime rolled back under a 1.x home must not drop what 1.x wrote. The contract
 (D12) forbids any later field from nesting a key named `serial`, because `install.sh` reads the
-first match. Before writing, the writer asserts that the first exact `"serial":` token in its
-generated output is the top-level serial it is about to persist. It refuses rather than emit output
-where an unknown retained field would put a nested `serial` first (R2-L3). The state is written once,
+first match. The writer emits `serial` as the first key and every other key sorted after it, so the
+first match of `install.sh`'s `json_top_number` pattern is always the top-level serial whatever
+unknown fields are kept. Before writing, it asserts that the first match of that same pattern
+(`"serial"\s*:\s*[0-9]+`) in its output equals the serial it is about to persist, and refuses
+otherwise (R2-L3, revised after Dennis review of UK1a: the first design, a depth tokenizer over a
+sorted object, could refuse every write when a kept field sorted before `serial`). The state is written once,
 atomically, after every check. The file stays local state,
 not a secret, as today (`C:distribution/installer.py:46-48`).
 
@@ -619,8 +622,8 @@ and keep their own code:
 - `trust_state.json`: adds `key_epoch` (int >= 1, bool refused), `main_key` (PEM, only when
   `key_epoch > 1`) and `revoked_keys` (sorted list of 64-hex strings); `serial` is the current
   epoch's floor and keeps its top-level integer form; an offline epoch rise writes 0; the writer
-  asserts its first exact `"serial":` token is that top-level value; `latest` unchanged; unknown
-  fields kept unless they would violate that first-serial invariant.
+  writes `serial` as its first key, and asserts the first match of `install.sh`'s serial pattern
+  equals it; `latest` unchanged; unknown fields kept intact.
 - New pinned file `C:distribution/release_backup_key.pub.pem`; new committed file
   `C:distribution/key_rotation.json` (absent until a rotation); offline sidecar `PATH.key_rotation`.
 - `.gitattributes`: `src/decoy/distribution/*.pem -text` and
@@ -702,7 +705,7 @@ rows run on both.
 | AT-UK1-15 | UK1b | A 64 KiB plus 1 byte document and a 10,000-deep nested document reach the signature check with no statement and refuse `upgrade_signature_invalid`; a spy shows `json.loads` was not called on the oversize bytes | no pre-verify parse | M15 drop the size cap |
 | AT-UK1-16 | UK1c | Every new code, human and `--json`: output matches `decoy-error-v1`, contains the code, and contains no PEM line, no fingerprint, no URL other than `DOWNLOAD_PAGE_URL`, and no exception message; each raised error has `__cause__` and `__context__` None. An AST guard finds every exact new code literal only in `errors.TrustCode` and fails on a copy elsewhere | codes do not exist | M16 put `str(exc)` back in the message; M54 copy a new code literal into `cli/upgrade.py` |
 | AT-UK1-17 | UK1a | `DECOY_RELEASE_BACKUP_PUBKEY_FILE` is honored with a warning while both pins are the placeholder; ignored with a warning when a real backup key is committed; ignored with a warning when the backup is the placeholder but the main pin is real (the test copies the module with real pems) | override does not exist | M17 honor the override whenever the backup pin is the placeholder |
-| AT-UK1-18 | UK1a | Guard after the move: corrupt state refused, absent state a first run, serial replay refused; `install.sh` under `sh` reads `serial` from a state file written by the new writer (with `main_key` and `revoked_keys` present) and refuses a lower serial; the writer refuses output whose first exact `"serial":` token would be nested instead of its top-level value | guard (the refactor) | M18 nest `serial` under an object; M50 omit the first-serial assertion |
+| AT-UK1-18 | UK1a | Guard after the move: corrupt state refused, absent state a first run, serial replay refused; `install.sh` under `sh` reads `serial` from a state file written by the new writer (with `main_key` and `revoked_keys` present) and refuses a lower serial; a kept unknown field that sorts before `serial` and nests a `serial` (a number, `null`, or a key such as `a"serial`) still writes, and the shell pattern reads the top-level serial | guard (the refactor) | M18 nest `serial` under an object; M50 omit the pattern check |
 | AT-UK1-19 | UK1d | A v1 document with `key_rotation` installs through `install.sh` (pinned K2) unchanged, and the built wheel lists `decoy/distribution/release_backup_key.pub.pem` | backup pem absent | M19 bump `schema_version` when `key_rotation` is present |
 | AT-UK1-20 | UK1c | R1-B2: client pins K1; a K1-signed document with serial 2^53 is accepted and recorded; then a K2-signed epoch-2 document with serial 1,000 is accepted; state holds `key_epoch: 2` and `serial: 1000`; a later epoch-2 document with serial 999 is refused `upgrade_document_stale` | the global floor refuses serial 1,000 | M26 keep the floor across the epoch change |
 | AT-UK1-21 | UK1d | R1-B1, R2-L2: the real `install.sh` under `sh`, pinning K2, installs from a document whose `key_rotation` carries an epoch-2 statement as built by `vd.build_document`; the test asserts `install.sh` read `schema_version`, `serial`, `expires` and `latest` from the top level and skipped the non-replace shell serial fast check because the exact canonical `"key_rotation":"` token was present | field does not exist | M27 emit the statement as a nested object (`install.sh` then refuses the schema); M49 run the old serial fast check despite the statement |
@@ -779,7 +782,7 @@ rows run on both.
   in `key_rotation` gets `upgrade_format_unknown` from 1.0 installs.
 - `trust_state.json`: three additive fields; `serial` keeps its top-level integer form for
   `install.sh` and becomes the per-epoch floor; an offline epoch rise writes 0; unknown fields are
-  kept only when the first exact `"serial":` remains top-level; no later field may nest `serial`.
+  kept intact because `serial` is written first; no later field may nest `serial`.
 - `install.sh`: one new option, `--replace`, with the D11 no-home refusal and corrupt-state recovery
   semantics. The `first_install` argument form is internal to one release.
 - Exit codes: none added or changed. Error codes: seven new `code` values; the `--json` error shape
@@ -812,13 +815,13 @@ escalates to the full suite at the slice (testing.md triggers). UK1b and UK2 run
 
 | Slice | Repo | Content | Prod / test | Risk | Depends on |
 |---|---|---|---|---|---|
-| UK1a | CLI | H3 fixture first; `errors.py` leaf and installer re-export; `trust_state.py` (moved reader and writer, three fields, no-document epoch reset, first-serial assertion, unknown fields kept when safe); `release_key.pinned_backup_pem` and placeholder pem; `signing.raw_public_bytes` rename plus `fingerprint`; `sign_release.py keygen --encrypt` and `backup-check`; `.gitattributes`. AT-UK1-12, 17, 18, 29, 31, 32 | 225 / 390 | R2 | none (main). Rebase onto 47-B if it merges first |
+| UK1a | CLI | H3 fixture first; `errors.py` leaf and installer re-export; `trust_state.py` (moved reader and writer, three fields, no-document epoch reset, `serial` written first plus a check against the `install.sh` pattern, unknown fields kept intact); `release_key.pinned_backup_pem` and placeholder pem; `signing.raw_public_bytes` rename plus `fingerprint`; `sign_release.py keygen --encrypt` and `backup-check`; `.gitattributes`. AT-UK1-12, 17, 18, 29, 31, 32 | 225 / 390 | R2 | none (main). Rebase onto 47-B if it merges first |
 | UK1b | CLI | `key_rotation.py` (decode, `validate_statement`, `check_release_pins`, `resolve_main_key`, `local_key`, `committed_statement`, `TrustDecision`, `TrustRefusal`); `vd.UnknownFormat`, `DOWNLOAD_PAGE_URL`, `build_document` embed and 32 KiB cap. AT-UK1-4, 5, 6, 15, 27, 30, 33 | 235 / 380 | R2 | UK1a |
 | UK1c | CLI | `install_version`, `activate_local_version`, new `record_trust` resolve under the lock and lose `expected_public_pem`; `cli/upgrade.py` codes, `_refuse` hint, up-to-date recording; the choke-point guard; test call-site migration. AT-UK1-1 to 3, 7 to 11, 13, 14, 16, 20, 22, 23, 25 (and expanded AT-UK1-28 if 88-O is merged) | 155 / 560 | R2 | UK1b. If 88-O merges first, UK1c wires its key and AT-UK1-28; else 88-O does |
-| UK1d | CLI | `install.sh --replace`, portable SPKI fingerprint, exact revoked-array check, epoch-aware shell serial skip, no-home refusal; `first_install` resolver, recording, corrupt-state recovery and replace placement. AT-UK1-19, 21, 24, 26 | 155 / 390 | R2 | UK1c |
+| UK1d | CLI | `install.sh --replace`, portable SPKI fingerprint, exact revoked-array check, epoch-aware shell serial skip, no-home refusal; `first_install` resolver, recording, corrupt-state recovery and replace placement (the recovery message must say the state was reset and why, with no value from the file; carried from Dennis review of UK1a, where the reader gives one fixed "trust state unreadable" refusal). AT-UK1-19, 21, 24, 26 | 155 / 390 | R2 | UK1c |
 | UK2 | CLI | `sign_release.py rotation`; `check-keys` pin checks; `make_version_document.py` through the builder; the exact-constant single-validator sentry; the rotation drill. AT-UK2-1 to AT-UK2-8 | 120 / 330 | R2 (handles the backup private key) | UK1d |
 | UK3 | CLI | `docs/distribution/key-rotation.md` runbook including X6; contract doc with D12; frozen-surface row; `docs/install.md` replace modes and the unknown-format message; readiness item "backup key pinned" pointing at `check-keys`; roadmap row and shipped log. AT-UK3-1 | docs about 240 / 50 | R1 | UK2 |
-| OWNER-1 | owner | Create the backup key offline with UK1a's `keygen --encrypt` (Q2), keep two copies, run UK1a's `backup-check` on each, hand over the public PEM; commit it (a one-file change, R1) | 3 | owner | UK1a and its H3 fixture; before 2026-11-28 and the first signed 1.0 candidate (CLI-REL S0) |
+| OWNER-1 | owner | Order (owner decision): (1) create the key offline with UK1a's `keygen --encrypt` (Q2) and keep two copies; (2) carry only the public half out and commit it (a one-file change, R1); (3) pull the commit onto the offline machine; (4) run UK1a's `backup-check` on each copy against the committed pin. `backup-check` before the commit reports that no backup key is committed yet; there is no `--pub` mode | 3 | owner | UK1a and its H3 fixture; before 2026-11-28 and the first signed 1.0 candidate (CLI-REL S0) |
 
 Totals: about 890 production lines, 2,100 test and docs-check lines and 240 doc lines; about 3,230
 lines. Largest slice UK1c at 715. Every implementation slice remains below 800 lines.
@@ -860,7 +863,7 @@ Cross-plan lines (each needs a line in the other plan when that slice is built):
 Recommended answer first in each. Dennis round 1 recommended (a) on all six.
 
 - **Q1 Rollback across a rotation.** (a) Recommended: refuse with `upgrade_key_revoked` from a runtime whose pin is revoked, else `upgrade_rollback_key_rotated`; re-publish supported old bundles and tag documents under K2. (b) Keep K1 valid for local activation, which needs another trust class and weakens revocation.
-- **Q2 Backup key custody.** (a) Recommended: create passphrase-encrypted PKCS8 with `keygen --encrypt` offline, keep two USB copies and a separate passphrase, run `backup-check` at creation and yearly, commit only the public half, never use B in CI. (b) Hardware token: stronger but needs cost and PKCS#11 work. (c) Paper: restore risk.
+- **Q2 Backup key custody.** (a) Recommended: create passphrase-encrypted PKCS8 with `keygen --encrypt` offline, keep two USB copies and a separate passphrase, create the key, commit only the public half, pull it to the offline machine, then run `backup-check` on each copy (restore test) and again yearly, never use B in CI. (b) Hardware token: stronger but needs cost and PKCS#11 work. (c) Paper: restore risk.
 - **Q3 Deadline for the backup key.** (a) Recommended: 2026-11-28, after R2-M5 lands the H3 fixture then UK1a `keygen --encrypt` and `backup-check`, before the first signed 1.0 candidate. A real main pin with a placeholder backup fails `check-keys`, with no G0 exception. (b) Any date after UK1a and before CLI-REL S0.
 - **Q4 Download page.** (a) Recommended: `https://trydecoy.com/download`, the `DOWNLOAD_PAGE_URL` constant, with the `--replace` command. RW-C2b changes it if REL-WEB Q1 changes the domain. (b) Install docs.
 - **Q5 Unknown format with an unverifiable signature.** (a) Recommended: fixed `upgrade_format_unknown` text for any non-v1 `cli-version-document/` schema because it adds no capability beyond channel denial. (b) Always show signature invalid.
