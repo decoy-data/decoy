@@ -7,7 +7,7 @@
 Built so far: pipeline settings, sources and targets, masking with `when` conditions, table
 shaping (`where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`), foreign keys (`<-`),
 coherent groups (`{a, b} : rule`), generated tables (`generate name rows N`), checks and safety
-statements (`scan`, `expect`, `quarantine`, `baseline`, `delivery`, `namespace`), `settings { }` for
+statements (`scan`, `expect`, `quarantine`, `baseline`, `delivery`, `namespace`), `subset { }`, `settings { }` for
 any pipeline setting and `options { }` for config blocks without syntax of their own.
 """
 

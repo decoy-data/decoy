@@ -307,6 +307,69 @@ def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
     return nodes.GenColumn(_name(statement.children[0]), call, expression, span_of(statement))
 
 
+def _edge_end(tree: Tree[Any]) -> tuple[nodes.Name, tuple[nodes.Name, ...]]:
+    table, key = tree.children
+    target = key.children[0]
+    return _name(table), _names(target) if target.data == "names" else (_name(target),)
+
+
+def _seed(tree: Tree[Any]) -> nodes.Seed:
+    _, table, how = tree.children
+    span = span_of(tree)
+    if how.data == "sample":
+        _, amount, unit, _, columns = how.children
+        unit_text = "%" if unit.type == "PERCENT_SIGN" else "rows"
+        return nodes.Seed(
+            _name(table), "sample", _names(columns), _token_value(amount), unit_text, (), None, span
+        )
+    if how.data == "keys":
+        _, columns, _, values = how.children
+        return nodes.Seed(
+            _name(table), "keys", _names(columns), None, None, (), _value(values), span
+        )
+    conditions = []
+    for condition in how.children[1:]:
+        column = _name(condition.children[0])
+        if condition.data == "compare":
+            operator, value = str(condition.children[1]), _value(condition.children[2])
+        elif condition.data == "member":
+            operator, value = "in", _value(condition.children[2])
+        else:
+            operator, value = condition.data.replace("_", " "), None
+        conditions.append(nodes.Condition(column, operator, value, span_of(condition)))
+    return nodes.Seed(_name(table), "filter", (), None, None, tuple(conditions), None, span)
+
+
+def _subset(tree: Tree[Any]) -> nodes.Subset:
+    seeds: list[nodes.Seed] = []
+    follows: list[nodes.Follow] = []
+    budget: list[nodes.Option] = []
+    dangling = False
+    for statement in tree.children[1:]:
+        if statement.data == "subset_seed":
+            seeds.append(_seed(statement))
+        elif statement.data == "follow":
+            _, parent, _, child, direction = statement.children
+            follows.append(
+                nodes.Follow(
+                    *_edge_end(parent), *_edge_end(child), _name(direction), span_of(statement)
+                )
+            )
+        elif statement.data == "budget":
+            block = _block(statement)
+            if block.positional or block.refs:
+                raise fail(
+                    "lang.block_arguments",
+                    "`budget` takes `key: value` options only",
+                    block.span,
+                    "write `budget(max_total_rows: 1_000_000)`",
+                )
+            budget.extend(block.options)
+        else:
+            dangling = True
+    return nodes.Subset(tuple(seeds), tuple(follows), tuple(budget), dangling, span_of(tree))
+
+
 _BLOCKS = ("scan", "expect", "block", "declare")
 
 
@@ -368,6 +431,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
     lets: list[nodes.Let] = []
     tables: list[nodes.Table | nodes.Generate] = []
     extra: list[nodes.Option] = []
+    subsets: list[nodes.Subset] = []
     blocks: list[nodes.Block] = []
     options: list[nodes.Option] = []
     for item in items:
@@ -379,6 +443,8 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         elif item.data == "unconfigured":
             word = _name(item.children[2])
             settings.append(nodes.Setting("unconfigured", nodes.Value(word.text, word.span), span))
+        elif item.data == "subset":
+            subsets.append(_subset(item))
         elif item.data in _BLOCKS:
             blocks.append(_block(item))
         elif item.data in ("settings", "options"):
@@ -398,6 +464,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         tuple(extra),
         tuple(options),
         tuple(blocks),
+        tuple(subsets),
     )
 
 

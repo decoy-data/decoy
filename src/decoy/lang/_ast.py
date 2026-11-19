@@ -133,6 +133,52 @@ class Block:
 
 
 @dataclass(frozen=True)
+class Condition:
+    """One test in `start <table> where ...`: `column == value`, `column in [...]`,
+    `column is null`, `column is not null`."""
+
+    column: Name
+    operator: str
+    value: Value | None
+    span: Span
+
+
+@dataclass(frozen=True)
+class Seed:
+    """`start <table> ...`: where a subset begins. `mode` is the engine's seed mode."""
+
+    table: Name
+    mode: str  # sample | filter | keys
+    key_columns: tuple[Name, ...]
+    amount: Value | None  # sample: the number before `%` or `rows`
+    unit: str | None  # sample: "%" or "rows"
+    conditions: tuple[Condition, ...]
+    keys: Value | None
+    span: Span
+
+
+@dataclass(frozen=True)
+class Follow:
+    """`follow parent.key -> child.key <direction>`."""
+
+    parent_table: Name
+    parent_columns: tuple[Name, ...]
+    child_table: Name
+    child_columns: tuple[Name, ...]
+    direction: Name
+    span: Span
+
+
+@dataclass(frozen=True)
+class Subset:
+    seeds: tuple[Seed, ...]
+    follows: tuple[Follow, ...]
+    budget: tuple[Option, ...]
+    allow_dangling: bool
+    span: Span
+
+
+@dataclass(frozen=True)
 class GenColumn:
     """`name = generator(...)` or `name = expression` in a generated table. A generator call has
     `call`; anything else is an expression the engine's `derived` type evaluates."""
@@ -196,3 +242,4 @@ class Program:
     extra_settings: tuple[Option, ...] = ()  # the `settings { }` block
     options: tuple[Option, ...] = ()  # the `options { }` block
     blocks: tuple[Block, ...] = ()
+    subsets: tuple[Subset, ...] = ()

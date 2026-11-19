@@ -352,10 +352,10 @@ def test_settings_block_takes_any_setting_by_its_engine_name() -> None:
 
 
 def test_options_block_writes_top_level_config_after_the_targets() -> None:
-    text = _BASE.replace("seed 42", "seed 42\n  options { subset: {allow_dangling: true} }")
+    text = _BASE.replace("seed 42", "seed 42\n  options { protected_quarantine: {max_rows: 5} }")
     config = _lowered(text)
-    assert config["subset"] == {"allow_dangling": True}
-    assert list(config)[-2:] == ["targets", "subset"]
+    assert config["protected_quarantine"] == {"max_rows": 5}
+    assert list(config)[-2:] == ["targets", "protected_quarantine"]
 
 
 @pytest.mark.parametrize(
@@ -367,7 +367,7 @@ def test_options_block_writes_top_level_config_after_the_targets() -> None:
         ("settings { no_such_setting: 1 }", "lang.config", 5),
         ("options { sources: {} }", "lang.option_not_allowed", 5),
         (
-            "options { subset: {a: 1} subset: {a: 1} }",
+            "options { protected_quarantine: {a: 1} protected_quarantine: {a: 1} }",
             "lang.option_repeated",
             5,
         ),

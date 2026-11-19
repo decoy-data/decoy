@@ -27,6 +27,7 @@ from decoy.lang._errors import Diagnostic, LangError, fail
 from decoy.lang._generate import generators, lower_generate
 from decoy.lang._links import CHILD_STRATEGY, relationships
 from decoy.lang._safety import SAFETY_SYNTAX, lower_blocks
+from decoy.lang._subset import SUBSET_SYNTAX, lower_subsets
 
 CONFIG_VERSION = 2
 KEEP_STRATEGY = "passthrough"
@@ -56,6 +57,7 @@ BLOCK_SYNTAX = {
     "tables": "`mask` and `generate` blocks",
     "relationships": "`child <- table.key orphans <policy>`",
     **SAFETY_SYNTAX,
+    **SUBSET_SYNTAX,
 }
 _CALL = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\(")
 _SETTING_FIELDS = {
@@ -145,6 +147,7 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
         targets = config.pop("targets")
         config["relationships"] = relationships(links, config["tables"], spans, problems)
         config["targets"] = targets
+    lower_subsets(program.subsets, config, spans, problems)
     lower_blocks(program.blocks, config, spans, problems)
     for option in program.options:
         key = option.key.text

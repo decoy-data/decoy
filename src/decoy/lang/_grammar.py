@@ -18,7 +18,8 @@ _KEYWORDS = (
     "decoy pipeline seed secret ref unconfigured columns let mask from to keep in "
     "deterministic vaulted when and or not if else true false "
     "where sort by asc desc limit dedupe on drop orphans generate rows unique "
-    "settings options scan before after expect quarantine baseline delivery namespace for"
+    "settings options scan before after expect quarantine baseline delivery namespace for "
+    "subset start sample keys follow budget allow dangling is null"
 ).split()
 
 GRAMMAR = r"""
@@ -27,7 +28,7 @@ start: DECOY NUMBER pipeline
 pipeline: PIPELINE [name] "{" item* "}"
 
 ?item: seed | secret | unconfigured | settings | options | let | table | generate
-     | scan | expect | block | declare
+     | scan | expect | block | declare | subset
 
 seed: SEED NUMBER
 secret: SECRET REF "(" (DQ_STRING | SQ_STRING) ")"
@@ -49,6 +50,25 @@ declare: NAMESPACE name FOR ref ("," ref)*
 check_args: "(" [check_arg ("," check_arg)*] ")"
 ?check_arg: option | ref | value
 ref: name "." name
+
+// Subsetting: where the slice starts, which links it follows, and how far it may grow.
+subset: SUBSET "{" subset_statement* "}"
+?subset_statement: subset_seed | follow | budget | dangling
+subset_seed: START name (sample | filter | keys)
+sample: SAMPLE NUMBER (PERCENT_SIGN | ROWS) BY names
+filter: WHERE test ("," test)*
+// `column`, not `name`: LALR gives every use of one rule the same lookahead set, and a name
+// followed by an operator here would make `<` a possible token after any name, ahead of `<-`.
+test: column OPERATOR value -> compare
+    | column IN list -> member
+    | column IS NULL -> is_null
+    | column IS NOT NULL -> is_not_null
+column: NAME | SQ_STRING
+keys: KEYS names IN list
+follow: FOLLOW edge_end ARROW_RIGHT edge_end name
+edge_end: name "." link_key
+budget: BUDGET check_args
+dangling: ALLOW DANGLING
 
 // A generated table: every column is defined with `=`, by a generator call or an expression.
 generate: GENERATE name ROWS NUMBER TO call "{" gen_statement* "}"
@@ -123,6 +143,8 @@ NUMBER: /-?[0-9][0-9_]*(\.[0-9]+)?/
 OPERATOR: "==" | "!=" | "<=" | ">=" | "<" | ">" | "+" | "*" | "//" | "/"
 MINUS: "-"
 ARROW: "<-"
+ARROW_RIGHT: "->"
+PERCENT_SIGN: "%"
 COMMENT: /#[^\n]*/
 
 %import common.WS
@@ -151,6 +173,8 @@ DISPLAY = {
     "OPERATOR": "an operator",
     "MINUS": "`-`",
     "ARROW": "`<-`",
+    "ARROW_RIGHT": "`->`",
+    "PERCENT_SIGN": "`%`",
     "DOT": "`.`",
     "$END": "the end of the file",
 }

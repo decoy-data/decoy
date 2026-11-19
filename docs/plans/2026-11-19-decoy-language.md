@@ -249,18 +249,28 @@ policy {
 ### Group I: Subsetting
 
 **Engine:** seed tables (sample, filter or explicit keys), row budgets, per-relationship edge
-directions, a dangling-reference switch.
+directions, a dangling-reference switch. The engine closes the slice over the pipeline's foreign
+keys.
 
 **Language:**
 
 ```
 subset {
-  start members sample 5%
-  start claims where paid_amount > 10000
-  follow claims -> members upward
-  budget 2_000_000 rows
+  start customers sample 2% by customer_id
+  start orders where total > 1000, status == 'open', closed_at is null
+  start vips keys customer_id in [101, 102]
+  follow customers.customer_id -> orders.customer_id downward
+  budget(max_total_rows: 2_000_000)
+  allow dangling
 }
 ```
+
+- `start` is a seed. `sample 2%` is a share of the table and `sample 500 rows` a count, both `by`
+  the key columns. `where` takes simple tests separated by commas, all of which must hold: `==`,
+  `!=`, `<`, `<=`, `>`, `>=`, `in [...]`, `is null`, `is not null`. `keys` lists the key values.
+- `follow` sets the direction for one foreign key, written parent first: `both`, `downward`,
+  `upward` or `none`.
+- `budget(...)` takes the engine's budget settings by name.
 
 ### Group J: Checks and safety
 
