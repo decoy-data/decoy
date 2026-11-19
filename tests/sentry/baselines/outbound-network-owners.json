@@ -1,0 +1,33 @@
+{
+ "sentry_id": "outbound-network-owners",
+ "created_in": "FREEZE-S6",
+ "entries": {
+  "src/decoy/_outbound.py::RefuseRedirects": {
+   "reason": "urllib redirect handler: refuses every redirect"
+  },
+  "src/decoy/_outbound.py::_PurposeRedirects": {
+   "reason": "urllib redirect handler: re-checks each hop against the purpose"
+  },
+  "src/decoy/_outbound.py::_scheme_of": {
+   "reason": "reads the scheme with the reader urllib dispatches on"
+  },
+  "src/decoy/_outbound.py::_open": {
+   "reason": "opens the checked request"
+  },
+  "src/decoy/_outbound.py::redirect_handler": {
+   "reason": "picks the redirect handler for a purpose"
+  },
+  "src/decoy/_outbound.py::open_url": {
+   "reason": "the one outbound function"
+  },
+  "src/decoy/telemetry.py::_DecoySpanExporter.__init__": {
+   "reason": "the third-party requests adapter, after the otel endpoint rule"
+  },
+  "src/decoy/telemetry.py::_DecoySpanExporter.export": {
+   "reason": "the third-party requests call, after the otel endpoint rule"
+  },
+  "src/decoy/notify.py::send_email": {
+   "reason": "the SMTP channel; notify owns SMTP only"
+  }
+ }
+}

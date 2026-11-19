@@ -198,9 +198,9 @@ def check_document_freshness(
 
 
 def _urllib_download(url: str) -> bytes:
-    import urllib.request
+    from decoy import _outbound
 
-    with urllib.request.urlopen(url) as resp:
+    with _outbound.open_url(url, purpose="upgrade_artifact") as resp:
         return resp.read()
 
 
