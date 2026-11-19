@@ -134,7 +134,7 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
     "cli/_token_vault.py::LocalTokenVault.__init__::sqlite3.connect::1": _VAULT,
     "_resources.py::write_settings::write_atomic::1": _E2E + "test_setup_settings_file_is_private",
-    "distribution/installer.py::check_document_freshness::write_atomic::1": _UNIT
+    "distribution/trust_state.py::write_trust_state::write_atomic::1": _UNIT
     + "test_installer_trust_state_is_owner_only_under_umask_zero",
     "cli/io/_layout.py::create_run_folder::create_private_directory::1": _UNIT
     + "test_create_private_directory_is_0700_under_umask_000",

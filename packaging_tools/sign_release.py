@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import getpass
 import json
 import os
 import re
@@ -233,15 +234,31 @@ def _cmd_sshsig(args: argparse.Namespace) -> int:
     return 0
 
 
+def _new_passphrase() -> bytes | None:
+    """Ask twice, without echo. None (nothing written) on a mismatch or an empty passphrase."""
+    first = getpass.getpass("passphrase for the new key: ")
+    if not first or first != getpass.getpass("repeat the passphrase: "):
+        return None
+    return first.encode("utf-8")
+
+
 def _cmd_keygen(args: argparse.Namespace) -> int:
     """Dev/bootstrap helper: generate a release keypair. Writes the private key 0600 and
     prints the public key (to commit as release-key.pub.pem). The real launch key is
-    generated once in the secret store, not here."""
+    generated once in the secret store, not here. ``--encrypt`` asks for a passphrase and writes
+    encrypted PKCS8, for the offline backup key."""
     key = Ed25519PrivateKey.generate()
+    protection: serialization.KeySerializationEncryption = serialization.NoEncryption()
+    if args.encrypt:
+        passphrase = _new_passphrase()
+        if passphrase is None:
+            sys.stderr.write("keygen: passphrases differ or are empty; no key written\n")
+            return 2
+        protection = serialization.BestAvailableEncryption(passphrase)
     priv_pem = key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
+        encryption_algorithm=protection,
     )
     out = Path(args.out)
     fd = os.open(str(out), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -255,12 +272,48 @@ def _cmd_keygen(args: argparse.Namespace) -> int:
     return 0
 
 
+_BACKUP_BAD = "backup-check: failed; the key file does not match the committed backup key"
+_BACKUP_UNPINNED = "backup-check: no backup key is committed yet; commit the public half first"
+
+
+def _cmd_backup_check(args: argparse.Namespace) -> int:
+    """Restore test for the offline backup key: decrypt the file and confirm its public half is
+    the committed backup pin. Prints the fingerprint only. One fixed line and exit 1 on any
+    failure; the passphrase, the path and key bytes never reach output."""
+    from decoy.distribution import release_key, signing
+
+    try:
+        pinned = signing.fingerprint(release_key.pinned_backup_pem())
+    except release_key.NoPinnedKeyError:
+        sys.stderr.write(_BACKUP_UNPINNED + "\n")
+        return 1
+    except Exception:
+        sys.stderr.write(_BACKUP_BAD + "\n")
+        return 1
+    try:
+        data = Path(args.backup_key_file).read_bytes()
+        if not data.lstrip().startswith(b"-----BEGIN ENCRYPTED PRIVATE KEY-----"):
+            raise ValueError("not encrypted")
+        key = serialization.load_pem_private_key(
+            data, password=getpass.getpass("backup key passphrase: ").encode("utf-8")
+        )
+        if not isinstance(key, Ed25519PrivateKey):
+            raise ValueError("not Ed25519")
+        if signing.fingerprint(public_key_pem(key)) != pinned:
+            raise ValueError("pin mismatch")
+    except Exception:
+        sys.stderr.write(_BACKUP_BAD + "\n")
+        return 1
+    sys.stdout.write(pinned + "\n")
+    return 0
+
+
 def _cmd_sign(args: argparse.Namespace) -> int:
     key = load_private_key()
     if args.assert_published:
-        from decoy.distribution.signing import _raw_public_bytes_from_pem
+        from decoy.distribution.signing import raw_public_bytes
 
-        if _raw_public_bytes_from_pem(public_key_pem(key)) != _raw_public_bytes_from_pem(
+        if raw_public_bytes(public_key_pem(key)) != raw_public_bytes(
             published_public_key_pem()
         ):
             sys.stderr.write("refusing to sign: loaded key != committed release-key.pub.pem\n")
@@ -277,6 +330,9 @@ def main(argv: list[str] | None = None) -> int:
     kg = sub.add_parser("keygen", help="generate a release keypair")
     kg.add_argument("--out", required=True, help="private key output path (written 0600)")
     kg.add_argument("--pub", help="also write the public key PEM here")
+    kg.add_argument(
+        "--encrypt", action="store_true", help="protect the private key with a passphrase (asked twice)"
+    )
     kg.set_defaults(func=_cmd_keygen)
     sg = sub.add_parser("sign", help="detached-sign one or more files")
     sg.add_argument("files", nargs="+")
@@ -303,6 +359,9 @@ def main(argv: list[str] | None = None) -> int:
     ss.add_argument("--in", dest="infile", required=True)
     ss.add_argument("--out", required=True)
     ss.set_defaults(func=_cmd_sshsig)
+    bc = sub.add_parser("backup-check", help="confirm an encrypted backup key file matches the committed pin")
+    bc.add_argument("--backup-key-file", required=True, help="encrypted PKCS8 backup private key")
+    bc.set_defaults(func=_cmd_backup_check)
     args = ap.parse_args(argv)
     if args.cmd in {"pubkeys", "inject-keys", "check-keys", "sshsig"}:
         try:
