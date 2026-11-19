@@ -16,7 +16,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, TypeGuard
 
 from decoy._atomic import AtomicWriteError, WriteMode, write_atomic
 from decoy.distribution import signing
@@ -25,19 +25,22 @@ from decoy.distribution.errors import InstallError
 TRUST_STATE_FILE = "trust_state.json"
 _UNREADABLE = "trust state unreadable"
 _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
-_SERIAL_TOKEN = '"serial":'
+# install.sh reads the serial with this pattern (`json_top_number`) and takes the first match.
+_SHELL_SERIAL = re.compile(r'"serial"[ \t\r\n]*:[ \t\r\n]*[0-9]+')
 
 
-class Decision(Protocol):
-    """What a trust decision must expose for the writer: the main key PEM of its epoch (None
-    for the pinned key), the epoch, and the cumulative revoked fingerprints."""
+@dataclass(frozen=True)
+class Decision:
+    """What the writer records from one trust decision: the main key PEM of its epoch (None for
+    the pinned key), the epoch, and the cumulative revoked fingerprints. Any object with these
+    three attributes works, so the resolver's richer decision type needs no conversion."""
 
-    @property
-    def main_pem(self) -> str | None: ...
-    @property
-    def epoch(self) -> int: ...
-    @property
-    def revoked(self) -> frozenset[str]: ...
+    main_pem: str | None
+    epoch: int
+    revoked: frozenset[str]
+
+
+NO_ROTATION = Decision(None, 1, frozenset())
 
 
 @dataclass(frozen=True)
@@ -50,16 +53,6 @@ class TrustState:
     extras: dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class _NoRotation:
-    """The decision of an install that has seen no rotation: the pinned key, epoch 1, nothing revoked."""
-
-    main_pem: str | None = None
-    epoch: int = 1
-    revoked: frozenset[str] = frozenset()
-
-
-NO_ROTATION = _NoRotation()
 _KNOWN = frozenset({"serial", "latest", "key_epoch", "main_key", "revoked_keys"})
 
 
@@ -67,7 +60,7 @@ def _unreadable() -> InstallError:
     return InstallError(f"refusing ({_UNREADABLE})")
 
 
-def _is_int(value: object) -> bool:
+def _is_int(value: object) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
@@ -144,38 +137,24 @@ def read_trust_state(home: Path) -> TrustState:
     return state
 
 
-def _first_serial_is_top_level(text: str) -> bool:
-    """True when the first ``"serial":`` token in ``text`` sits at object depth 1, the way
-    ``install.sh`` reads it. Walks the text once, skipping string contents."""
-    depth, i, in_string = 0, 0, False
-    while i < len(text):
-        ch = text[i]
-        if in_string:
-            if ch == "\\":
-                i += 1
-            elif ch == '"':
-                in_string = False
-        elif text.startswith(_SERIAL_TOKEN, i):
-            return depth == 1
-        elif ch == '"':
-            in_string = True
-        elif ch in "{[":
-            depth += 1
-        elif ch in "}]":
-            depth -= 1
-        i += 1
-    return False
+def _shell_reads_serial(text: str, serial: int) -> bool:
+    """True when the first match of install.sh's serial pattern in ``text`` is ``serial``."""
+    match = _SHELL_SERIAL.search(text)
+    return match is not None and match.group().rsplit(":", 1)[1].strip() == str(serial)
 
 
 def _state_text(state: TrustState) -> str:
-    out: dict[str, Any] = dict(state.extras)
-    out.update({"latest": state.latest, "serial": state.serial, "key_epoch": state.epoch})
-    out["revoked_keys"] = sorted(state.revoked)
+    """Compact JSON with ``serial`` as the FIRST key, so the shell's first match is the real
+    one whatever unknown fields are kept; every other key is sorted."""
+    rest: dict[str, Any] = dict(state.extras)
+    rest.update({"latest": state.latest, "key_epoch": state.epoch})
+    rest["revoked_keys"] = sorted(state.revoked)
     if state.epoch > 1:
-        out["main_key"] = state.main_key
-    text = json.dumps(out, sort_keys=True, separators=(",", ":")) + "\n"
-    # Never write a file this reader would refuse, or one whose first serial is nested.
-    if not _first_serial_is_top_level(text) or _parse(json.loads(text)) is None:
+        rest["main_key"] = state.main_key
+    body = json.dumps(rest, sort_keys=True, separators=(",", ":"))
+    text = f'{{"serial":{state.serial},{body[1:]}\n'
+    # Never write a file this reader would refuse, or one the shell would misread.
+    if not _shell_reads_serial(text, state.serial) or _parse(json.loads(text)) is None:
         raise InstallError("could not record the trust state -- refusing to continue")
     return text
 

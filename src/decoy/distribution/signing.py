@@ -35,7 +35,7 @@ import hashlib
 import json
 from typing import Any
 
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
@@ -54,7 +54,10 @@ def raw_public_bytes(public_pem: str) -> bytes:
     """Load an Ed25519 public key from PEM and return its 32 raw bytes.
 
     Raises ValueError if the PEM is not a loadable Ed25519 public key."""
-    pub = serialization.load_pem_public_key(public_pem.encode("utf-8"))
+    try:
+        pub = serialization.load_pem_public_key(public_pem.encode("utf-8"))
+    except UnsupportedAlgorithm:
+        pub = None  # an unknown-OID key: same refusal as any other non-Ed25519 key, raised below
     if not isinstance(pub, Ed25519PublicKey):
         raise ValueError("not an Ed25519 public key")
     return pub.public_bytes(

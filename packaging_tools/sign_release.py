@@ -273,6 +273,7 @@ def _cmd_keygen(args: argparse.Namespace) -> int:
 
 
 _BACKUP_BAD = "backup-check: failed; the key file does not match the committed backup key"
+_BACKUP_UNPINNED = "backup-check: no backup key is committed yet; commit the public half first"
 
 
 def _cmd_backup_check(args: argparse.Namespace) -> int:
@@ -282,6 +283,14 @@ def _cmd_backup_check(args: argparse.Namespace) -> int:
     from decoy.distribution import release_key, signing
 
     try:
+        pinned = signing.fingerprint(release_key.pinned_backup_pem())
+    except release_key.NoPinnedKeyError:
+        sys.stderr.write(_BACKUP_UNPINNED + "\n")
+        return 1
+    except Exception:
+        sys.stderr.write(_BACKUP_BAD + "\n")
+        return 1
+    try:
         data = Path(args.backup_key_file).read_bytes()
         if not data.lstrip().startswith(b"-----BEGIN ENCRYPTED PRIVATE KEY-----"):
             raise ValueError("not encrypted")
@@ -290,7 +299,6 @@ def _cmd_backup_check(args: argparse.Namespace) -> int:
         )
         if not isinstance(key, Ed25519PrivateKey):
             raise ValueError("not Ed25519")
-        pinned = signing.fingerprint(release_key.pinned_backup_pem())
         if signing.fingerprint(public_key_pem(key)) != pinned:
             raise ValueError("pin mismatch")
     except Exception:

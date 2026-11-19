@@ -277,3 +277,12 @@ def test_the_written_state_has_serial_at_the_top_level_and_nowhere_before_it(tmp
         and json.loads(text)["serial"] == 3
         and text.startswith('{"serial":3,')
     )
+
+
+def test_the_shell_pattern_check_compares_the_first_match_with_the_serial():
+    check = trust_state._shell_reads_serial
+    assert check('{"serial":5,"x":1}', 5)
+    assert not check('{"serial":5,"x":1}', 6)
+    assert not check('{"a":{"serial":9},"serial":5}', 5)  # a nested number first: the shell reads 9
+    assert check('{"a":{"serial":null},"serial":5}', 5)  # grep ignores a non-number
+    assert not check('{"a":1}', 5)
