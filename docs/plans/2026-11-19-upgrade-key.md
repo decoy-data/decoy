@@ -2,20 +2,23 @@ Status: plan
 
 # UPGRADE-KEY: update-channel key rotation (roadmap row UPGRADE-KEY)
 
-Owner: Cam. Author: Opus planner. Date: 2026-11-19. Revision 2 (answers Dennis round 1, NO-GO with
-3 BLOCKER, 2 HIGH, 11 MEDIUM, 10 LOW).
+Owner: Cam. Author: Opus planner. Date: 2026-11-19. Revision 3 (answers Dennis round 2,
+GO-WITH-FIXES with 0 BLOCKER, 3 HIGH, 6 MEDIUM, 5 LOW).
 
 Rules consulted: `dev-rules/README.md`, `00-universal.md`, `risk-and-exceptions.md`,
-`development-loop.md`, `feature-dev.md`, `api-and-compatibility.md`, `security.md`,
-`release-and-rollback.md`, `config-secrets-and-supply-chain.md`, `testing.md`,
-`cross-cutting-concerns.md`, `architecture.md`, and `catalogs/recurring-defects.md`; owner memory
+`development-loop.md`, `profiles/local-operations.md`, `workspace-and-vcs.md`, `reuse-first.md`,
+`exploration.md`, `scope-discipline.md`, `proportionality.md`, `verification.md`, `code-review.md`,
+`feature-dev.md`, `api-and-compatibility.md`, `security.md`, `release-and-rollback.md`,
+`observability-and-resilience.md`, `config-secrets-and-supply-chain.md`, `testing.md`,
+`cross-cutting-concerns.md`, `architecture.md`, `documentation.md`, and
+`catalogs/recurring-defects.md`; owner memory
 rules: V1 bar, PLAN defines acceptance tests, sentry over prose, root cause not patch, commit message
 standard, test depth T0 to T4, one test runner per box, no em-dashes.
 
-Bases: CLI `origin/main` at `c5a156a8`, read from the fresh worktree `wt-plan-upgrade-key`; the
-plan branches `origin/plan/cli-rel`, `origin/plan/release-chain` and `origin/plan/win-feas` as
-fetched on 2026-11-19. Notation: `C:` is CLI `src/decoy/`, `PT:` is CLI `packaging_tools/`, `CT:` is
-CLI `tests/`.
+Bases: CLI `origin/main` at `ccc5540a`, read with `git show` from `wt-plan-upgrade-key`;
+`origin/plan/cli-rel` at `d46cb9c7`; and the `origin/plan/release-chain` and
+`origin/plan/win-feas` refs fetched on 2026-11-19. Notation: `C:` is CLI `src/decoy/`, `PT:` is CLI
+`packaging_tools/`, `CT:` is CLI `tests/`.
 
 Plans this one builds on: `plan/cli-rel` (row 94, `release.yml`, S0 with its `publish`, `resign` and
 `rollback` modes), `plan/release-chain` (row 88, 88-O offline upgrade, 47-B), `plan/mac-ed25519`
@@ -31,40 +34,38 @@ must create the backup key and keep it offline."
 Risk: R2 overall (the install and upgrade trust path, a signing key, a frozen contract that a 1.0
 install reads forever). Review: Dennis, then Codex. One owner task (create the backup key). No spend.
 
+## Revision 3 changes
+
+Every Dennis round 2 finding is adopted. The section column names the authoritative plan text and
+the acceptance row that prevents regression.
+
+| Finding | Bar | Resolved in | Revision 3 change |
+|---|---|---|---|
+| R2-H1 | V1 | D5, D8, class 3, AT-UK1-28 (M41), slices | An epoch rise without a version document writes serial 0; the offline test now proves a later normal-serial K2 network document is accepted |
+| R2-H2 | V1 | 4.9, AT-XR-2 (M42), AT-XR-3 (M43), X5, X6, done-when | CLI-REL resolves a K1-signed live document across the K2 commit, gives resign and rollback their own output assertions, rotates the engine secret and re-signs or re-cuts the native companion |
+| R2-H3 | V1 | D1, D10, section 8 preamble, AT-UK1-31 (M44), UK1a, Q3 | One fixture patches both module pin paths and the committed-statement path; environment seams remain dev-only; the fixture and custody commands land before the owner task |
+| R2-M1 | V1 | D4, D7, Placement, UK1a, AT-UK1-32 (M45) | `InstallError` moves to acyclic leaf `distribution/errors.py` and remains re-exported from `installer` for existing callers |
+| R2-M2 | V1 | D2, UK1a | `fingerprint` moves beside `raw_public_bytes` in `signing.py`, so the UK1a state reader does not import UK1b |
+| R2-M3 | V1 | D11 step 2, AT-UK1-26 (M46) | The shell fingerprint path decodes and validates the 44-byte Ed25519 SPKI directly, hashes its last 32 bytes, validates the digest and searches only the `revoked_keys` array |
+| R2-M4 | V1 | AT-UK1-26 (M47) | The revoked installer cell asserts zero fetches and the exact out-of-date text |
+| R2-M5 | V1 | D10, AT-UK1-31, UK1a, UK2, OWNER-1, Q3 | `keygen --encrypt` and `backup-check` move to UK1a before the 2026-11-28 owner task |
+| R2-M6 | V2-LOG | AT-UK1-30 (M36), X1, X5 | The builder test now asserts that `build_document(**fields)` with `key_rotation` raises `TypeError`; signed-output protection stays at the CLI-REL modes |
+| R2-L1 | V1 | D7, AT-UK1-33 (M48) | `build_document` refuses canonical output over 32 KiB |
+| R2-L2 | V1 | D11 step 3, AT-UK1-21 (M49) | The shell fast serial check is skipped when the canonical document carries `"key_rotation":"` |
+| R2-L3 | V1 | D5, AT-UK1-18 (M50) | The trust-state writer asserts that the first `"serial":` in its output is the top-level serial |
+| R2-L4 | V2-LOG | Later L6 | The optional verification bypass in `verify_extracted.py:35` is logged as a follow-up outside this plan |
+| R2-L5 | V1 | D11, 4.8, F14, F15, AT-UK1-26 (M51, M52) | Replace without an existing home is a coded refusal pointing at normal install; corrupt trust state is reset only after the replacement verifies, while settings remain unchanged |
+| Additional exact-key check | V1 | AT-UK2-8 (M53) | The single-validator sentry matches exact string constants `epoch` and `revokes`, never substrings |
+| Self-review | DESIGN | D13, AT-UK1-16 (M54) | The seven new runtime reason codes now live in one closed registry in the acyclic error leaf, guarded against copies |
+| Self-review size | V2-LOG | Section 12 | The plan is 900 lines, within the 800 to 900 V2 cleanup band and not a merge blocker; implementation source caps remain below 800 |
+
 ## Revision 2 changes
 
-Finding ids are written `R1-B1`, `R1-H1`, `R1-M1`, `R1-L1` so they do not clash with the mutation ids
-M1 to M40 in section 8. Every finding was checked against the code before the fix was adopted. No
-finding was rejected; three were adopted in a narrower or different form, said in the last column.
-
-| Finding | Verified against | Resolved in | Note |
-|---|---|---|---|
-| R1-B1 | `PT:install/install.sh:138` greps the first `"schema_version":"` anywhere; `signing.canonical_bytes` sorts keys, so `key_rotation` precedes `schema_version`; the envelope payload is a nested object (`C:distribution/signing.py:89`) | D2, D3, D4 step 1, 6.3, AT-UK1-21 (M27), AT-UK1-19 | Adopted: the field is one base64 string of the canonical envelope bytes, decoded only in `key_rotation.py` |
-| R1-B2 | `C:distribution/installer.py:226-232` keeps one global serial floor | D5, D4 step 7, G7, F11, AT-UK1-20 (M26) | Adopted: the floor belongs to an epoch; a verified higher epoch resets it in the same atomic write |
-| R1-B3 | `origin/plan/cli-rel` plan lines 274 and 660: `sign-set` uses `build_document`, resign and rollback do not use `make_version_document.py` | D7, AT-UK1-30 (M36), section 12 cross-plan line X1, AT-XR-1 (M40) | Adopted. `verify_release_set` exists only on the CLI-REL branch, so its change is a required CLI-REL line with its own AT |
-| R1-H1 | `PT:sign_release.py:225-228`: `check-keys` checks `install.sh` only | D10, G6, AT-UK2-6 (M37), AT-XR-1 | Adopted: unconditional whenever the main pin is real; no `--release` flag |
-| R1-H2 | `install.sh:196-215` refuses an existing runtime and points at `decoy upgrade`; `install.sh:145-149` uninstall removes `$DECOY_HOME` with `settings.json` | D11, 4.8, G8, F13, slice UK1d, AT-UK1-26 (M32) | Adopted: `install.sh --replace` |
-| R1-M1 | D5 rev 1 did not store the main key | D4 steps 2 and 3, D5, section 2 (TUF divergence), AT-UK1-22 (M28) | Adopted |
-| R1-M2 | `C:cli/upgrade.py:132` uses `record=False` on every no-install path | D4a, 4.3, AT-UK1-23 (M29) | Adopted |
-| R1-M3 | `C:distribution/first_install.py:64-65` records through `check_document_freshness` | D11, AT-UK1-24 (M30) | Adopted: `first_install` runs the resolver and records the full decision |
-| R1-M4 | `C:cli/upgrade.py:173` maps every `InstallError` to `upgrade_install_failed`; `installer.py:412` skips verification on `None` | D8, 6.1, AT-UK1-25 (M31) | Adopted, all four parts |
-| R1-M5 | 88-O (`plan/release-chain` lines 575-616) reads `PATH.sig` and `PATH.sha256` only | D8, 6.2, AT-UK1-28 (M34) | Adopted as a sidecar `PATH.key_rotation`, not as a stated gap |
-| R1-M6 | rev 1 AT-UK2-5 passes under M23 because the K3-pinned runtime fails a K1 signature as `signature_invalid` | D4 step 5, D9, AT-UK2-5 | Adopted: set equality on `revoked_keys`, plus `upgrade_key_revoked` on the K1-pinned local activation, which the pinned-key diagnosis rule (D4 step 5) now produces |
-| R1-M7 | rev 1 D10 checked statements in `sign_release.py` itself | D10, AT-UK2-8 (M39) | Adopted |
-| R1-M8 | `installer.py:207-212` writes only `latest` and `serial` | D5, 6.3, AT-UK1-29 (M35) | Adopted as "keep unknown fields", not a schema tag: a rolled-back 1.0 must keep reading state a 1.x wrote |
-| R1-M9 | `sign_release.py:236-256` keygen writes `NoEncryption()` | D10, Q2, AT-UK2-7 (M38) | Adopted, with `backup-check` as the restore test |
-| R1-M10 | contract had no rule for a later statement version | D12, 10, Q6, AT-UK3-1 | Adopted |
-| R1-M11 | `C:distribution/lock.py:50-52` yields without a lock when no advisory lock exists | 12 (X3), 8 preamble, 6.3 | Adopted, all three parts |
-| R1-L1 | rev 1 UK1 was 330 + 560 lines | 12 | Adopted: UK1 is now UK1a to UK1d, each under 800 |
-| R1-L2 | `sign_release.py:261` is the one outside caller | D2, 9 | Adopted: rename to `raw_public_bytes`, no alias |
-| R1-L3 | `C:distribution/release_key.py:37-63` | D1, AT-UK1-17 | Adopted |
-| R1-L4 | rev 1 D8 named call forms only | D8, AT-UK1-14 | Adopted |
-| R1-L5 | rev 1 AT-UK1-11 named "a test hook" | AT-UK1-11 | Adopted: the test wraps `installer.install_version` with monkeypatch; no production hook |
-| R1-L6 | rev 1 AT-UK2-3 said "byte for byte" | AT-UK1-30, AT-UK2-3 | Adopted: opaque string, equal to the committed statement's encoding |
-| R1-L7 | section 2 wording | 2 | Adopted |
-| R1-L8 | `_refuse` appends `: <type>.` (`C:cli/upgrade.py:186`); `first_install.py:67` prints `str(exc)`; `version_document.py:119` puts the schema value in the message | D6, AT-UK1-9, AT-UK1-24 | Adopted |
-| R1-L9 | rev 1 step 1 treated a bad field as "no statement" for good | D4 step 6, AT-UK1-27 (M33) | Adopted |
-| R1-L10 | `origin/plan/cli-rel` plan line 317: rollback verifies `vX`'s `version.json` with the committed key | 12 cross-plan line X2, 14 | Adopted |
+Revision 2 adopted every Dennis round 1 finding. Its ids remain attached to the authoritative
+design and AT rows: R1-B1 to R1-B3, R1-H1 to R1-H2, R1-M1 to R1-M11 and R1-L1 to R1-L10.
+Mutations M1 to M40 retain those meanings. Revision 3 supersedes only the rows explicitly changed
+in the table above: R1-M9 custody commands now ship in UK1a, and the CLI-REL coverage expands from
+AT-XR-1 to AT-XR-3.
 
 ## 0. Summary for the owner
 
@@ -86,7 +87,7 @@ This plan adds what the owner chose and nothing more:
    `--replace`, which installs over the old runtime and keeps the user's settings.
 
 Six slices: UK1a to UK1d (CLI trust core, R2), UK2 (signing tools and the rotation drill, R2), UK3
-(runbook and contract docs, R1). About 2,800 lines with tests and docs. One owner task: create the
+(runbook and contract docs, R1). About 3,230 lines with tests and docs. One owner task: create the
 backup key offline before the first signed 1.0 candidate (Q2, Q3).
 
 ## 1. FRAME
@@ -128,7 +129,8 @@ backup key offline before the first signed 1.0 candidate (Q2, Q3).
 - G7 A leaked old key cannot block the new one. A serial accepted under epoch N never refuses a
   document of a verified epoch above N.
 - G8 The advertised remedy works. The installer named in the D6 text, run with `--replace` on an
-  existing home, installs the new runtime and keeps `settings.json` and `trust_state.json`.
+  existing home, installs the new runtime and keeps `settings.json` and valid `trust_state.json`.
+  Corrupt trust state is replaced only after all replacement verification succeeds.
 
 Non-goals (1.0): TUF roles, thresholds or multiple signatures; rotating the backup key itself (Q6);
 rotation in a cached older `install.sh` or in `install.ps1` (a fresh installer always pins the
@@ -144,7 +146,7 @@ bundles already published (Q1); hardware tokens (Q2).
 | F2 | Attacker strips the rotation statement and serves an old K1-signed document | The new main key and the revoked set are kept in local state, not only in the document (D5); serial and expiry refuse a replay within an epoch |
 | F3 | Attacker forges a rotation statement under their own key | `signing.verify_envelope` requires the embedded key to equal the pinned backup key (`C:distribution/signing.py:79-101`) |
 | F4 | A replayed older rotation (epoch 2 after epoch 3), or two different statements for one epoch | Monotonic `key_epoch` in state; a lower epoch is refused; an equal epoch must name the stored key |
-| F5 | A release path drops or copies a stale `key_rotation` | The single builder `vd.build_document` sets the field from the committed statement and has no parameter to drop it (D7); CLI-REL `verify_release_set` checks it (AT-XR-1) |
+| F5 | A release path drops or copies a stale `key_rotation` | The single builder `vd.build_document` sets the field from the committed statement and has no parameter to drop it (D7); CLI-REL output routes and release-set verification check it (AT-XR-1 to AT-XR-3) |
 | F6 | A hostile or huge document is parsed before its signature is checked | Pre-verify parse only under a 64 KiB cap and only to pull out the rotation envelope; nothing from it is trusted until `verify_envelope` passes |
 | F7 | Two upgrades race; one records a rotation while the other acts on an older decision | The trust decision is taken again inside `installer._exclusive` |
 | F8 | Backup pin is the placeholder in a release build | `check-keys` fails whenever the main pin is real; at runtime a rotation in a placeholder build is refused, never silently skipped |
@@ -153,64 +155,33 @@ bundles already published (Q1); hardware tokens (Q2).
 | F11 | Attacker with leaked K1 serves a document with serial 2^53 before the rotation | The serial floor belongs to an epoch; the verified epoch-2 statement resets it (D5) |
 | F12 | `install.sh` reads a nested field instead of the top-level one | `key_rotation` is one opaque base64 string; `install.sh` sees no nested JSON (D3) |
 | F13 | The recovery the message advertises cannot run on an existing install | `install.sh --replace` (D11) |
+| F14 | `--replace` is run against a home with no installed runtime | Coded pre-fetch refusal points at the normal install form (D11) |
+| F15 | Existing `trust_state.json` is corrupt during recovery | Replacement verification finishes before an atomic trust-state reset; settings and failed attempts remain unchanged (D11) |
 
 ## 2. Established solutions (survey)
 
-Searches run on 2026-11-19: the TUF specification (fetched, section 5.3); a web search for OpenBSD
-signify key rotation; a web search for Debian archive key rotation and `debian-archive-keyring`;
-plus the documentation of minisign, Sigstore root signing and Android APK signature v3 as known
-references. In the codebase: `release_key.py`, `signing.py`, `version_document.py`, `installer.py`,
-`first_install.py`, `lock.py`, `cli/upgrade.py`, `sign_release.py`, `make_version_document.py`,
-`install.sh`, `install.ps1`, and the related plans.
+Searches run on 2026-11-19: TUF section 5.3; OpenBSD signify rotation; Debian archive rotation and
+`debian-archive-keyring`; minisign; Sigstore root signing; Android APK Signature Scheme v3. The
+codebase search covered the distribution modules, both installers, signer and document builder,
+plus the related plans.
 
-- **TUF root rotation** (The Update Framework specification, section 5.3 "Update the root role",
-  https://theupdateframework.github.io/specification/latest/#update-root). A new root N+1 must be
-  signed by a threshold of keys from the trusted root N and by a threshold of the keys it lists; its
-  version must be exactly N+1, else the client treats it as a rollback attack. The client walks the
-  chain one version at a time, persists each new root, and, when the timestamp or snapshot keys
-  rotated, deletes its cached timestamp and snapshot metadata (5.3.11, fast-forward attack
-  recovery). TUF names each key by a keyid, a hash over the key's canonical form. Taken here: an
-  offline key that vouches for the online key; a monotonic version (`epoch`); proof that the new key
-  works (the document itself is signed by the new main key); the client persists the current main
-  key (R1-M1); revocation remembered by the client; a serial floor reset when the key changes
-  (5.3.11, R1-B2); keys named by a hash (`fingerprint`, sha256 of the raw 32 key bytes, like a
-  keyid). Not taken: thresholds, roles, a chain of root files, root expiry. Divergences, on
-  purpose: (1) the new statement is signed by the backup key only, not also by the old main key,
-  because the old main key is the one that may have leaked; (2) a client may skip epochs, because the
-  statement is cumulative (it lists every revoked key) and replaces the chain walk; (3) an equal
-  epoch is accepted only when it names the stored main key, where TUF would require exactly N+1.
-  The repo already follows TUF for `serial` and `expires` (`C:distribution/version_document.py:36-42`).
-- **TUF threshold keys** (same specification, root metadata `threshold`). A threshold limits the
-  damage of one leaked key. Not taken: the owner chose a single offline backup. Later L1.
-- **signify (OpenBSD)** (Ted Unangst, https://flak.tedunangst.com/post/signify;
-  https://isopenbsdsecu.re/mitigations/signify/). No rotation protocol and no cross-signing. Release
-  N ships the public key for release N+1 in `/etc/signify`, so the next key arrives through a
-  release the user already verified. If that next key is lost, the trust path must be rebuilt from
-  scratch. Taken: the key a client will trust next is decided by something the client already
-  trusts. Not taken: one key per release.
-- **minisign** (https://jedisct1.github.io/minisign/). Signatures carry a key id; there is no rotation
-  or revocation mechanism; a new key is published out of band. This is where the CLI is today.
-- **apt and Debian archive keys** (https://ftp-master.debian.org/keys.html;
-  https://www.debian.org/News/2011/20110209). The new archive key ships in the
-  `debian-archive-keyring` package, under the current trust, before the archive switches to it.
-  During the change the archive `Release` file is signed by both the old and the new key. Taken: the
-  next key is introduced through a channel the client already trusts. Not taken: a separate key-ring
-  package, and double signing (the CLI checks one detached signature per document; a second
-  signature would need a second sidecar and gives nothing when the old key leaked).
-- **Sigstore root of trust** (https://github.com/sigstore/root-signing). Sigstore distributes its
-  Fulcio and Rekor keys through TUF; root keys are hardware keys held by named keyholders and used
-  only in a recorded ceremony. Taken: the backup key is used only in a written ceremony (UK3 runbook),
-  never by CI. Not taken: hardware keyholders, validity windows.
-- **Android APK Signature Scheme v3**
-  (https://source.android.com/docs/security/features/apksigning/v3). A proof-of-rotation lineage,
-  each new key signed by the previous one, lets an installed app accept updates under a new key. Not
-  taken: the old main key is the one we must be able to distrust, so it cannot vouch for its
-  successor.
+- **TUF root rotation** (https://theupdateframework.github.io/specification/latest/#update-root)
+  supplies the core pattern: an offline key vouches for an online key, versions are monotonic,
+  accepted trust roots persist, key ids are hashes, and a key change resets the old metadata floor.
+  This plan omits thresholds, roles, chain files and root expiry. Unlike TUF, backup B alone signs
+  the statement because K1 may be compromised; cumulative revocations allow skipped epochs; an
+  equal epoch must name the stored key. The repo already uses TUF serial and expiry checks.
+- **signify** (https://flak.tedunangst.com/post/signify) and **Debian archive keys**
+  (https://ftp-master.debian.org/keys.html) introduce the next key through existing trust. This plan
+  does not use per-release keys, a keyring package or double signatures. **minisign** has no rotation
+  protocol, matching the CLI's current limitation.
+- **Sigstore root signing** (https://github.com/sigstore/root-signing) supplies the offline recorded
+  ceremony. Hardware keyholders are later work. **Android v3**
+  (https://source.android.com/docs/security/features/apksigning/v3) uses old-key lineage, rejected
+  here because a compromised K1 cannot vouch for K2.
 
-Result: the design is TUF's root-key pattern cut down to the owner's option B: one offline backup
-key, one rotation statement, one epoch counter with its own serial floor, one stored main key, one
-revoked set. Custom code is limited to the statement checks and the state fields; all signature
-checks use the existing `signing.py`.
+Result: TUF's root-key pattern is reduced to one offline backup, one cumulative statement, one epoch
+and serial floor, one stored main key and one revoked set. Existing `signing.py` performs all crypto.
 
 ## 3. Design notes
 
@@ -223,7 +194,13 @@ needed). `release_key.pinned_backup_pem()` follows the rules of `pinned_public_p
 the placeholder, with the same warning. Otherwise the override is ignored with a warning, so no
 environment variable can add a backup key to a build that pins a real main key. A build whose backup
 pin is the placeholder raises `NoPinnedKeyError`, which matters only when a rotation needs the
-backup key.
+backup key. The environment seams are for placeholder dev builds only. Tests do not depend on them:
+one shared fixture in existing `CT:conftest.py` monkeypatches `release_key._KEY_FILE`, the new
+module-level backup-key path and the module-level path read by
+`key_rotation.committed_statement()`. The fixture definition lands in UK1a before its UK1b
+`key_rotation` consumer, as an explicitly paired later-slice consumer. It is used by every
+rotation acceptance row and remains valid after the real main and backup pins are committed
+(R2-H3).
 
 D2. **The rotation statement.** A signed envelope in the format `signing.verify_envelope` already
 checks (`{alg, payload, signature, public_key}`, `C:distribution/signing.py:79`). Payload:
@@ -241,10 +218,11 @@ checks (`{alg, payload, signature, public_key}`, `C:distribution/signing.py:79`)
 `epoch` 1 is the pinned key; a statement has `epoch >= 2`. `revokes` is cumulative: the statement for
 epoch 3 lists K1 and K2, so a client that missed epoch 2 still revokes both. `issued` is for people;
 nothing checks it. There is no expiry: a client that was offline for a year must still accept the
-statement. The fingerprint is `sha256(raw key bytes)` in lower-case hex, computed by one function,
-`key_rotation.fingerprint(pem)`, over `signing.raw_public_bytes` (R1-L2: the private
+statement. The fingerprint is `sha256(raw key bytes)` in lower-case hex, computed by
+`signing.fingerprint(pem)` beside `signing.raw_public_bytes`. Both ship in UK1a because the
+trust-state reader needs the function before UK1b exists (R2-M2). R1-L2 still applies: the private
 `_raw_public_bytes_from_pem` is renamed, its one outside caller `PT:sign_release.py:261` is updated,
-and no alias is kept).
+and no alias is kept.
 
 D3. **Where the statement travels (R1-B1).** Inside the version document, as the optional top-level
 field `key_rotation`, whose value is one string: standard base64 of
@@ -259,11 +237,14 @@ it. Only `key_rotation.py` decodes it. The v1 contract already says unknown top-
 ignored (`docs/distribution/version-endpoint-contract.md:91`), so `schema_version` stays
 `cli-version-document/v1`.
 
-D4. **Resolution order (one function, `key_rotation.resolve_main_key`).** Inputs: the document bytes,
-the detached signature, the pinned main key `Mp` and backup key `B`, and the trust state `S`
+D4. **Resolution order (one function, `key_rotation.resolve_main_key`).** `InstallError` moves from
+`installer.py` to the leaf `C:distribution/errors.py`, and `installer` re-exports it for existing
+callers. `key_rotation.TrustRefusal` subclasses `errors.InstallError`, so the import graph is
+`installer -> version_document -> key_rotation -> errors`, never back into `installer` (R2-M1).
+Inputs: the document bytes, the detached signature, the pinned main key `Mp` and backup key `B`, and the trust state `S`
 (`key_epoch` `Es`, stored `main_key` `Ks` when `Es > 1`, `revoked_keys` `Rs`, `serial`). It returns a
-`TrustDecision(main_pem, epoch, revoked, serial_floor)` or raises `key_rotation.TrustRefusal`, a
-subclass of `installer.InstallError` that carries one fixed `code` (R1-M4).
+`TrustDecision(main_pem, epoch, revoked, serial_floor)` or raises `key_rotation.TrustRefusal`, which
+carries one fixed `code` (R1-M4).
 
 1. Pre-verify extract. If the bytes are at most 64 KiB, parse them as JSON. If the result is an
    object whose `key_rotation` is a string, decode it with `base64.b64decode(validate=True)`, parse
@@ -311,8 +292,7 @@ when the pre-lock decision's epoch is above the stored one, and `first_install` 
 `record_trust` takes `_exclusive`, resolves again from the bytes, and writes only when the epoch
 rose; with no rotation the up-to-date path writes nothing, as today. `--check` never writes.
 
-D5. **Trust state.** `trust_state.json` gains `key_epoch` (int, default 1), `main_key` (the PEM of the
-current epoch's main key, present only when `key_epoch > 1`) and `revoked_keys` (sorted list of
+D5. **Trust state and writer API.** `trust_state.json` gains `key_epoch` (int, default 1), `main_key` (the PEM of the current epoch's main key, present only when `key_epoch > 1`) and `revoked_keys` (sorted list of
 fingerprints, default empty). `serial` stays a top-level integer, because `install.sh` reads it with
 `json_top_number` (`PT:install/install.sh:134`, `:289`), and now means "the highest serial accepted
 in the current epoch". The reader and writer move from `C:distribution/installer.py:182-212` into a
@@ -320,12 +300,18 @@ new `C:distribution/trust_state.py`, the one module that reads or writes the fil
 refuses, as unreadable state: a `key_epoch` that is not an int >= 1 or is a bool; a non-empty
 `revoked_keys` with `key_epoch` 1; `key_epoch > 1` without a `main_key` that loads as Ed25519 and is
 not revoked; a `revoked_keys` entry that is not 64 lower-case hex. The writer takes the union of the
-stored and new revoked sets (grow-only) and the larger epoch. When the epoch rises, `serial` is set
-to the new document's serial and `main_key` to the new key in the same atomic write (R1-B2, TUF
-5.3.11); within one epoch `serial` only rises. Unknown top-level fields are kept as they were read
+stored and new revoked sets (grow-only) and the larger epoch. Its writer API takes the decision plus
+`document_serial: int | None`. When the epoch rises with a version document, `serial` is set to that
+document's serial. When the epoch rises without a document, as on the 88-O sidecar route, `serial`
+is set to 0. It never carries the old epoch's floor into a new epoch. `main_key`, epoch, revocations
+and reset serial are written in the same atomic write (R1-B2, R2-H1, TUF 5.3.11); within one epoch
+`serial` only rises and a no-document write cannot lower it. Unknown top-level fields are kept as they were read
 (R1-M8): a 1.0 runtime rolled back under a 1.x home must not drop what 1.x wrote. The contract
 (D12) forbids any later field from nesting a key named `serial`, because `install.sh` reads the
-first match. The state is written once, atomically, after every check. The file stays local state,
+first match. Before writing, the writer asserts that the first exact `"serial":` token in its
+generated output is the top-level serial it is about to persist. It refuses rather than emit output
+where an unknown retained field would put a nested `serial` first (R2-L3). The state is written once,
+atomically, after every check. The file stays local state,
 not a secret, as today (`C:distribution/installer.py:46-48`).
 
 D6. **Unknown format (R1-L8).** `vd.parse_document` raises a new subclass
@@ -349,7 +335,9 @@ keeps your settings."}` in the `decoy-error-v1` shape. Every path to this code r
 `UnknownFormat`, so the suffix is always `UnknownFormat`. No value from the document reaches the
 output.
 
-D7. **Every document carries the statement, from one builder (R1-B3).** A committed file
+D7. **Every document carries the statement, from one builder (R1-B3).** The acyclic error leaf in
+D4 lets `version_document` import `key_rotation` without closing the former
+`installer -> version_document -> key_rotation -> installer` cycle (R2-M1). A committed file
 `C:distribution/key_rotation.json` (absent until the first rotation) holds the canonical envelope
 bytes of the current statement. It sits in the runtime package, not in `PT:`, because the single
 builder `vd.build_document` lives there and must not import build-host tools. One helper,
@@ -358,10 +346,11 @@ the pinned backup key, and returns the base64 string (or `None` when the file is
 `vd.build_document` calls it on every build and sets `key_rotation` from it; it has no parameter to
 pass or drop the field, so a caller that copies a live document's fields (CLI-REL `resign`) still
 gets the committed statement. A committed statement that fails the check makes `build_document`
-raise, so no document is built. `make_version_document.py` and CLI-REL `sign-set`, `resign` and
-`rollback` all build through `build_document`; CLI-REL also runs `verify_release_set`, which must
+raise, so no document is built. After canonical encoding, `build_document` refuses output larger
+than 32 KiB, leaving headroom below the 64 KiB pre-verify statement-extraction cap (R2-L1).
+`make_version_document.py` and CLI-REL `sign-set`, `resign` and `rollback` all build through `build_document`; CLI-REL also runs `verify_release_set`, which must
 require the statement, canonical-equal to the committed one, whenever one is committed (cross-plan
-line X1, AT-XR-1). This is the cumulative-statement replacement for TUF's chain walk: a 1.0.0
+lines X1 and X5, AT-XR-1 to AT-XR-3). This is the cumulative-statement replacement for TUF's chain walk: a 1.0.0
 install that never upgraded still finds the statement in whatever document is live. The file ships
 in the wheel (harmless: it is public and signed); no runtime path reads it.
 
@@ -371,7 +360,9 @@ and the 88-O offline bundle path. `local_key` returns `Ks` when `Es > 1`, else `
 verification applies the D4 step 5 classification ((b) then D9). The 88-O path also reads an
 optional sidecar `PATH.key_rotation` (the same base64 string as the document field) and resolves it
 through D4 step 2 against the stored state, then records the decision under the lock when the
-bundle installs (R1-M5). `install_version` and `activate_local_version` lose their
+bundle installs (R1-M5). Because that route has no version document, it passes
+`document_serial=None` to the D5 writer. An epoch rise therefore records serial 0, and a later K2
+network document uses its own epoch-2 serial instead of the K1 floor (R2-H1). `install_version` and `activate_local_version` lose their
 `expected_public_pem` parameters (R1-M4): each resolves its key inside `_exclusive`, so no caller can
 pass a stale or `None` key, and the `None`-skips-verification branch at
 `C:distribution/installer.py:412` is deleted. `install_version` uses the decision for the document,
@@ -397,6 +388,8 @@ changed.
 
 D10. **Signer side (R1-H1, R1-M7, R1-M9).** All statement checks on the build host call
 `key_rotation.validate_statement` and `key_rotation.check_release_pins`; `PT:` holds no second copy.
+The custody prerequisites ship early: UK1a owns `keygen --encrypt` and `backup-check` so OWNER-1 can
+run by 2026-11-28. UK2 owns `rotation`, the expanded `check-keys` and the release drill.
 
 - `sign_release.py keygen` gains `--encrypt`: it asks for a passphrase twice through `getpass` and
   writes `BestAvailableEncryption` PKCS8. Without `--encrypt` it behaves as today (CI and tests).
@@ -408,7 +401,8 @@ D10. **Signer side (R1-H1, R1-M7, R1-M9).** All statement checks on the build ho
   statement, runs `validate_statement` on it, and writes `C:distribution/key_rotation.json`
   atomically.
 - `sign_release.py backup-check --backup-key-file` decrypts the file and confirms its public half
-  equals the committed backup pin. It prints the fingerprint only. This is the restore test of Q2.
+  equals the committed backup pin. It prints `signing.fingerprint` only. This is the restore test of
+  Q2.
 - `check-keys` (no new flag) adds, whenever `release_key.pub.pem` holds a real key:
   `check_release_pins` requires the backup pin to be a real Ed25519 key, different from the main
   key and not in the committed statement's `revokes`; when `key_rotation.json` exists, it must pass
@@ -420,28 +414,47 @@ No new dependency: `cryptography` already reads and writes encrypted PKCS8.
 D11. **Installer replace mode and first install (R1-H2, R1-M3).** `install.sh --replace` installs
 over an existing home without deleting anything:
 
-1. The existing-runtime refusal (`PT:install/install.sh:196-215`) is skipped. Its text now also
-   names `--replace`.
-2. Before any download, if `trust_state.json` exists, the script computes its pinned key's
-   fingerprint (`openssl pkey -pubin -outform DER | tail -c 32 | openssl dgst -sha256`) and refuses
-   with fixed text ("this installer is out of date; download the latest installer") when that
-   fingerprint is listed in the file. A 64-hex string cannot match anything else in the file.
-3. The fast serial refusal (`:285-293`) is skipped in replace mode: the stored serial may belong to
-   another epoch, which the shell cannot judge. The authoritative check runs in `first_install`.
+1. Without `--replace`, the existing-runtime refusal (`PT:install/install.sh:196-215`) remains and
+   its text names `--replace`. With `--replace`, an existing runtime is required. If neither
+   `current` nor a version directory exists, the script refuses before fetch with the fixed coded
+   line `replace_no_existing_install: no existing Decoy install; run this installer without
+   --replace for a normal install`.
+2. Before any download, if `trust_state.json` exists, the script derives its pinned key fingerprint
+   without `openssl pkey` and without a status-hiding pipeline. It extracts the PEM body to a temp
+   file, runs `openssl base64 -d -A` into another temp file, requires exactly 44 bytes, requires the
+   first 12 bytes to equal the Ed25519 SPKI prefix `302a300506032b6570032100`, writes the last 32
+   bytes to a temp file and hashes that file with the existing `sha256_of`. It requires the result
+   to match `^[0-9a-f]{64}$` or dies. It extracts only the `"revoked_keys":[...]` array from
+   `trust_state.json` and searches that array for the fingerprint. A match refuses with the exact
+   fixed line `decoy install: this installer is out of date; download the latest installer`, with
+   zero fetch calls. Every command's status is checked directly, so `set -eu` cannot mistake a
+   successful last pipeline command for a failed earlier one. The shell bootstrap cannot import
+   Python, so AT-UK1-26 guards this unavoidable cross-language copy by comparing its result with
+   `signing.fingerprint` for the same PEM (R2-M3, R2-M4).
+3. The shell fast serial refusal (`:285-293`) is skipped in replace mode. It is also skipped in
+   normal mode when the canonical document contains the exact token `"key_rotation":"`, because
+   the stored serial may belong to the previous epoch. The authoritative epoch-aware check runs in
+   `first_install` (R2-L2).
 4. `install.sh` passes the document and its signature file to `first_install`, plus `--replace`.
 
 `first_install` (`C:distribution/first_install.py`), under the install lock, runs
 `key_rotation.resolve_main_key` on the document bytes and signature, then `check_document_freshness`
 with the decision, and records `serial`, `latest`, `key_epoch`, `main_key` and `revoked_keys`. A
 fresh install of an installer that pins K2 with a statement for epoch 2 therefore starts with K1
-revoked. In replace mode it places the bundle at `versions/<v>`, or at a fresh
+revoked. A corrupt `trust_state.json` remains a refusal in normal mode. In replace mode only, it is
+treated as state to recover after the shell has verified the document, bundle, manifest, identity
+and native self-check under the replacement installer's pin. `first_install` keeps the corrupt
+state bytes unchanged until those checks have passed, derives fresh state from the verified
+document and atomically replaces only `trust_state.json`. `settings.json` is never touched. A
+verification failure leaves both files byte-identical (R2-L5).
+
+In replace mode it places the bundle at `versions/<v>`, or at a fresh
 `versions/<v>+<build>` slot (`installer._fresh_same_version_slot`) when `versions/<v>` exists,
-flips `current` and rewrites the launcher. It never removes `settings.json`, `trust_state.json` or
-any other file. A trust refusal exits 5 with one fixed line that names the code
-(`first_install: refused (upgrade_key_revoked)`); the D6 rule applies, so no exception text from a
-document is printed. The offline `DECOY_LOCAL_BUNDLE` install has no document and records nothing,
-as today. `install.sh` and `first_install` ship in the same release, so the new argument form is
-internal to one release.
+flips `current` and rewrites the launcher. It never removes any retained version. A trust refusal
+exits 5 with one fixed line that names the code (`first_install: refused
+(upgrade_key_revoked)`); the D6 rule applies, so no exception text from a document is printed. The
+offline `DECOY_LOCAL_BUNDLE` install has no document and records nothing, as today. `install.sh` and
+`first_install` ship in the same release, so the new argument form is internal to one release.
 
 D12. **Contract rules for later versions (R1-M10).** The contract doc reserves: a later statement
 version (`cli-key-rotation/v2`) rides in a new top-level field (for example `key_rotation_v2`), and
@@ -450,9 +463,17 @@ keep rotating. A v2 payload placed in `key_rotation` is still refused `upgrade_f
 later `trust_state.json` field never changes the meaning of an existing field and never nests a key
 named `serial`.
 
+D13. **One runtime reason-code registry.** `C:distribution/errors.py` owns a closed `TrustCode`
+enum for the seven new `upgrade_*` codes in 6.1. `TrustRefusal`, `UnknownFormat` mapping, local
+rollback and CLI output consume that enum; no caller repeats the string literals. The AT-UK1-16
+AST guard walks `C:` and fails if any exact new code literal appears outside the registry, with the
+registry definition as the one named exception. This is the choke point for the cross-cutting
+reason-code rule; M54 adds a copied literal in `cli/upgrade.py` and must turn the guard red.
+
 Design principles (architecture.md): one place per fact (rotation schema and checks in
 `key_rotation.py`, used by runtime and build host; the state file in `trust_state.py`; fingerprints
-in one function; the document field set in one builder); single-purpose functions; a typed
+in `signing.py`; the error base and reason-code registry in the acyclic `errors.py` leaf; the
+document field set in one builder); single-purpose functions; a typed
 `TrustDecision` and a typed `TrustRefusal`; no flag argument switches behavior (record versus check
 stays the existing `record` keyword, and replace is a separate installer mode). The trust-state move
 answers a real change pain: `installer.py` is at 731 lines of an 800 cap, and the state file gains
@@ -487,7 +508,8 @@ the refusal is `upgrade_key_revoked`, else `upgrade_signature_invalid`. Exit 3, 
 ### 4.5 Attack: leaked K1 pushed the serial to 2^53 before the rotation
 
 The epoch-2 document's statement verifies, the floor resets, the document is accepted, and the state
-records epoch 2 with the new, normal serial.
+records epoch 2 with the new, normal serial. If epoch 2 first arrives through the 88-O offline
+sidecar, the state records serial 0; the next normal-serial K2 network document is then accepted.
 
 ### 4.6 Rollback to a retained runtime signed by K1
 
@@ -505,20 +527,25 @@ The installer from the download page pins the current key, verifies the document
 and hands both to `first_install`, which checks them against the existing `trust_state.json`, places
 the new runtime beside the old ones, flips `current`, and keeps `settings.json`, `trust_state.json`
 and every retained version. An installer whose pinned key is revoked in the home refuses before any
-download.
+download. `--replace` with no existing runtime refuses with `replace_no_existing_install` and points
+at the normal install form. If the existing trust state is corrupt, the verified replacement resets
+only that file after all replacement verification succeeds; `settings.json` stays byte-identical,
+and a failed verification changes neither file.
 
 ### 4.9 Owner rotation ceremony (UK3 runbook)
 
 1. On the offline machine: create K2 with `sign_release.py keygen --out K2.key --pub K2.pub`, run
    `sign_release.py backup-check --backup-key-file <B>`, then run
    `sign_release.py rotation --backup-key-file <B> --new-main-pub K2.pub --epoch 2 --revoke-pub K1.pub`.
-2. Carry `key_rotation.json` and `K2.pub` (public files only) back. Put K2's private half in the
-   `native-release` Environment secret, replacing K1.
+2. Carry `key_rotation.json` and `K2.pub` (public files only) back. Replace K1 with K2 in the
+   `native-release` Environment secret in both the CLI and engine repositories (X6).
 3. Commit `C:distribution/key_rotation.json` and the new `release_key.pub.pem`; `check-keys` passes.
 4. Cut a release. The version document carries the statement from now on.
 5. Re-publish the supported older bundles and their tag-run `version.json` under K2 if they must
    stay installable by `--version` or reachable by CLI-REL `rollback` (Q1, X2); otherwise raise
-   `min_supported` to the first K2 release.
+   `min_supported` to the first K2 release. Re-sign the pinned native companion release's
+   `SHA256SUMS.sig` under K2, or re-cut and pin the native companion release under K2, before
+   CLI-REL publishes the first post-rotation CLI release (X6).
 
 ## 5. Later (1.x or 2.0)
 
@@ -528,6 +555,10 @@ download.
 - L3 The startup notice says when the channel format is unknown.
 - L4 `install.sh` and `install.ps1` honor a rotation for a user who runs an old cached script.
 - L5 `install.ps1 -Replace`, when WIN-FEAS lifts the Windows target gate.
+- L6 V2-LOG follow-up, outside UPGRADE-KEY: `C:distribution/verify_extracted.py:35` accepts
+  `expected_public_pem=None` and skips manifest signature verification. Track its callers and close
+  it in the later verification-hardening row; this plan removes the `None` route only from
+  `installer.py`, not from the helper's public contract.
 
 ## 6. Enumerations
 
@@ -550,7 +581,9 @@ and keep their own code:
 - Unchanged: `upgrade_no_key` exit 1 (`C:cli/upgrade.py:86`), `upgrade_document_stale`,
   `upgrade_endpoint_unreachable`, `upgrade_install_failed` (now only for non-trust install errors).
 - `first_install`: trust refusals exit 5 with `first_install: refused (<code>)` (D11).
-- `install.sh --replace`: a revoked pinned key exits 1 with the fixed "out of date" text.
+- `install.sh --replace`: a revoked pinned key exits 1 with the exact D11 out-of-date text and no
+  fetch; no existing runtime exits 1 with `replace_no_existing_install`; corrupt trust state is
+  reset only by verified `first_install` recovery.
 - Signer: `sign_release.py rotation`, `backup-check` and `check-keys` exit 1 with one line per
   problem and print no key material.
 
@@ -567,7 +600,7 @@ and keep their own code:
   `PATH.key_rotation` sidecar (D8); whichever of 88-O and UK1c merges second wires it and AT-UK1-28.
 - Fresh install by `install.sh` (`PT:install/install.sh:264-270`): unchanged in the shell;
   `first_install` now resolves and records the full decision (D11).
-- `install.sh --replace`: D11.
+- `install.sh --replace`: D11, including the no-home refusal and verified corrupt-state recovery.
 - `install.ps1`: unchanged; the Windows target is gated off and the script neither calls
   `first_install` nor reads trust state. It parses the document with `ConvertFrom-Json`
   (`PT:install/install.ps1:119`), so the extra string field is ignored.
@@ -585,7 +618,9 @@ and keep their own code:
   are ignored.
 - `trust_state.json`: adds `key_epoch` (int >= 1, bool refused), `main_key` (PEM, only when
   `key_epoch > 1`) and `revoked_keys` (sorted list of 64-hex strings); `serial` is the current
-  epoch's floor and keeps its top-level integer form; `latest` unchanged; unknown fields kept.
+  epoch's floor and keeps its top-level integer form; an offline epoch rise writes 0; the writer
+  asserts its first exact `"serial":` token is that top-level value; `latest` unchanged; unknown
+  fields kept unless they would violate that first-serial invariant.
 - New pinned file `C:distribution/release_backup_key.pub.pem`; new committed file
   `C:distribution/key_rotation.json` (absent until a rotation); offline sidecar `PATH.key_rotation`.
 - `.gitattributes`: `src/decoy/distribution/*.pem -text` and
@@ -602,7 +637,8 @@ customer data.
 ### 6.5 Output surfaces
 
 - Human error lines and `--json` error objects of `decoy upgrade` (codes in 6.1, D6 text).
-- `first_install` stderr lines and `install.sh --replace` messages.
+- `first_install` stderr lines and `install.sh --replace` messages, including the exact D11 codes
+  and fixed text.
 - `trust_state.json` in `DECOY_HOME` (local, not a secret).
 - The published `version.json` gains `key_rotation` after the first rotation.
 - `sign_release.py` stdout and stderr: file paths and fingerprints only, never a private key.
@@ -616,7 +652,7 @@ customer data.
 |---|---|---|---|---|
 | 1 | value leak | every new refusal goes through `_refuse` or the fixed `first_install` line with a code and the exception type only; `UnknownFormat` messages are fixed | AT-UK1-16, AT-UK1-9, AT-UK1-24 | M16 put `str(exc)` back in the message; M9 echo the document's `schema_version` |
 | 2 | cleanup | a refusal writes nothing: state is written once, after all checks; a refused rotation leaves the state bytes identical; replace mode deletes nothing | AT-UK1-3, AT-UK1-10, AT-UK1-26 | M10 record state on `--check` |
-| 3 | state | `trust_state.py` is the one reader and writer; `revoked_keys` grow-only, `key_epoch` max-only, the serial floor per epoch, unknown fields kept | AT-UK1-12, AT-UK1-20, AT-UK1-29 | M12 write the document's revoked list in place of the union; M26 keep the floor across the epoch change |
+| 3 | state | `trust_state.py` is the one reader and writer; `revoked_keys` grow-only, `key_epoch` max-only, the serial floor per epoch, a no-document epoch rise resets it to 0, unknown fields kept when the first-serial invariant holds | AT-UK1-12, AT-UK1-18, AT-UK1-20, AT-UK1-28, AT-UK1-29 | M12 write the document's revoked list in place of the union; M26 keep the floor across a document epoch change; M41 keep it across an offline epoch change; M50 omit the first-serial assertion |
 | 4 | route | every key choice goes through `key_rotation` (D8); network, pinned, force, up to date, check, local, offline, first install and replace routes enumerated in 6.2 | AT-UK1-14, AT-UK1-13, AT-UK1-23, AT-UK1-28 | M14 the guard scans only `distribution/`; M13 local activation without the revocation diagnosis |
 | 5 | referential | a statement names keys by fingerprint; the new main key must differ from the backup key and must not be revoked; `revokes` is cumulative; an equal epoch names the stored key | AT-UK1-5, AT-UK1-22, AT-UK2-5 | M5 drop the main-differs-from-backup check; M28 accept another key at the stored epoch |
 | 6 | untrusted input | the pre-verify parse is capped at 64 KiB and only extracts the envelope; nothing is trusted until `verify_envelope` passes against the pinned backup key | AT-UK1-4, AT-UK1-15, AT-UK1-27 | M4 verify against the envelope's embedded key; M15 drop the size cap |
@@ -628,13 +664,16 @@ customer data.
 ## 8. Acceptance tests (red first)
 
 Each test is written first and fails on the base head for the reason given ("guard" means it passes
-on base and pins behavior the slice must keep). Tests use ephemeral Ed25519 keys K1, K2, K3 and a
-backup B created in the test, injected through `DECOY_RELEASE_PUBKEY_FILE` and
-`DECOY_RELEASE_BACKUP_PUBKEY_FILE` in a placeholder build (the existing seam,
-`C:distribution/release_key.py:52-57`). A builder may add tests, never weaken these. Every mutation
-runs on the final head and the record names that head (recurring-defects class 9). 40 acceptance
-rows: 30 in UK1 (AT-UK1-28 owned by whichever of UK1c and 88-O merges second), 8 in UK2, 1 in
-CLI-REL (AT-XR-1), 1 docs; mutations M1 to M40.
+on base and pins behavior the slice must keep). The first UK1a test support is one fixture that
+creates ephemeral Ed25519 keys K1, K2, K3 and backup B, then monkeypatches the module-level
+`release_key._KEY_FILE`, the new backup-key path and the path read by
+`key_rotation.committed_statement()`. Every rotation AT and the drill use that fixture. The
+`DECOY_RELEASE_PUBKEY_FILE` and `DECOY_RELEASE_BACKUP_PUBKEY_FILE` seams remain covered for
+placeholder dev builds only; no release-path test depends on them, so committing real pins cannot
+turn the suite red (R2-H3). A builder may add tests, never weaken these. Every mutation runs on the
+final head and the record names that head (recurring-defects class 9). 45 acceptance rows: 33 in UK1
+(AT-UK1-28 owned by whichever of UK1c and 88-O merges second), 8 in UK2, 3 in CLI-REL and 1 docs;
+mutations M1 to M40 are retained and new mutations continue M41 to M54.
 
 Windows (R1-M11): AT-UK1-11 depends on a real install lock, which Windows lacks until WIN-FEAS CW1
 (`C:distribution/lock.py:50-52` yields with no lock); on Windows it is skipped with that reason until
@@ -661,21 +700,24 @@ rows run on both.
 | AT-UK1-13 | UK1c | Retained slot signed by K1, runtime pins K2, state epoch 2: `decoy upgrade --version <old>` refuses `upgrade_rollback_key_rotated`, `current` unchanged; with a runtime pinning K1 and K1 revoked in state, local activation of the same slot refuses `upgrade_key_revoked` | generic activation failure | M13 activate with the stored key without the revocation diagnosis |
 | AT-UK1-14 | UK1c | Guard `CT:sentry/release/test_key_choke_point.py` fails on seeded code in a scratch copy: `release_key.pinned_public_pem()` in `cli/upgrade.py`; `import decoy.distribution.release_key as rk; rk.pinned_backup_pem()` in `distribution/installer.py`; `from decoy.distribution.release_key import pinned_backup_pem as p`; `f = release_key.pinned_public_pem` with no call; a string `"release_backup_key.pub.pem"` in `distribution/layout.py`. Passes on the tree with only `__main__._key_unresolved` excepted | guard does not exist | M14 the guard scans only `distribution/` |
 | AT-UK1-15 | UK1b | A 64 KiB plus 1 byte document and a 10,000-deep nested document reach the signature check with no statement and refuse `upgrade_signature_invalid`; a spy shows `json.loads` was not called on the oversize bytes | no pre-verify parse | M15 drop the size cap |
-| AT-UK1-16 | UK1c | Every new code, human and `--json`: output matches `decoy-error-v1`, contains the code, and contains no PEM line, no fingerprint, no URL other than `DOWNLOAD_PAGE_URL`, and no exception message; each raised error has `__cause__` and `__context__` None | codes do not exist | M16 put `str(exc)` back in the message |
+| AT-UK1-16 | UK1c | Every new code, human and `--json`: output matches `decoy-error-v1`, contains the code, and contains no PEM line, no fingerprint, no URL other than `DOWNLOAD_PAGE_URL`, and no exception message; each raised error has `__cause__` and `__context__` None. An AST guard finds every exact new code literal only in `errors.TrustCode` and fails on a copy elsewhere | codes do not exist | M16 put `str(exc)` back in the message; M54 copy a new code literal into `cli/upgrade.py` |
 | AT-UK1-17 | UK1a | `DECOY_RELEASE_BACKUP_PUBKEY_FILE` is honored with a warning while both pins are the placeholder; ignored with a warning when a real backup key is committed; ignored with a warning when the backup is the placeholder but the main pin is real (the test copies the module with real pems) | override does not exist | M17 honor the override whenever the backup pin is the placeholder |
-| AT-UK1-18 | UK1a | Guard after the move: corrupt state refused, absent state a first run, serial replay refused; `install.sh` under `sh` reads `serial` from a state file written by the new writer (with `main_key` and `revoked_keys` present) and refuses a lower serial | guard (the refactor) | M18 nest `serial` under an object |
+| AT-UK1-18 | UK1a | Guard after the move: corrupt state refused, absent state a first run, serial replay refused; `install.sh` under `sh` reads `serial` from a state file written by the new writer (with `main_key` and `revoked_keys` present) and refuses a lower serial; the writer refuses output whose first exact `"serial":` token would be nested instead of its top-level value | guard (the refactor) | M18 nest `serial` under an object; M50 omit the first-serial assertion |
 | AT-UK1-19 | UK1d | A v1 document with `key_rotation` installs through `install.sh` (pinned K2) unchanged, and the built wheel lists `decoy/distribution/release_backup_key.pub.pem` | backup pem absent | M19 bump `schema_version` when `key_rotation` is present |
 | AT-UK1-20 | UK1c | R1-B2: client pins K1; a K1-signed document with serial 2^53 is accepted and recorded; then a K2-signed epoch-2 document with serial 1,000 is accepted; state holds `key_epoch: 2` and `serial: 1000`; a later epoch-2 document with serial 999 is refused `upgrade_document_stale` | the global floor refuses serial 1,000 | M26 keep the floor across the epoch change |
-| AT-UK1-21 | UK1d | R1-B1: the real `install.sh` under `sh`, pinning K2, installs from a document whose `key_rotation` carries an epoch-2 statement as built by `vd.build_document`; the test asserts `install.sh` read `schema_version`, `serial`, `expires` and `latest` from the top level | field does not exist | M27 emit the statement as a nested object (`install.sh` then refuses the schema) |
+| AT-UK1-21 | UK1d | R1-B1, R2-L2: the real `install.sh` under `sh`, pinning K2, installs from a document whose `key_rotation` carries an epoch-2 statement as built by `vd.build_document`; the test asserts `install.sh` read `schema_version`, `serial`, `expires` and `latest` from the top level and skipped the non-replace shell serial fast check because the exact canonical `"key_rotation":"` token was present | field does not exist | M27 emit the statement as a nested object (`install.sh` then refuses the schema); M49 run the old serial fast check despite the statement |
 | AT-UK1-22 | UK1c | R1-M1: after epoch 2 is recorded, a K1-pinned client accepts a K2-signed document with no statement; an epoch-2 statement naming K3 is refused `upgrade_rotation_invalid` and changes nothing | main key not stored | M28 accept another key at the stored epoch |
 | AT-UK1-23 | UK1c | R1-M2: a client on the latest version runs `decoy upgrade` across a rotation; state records epoch 2, K2 and the revocation under the lock; the same run with `--check` writes nothing | `record=False` on that path | M29 keep `record=False` on the up-to-date path |
 | AT-UK1-24 | UK1d | R1-M3: `first_install` given a document with an epoch-2 statement and its signature records `serial`, `latest`, `key_epoch: 2`, `main_key` and `revoked_keys`; a revoked or stale document exits 5 with `first_install: refused (<code>)` and no document value on stderr | records only `latest` and `serial` | M30 `first_install` parses and records without the resolver |
 | AT-UK1-25 | UK1c | R1-M4: a `TrustRefusal` raised under the lock in `install_version` is emitted with its own code, not `upgrade_install_failed`; `inspect.signature` of `install_version` and `activate_local_version` has no `expected_public_pem` | parameters exist; all errors map to `install_failed` | M31 map `TrustRefusal` to `upgrade_install_failed` |
-| AT-UK1-26 | UK1d | R1-H2, end to end on an existing home (settings.json, trust_state.json at epoch 2, `current`): the D6 output names `--replace`; `sh install.sh --replace` from an installer pinning K2 installs the new runtime, flips `current`, and leaves `settings.json` byte-identical and the revoked set intact; an installer pinning K1 in replace mode refuses before any fetch and changes nothing; without `--replace` the refusal text names `--replace` | replace mode does not exist | M32 skip the revoked-pin check in replace mode |
+| AT-UK1-26 | UK1d | R1-H2, R2-M3, R2-M4, R2-L5, end to end on an existing home (`settings.json`, epoch-2 `trust_state.json`, `current`): the D6 output names `--replace`; `sh install.sh --replace` from an installer pinning K2 installs the new runtime, flips `current`, and leaves settings byte-identical and the revoked set intact. On stock macOS LibreSSL and Linux, an installer pinning revoked K1 derives the fingerprint by the D11 44-byte SPKI path, equal to `signing.fingerprint` for the same PEM, makes zero fetch calls, changes nothing and emits exactly `decoy install: this installer is out of date; download the latest installer`; a same fingerprint planted outside `revoked_keys` does not match. Without `--replace` the refusal text names it. `--replace` with no existing runtime makes zero fetches and emits the exact `replace_no_existing_install` line. With corrupt trust state, a verification fault leaves state and settings byte-identical; a verified replacement atomically resets only state and keeps settings byte-identical | replace mode does not exist | M32 skip the revoked-pin check; M46 accept a wrong SPKI length or prefix; M47 fetch before the revoked check or change its text; M51 allow replace on no home; M52 reset corrupt state before verification |
 | AT-UK1-27 | UK1b | R1-L9: a document signed by the trusted key whose `key_rotation` is a number, a list, invalid base64, or base64 of a non-object, is refused `upgrade_rotation_invalid` after verification; nothing written | field ignored | M33 treat a present but undecodable field as absent |
-| AT-UK1-28 | UK1c or 88-O | R1-M5: `decoy upgrade --bundle PATH` with a K2-signed bundle and a `PATH.key_rotation` sidecar on a K1-pinned client installs and records epoch 2; without the sidecar it refuses `upgrade_signature_invalid`; a sidecar signed by K1 refuses `upgrade_rotation_invalid` | no offline route on main | M34 the offline route ignores the sidecar |
+| AT-UK1-28 | UK1c or 88-O | R1-M5, R2-H1: a K1-pinned client first records a K1 document at serial 2^53, then `decoy upgrade --bundle PATH` with a K2-signed bundle and `PATH.key_rotation` records epoch 2 with serial 0. A later normal-serial K2 network document is accepted and records its serial. Without the sidecar the offline install refuses `upgrade_signature_invalid`; a sidecar signed by K1 refuses `upgrade_rotation_invalid` | no offline route on main | M34 the offline route ignores the sidecar; M41 keep the K1 serial floor on the offline epoch rise |
 | AT-UK1-29 | UK1a | R1-M8: a state file with an extra top-level field `future_field` keeps it byte-equal after a recording write | writer rebuilds the object | M35 drop unknown fields on write |
-| AT-UK1-30 | UK1b | R1-B3, R1-L6: with a committed statement, `vd.build_document` sets `key_rotation` to the base64 of the committed bytes, equal as a string; a caller that passes a dict with a stale `key_rotation` through a copy still gets the committed one; a committed statement that fails against the backup pin makes `build_document` raise; with no committed file the field is absent; `build_document` has no `key_rotation` parameter | builder has no field | M36 embed without verifying |
+| AT-UK1-30 | UK1b | R1-B3, R1-L6, R2-M6: with a committed statement, `vd.build_document` sets `key_rotation` to the base64 of the committed bytes, equal as a string; a committed statement that fails against the backup pin makes the builder raise; with no committed file the field is absent; `build_document(**fields)` where `fields` contains `key_rotation` raises `TypeError` | builder has no field | M36 add a `key_rotation` keyword escape hatch or embed without verifying |
+| AT-UK1-31 | UK1a | R2-H3, R2-M5: after the real-pin monkeypatch fixture lands, `keygen --encrypt` writes `ENCRYPTED PRIVATE KEY` PKCS8 that loads only with the passphrase, and `backup-check` prints only the fingerprint when the file's public half equals the patched committed backup pin and exits 1 otherwise | commands do not exist | M44 make the fixture patch only environment seams or make `backup-check` use the unpatched installed pin |
+| AT-UK1-32 | UK1a | R2-M1: importing `installer`, `version_document` and `key_rotation` in both fresh-process orders succeeds; `key_rotation.TrustRefusal` is an `errors.InstallError`; `installer.InstallError is errors.InstallError`; an import-graph assertion shows `errors.py` imports no distribution module | cycle appears when the planned imports are added without the leaf | M45 make `key_rotation` import `InstallError` from `installer` |
+| AT-UK1-33 | UK1b | R2-L1: `build_document` accepts canonical output of exactly 32 KiB and refuses 32 KiB plus 1 before signing or writing | no builder cap | M48 omit the 32 KiB bound |
 
 ### 8.2 UK2 (signer tools and drill)
 
@@ -687,14 +729,16 @@ rows run on both.
 | AT-UK2-4 | `check-keys` fails on a committed statement whose `main_key` differs from `release_key.pub.pem` and on one that fails `validate_statement`; passes on a consistent set | checks `install.sh` only | M24 skip the statement cross-check |
 | AT-UK2-5 | Drill with real keys and the real `decoy upgrade` command over a file-backed fetch: client 1 (pins K1) goes epoch 1 to 2 to 3; client 2 (pins K1, never saw epoch 2) goes straight to epoch 3. Both then refuse a K1-signed and a K2-signed document. Client 2's `revoked_keys` equals exactly `{fp(K1), fp(K2)}`; client 2's retained K1-pinned runtime, asked to activate its K1-signed slot, refuses with `upgrade_key_revoked` (R1-M6) | not built | M23 make `revokes` hold only the last key |
 | AT-UK2-6 | R1-H1: with a real main pin and no flag, `check-keys` fails on a placeholder backup pin, a backup that is not Ed25519, a backup equal to the main key, and a backup listed in the committed `revokes`; with a placeholder main pin it behaves as today | no backup check | M37 run the backup checks only behind a flag |
-| AT-UK2-7 | R1-M9, Q2: `keygen --encrypt` writes `ENCRYPTED PRIVATE KEY` PKCS8 that loads only with the passphrase; `rotation` refuses an unencrypted backup file; `backup-check` prints the fingerprint when the file's public half equals the committed backup pin and exits 1 otherwise | not built | M38 accept an unencrypted backup file |
-| AT-UK2-8 | R1-M7: sentry: the literal `cli-key-rotation/v1` and the fields `revokes` and `epoch` are read only in `C:distribution/key_rotation.py`; `sign_release.py` and `make_version_document.py` import `validate_statement` and `check_release_pins` from it | second copy exists | M39 add a copy of the epoch check in `sign_release.py` |
+| AT-UK2-7 | R1-M9, Q2: `rotation` refuses an unencrypted backup file created by plain `keygen`; the encrypted generation and restore checks already shipped in AT-UK1-31 | not built | M38 accept an unencrypted backup file |
+| AT-UK2-8 | R1-M7: AST sentry: the exact string constants equal to `cli-key-rotation/v1`, `revokes` and `epoch` are read only in `C:distribution/key_rotation.py`; matching uses constant equality, never substring containment, so unrelated strings containing those words do not count. `sign_release.py` and `make_version_document.py` import `validate_statement` and `check_release_pins` from it | second copy exists | M39 add an exact `epoch` check in `sign_release.py`; M53 change the sentry to substring matching and seed an unrelated containing string |
 
 ### 8.3 Cross-plan (CLI-REL S0)
 
 | ID | Test | Red on base because | Mutation |
 |---|---|---|---|
 | AT-XR-1 | R1-B3, R1-H1: `candidate.verify_release_set` refuses a set whose `version.json` lacks `key_rotation` while one is committed, carries one that is not string-equal to `committed_statement()`, or carries one when none is committed; and refuses a set whose wheel pins fail `check_release_pins`. Built in CLI-REL S0 | function is on the CLI-REL branch only | M40 skip the statement comparison in `verify_release_set` |
+| AT-XR-2 | R2-H2, resign route: after K2 and its statement are committed, `sign-doc resign` reads a K1-signed live document at serial N through the X5 previous-epoch trust input, emits serial greater than N, carries `key_rotation` string-equal to `committed_statement()` and signs the output with K2. The assertion is on `sign-doc` output before `verify_release_set` | CLI-REL verifies the live document only with the committed K2 and has no rotation statement | M42 verify the live document only with K2 or copy its missing or stale statement into the output |
+| AT-XR-3 | R2-H2, rollback route: after K2 and its statement are committed, `sign-doc rollback --latest X` reads the K1-signed live serial and the permitted previous-epoch tag document through X5, emits a higher-serial K2-signed output whose `key_rotation` is string-equal to `committed_statement()` and whose rollback fields are correct. The assertion is on `sign-doc` output before `verify_release_set` | CLI-REL verifies both source documents only with the committed K2 and has no rotation statement | M43 verify a source only with K2 or omit the committed statement from rollback output |
 
 ### 8.4 UK3 (docs)
 
@@ -706,7 +750,8 @@ rows run on both.
 
 - Verification: `signing.verify_envelope` (statement) and `signing.verify_detached` (document,
   bundle). No new verifier, no new crypto library.
-- Key bytes: `signing.raw_public_bytes` (renamed from `_raw_public_bytes_from_pem`).
+- Key bytes and identity: `signing.raw_public_bytes` (renamed from
+  `_raw_public_bytes_from_pem`) and `signing.fingerprint` beside it.
 - Key pin rules and dev override: the pattern of `release_key.pinned_public_pem`.
 - Freshness and replay: `installer.check_document_freshness`, `vd.check_fresh`, the `serial` rule.
 - Atomic state write: `C:_atomic.py` `write_atomic` (already used for the state file).
@@ -715,25 +760,28 @@ rows run on both.
 - Error output: `_refuse` and `emit_error` (`decoy-error-v1`, its existing `hint`).
 - Signer: `sign_release.py` `keygen`, `sign_bytes`, `_write_atomic`, `check-keys`;
   `make_version_document.py`; the single builder `vd.build_document`.
-- Test seams: `DECOY_RELEASE_PUBKEY_FILE`, the injected downloader in `install_version`, the
-  existing upgrade e2e harness (`CT:e2e/test_upgrade_error_text.py`). About 38 test call sites in
+- Test seams: the UK1a real-pin fixture in existing `CT:conftest.py` patches the two module-level pin paths and the
+  `committed_statement()` path; the environment overrides remain dev-build coverage only. Also
+  reuse the injected downloader in `install_version` and the existing upgrade e2e harness
+  (`CT:e2e/test_upgrade_error_text.py`). About 38 test call sites in
   `CT:unit/test_distribution.py`, `CT:unit/test_distribution_acceptance.py` and
-  `CT:unit/distribution/test_bundle_base.py` move from `expected_public_pem=` to the env seam through
-  one fixture.
+  `CT:unit/distribution/test_bundle_base.py` move from `expected_public_pem=` to the module-path
+  fixture.
 
 ## 10. Frozen contracts touched
 
 - `cli-version-document/v1`: one optional field, `key_rotation`, an opaque base64 string. Additive;
   v1 readers already ignore unknown fields, and the string form keeps `install.sh`'s grep readers
-  correct. Must merge before REL-GATE G3 freezes the "Version document and installer contract" row
+  correct. Writers refuse canonical documents over 32 KiB; readers retain their 64 KiB cap. Must
+  merge before REL-GATE G3 freezes the "Version document and installer contract" row
   (`docs/release/frozen-surfaces.md:23`).
 - New `cli-key-rotation/v1`: frozen from 1.0. A later version rides in a new field (D12); a v2 payload
   in `key_rotation` gets `upgrade_format_unknown` from 1.0 installs.
 - `trust_state.json`: three additive fields; `serial` keeps its top-level integer form for
-  `install.sh` and becomes the per-epoch floor; unknown fields are kept; no later field may nest
-  `serial`.
-- `install.sh`: one new option, `--replace`. The `first_install` argument form is internal to one
-  release.
+  `install.sh` and becomes the per-epoch floor; an offline epoch rise writes 0; unknown fields are
+  kept only when the first exact `"serial":` remains top-level; no later field may nest `serial`.
+- `install.sh`: one new option, `--replace`, with the D11 no-home refusal and corrupt-state recovery
+  semantics. The `first_install` argument form is internal to one release.
 - Exit codes: none added or changed. Error codes: seven new `code` values; the `--json` error shape
   is unchanged.
 - Engine contract: not touched. Nothing in this row reaches the engine, so there is no 2.0 item.
@@ -742,13 +790,14 @@ rows run on both.
 
 | New file | Directory | Basis | Neighbor |
 |---|---|---|---|
-| `key_rotation.py` | `C:distribution/` | CODEMAP row "Shipped install and update" (`CODEMAP.md:64`); 15 entries today, 19 after, under the fan-out limit of 25 | `release_key.py` |
+| `key_rotation.py` | `C:distribution/` | CODEMAP row "Shipped install and update" (`CODEMAP.md:64`); 14 direct Python modules today, 17 after the three new modules, under the fan-out limit of 25; 15 total entries today and 20 after the two data files | `release_key.py` |
 | `trust_state.py` | `C:distribution/` | same row; takes code out of `installer.py` (731 lines, cap 800) | `installer.py` |
+| `errors.py` | `C:distribution/` | same row; acyclic leaf for the install refusal and closed runtime reason-code registry shared by `installer`, `version_document`, `key_rotation` and the CLI | `installer.py` |
 | `release_backup_key.pub.pem` | `C:distribution/` | same row; shipped in the wheel like `release_key.pub.pem` | `release_key.pub.pem` |
 | `key_rotation.json` (after the first rotation only) | `C:distribution/` | same row; read by `vd.build_document`, which cannot import `PT:` | `release_backup_key.pub.pem` |
 | `.gitattributes` (new) | repo root | git attributes for byte-exact key files | none |
 | `test_key_rotation.py`, `test_trust_state.py`, `test_upgrade_rotation.py`, `test_sign_release_rotation.py`, `test_first_install_trust.py` | `CT:unit/distribution/` | CODEMAP: "new tests go in `tests/unit/distribution/`" | `test_sign_release_sshsig.py` |
-| `test_key_choke_point.py`, `test_rotation_single_validator.py` | `CT:sentry/release/` | release-path guards live here | `test_frozen_surface_map.py` |
+| `test_key_choke_point.py`, `test_rotation_single_validator.py`, `test_rotation_reason_codes.py` | `CT:sentry/release/` | CODEMAP sentry row: release-gate and release-path fitness functions live here | `test_frozen_surface_map.py` |
 | `test_rotation_drill.py`, `test_install_replace.py` | `CT:e2e/` | end-to-end command tests | `test_upgrade_error_text.py` |
 | `key-rotation.md` | `docs/distribution/` | distribution docs | `version-endpoint-contract.md` |
 
@@ -763,16 +812,16 @@ escalates to the full suite at the slice (testing.md triggers). UK1b and UK2 run
 
 | Slice | Repo | Content | Prod / test | Risk | Depends on |
 |---|---|---|---|---|---|
-| UK1a | CLI | `trust_state.py` (moved reader and writer, three fields, per-epoch floor, unknown fields kept); `release_key.pinned_backup_pem` and the placeholder pem; `signing.raw_public_bytes` rename; `.gitattributes`. AT-UK1-12, 17, 18, 29 | 140 / 240 | R2 | none (main). Rebase onto 47-B if it merges first |
-| UK1b | CLI | `key_rotation.py` (decode, `validate_statement`, `check_release_pins`, `resolve_main_key`, `local_key`, `fingerprint`, `committed_statement`, `TrustDecision`, `TrustRefusal`); `vd.UnknownFormat`, `DOWNLOAD_PAGE_URL`, `build_document` embed. AT-UK1-4, 5, 6, 15, 27, 30 | 230 / 340 | R2 | UK1a |
-| UK1c | CLI | `install_version`, `activate_local_version`, new `record_trust` resolve under the lock and lose `expected_public_pem`; `cli/upgrade.py` codes, `_refuse` hint, up-to-date recording; the choke-point guard; test call-site migration. AT-UK1-1 to 3, 7 to 11, 13, 14, 16, 20, 22, 23, 25 (and AT-UK1-28 if 88-O is merged) | 150 / 520 | R2 | UK1b. If 88-O merges first, UK1c wires its key and AT-UK1-28; else 88-O does |
-| UK1d | CLI | `install.sh --replace` and the revoked-pin check; `first_install` resolver, recording and replace placement. AT-UK1-19, 21, 24, 26 | 110 / 270 | R2 | UK1c |
-| UK2 | CLI | `sign_release.py rotation`, `keygen --encrypt`, `backup-check`; `check-keys` pin checks; `make_version_document.py` through the builder; the single-validator sentry; the rotation drill. AT-UK2-1 to AT-UK2-8 | 180 / 400 | R2 (handles the backup private key) | UK1d |
-| UK3 | CLI | `docs/distribution/key-rotation.md` runbook; contract doc with D12; frozen-surface row; `docs/install.md` replace mode and the unknown-format message; readiness item "backup key pinned" pointing at `check-keys`; roadmap row and shipped log. AT-UK3-1 | docs about 220 / 40 | R1 | UK2 |
-| OWNER-1 | owner | Create the backup key offline with `keygen --encrypt` (Q2), keep two copies, run `backup-check` on each, hand over the public PEM; commit it (a one-file change, R1) | 3 | owner | before the first signed 1.0 candidate (CLI-REL S0) |
+| UK1a | CLI | H3 fixture first; `errors.py` leaf and installer re-export; `trust_state.py` (moved reader and writer, three fields, no-document epoch reset, first-serial assertion, unknown fields kept when safe); `release_key.pinned_backup_pem` and placeholder pem; `signing.raw_public_bytes` rename plus `fingerprint`; `sign_release.py keygen --encrypt` and `backup-check`; `.gitattributes`. AT-UK1-12, 17, 18, 29, 31, 32 | 225 / 390 | R2 | none (main). Rebase onto 47-B if it merges first |
+| UK1b | CLI | `key_rotation.py` (decode, `validate_statement`, `check_release_pins`, `resolve_main_key`, `local_key`, `committed_statement`, `TrustDecision`, `TrustRefusal`); `vd.UnknownFormat`, `DOWNLOAD_PAGE_URL`, `build_document` embed and 32 KiB cap. AT-UK1-4, 5, 6, 15, 27, 30, 33 | 235 / 380 | R2 | UK1a |
+| UK1c | CLI | `install_version`, `activate_local_version`, new `record_trust` resolve under the lock and lose `expected_public_pem`; `cli/upgrade.py` codes, `_refuse` hint, up-to-date recording; the choke-point guard; test call-site migration. AT-UK1-1 to 3, 7 to 11, 13, 14, 16, 20, 22, 23, 25 (and expanded AT-UK1-28 if 88-O is merged) | 155 / 560 | R2 | UK1b. If 88-O merges first, UK1c wires its key and AT-UK1-28; else 88-O does |
+| UK1d | CLI | `install.sh --replace`, portable SPKI fingerprint, exact revoked-array check, epoch-aware shell serial skip, no-home refusal; `first_install` resolver, recording, corrupt-state recovery and replace placement. AT-UK1-19, 21, 24, 26 | 155 / 390 | R2 | UK1c |
+| UK2 | CLI | `sign_release.py rotation`; `check-keys` pin checks; `make_version_document.py` through the builder; the exact-constant single-validator sentry; the rotation drill. AT-UK2-1 to AT-UK2-8 | 120 / 330 | R2 (handles the backup private key) | UK1d |
+| UK3 | CLI | `docs/distribution/key-rotation.md` runbook including X6; contract doc with D12; frozen-surface row; `docs/install.md` replace modes and the unknown-format message; readiness item "backup key pinned" pointing at `check-keys`; roadmap row and shipped log. AT-UK3-1 | docs about 240 / 50 | R1 | UK2 |
+| OWNER-1 | owner | Create the backup key offline with UK1a's `keygen --encrypt` (Q2), keep two copies, run UK1a's `backup-check` on each, hand over the public PEM; commit it (a one-file change, R1) | 3 | owner | UK1a and its H3 fixture; before 2026-11-28 and the first signed 1.0 candidate (CLI-REL S0) |
 
-Totals: about 810 production lines, 1,810 test lines and 220 doc lines; about 2,840 lines. Largest
-slice UK1c at 670.
+Totals: about 890 production lines, 2,100 test and docs-check lines and 240 doc lines; about 3,230
+lines. Largest slice UK1c at 715. Every implementation slice remains below 800 lines.
 
 Dated targets: UK1a merged by 2026-11-23, UK1b by 2026-11-25, UK1c by 2026-11-27, UK1d by
 2026-11-29, UK2 by 2026-12-01, UK3 by 2026-12-02, all before REL-GATE G3 freezes the
@@ -793,68 +842,41 @@ Cross-plan lines (each needs a line in the other plan when that slice is built):
   on Windows (AT-CW3-4) after UK1c and CW1.
 - X4 release-chain 88-O (R1-M5): AT-UK1-28 and the sidecar wiring belong to whichever of 88-O and
   UK1c merges second.
+- X5 CLI-REL `sign-doc` and `publish` (required, R2-H2, R2-M6): across a rotation, every mode reads
+  the live document's serial through `key_rotation.resolve_main_key` with the committed pins and a
+  previous-epoch trust state, or through an explicit previous-main-key input that the rotation
+  runbook supplies and the mode validates. It must not verify the K1-signed live document only with
+  newly committed K2. `resign` and `rollback` build through `vd.build_document`; AT-XR-2 (M42) and
+  AT-XR-3 (M43) assert each mode's signed output directly, while AT-XR-1 remains the release-set
+  verifier guard.
+- X6 CLI-REL and engine native release (required, R2-H2): rotation runbook step 2 replaces the
+  `native-release` signing secret in both repositories with K2. Step 5 re-signs the pinned native
+  companion release's `SHA256SUMS.sig` under K2, or re-cuts and pins the native companion release
+  under K2, before the first post-rotation CLI publish. CLI-REL's companion verification
+  then uses the K2 committed pin it already shares with the engine repository.
 
 ## 13. Owner questions
 
 Recommended answer first in each. Dennis round 1 recommended (a) on all six.
 
-- **Q1 Rollback across a rotation.** (a) Recommended: refuse. From a runtime whose own pin is revoked
-  the code is `upgrade_key_revoked`; otherwise `upgrade_rollback_key_rotated`. A key may be revoked
-  because it leaked, and a runtime it vouched for should not be re-activated on its word. For a
-  planned rotation, the runbook re-publishes the supported older bundles and their tag-run version
-  documents under the new key, so `decoy upgrade --force --version <v>` and CLI-REL rollback still
-  work. (b) For a planned rotation, keep the old key valid for local activation only. This needs a
-  `reason` field and a second trust class: more code and a weaker rule.
-- **Q2 Backup key custody.** (a) Recommended: create it with `sign_release.py keygen --encrypt` on a
-  machine kept offline for the ceremony; the file is passphrase-encrypted PKCS8, and `rotation`
-  refuses an unencrypted one. Store it on two USB drives kept in two places; keep the passphrase
-  apart from the drives; commit only the public half. Run `sign_release.py backup-check` on each
-  copy right after creating it and once a year, so a copy that no longer decrypts is found before it
-  is needed. It is used only for a rotation, never by CI. (b) A hardware token with Ed25519 support
-  (for example a YubiKey with firmware 5.7 or later): stronger, costs money, and the tool would need
-  a PKCS#11 path, which is a new dependency. (c) Paper only: hard to restore without errors.
-- **Q3 Deadline for the backup key.** (a) Recommended: 2026-11-28, ahead of the first signed 1.0
-  candidate. A 1.0 build without it can never rotate, so `check-keys` fails any build with a real
-  main key and a placeholder backup, and no G0 exception is possible. (b) Any date before CLI-REL
-  S0's first signed candidate.
-- **Q4 Download page in the message.** (a) Recommended: `https://trydecoy.com/download`, a constant
-  beside `DEFAULT_URL`, moved by RW-C2b if the domain answer (REL-WEB Q1) changes it. The page must
-  show the `--replace` command. (b) Point at the install docs page.
-- **Q5 Unknown format with a signature this install cannot check.** (a) Recommended: show the same
-  `upgrade_format_unknown` text when the bytes name a `cli-version-document/` schema other than v1.
-  The text is fixed and points at the official page, so an attacker gains nothing beyond the denial
-  of service they can already cause. (b) Show "signature INVALID" whenever the signature fails.
-- **Q6 Rotating the backup key.** (a) Recommended: not in 1.0. The contract reserves the rule (D12):
-  a later statement version, which may rotate the backup key, rides in a new top-level field, and
-  documents keep the v1 `key_rotation` field for as long as the v1 backup key is good, so 1.0
-  installs keep rotating the main key. If the v1 backup key is lost or leaks, 1.0 installs
-  reinstall with `--replace` from the website. (b) Add an optional `backup_key` field to v1 now:
-  more to test and to freeze.
+- **Q1 Rollback across a rotation.** (a) Recommended: refuse with `upgrade_key_revoked` from a runtime whose pin is revoked, else `upgrade_rollback_key_rotated`; re-publish supported old bundles and tag documents under K2. (b) Keep K1 valid for local activation, which needs another trust class and weakens revocation.
+- **Q2 Backup key custody.** (a) Recommended: create passphrase-encrypted PKCS8 with `keygen --encrypt` offline, keep two USB copies and a separate passphrase, run `backup-check` at creation and yearly, commit only the public half, never use B in CI. (b) Hardware token: stronger but needs cost and PKCS#11 work. (c) Paper: restore risk.
+- **Q3 Deadline for the backup key.** (a) Recommended: 2026-11-28, after R2-M5 lands the H3 fixture then UK1a `keygen --encrypt` and `backup-check`, before the first signed 1.0 candidate. A real main pin with a placeholder backup fails `check-keys`, with no G0 exception. (b) Any date after UK1a and before CLI-REL S0.
+- **Q4 Download page.** (a) Recommended: `https://trydecoy.com/download`, the `DOWNLOAD_PAGE_URL` constant, with the `--replace` command. RW-C2b changes it if REL-WEB Q1 changes the domain. (b) Install docs.
+- **Q5 Unknown format with an unverifiable signature.** (a) Recommended: fixed `upgrade_format_unknown` text for any non-v1 `cli-version-document/` schema because it adds no capability beyond channel denial. (b) Always show signature invalid.
+- **Q6 Backup-key rotation.** (a) Recommended: later statement version in a new field per D12, while v1 remains until B is bad; loss or leak means website reinstall with `--replace`. (b) Add `backup_key` to v1 now, increasing frozen scope.
 
 ## 14. Pre-mortem
 
-- **The backup key is never created.** Every release candidate fails `check-keys`. Q3 sets the
-  date; the board shows OWNER-1.
-- **The backup key leaks.** An attacker who also controls the channel can rotate the main key to
-  their own. Only offline encrypted custody (Q2) and a reinstall (Q6) address it.
-- **Installs that never see the rotation.** An attacker holding a leaked K1 can still serve a fresh
-  K1-signed document to an install that never fetched a document with the statement. TUF has the
-  same limit. The runbook documents it. A high serial pushed during that window no longer blocks
-  the rotation (D5).
-- **The statement falls out of later documents.** D7 sets it in the single builder from a committed
-  file, and AT-XR-1 checks every candidate; AT-UK1-30 and AT-UK2-3 catch a missing or stale one.
-- **CLI-REL rollback across a rotation.** A pre-rotation `vX` document fails against the new key; X2
-  makes CLI-REL say so and the runbook re-publishes what must stay reachable.
-- **Pre-verify parsing.** Parsing before verification is a new step. It is capped, catches every
-  parse error, and only selects which key to verify with; AT-UK1-15 and AT-UK1-27 cover the hostile
-  cases.
-- **Replace mode misuse.** Replace mode deletes nothing and runs every check `decoy upgrade` runs,
-  plus a pre-fetch refusal of a revoked installer key, so it cannot lower the trust state.
-- **`installer.py` size and 47-B.** The trust-state move keeps `installer.py` under 800 lines. If
-  release-chain 47-B restructures `installer.py` first, UK1c rebases; the resolver call sites are a
-  few lines.
-- **Release-day surprise.** The drill (AT-UK2-5) runs real keys through the real command, so the
-  first real rotation is not the first time the code runs.
+- **Backup key absent or leaked.** Missing B fails every candidate through `check-keys`; Q3 and OWNER-1 schedule it. A leaked B plus channel control needs offline encrypted custody and website reinstall (Q2, Q6).
+- **Client never sees rotation.** Leaked K1 can serve a fresh K1 document until the client receives the statement, the same limit as TUF; D5 prevents a high serial from extending that block afterward.
+- **Statement omitted.** D7's builder plus AT-UK1-30, AT-UK2-3 and AT-XR-1 to AT-XR-3 catch missing or stale statements.
+- **CLI-REL source documents still use K1.** X2 handles old rollback documents; X5 resolves the K1 live serial after K2 commit and directly tests resign and rollback output.
+- **Native companion still uses K1.** X6 rotates the engine secret and re-signs or re-cuts the pinned companion before K2 publish.
+- **Pre-verify parse abused.** The cap and extract-only behavior are covered by AT-UK1-15 and AT-UK1-27.
+- **Replace misused.** Existing-home, verification-before-reset and pre-fetch revoked-pin rules are covered by AT-UK1-26.
+- **Size or rebase drift.** Trust-state extraction keeps `installer.py` under 800; UK1c rebases if 47-B restructures it first.
+- **First real ceremony surprises.** AT-UK2-5 drills real keys through the real command first.
 
 ## 15. Done when
 
@@ -862,7 +884,8 @@ Recommended answer first in each. Dennis round 1 recommended (a) on all six.
       exact merge heads.
 - [ ] The frozen-surface map lists `key_rotation`, `cli-key-rotation/v1`, the D12 rules and the
       state fields before REL-GATE G3.
-- [ ] CLI-REL carries cross-plan lines X1 and X2, with AT-XR-1.
+- [ ] CLI-REL and the engine runbook carry cross-plan lines X1, X2, X5 and X6, with AT-XR-1,
+      AT-XR-2 and AT-XR-3. Release-chain and WIN-FEAS carry X3 and X4 at their owning slices.
 - [ ] OWNER-1 is done: the real backup public key is committed and `check-keys` passes on the 1.0
       candidate.
 - [ ] The runbook is in `docs/distribution/key-rotation.md`.
@@ -870,10 +893,8 @@ Recommended answer first in each. Dennis round 1 recommended (a) on all six.
 
 ## 16. Not verified by this plan
 
-- No code ran for this plan. Line numbers come from reading `origin/main` at `c5a156a8` and the plan
+- No code ran for this plan. Line numbers come from reading `origin/main` at `ccc5540a` and the plan
   branches named in Bases.
 - The size of a version document with a base64 statement (estimated under 4 KiB, far under the
   64 KiB cap).
-- That CLI-REL S0 adopts X1 and X2; this plan only records them.
-- The `openssl pkey ... | tail -c 32` fingerprint step on the macOS LibreSSL `openssl`; UK1d's
-  AT-UK1-26 runs on the Mac node as well as Linux.
+- That CLI-REL S0 adopts X1, X2, X5 and X6; this plan only records them.
