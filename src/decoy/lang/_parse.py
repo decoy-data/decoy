@@ -419,6 +419,15 @@ def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
     return nodes.GenColumn(_name(statement.children[0]), call, expression, _span(statement))
 
 
+def _pairs(pairs: list[Tree[Any]]) -> list[nodes.Option]:
+    built = []
+    for pair in pairs:
+        token, value = pair.children
+        key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
+        built.append(nodes.Option(nodes.Name(key, _span(token)), _value(value)))
+    return built
+
+
 def _program(tree: Tree[Any]) -> nodes.Program:
     _, version_token, pipeline = tree.children
     version = _number(version_token)
@@ -433,6 +442,8 @@ def _program(tree: Tree[Any]) -> nodes.Program:
     settings: list[nodes.Setting] = []
     lets: list[nodes.Let] = []
     tables: list[nodes.Table | nodes.Generate] = []
+    extra: list[nodes.Option] = []
+    options: list[nodes.Option] = []
     for item in items:
         span = _span(item)
         if item.data == "seed":
@@ -442,6 +453,8 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         elif item.data == "unconfigured":
             word = _name(item.children[2])
             settings.append(nodes.Setting("unconfigured", nodes.Value(word.text, word.span), span))
+        elif item.data in ("settings", "options"):
+            (extra if item.data == "settings" else options).extend(_pairs(item.children[1:]))
         elif item.data == "let":
             lets.append(nodes.Let(_name(item.children[1]), _treatment(item.children[2]), span))
         elif item.data == "generate":
@@ -455,6 +468,8 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         tuple(lets),
         tuple(tables),
         _span(pipeline),
+        tuple(extra),
+        tuple(options),
     )
 
 

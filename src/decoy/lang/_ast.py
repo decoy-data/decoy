@@ -173,3 +173,5 @@ class Program:
     lets: tuple[Let, ...]
     tables: tuple[Table | Generate, ...]
     span: Span
+    extra_settings: tuple[Option, ...] = ()  # the `settings { }` block
+    options: tuple[Option, ...] = ()  # the `options { }` block

@@ -17,7 +17,8 @@ from __future__ import annotations
 _KEYWORDS = (
     "decoy pipeline seed secret ref unconfigured columns let mask from to keep in "
     "deterministic vaulted when and or not if else true false "
-    "where sort by asc desc limit dedupe on drop orphans generate rows unique"
+    "where sort by asc desc limit dedupe on drop orphans generate rows unique "
+    "settings options"
 ).split()
 
 GRAMMAR = r"""
@@ -25,12 +26,17 @@ start: DECOY NUMBER pipeline
 
 pipeline: PIPELINE [name] "{" item* "}"
 
-?item: seed | secret | unconfigured | let | table | generate
+?item: seed | secret | unconfigured | settings | options | let | table | generate
 
 seed: SEED NUMBER
 secret: SECRET REF "(" (DQ_STRING | SQ_STRING) ")"
 unconfigured: UNCONFIGURED COLUMNS name
 let: LET name "=" treatment
+
+// `settings` holds any pipeline setting by its engine name. `options` is the escape hatch: any
+// top-level config block that has no syntax of its own yet, written as plain values.
+settings: SETTINGS "{" (pair ","?)* "}"
+options: OPTIONS "{" (pair ","?)* "}"
 
 table: MASK name FROM call TO call "{" statement* "}"
 

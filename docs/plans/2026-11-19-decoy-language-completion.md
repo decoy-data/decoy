@@ -29,6 +29,8 @@ onward changes `decoy` commands, and waits for the owner decisions at the end of
 | Errors on source lines, never quoting a config value | Built |
 | All 11 bundled templates have a `.decoy` twin that compiles to the same config | Built |
 | `python -m decoy.lang file.decoy` prints the pipeline YAML | Built, experimental |
+| `settings { }` for any pipeline setting; `options { }` escape hatch for any config block | Built |
+| Coverage test against the engine's config schema (`tests/unit/lang/test_coverage.py`); nine blocks are `options`-only | Built |
 
 ## Milestones
 
@@ -37,8 +39,8 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 
 | # | Milestone | What it delivers | Done when | Touches frozen 1.0 code |
 |---|---|---|---|---|
-| 1 | **Coverage test** | A test that reads the engine's config schema and lists every field the language cannot write with its own syntax. The list may only shrink. | The test is green and fails when the engine adds a field | No |
-| 2 | **Nothing locked out** | `settings { }` for every pipeline setting; `options { }` as the escape hatch for any config block without syntax yet | Every `PipelineConfig` field can be written, by syntax or by `options` | No |
+| 1 | **Coverage test** (built) | A test that reads the engine's config schema and lists every field the language cannot write with its own syntax. The list may only shrink. | The test is green and fails when the engine adds a field | No |
+| 2 | **Nothing locked out** (built) | `settings { }` for every pipeline setting; `options { }` as the escape hatch for any config block without syntax yet | Every `PipelineConfig` field can be written, by syntax or by `options` | No |
 | 3 | **Checks and safety** | Syntax for scans (before and after), `expect` checks, quarantine, delivery mode, the scan baseline, the `namespaces` block | Those blocks leave the `options`-only list | No |
 | 4 | **Subsetting** | A `subset { }` block: start tables, what to follow, row budgets | `subset` leaves the `options`-only list | No |
 | 5 | **Converter** | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |

@@ -284,11 +284,26 @@ delivery strict
   executes, not what the pipeline means.
 - `fit` snapshots, the vault, reports and evidence stay CLI commands.
 
-### The escape hatch
+### Settings and the escape hatch
 
-Any block accepts `options { key: value }` for settings without dedicated syntax yet, and
-`raw yaml { ... }` can carry a whole config block. A gap in the language slows nobody down; it only
-reads less nicely until syntax is added.
+`settings { }` takes any pipeline setting by its engine name, so a new engine setting needs no
+language change. `options { }` takes any top-level config block that has no syntax of its own yet,
+written as plain values. A gap in the language slows nobody down; it only reads less nicely until
+syntax is added. A block that does have syntax is refused in `options`, so there stays one way to
+write it.
+
+```
+pipeline {
+  seed 42
+  settings {
+    post_validation: true
+    on_pool_exhaustion: fail
+  }
+  options {
+    delivery: {mode: best_effort}
+  }
+}
+```
 
 ## 5. How it should read
 
