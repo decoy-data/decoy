@@ -91,6 +91,13 @@ def test_a_plain_start_loads_no_network_module() -> None:
     assert done.returncode == 0, done.stderr[-600:]
 
 
+def test_purpose_and_rules_are_one_registry() -> None:
+    """Codex D2: the `Purpose` literal and the `_RULES` keys cannot drift apart."""
+    import typing
+
+    assert set(typing.get_args(_outbound.Purpose)) == set(_outbound._RULES)
+
+
 def test_the_checked_url_is_the_opened_url(monkeypatch: pytest.MonkeyPatch) -> None:
     """Class 7: the value that passed the scheme check is the value handed to the opener."""
     checked: list[str] = []

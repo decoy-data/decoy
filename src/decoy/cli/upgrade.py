@@ -133,13 +133,17 @@ def upgrade(
 
     doc_url = vd.resolve_version_url(url)
     _refuse_scheme(state, doc_url)
+    failure: BaseException | None = None
     try:
         doc_bytes = _fetch(doc_url, "upgrade_document")
         doc_sig = _fetch(doc_url + ".sig", "upgrade_document").decode("ascii").strip()
-    except _outbound.OutboundRefused as exc:
-        _refuse(state, _outbound_text(exc, "the version endpoint"), exc.code, exc)
     except Exception as exc:
-        _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", exc)
+        failure = exc
+    # Refused outside the `except`, so no `__context__` carries the URL (defect class 3).
+    if isinstance(failure, _outbound.OutboundRefused):
+        _refuse(state, _outbound_text(failure, "the version endpoint"), failure.code, failure)
+    if failure is not None:
+        _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", failure)
 
     if not vd.verify_document(doc_bytes, doc_sig, expected_public_pem=pubkey):
         emit_error(
@@ -190,6 +194,7 @@ def upgrade(
     # not-yet-installed version, and a `--force` reinstall (a repair, even of a version
     # already on disk -- so a same-version `--force` re-downloads and re-verifies rather
     # than swapping to the retained bits).
+    install_failure: BaseException | None = None
     try:
         # A pinned non-latest version resolves <bundle base>/v<version>/decoy-<version>-<target>.tar.gz
         # (install.sh scheme), not under the document's own base.
@@ -202,10 +207,17 @@ def upgrade(
             download=_fetch,
             post_swap_validate=_post_swap,
         )
-    except _outbound.OutboundRefused as exc:
-        _refuse(state, _outbound_text(exc, "a download"), exc.code, exc)
-    except installer.InstallError as exc:
-        _refuse(state, "the upgrade failed and the installed runtime is unchanged", "upgrade_install_failed", exc)
+    except (_outbound.OutboundRefused, installer.InstallError) as exc:
+        install_failure = exc
+    if isinstance(install_failure, _outbound.OutboundRefused):
+        _refuse(state, _outbound_text(install_failure, "a download"), install_failure.code, install_failure)
+    if install_failure is not None:
+        _refuse(
+            state,
+            "the upgrade failed and the installed runtime is unchanged",
+            "upgrade_install_failed",
+            install_failure,
+        )
 
     _report_outcome(state, outcome, "upgraded")
     raise typer.Exit(code=EXIT_OK)

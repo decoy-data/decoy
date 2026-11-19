@@ -5,8 +5,8 @@ The pre-run gate imports `target_format_issues` from here, not from the private 
 Saved-scan reading (`load_scan_set`) is exported here too; do not import `_scan_set`.
 
 The project layout services are public here as well: the project root finder, the run-folder
-and pipeline-name helpers, and the `layout.*` descriptors. Commands, `cli/project` and `ci`
-import them from this package, never from `_project`, `_layout` or `_layout_errors`.
+and pipeline-name helpers, and the `layout.*` and `report.*` descriptors. Commands, `cli/project`
+and `ci` import them from this package, never from `_project`, `_layout` or `_layout_errors`.
 
 The source and DuckDB helpers `decoy run` uses are re-exported here as one bridge over
 `cli/_sources.py` and `cli/_duckdb_source.py`, so `cli/run/` imports no private module.
@@ -74,6 +74,7 @@ from decoy.cli.io._layout_errors import (
     PROJECT_NESTED,
     PROJECT_NOT_FOUND,
     PROJECT_ROOT_REFUSED,
+    REPORT_DESCRIPTORS,
     REPORT_NOT_WRITTEN,
     REPORT_SOURCE_AMBIGUOUS,
     WARNING_CODES,
@@ -160,6 +161,7 @@ __all__ = [
     "PROJECT_NESTED",
     "PROJECT_NOT_FOUND",
     "PROJECT_ROOT_REFUSED",
+    "REPORT_DESCRIPTORS",
     "REPORT_NOT_WRITTEN",
     "REPORT_SOURCE_AMBIGUOUS",
     "WARNING_CODES",

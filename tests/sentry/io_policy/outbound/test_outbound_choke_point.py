@@ -24,6 +24,7 @@ BANNED = (
     "ftplib",
     "xmlrpc.client",
     "asyncio.open_connection",
+    "asyncio.streams",
     "http.client",
     "requests",
     "urllib3",
@@ -82,13 +83,17 @@ def network_sites(source: str, rel: str = "src/decoy/x.py") -> set[str]:
             hits.add(site.scope)
         if named and rel != "src/decoy/_outbound.py" and _is_private_outbound(site.name):
             hits.add(site.scope)
-        if not isinstance(site.node, ast.Call) or not site.node.args:
+        if not isinstance(site.node, ast.Call):
             continue
         func = site.node.func
         dynamic = site.name == "importlib.import_module" or (
             isinstance(func, ast.Name) and func.id == "__import__"
         )
-        arg = site.node.args[0]
+        # The module name is the first positional argument or the `name=` keyword.
+        keyword = next((k.value for k in site.node.keywords if k.arg == "name"), None)
+        arg = site.node.args[0] if site.node.args else keyword
+        if arg is None:
+            continue
         if isinstance(arg, ast.Name):
             text = consts.get(arg.id)
         else:
@@ -148,6 +153,14 @@ def test_each_import_spelling_is_caught() -> None:
         "import ftplib\nftplib.FTP('h')",
         "import xmlrpc.client\nxmlrpc.client.ServerProxy('h')",
         "import asyncio\nasyncio.open_connection('h', 1)",
+        # Codex D1: keyword `name=` and the asyncio.streams spellings.
+        "import importlib\nimportlib.import_module(name='socket')",
+        "from importlib import import_module as im\nim(name='socket')",
+        "import importlib\nMOD = 'smtplib'\nimportlib.import_module(name=MOD)",
+        "__import__(name='http.client')",
+        "from asyncio import streams\nstreams.open_connection('h', 1)",
+        "from asyncio.streams import open_connection as oc\noc('h', 1)",
+        "import asyncio.streams\nasyncio.streams.open_connection('h', 1)",
         "from asyncio import open_connection as oc\noc('h', 1)",
         # Dennis r1 M1: the two survivors, reaching urllib through `_outbound` itself.
         "from decoy import _outbound\n_outbound.urllib.request.urlopen('u')",
