@@ -42,6 +42,11 @@ Carried from the old open-questions list:
 - The SBOM lock-mode refusal prints lock package names.
 - The engine `vault_key_mismatch` message still says "the config's seed does not decrypt this vault".
 
+- 2026-11-19, owner idea: DECOY-LANG, a small pipeline language (`.decoy` files) that compiles to
+  the existing pipeline YAML, as an easier hand-written and agent-written form than YAML next to
+  `decoy init`. CLI only, no engine behavior change. Draft plan:
+  [plans/2026-11-19-decoy-language.md](../plans/2026-11-19-decoy-language.md). Likely Later.
+
 ## Freeze candidates (decide before REL-GATE)
 
 Triaged 2026-11-18. The freeze-list items with no row became the 1.0 rows FREEZE-SURFACE (health),
