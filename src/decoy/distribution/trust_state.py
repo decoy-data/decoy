@@ -71,48 +71,77 @@ def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _parse(data: object) -> TrustState:
+def _fingerprint_or_none(pem: object) -> str | None:
+    """The key's fingerprint, or None when ``pem`` is not a loadable Ed25519 public key."""
+    if not isinstance(pem, str):
+        return None
+    try:
+        return signing.fingerprint(pem)
+    except ValueError:
+        return None
+
+
+def _valid(data: object) -> bool:
+    """The state shape the reader accepts. Every refusal below is one fixed result."""
     if not isinstance(data, dict):
-        raise _unreadable()
-    serial = data.get("serial")
-    if not _is_int(serial) or serial < 0:
-        raise _unreadable()
-    epoch = data.get("key_epoch", 1)
-    if not _is_int(epoch) or epoch < 1:
-        raise _unreadable()
-    raw_revoked = data.get("revoked_keys", [])
-    if not isinstance(raw_revoked, list) or not all(
-        isinstance(f, str) and _FINGERPRINT.fullmatch(f) for f in raw_revoked
+        return False
+    serial, epoch = data.get("serial"), data.get("key_epoch", 1)
+    if not _is_int(serial) or serial < 0 or not _is_int(epoch) or epoch < 1:
+        return False
+    revoked = data.get("revoked_keys", [])
+    if not isinstance(revoked, list) or not all(
+        isinstance(f, str) and _FINGERPRINT.fullmatch(f) for f in revoked
     ):
-        raise _unreadable()
-    revoked = frozenset(raw_revoked)
-    main_key = data.get("main_key") if epoch > 1 else None
-    if epoch == 1 and revoked:
-        raise _unreadable()
-    if epoch > 1:
-        try:
-            if not isinstance(main_key, str) or signing.fingerprint(main_key) in revoked:
-                raise _unreadable()
-        except ValueError:
-            raise _unreadable() from None
+        return False
+    if epoch == 1:
+        return not revoked
+    fp = _fingerprint_or_none(data.get("main_key"))
+    return fp is not None and fp not in revoked
+
+
+def _parse(data: object) -> TrustState | None:
+    """The state, or None when ``data`` is not a valid state."""
+    if not _valid(data) or not isinstance(data, dict):
+        return None
+    epoch = data.get("key_epoch", 1)
     extras = {k: v for k, v in data.items() if k not in _KNOWN}
-    return TrustState(serial, epoch, main_key, revoked, data.get("latest"), extras)
+    return TrustState(
+        data["serial"],
+        epoch,
+        data["main_key"] if epoch > 1 else None,
+        frozenset(data.get("revoked_keys", [])),
+        data.get("latest"),
+        extras,
+    )
+
+
+_ABSENT, _BAD = object(), object()
+
+
+def _load_file(path: Path) -> object:
+    """The parsed JSON, ``_ABSENT`` for a missing file, ``_BAD`` for anything unreadable."""
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return _ABSENT
+    except (OSError, ValueError):
+        return _BAD
+    try:
+        return json.loads(raw)
+    except (ValueError, RecursionError):
+        return _BAD
 
 
 def read_trust_state(home: Path) -> TrustState:
     """Absent state is a first run; a present but unreadable or invalid one is refused, never
     treated as "nothing seen", or corrupting the file would reset rollback protection."""
-    try:
-        raw = (home / TRUST_STATE_FILE).read_text(encoding="utf-8")
-    except FileNotFoundError:
+    data = _load_file(home / TRUST_STATE_FILE)
+    if data is _ABSENT:
         return TrustState()
-    except (OSError, ValueError):
-        raise _unreadable() from None
-    try:
-        data = json.loads(raw)
-    except (ValueError, RecursionError):
-        raise _unreadable() from None
-    return _parse(data)
+    state = None if data is _BAD else _parse(data)
+    if state is None:
+        raise _unreadable()
+    return state
 
 
 def _first_serial_is_top_level(text: str) -> bool:
@@ -145,12 +174,9 @@ def _state_text(state: TrustState) -> str:
     if state.epoch > 1:
         out["main_key"] = state.main_key
     text = json.dumps(out, sort_keys=True, separators=(",", ":")) + "\n"
-    if not _first_serial_is_top_level(text):
+    # Never write a file this reader would refuse, or one whose first serial is nested.
+    if not _first_serial_is_top_level(text) or _parse(json.loads(text)) is None:
         raise InstallError("could not record the trust state -- refusing to continue")
-    try:
-        _parse(json.loads(text))  # never write a file this reader would refuse
-    except InstallError:
-        raise InstallError("could not record the trust state -- refusing to continue") from None
     return text
 
 
@@ -187,6 +213,7 @@ def write_trust_state(
     try:
         write_atomic(home, TRUST_STATE_FILE, text.encode("utf-8"), WriteMode.REPLACE)
     except AtomicWriteError as exc:
-        raise InstallError(
-            f"could not record the trust state ({exc.code}) -- refusing to continue"
-        ) from None
+        code = exc.code
+    else:
+        return
+    raise InstallError(f"could not record the trust state ({code}) -- refusing to continue")

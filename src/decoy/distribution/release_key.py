@@ -21,6 +21,8 @@ import os
 import sys
 from pathlib import Path
 
+from decoy._env_flags import env_str
+
 PLACEHOLDER_MARKER = "__DECOY_RELEASE_PUBLIC_KEY__"
 BACKUP_PLACEHOLDER_MARKER = "__DECOY_RELEASE_BACKUP_PUBLIC_KEY__"
 _KEY_FILE = Path(__file__).resolve().parent / "release_key.pub.pem"
@@ -75,7 +77,7 @@ def pinned_backup_pem() -> str:
     add a backup key to a build that pins a real main key. A placeholder backup pin with no usable
     override raises NoPinnedKeyError; that matters only when a rotation needs the backup key."""
     text = _BACKUP_KEY_FILE.read_text(encoding="utf-8")
-    override = os.environ.get("DECOY_RELEASE_BACKUP_PUBKEY_FILE")
+    override = env_str("DECOY_RELEASE_BACKUP_PUBKEY_FILE", "")
     backup_is_placeholder = BACKUP_PLACEHOLDER_MARKER in text
     main_is_placeholder = PLACEHOLDER_MARKER in _KEY_FILE.read_text(encoding="utf-8")
     if backup_is_placeholder and main_is_placeholder and override:
