@@ -16,7 +16,7 @@ from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput
 
 from decoy.lang import _ast as nodes
 from decoy.lang._errors import Span, fail
-from decoy.lang._grammar import DISPLAY, GRAMMAR
+from decoy.lang._grammar import DISPLAY, GRAMMAR, KEYWORD_TERMINALS
 
 SUPPORTED_VERSIONS = (1,)
 
@@ -56,6 +56,19 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
     shown = sorted({DISPLAY.get(name, name) for name in expected})
     message = f"unexpected {found}"
     hint = f"expected {_one_of(shown)}" if shown else None
+    # A language word where a column name was meant: either the word itself is refused where a
+    # name fits, or it was read as a statement and the name's punctuation is refused after it.
+    keyword = None
+    if isinstance(error, UnexpectedToken):
+        before = (error.token_history or [None])[-1]
+        if error.token.type in KEYWORD_TERMINALS and "NAME" in expected:
+            keyword = error.token
+        elif error.token.type in ("COLON", "COMMA", "EQUAL") and before is not None:
+            keyword = before if before.type in KEYWORD_TERMINALS else None
+    if keyword is not None:
+        word = str(keyword)
+        quoted = f"`{word}` is a word of the language; for a column of that name write '{word}'"
+        hint = f"{hint}. {quoted}" if hint else quoted
     return fail("lang.syntax", message, span, hint)
 
 
@@ -98,7 +111,45 @@ def _value(node: Tree[Any]) -> nodes.Value:
         return nodes.Value(kind == "true", span)
     if kind == "word":
         return nodes.Value(str(node.children[0]), span)
+    if kind == "map":
+        pairs: dict[str, nodes.Value] = {}
+        for pair in node.children:
+            if pair is None:
+                continue
+            token, value = pair.children
+            key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
+            if key in pairs:
+                raise fail("lang.option_repeated", f"key `{key}` is given twice", _span(token))
+            pairs[key] = _value(value)
+        return nodes.Value(pairs, span)
     return nodes.Value(tuple(_value(child) for child in node.children if child is not None), span)
+
+
+def _expression_text(node: Tree[Any] | Token) -> str:
+    """One line of canonical text for an expression: the engine's `when` grammar admits spaces
+    and tabs only, and equal programs must compile to equal configs whatever their layout."""
+    if isinstance(node, Token):
+        return str(node).replace("_", "") if node.type == "NUMBER" else str(node)
+    parts = [child for child in node.children if child is not None]
+    if node.data == "expression":
+        return " ".join(_expression_text(part) for part in parts)
+    if node.data == "operator":
+        return " ".join(str(part) for part in parts)
+    if node.data == "operand":
+        return "".join(_expression_text(part) for part in parts)
+    if node.data == "prefix":
+        return "not " if parts[0].type == "NOT" else "-"
+    if node.data == "e_option":
+        raise fail(
+            "lang.generator_in_masked_table",
+            "a masked table can only define a column from an expression",
+            _span(node),
+            "generators such as `sequence(start: 1)` belong in a `generate` table",
+        )
+    inner = ", ".join(_expression_text(part) for part in parts if not isinstance(part, Token))
+    if node.data == "e_call":
+        return f"{parts[0]}({inner})"
+    return f"({inner})" if node.data == "e_group" else f"[{inner}]"
 
 
 def _call(tree: Tree[Any]) -> nodes.Call:
@@ -128,12 +179,17 @@ def _call(tree: Tree[Any]) -> nodes.Call:
 
 
 def _treatment(tree: Tree[Any]) -> nodes.Treatment:
-    call, namespace, deterministic, vaulted = tree.children
+    call, namespace, deterministic, vaulted, condition = tree.children
+    when = None
+    if condition is not None:
+        expression = condition.children[1]
+        when = nodes.Expression(_expression_text(expression), _span(expression))
     return nodes.Treatment(
         _call(call),
         _name(namespace.children[1]) if namespace is not None else None,
         deterministic is not None,
         vaulted is not None,
+        when,
         _span(tree),
     )
 
@@ -142,11 +198,68 @@ def _names(tree: Tree[Any]) -> tuple[nodes.Name, ...]:
     return tuple(_name(child) for child in tree.children)
 
 
+def _expression(tree: Tree[Any]) -> tuple[str, Span]:
+    return _expression_text(tree), _span(tree)
+
+
+def _where(tree: Tree[Any]) -> nodes.Transform:
+    text, span = _expression(tree.children[1])
+    return nodes.Transform("filter", (("expression", text, span),), _span(tree))
+
+
+def _define(tree: Tree[Any]) -> nodes.Transform:
+    name = _name(tree.children[0])
+    text, span = _expression(tree.children[1])
+    fields = (("column", name.text, name.span), ("expression", text, span))
+    return nodes.Transform("derive", fields, _span(tree))
+
+
+def _sort(tree: Tree[Any]) -> nodes.Transform:
+    keys = tree.children[2:]
+    by = [_name(key.children[0]).text for key in keys]
+    ascending = [key.children[1] is None or key.children[1].type == "ASC" for key in keys]
+    fields: list[tuple[str, Any, Span]] = [("by", by, _span(tree))]
+    if not all(ascending):
+        fields.append(("ascending", ascending, _span(tree)))
+    return nodes.Transform("sort", tuple(fields), _span(tree))
+
+
+def _limit(tree: Tree[Any]) -> nodes.Transform:
+    token = tree.children[1]
+    return nodes.Transform("limit", (("n", _number(token), _span(token)),), _span(tree))
+
+
+def _dedupe(tree: Tree[Any]) -> nodes.Transform:
+    names = tree.children[2]
+    if names is None:
+        return nodes.Transform("dedupe", (), _span(tree))
+    columns = [name.text for name in _names(names)]
+    return nodes.Transform("dedupe", (("columns", columns, _span(names)),), _span(tree))
+
+
+def _drop(tree: Tree[Any]) -> nodes.Transform:
+    names = tree.children[1]
+    columns = [name.text for name in _names(names)]
+    return nodes.Transform("drop_column", (("columns", columns, _span(names)),), _span(tree))
+
+
+_TRANSFORMS = {
+    "where": _where,
+    "define": _define,
+    "sort": _sort,
+    "limit": _limit,
+    "dedupe": _dedupe,
+    "drop": _drop,
+}
+
+
 def _table(tree: Tree[Any]) -> nodes.Table:
     _, name, _, source, _, target, *statements = tree.children
-    built: list[nodes.Mask | nodes.Keep] = []
+    built: list[nodes.Mask | nodes.Keep | nodes.Transform] = []
     for statement in statements:
-        if statement.data == "mask":
+        if statement.data in _TRANSFORMS:
+            built.append(_TRANSFORMS[statement.data](statement))
+        elif statement.data == "mask":
             built.append(
                 nodes.Mask(
                     _names(statement.children[0]),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from decoy.lang._errors import Span
 
@@ -14,7 +15,7 @@ class Value:
     """An option value. `quoted` separates the string `"zip"` from the bare word `zip`; both
     compile to the same string, the difference is kept for the formatter."""
 
-    value: Scalar | tuple["Value", ...]
+    value: Scalar | tuple["Value", ...] | dict[str, "Value"]
     span: Span
     quoted: bool = False
 
@@ -43,6 +44,17 @@ class Call:
 
 
 @dataclass(frozen=True)
+class Expression:
+    """An expression as one line of canonical text: single spaces, no line breaks or comments.
+
+    The compiler only finds where an expression starts and ends. The text goes to the engine,
+    whose closed grammars are the one place that decides what an expression may contain."""
+
+    text: str
+    span: Span
+
+
+@dataclass(frozen=True)
 class Treatment:
     """A strategy call and the settings written after it."""
 
@@ -50,6 +62,7 @@ class Treatment:
     namespace: Name | None
     deterministic: bool
     vaulted: bool
+    when: Expression | None
     span: Span
 
 
@@ -67,11 +80,21 @@ class Keep:
 
 
 @dataclass(frozen=True)
+class Transform:
+    """A table-shaping statement, already in the engine's transform shape: the `op` and its
+    fields, each with the span it was written at."""
+
+    op: str
+    fields: tuple[tuple[str, Any, Span], ...]
+    span: Span
+
+
+@dataclass(frozen=True)
 class Table:
     name: Name
     source: Call
     target: Call
-    statements: tuple[Mask | Keep, ...]
+    statements: tuple[Mask | Keep | Transform, ...]
     span: Span
 
 

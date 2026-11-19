@@ -141,7 +141,7 @@ def test_comments_are_ignored() -> None:
     ("text", "code", "line"),
     [
         (_BASE.replace("decoy 1", "decoy 2"), "lang.version", 1),
-        (_BASE.replace("ssn : redact", "ssn = redact"), "lang.syntax", 7),
+        (_BASE.replace("ssn : redact", "ssn ; redact"), "lang.syntax", 7),
         (_BASE.replace("  seed 42\n", ""), "lang.seed_missing", 3),
         (_BASE.replace("seed 42", "seed 42\n  seed 43"), "lang.setting_repeated", 5),
         (_with_rule("ssn : redcat"), "lang.unknown_strategy", 7),
@@ -234,3 +234,100 @@ def test_reserved_words_in_a_table_need_quotes_as_column_names() -> None:
         _config(_with_rule("'keep', 'vaulted' : redact"))["tables"][0]["columns"][1]["name"]
         == "vaulted"
     )
+
+
+def _columns(rule: str, *, check: bool = True) -> list[dict]:
+    return _config(_with_rule(rule), check=check)["tables"][0]["columns"]
+
+
+def test_when_condition_becomes_one_line_of_canonical_text() -> None:
+    rule = """ssn : fpe(charset: digits) in ids when country == 'US'
+          and   age >= 1_8      # adults
+          and state not in ["CA", 'NY'] or not (score < -1)
+    email : redact when active == True"""
+    first, second = _columns(rule)
+    assert first["when"] == (
+        "country == 'US' and age >= 18 and state not in [\"CA\", 'NY'] or not (score < -1)"
+    )
+    assert second == {"name": "email", "strategy": "redact", "when": "active == True"}
+
+
+def test_a_condition_the_engine_refuses_is_reported_on_the_condition() -> None:
+    text = _with_rule("ssn : redact when country + 1 == 2")
+    [problem] = _errors(text)
+    assert "when_outside_closed_grammar" in problem.message
+    assert (problem.span.line, problem.span.column) == (
+        7,
+        text.splitlines()[6].index("country") + 1,
+    )
+    assert "compares one column" in problem.hint
+
+
+def test_let_carries_its_condition() -> None:
+    text = _BASE.replace("seed 42", "seed 42\n  let us = redact when country == 'US'").replace(
+        "ssn : redact", "ssn : us"
+    )
+    assert _config(text)["tables"][0]["columns"][0]["when"] == "country == 'US'"
+
+
+def test_map_values_nest() -> None:
+    [column] = _columns("age : derived(expression: 'age * 12', bounds: {min: 0, 'max': 1500})")
+    assert column["provider_config"]["bounds"] == {"min": 0, "max": 1500}
+    assert _errors(_with_rule("age : derived(b: {a: 1, a: 2})"))[0].code == "lang.option_repeated"
+
+
+def test_fixed_width_source_takes_its_layout_inline() -> None:
+    layout = "{columns: [{name: ssn, start: 0, width: 9}, {name: st, start: 9, width: 2}]}"
+    text = _BASE.replace('csv("in.csv")', f'fixed_width("in.txt", layout: {layout})')
+    source = _config(text)["sources"]["people"]
+    assert source["format"] == "fixed_width"
+    assert source["layout"]["columns"][1] == {"name": "st", "start": 9, "width": 2}
+
+
+def test_table_shaping_statements_become_transforms_in_written_order() -> None:
+    rule = """where status != 'TEST' and age >= 18
+    full_name = first_name + ' ' + last_name
+    band = if(age >= 65, 'senior', 'adult')
+    sort by signup desc, id
+    sort by id
+    limit 5_000
+    dedupe on member_id, plan
+    dedupe
+    drop notes, internal
+    ssn : redact"""
+    table = _config(_with_rule(rule))["tables"][0]
+    assert table["transforms"] == [
+        {"op": "filter", "expression": "status != 'TEST' and age >= 18"},
+        {"op": "derive", "column": "full_name", "expression": "first_name + ' ' + last_name"},
+        {"op": "derive", "column": "band", "expression": "if(age >= 65, 'senior', 'adult')"},
+        {"op": "sort", "by": ["signup", "id"], "ascending": [False, True]},
+        {"op": "sort", "by": ["id"]},
+        {"op": "limit", "n": 5000},
+        {"op": "dedupe", "columns": ["member_id", "plan"]},
+        {"op": "dedupe"},
+        {"op": "drop_column", "columns": ["notes", "internal"]},
+    ]
+    assert table["columns"] == [{"name": "ssn", "strategy": "redact"}]
+
+
+def test_a_table_without_shaping_has_no_transforms_key() -> None:
+    assert "transforms" not in _config(_BASE)["tables"][0]
+
+
+@pytest.mark.parametrize("rule", ["row_id = sequence(start: 1)", "row_id = faker(first_name)"])
+def test_a_generator_in_a_masked_table_is_refused(rule: str) -> None:
+    problem = _errors(_with_rule(f"{rule}\n    ssn : redact"))[0]
+    assert (problem.code, problem.span.line) == ("lang.generator_in_masked_table", 7)
+    assert "`generate` table" in problem.hint
+
+
+@pytest.mark.parametrize("word", ["or", "limit", "keep", "drop"])
+def test_a_language_word_as_a_column_name_gets_a_quoting_hint(word: str) -> None:
+    problem = _errors(_with_rule(f"ssn : redact when a == 1\n    {word} : hash"))[0]
+    assert problem.code == "lang.syntax"
+    assert f"write '{word}'" in problem.hint
+    assert _columns(f"ssn : redact when a == 1\n    '{word}' : redact")[1]["name"] == word
+
+
+def test_a_missing_value_does_not_get_the_quoting_hint() -> None:
+    assert "write '" not in _errors(_BASE.replace("seed 42", "seed"))[0].hint

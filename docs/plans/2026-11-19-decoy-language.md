@@ -128,7 +128,7 @@ where  status != 'TEST' and age >= 18
 full_name = first_name + ' ' + last_name
 sort by signup_date desc
 limit 5_000_000
-dedupe on (member_id)
+dedupe on member_id, plan_id
 drop internal_notes
 ```
 
@@ -305,7 +305,9 @@ Writing rules:
 2. **Braces, not indentation.** Spaces and line breaks only separate words, as in JSON or C, so
    nothing depends on layout; one rule per line is the convention the formatter applies.
    Indentation mistakes are the most common YAML failure for people and agents alike. Inside a
-   table four words are reserved (`keep`, `in`, `deterministic`, `vaulted`); a column with one of
+   table the language's own words are reserved (`keep`, `where`, `sort`, `limit`, `dedupe`, `drop`,
+   `in`, `deterministic`, `vaulted`, `when`, and in an expression `and`, `or`, `not`, `if`,
+   `else`); the compiler says so when one is used as a name. A column with one of
    those names, or with a space in it, is written in single quotes: `'First Name' : redact`.
 3. **Things live where they apply.** A table's source sits on the table. A foreign key sits on the
    child column.
@@ -393,8 +395,8 @@ programs, agree the syntax, then build.
 |---|---|---|
 | 0 | Syntax trial. Hand-translate five real configs into two candidate styles (section 12, D1). Pick one. Write the agent card. | Agreed syntax for groups A to F |
 | 1 | Compiler skeleton: parse, AST, lower, validate, source-mapped errors. Groups A, B and the simple part of D. **Built** in `src/decoy/lang/`: the four mask templates compile to identical config. Not wired to a command; `when` waits for group G. | Recipe (a) compiles |
-| 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
-| 3 | Group C transforms. Group E: `link`, composite keys, coherent groups, namespaces, vault. | A multi-table foreign-key pipeline compiles |
+| 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. **Built:** `when` conditions, nested `{key: value}` option values, fixed-width sources. An expression is only delimited by the compiler and sent to the engine as one line of text; the engine's grammars decide what is valid. Strategy options that hold an expression (`derived(expression: "age * 12")`) are still quoted strings. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
+| 3 | Group C transforms. **Built:** `where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`; a generator in a masked table is refused. The engine checks `where` and `=` expressions at plan compile, so the compiler does not report mistakes inside them yet. Group E: foreign keys (`<-` or `link`, to be chosen), composite keys, coherent groups, namespaces, vault: **not built.** | A multi-table foreign-key pipeline compiles |
 | 4 | Group F generation. | All seven `generate-*` templates compile to identical YAML |
 | 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. | **v0.1: usable for real pipelines** |
 | 6 | Group J checks. Group H policy and `use`. Group I subset. | Full coverage of `PipelineConfig` |

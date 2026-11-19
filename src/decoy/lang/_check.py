@@ -17,6 +17,10 @@ from decoy_engine.config import PipelineConfigError
 from decoy.lang._connectors import SourceMap
 from decoy.lang._errors import Diagnostic, LangError, Span
 
+_WHEN_HINT = (
+    "a condition compares one column with a value (`country == 'US'`) or tests a list "
+    "(`state in ['CA', 'NY']`), joined with `and`, `or`, `not`"
+)
 _STEP = re.compile(r"\[(\d+)\]|([^.\[\]]+)")
 
 
@@ -39,14 +43,12 @@ def validate(config: dict[str, Any], spans: SourceMap) -> None:
     try:
         parse_pipeline_config(config)
     except PipelineConfigError as error:
-        problems = [
-            Diagnostic(
-                "lang.config",
-                f"{problem.text} [{problem.code}]",
-                locate(path_of(problem.location), spans),
-            )
-            for problem in error.problems
-        ]
+        problems = []
+        for problem in error.problems:
+            path = path_of(problem.location)
+            hint = _WHEN_HINT if path and path[-1] == "when" else None
+            text = f"{problem.text} [{problem.code}]"
+            problems.append(Diagnostic("lang.config", text, locate(path, spans), hint))
     else:
         return
     # Raised outside the handler so the engine error is not attached as context.

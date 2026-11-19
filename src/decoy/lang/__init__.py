@@ -4,7 +4,8 @@
     compiled.config                   # the dict `yaml.safe_load` gives for the same pipeline
     emit_yaml(compiled.config)        # that config as YAML text
 
-Version 1 covers pipeline settings, sources and targets, and masking.
+Built so far: pipeline settings, sources and targets, masking with `when` conditions, and table
+shaping (`where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`).
 """
 
 from __future__ import annotations

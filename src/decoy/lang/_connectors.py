@@ -29,6 +29,7 @@ CONNECTORS: dict[str, Connector] = {
     # A CSV source has a header row unless `header: false` says otherwise.
     "csv": Connector("file", ("path",), "csv", {"has_header": True}),
     "parquet": Connector("file", ("path",), "parquet"),
+    "fixed_width": Connector("file", ("path",), "fixed_width"),
     "s3": Connector("s3", ("bucket", "key"), None),
     "gcs": Connector("gcs", ("bucket", "object"), None),
 }
@@ -42,6 +43,8 @@ def plain(value: nodes.Value) -> Any:
     """A syntax-tree value as the plain Python value the config holds."""
     if isinstance(value.value, tuple):
         return [plain(item) for item in value.value]
+    if isinstance(value.value, dict):
+        return {key: plain(item) for key, item in value.value.items()}
     return value.value
 
 

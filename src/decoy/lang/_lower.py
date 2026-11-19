@@ -15,10 +15,12 @@ validation can be reported on the line that caused it.
 from __future__ import annotations
 
 import difflib
+import re
 from functools import lru_cache
 from typing import Any
 
 from decoy_engine import PipelineConfig, strategy_catalog
+from decoy_engine.config import generate_option_catalog
 
 from decoy.lang import _ast as nodes
 from decoy.lang._connectors import SourceMap, lower_connector, plain
@@ -33,8 +35,10 @@ _OWN_SYNTAX = {
     "namespace": "`in <namespace>` after the call",
     "deterministic": "the word `deterministic` after the call",
     "vault": "the word `vaulted` after the call",
+    "when": "`when <condition>` after the call",
     "provider_config": "plain `key: value` options",
 }
+_CALL = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\(")
 _SETTING_FIELDS = {
     "seed": "seed",
     "secret": "mask_secret_ref",
@@ -45,6 +49,11 @@ _SETTING_FIELDS = {
 @lru_cache(maxsize=1)
 def _strategies() -> frozenset[str]:
     return frozenset(info.name for info in strategy_catalog())
+
+
+@lru_cache(maxsize=1)
+def _generators() -> frozenset[str]:
+    return frozenset(generate_option_catalog())
 
 
 @lru_cache(maxsize=1)
@@ -136,7 +145,27 @@ def _table(
     columns: list[dict[str, Any]] = []
     seen: dict[str, nodes.Name] = {}
     problems: list[Diagnostic] = []
+    transforms: list[dict[str, Any]] = []
     for statement in table.statements:
+        if isinstance(statement, nodes.Transform):
+            step = ("tables", index, "transforms", len(transforms))
+            spans[step] = statement.span
+            transforms.append({"op": statement.op})
+            for key, value, span in statement.fields:
+                transforms[-1][key] = value
+                spans[(*step, key)] = span
+                called = _CALL.match(value) if key == "expression" else None
+                if statement.op == "derive" and called and called[1] in _generators():
+                    problems.append(
+                        Diagnostic(
+                            "lang.generator_in_masked_table",
+                            f"`{called[1]}` is a generator; a masked table can only define a "
+                            "column from an expression",
+                            span,
+                            "generators belong in a `generate` table",
+                        )
+                    )
+            continue
         for column in statement.columns:
             if column.text in seen:
                 first = seen[column.text].span
@@ -164,7 +193,8 @@ def _table(
     spans[("tables", index)] = table.span
     spans[("tables", index, "name")] = table.name.span
     config["sources"][name] = source
-    config["tables"].append({"name": name, "columns": columns})
+    shaped = {"transforms": transforms} if transforms else {}
+    config["tables"].append({"name": name, **shaped, "columns": columns})
     config["targets"][name] = target
 
 
@@ -174,7 +204,13 @@ def _resolve(used: nodes.Treatment, lets: dict[str, nodes.Treatment]) -> nodes.T
     if name.text in _strategies():
         return used
     if name.text in lets:
-        if used.call.has_parens or used.namespace or used.deterministic or used.vaulted:
+        if (
+            used.call.has_parens
+            or used.namespace
+            or used.deterministic
+            or used.vaulted
+            or used.when
+        ):
             raise fail(
                 "lang.let_modified",
                 f"`{name.text}` is a `let` name and is used as it is",
@@ -219,6 +255,9 @@ def _column(
         out["deterministic"] = True
     if treatment.vaulted:
         out["vault"] = True
+    if treatment.when is not None:
+        out["when"] = treatment.when.text
+        spans[(*path, "when")] = treatment.when.span
     provider_config: dict[str, Any] = {}
     for option in call.options:
         key = option.key.text
