@@ -23,7 +23,10 @@ _KEYWORDS = (
     "subset start sample keys follow budget allow dangling is null"
 ).split()
 
-GRAMMAR = r"""
+NAME_PATTERN = "[A-Za-z_][A-Za-z0-9_]*"
+
+GRAMMAR = (
+    r"""
 start: DECOY NUMBER pipeline
 
 pipeline: PIPELINE [name] "{" item* "}"
@@ -112,7 +115,7 @@ operand: prefix* primary
 ?primary: NUMBER | DQ_STRING | SQ_STRING | NAME | e_call | e_group | e_list | e_map
 !e_call: (NAME | IF) "(" [e_argument ("," e_argument)*] ")"
 ?e_argument: expression | e_option
-e_option: NAME ":" expression
+e_option: (NAME | SQ_STRING) ":" expression
 e_group: "(" expression ")"
 e_list: "[" [expression ("," expression)*] "]"
 // Maps and `key: value` arguments only occur in generator calls; an expression has neither.
@@ -137,7 +140,7 @@ pair: (NAME | DQ_STRING | SQ_STRING) ":" value
 
 name: NAME | SQ_STRING
 
-NAME: /[A-Za-z_][A-Za-z0-9_]*/
+NAME: /NAME_PATTERN_HERE/
 DQ_STRING: /"([^"\\\n]|\\.)*"/
 SQ_STRING: /'[^'\n]*'/
 NUMBER: /-?[0-9][0-9_]*(\.[0-9]+)?([eE][+-]?[0-9]+)?/
@@ -151,7 +154,9 @@ COMMENT: /#[^\n]*/
 %import common.WS
 %ignore WS
 %ignore COMMENT
-""" + "\n".join(f"{word.upper()}.2: /{word}(?![A-Za-z0-9_])/" for word in _KEYWORDS)
+""".replace("NAME_PATTERN_HERE", NAME_PATTERN)
+    + "\n".join(f"{word.upper()}.2: /{word}(?![A-Za-z0-9_])/" for word in _KEYWORDS)
+)
 
 KEYWORD_TERMINALS = frozenset(word.upper() for word in _KEYWORDS)
 

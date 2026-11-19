@@ -3,10 +3,15 @@
 Text in double quotes takes the JSON escapes (`\\"`, `\\\\`, `\\n`, `\\t`, `\\uXXXX` and the rest of
 that set) and nothing else. Text in single quotes is taken as written, with no escapes, so a
 Windows path or a regular expression needs no doubling; it cannot contain a single quote.
+
+That is for values. Inside an expression (`when`, `where`, `name = ...`) quoted text is not
+read here at all: the expression goes to the engine exactly as written, and the engine's own
+rules for text apply.
 """
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -27,7 +32,12 @@ def span_of(node: Tree[Any] | Token) -> Span:
 
 def number_of(token: Token) -> int | float:
     digits = str(token).replace("_", "")
-    return float(digits) if any(mark in digits for mark in ".eE") else int(digits)
+    if not any(mark in digits for mark in ".eE"):
+        return int(digits)
+    value = float(digits)
+    if not math.isfinite(value):
+        raise fail("lang.number", "this number is too large to hold", span_of(token))
+    return value
 
 
 def unquote(token: Token) -> str:
@@ -49,4 +59,12 @@ def unquote(token: Token) -> str:
             "write a backslash as two, or use single quotes, where a backslash is just a backslash",
         )
 
-    return _ESCAPE.sub(replace, text[1:-1])
+    decoded = _ESCAPE.sub(replace, text[1:-1])
+    try:
+        # Two `\\u` escapes for one character (a surrogate pair) become that character.
+        return decoded.encode("utf-16", "surrogatepass").decode("utf-16")
+    except UnicodeDecodeError:
+        failure = fail(
+            "lang.string_escape", "this `\\u` escape is half of a character", span_of(token)
+        )
+    raise failure

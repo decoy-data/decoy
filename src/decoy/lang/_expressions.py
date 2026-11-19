@@ -94,7 +94,9 @@ def plain_value(tree: Tree[Any]) -> nodes.Value:
             token, value = pair.children
             key = str(token) if token.type == "NAME" else unquote(token)
             if key in pairs:
-                raise fail("lang.option_repeated", f"key `{key}` is given twice", span_of(token))
+                raise fail(
+                    "lang.option_repeated", "a key is given twice in this map", span_of(token)
+                )
             pairs[key] = plain_value(value)
         return nodes.Value(pairs, span)
     raise fail(
@@ -117,7 +119,7 @@ def generator_call(expression: Tree[Any]) -> nodes.Call | None:
     for argument in (c for c in call.children[1:] if isinstance(c, Tree)):
         if argument.data == "e_option":
             token, value = argument.children
-            key = nodes.Name(str(token), span_of(token))
+            key = nodes.Name(str(token) if token.type == "NAME" else unquote(token), span_of(token))
             if any(o.key.text == key.text for o in options):
                 raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
             options.append(nodes.Option(key, plain_value(value)))

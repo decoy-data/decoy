@@ -69,17 +69,29 @@ def _names(items: list[str]) -> tuple[nodes.Name, ...]:
 
 
 def _value(item: Any, path: str) -> nodes.Value:
+    """A config value as a value node. `path` stays at the option: a map key below it is data
+    and is never put in an error."""
     if isinstance(item, dict):
         if not all(isinstance(key, str) for key in item):
             raise ConvertError(path, "a map key that is not text cannot be written")
-        return nodes.Value({k: _value(v, f"{path}.{k}") for k, v in item.items()}, NOWHERE)
+        return nodes.Value({k: _value(v, path) for k, v in item.items()}, NOWHERE)
     if isinstance(item, (list, tuple)):
-        return nodes.Value(tuple(_value(v, f"{path}[{i}]") for i, v in enumerate(item)), NOWHERE)
+        return nodes.Value(tuple(_value(v, path) for v in item), NOWHERE)
     if item is None or (isinstance(item, float) and not math.isfinite(item)):
         raise ConvertError(path, "a null or non-finite value cannot be written")
     if not isinstance(item, (str, int, float, bool)):
         raise ConvertError(path, "this kind of value cannot be written")
     return nodes.Value(item, NOWHERE)
+
+
+def typed(value: Any) -> Any:
+    """The value with every scalar paired with its type. `1`, `1.0` and `True` are equal to
+    Python and different to the engine, which hashes them apart."""
+    if isinstance(value, dict):
+        return {key: typed(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [typed(item) for item in value]
+    return (type(value).__name__, value)
 
 
 def _options(items: dict[str, Any], path: str) -> tuple[nodes.Option, ...]:
@@ -170,6 +182,8 @@ def _shaping(op: dict[str, Any], path: str) -> nodes.Shaping:
     ascending = op.get("ascending", True)
     if isinstance(ascending, bool):
         ascending = [ascending] * len(op["by"])
+    if len(ascending) != len(op["by"]):
+        raise ConvertError(f"{path}.ascending", "a sort needs one direction for each key")
     keys = zip(op["by"], ascending, strict=True)
     return nodes.Sort(tuple(nodes.SortKey(_name(c), bool(up)) for c, up in keys), NOWHERE)
 
@@ -191,6 +205,9 @@ def _mask_table(table: dict[str, Any], index: int, config: dict[str, Any]) -> no
             continue
         rule = {k: v for k, v in column.items() if k != "name"}
         previous = statements[-1] if statements else None
+        same_rule = position > 0 and typed(rule) == typed(
+            {k: v for k, v in columns[position - 1].items() if k != "name"}
+        )
         if column.get("coherent_with"):
             members = [column_name, *column["coherent_with"]]
             grouped.update(members)
@@ -205,12 +222,7 @@ def _mask_table(table: dict[str, Any], index: int, config: dict[str, Any]) -> no
                 statements.append(nodes.Keep((_name(column_name),), NOWHERE))
         else:
             treatment = _treatment(column, column_path)
-            same = (
-                isinstance(previous, nodes.Mask)
-                and not previous.coherent
-                and previous.treatment == treatment
-            )
-            if same:
+            if same_rule and isinstance(previous, nodes.Mask) and not previous.coherent:
                 merged = (*previous.columns, _name(column_name))
                 statements[-1] = nodes.Mask(merged, treatment, NOWHERE)
             else:
@@ -465,26 +477,34 @@ def _normalized(config: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _model(config: dict[str, Any], path: str) -> dict[str, Any]:
+def _validated(config: dict[str, Any]) -> Any:
     try:
-        return parse_pipeline_config(copy.deepcopy(config)).model_dump()
+        return parse_pipeline_config(copy.deepcopy(config))
     except PipelineConfigError:
-        failure = ConvertError(path, "the config does not validate")
+        failure = ConvertError("", "the config does not validate")
     raise failure
 
 
 def convert_config(config: dict[str, Any]) -> str:
     """The `.decoy` program for a pipeline config, checked to compile back to the same pipeline."""
-    wanted = _model(config, "")
+    # The engine's own account of what the config sets: its types, not the file's (a seed
+    # written as text is a number here), and nothing that was left unset or null.
+    source = _validated(config).model_dump(exclude_unset=True, exclude_none=True, by_alias=True)
     try:
-        text = print_program(_program(config))
+        text = print_program(_program(source))
         compiled, spans = lower(parse(text))
         validate(compiled, spans)
-        wanted = _model(_normalized(config), "")
-    except (LangError, RecursionError):
-        failure = ConvertError("", "the language cannot write this config")
+        same = typed(_validated(_normalized(compiled)).model_dump()) == typed(
+            _validated(_normalized(source)).model_dump()
+        )
+    except LangError as error:
+        # A diagnostic names words, strategies, tables and columns, never a value.
+        reason = error.diagnostics[0].message
+        failure = ConvertError("", f"the language cannot write this config: {reason}")
+    except RecursionError:
+        failure = ConvertError("", "the config is nested too deeply to write")
     else:
-        if _model(_normalized(compiled), "") == wanted:
+        if same:
             return text
         failure = ConvertError("", "the program for this config would not compile back to it")
     raise failure

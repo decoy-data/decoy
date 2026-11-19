@@ -7,8 +7,10 @@ from pathlib import Path
 
 import pytest
 import yaml
+from decoy_engine import parse_pipeline_config
 
 from decoy.lang import ConvertError, compile_text, convert_config
+from decoy.lang._convert import typed
 from decoy.templates import get_template, template_names
 
 _TWINS = Path(__file__).parent / "twins"
@@ -328,7 +330,7 @@ def _broken(change) -> dict:
         (
             lambda c: c["tables"][0]["columns"][1].update(strategy="no_such_strategy"),
             "",
-            "cannot write",
+            "is not a strategy",
         ),
         (
             lambda c: c["tables"][0]["columns"][1].update(provider_config={"x": None}),
@@ -391,3 +393,122 @@ def test_a_refusal_names_no_value_from_the_config() -> None:
     assert "SECRET" not in str(caught.value)
     assert "private-path" not in str(caught.value)
     assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def _same_pipeline(config: dict) -> str:
+    """Convert, compile, and compare with the engine's types kept apart."""
+    text = convert_config(config)
+    compiled = compile_text(text).config
+    wanted = parse_pipeline_config(copy.deepcopy(config)).model_dump()
+    assert typed(parse_pipeline_config(copy.deepcopy(compiled)).model_dump()) == typed(wanted)
+    return text
+
+
+def test_columns_whose_rules_differ_only_in_a_value_type_are_not_merged() -> None:
+    columns = [
+        {"name": name, "strategy": "truncate", "provider_config": {"length": 3, "x": item}}
+        for name, item in (("a", 1), ("b", True), ("c", 1.0), ("d", "1"), ("e", [1]), ("f", [True]))
+    ]
+    text = _same_pipeline(_config(columns))
+    assert text.count("truncate(") == 6
+
+
+@pytest.mark.parametrize("key", ["seed", "true", "if", "unique", "First Name", "in"])
+def test_an_option_key_that_is_a_word_of_the_language_round_trips(key: str) -> None:
+    column = {"name": "x", "strategy": "truncate", "provider_config": {"length": 3, key: 5}}
+    _same_pipeline(_config([dict(_ID), column]))
+
+
+def test_a_generated_column_with_unique_round_trips() -> None:
+    config = {
+        "version": 2,
+        "global_settings": {"seed": 1},
+        "sources": {},
+        "tables": [
+            {
+                "name": "p",
+                "row_count": 5,
+                "generate_columns": [
+                    {"name": "id", "type": "sequence", "start": 1, "unique": True},
+                    {"name": "email", "type": "faker", "faker_type": "email", "unique": True},
+                ],
+            }
+        ],
+        "targets": {"p": {"type": "file", "format": "csv", "path": "p.csv"}},
+    }
+    assert "unique: true" in _same_pipeline(config)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda c: c.update(quarantine=None),
+        lambda c: c.update(scan_baseline=None, protected_quarantine=None),
+        lambda c: c["global_settings"].update(seed="42"),
+        lambda c: c["tables"][0].update(transforms=[{"op": "limit", "n": "5"}]),
+        lambda c: c["sources"]["t"].update(layout=None),
+    ],
+    ids=["null-block", "null-blocks", "seed-as-text", "limit-as-text", "null-field"],
+)
+def test_what_the_engine_accepts_and_normalises_converts(change) -> None:
+    _same_pipeline(_broken(change))
+
+
+def test_the_engine_s_full_dump_of_a_config_converts() -> None:
+    config = _config([dict(_ID), {"name": "x", "strategy": "redact"}])
+    dumped = parse_pipeline_config(copy.deepcopy(config)).model_dump(by_alias=True)
+    _same_pipeline(dumped)
+
+
+def test_a_sort_with_the_wrong_number_of_directions_is_refused_not_crashed() -> None:
+    config = _broken(
+        lambda c: c["tables"][0].update(
+            transforms=[{"op": "sort", "by": ["id", "x"], "ascending": [True]}]
+        )
+    )
+    with pytest.raises(ConvertError):
+        convert_config(config)
+
+
+def test_a_refusal_never_names_a_map_key_from_the_config() -> None:
+    config = _broken(
+        lambda c: c["tables"][0]["columns"][1].update(
+            provider_config={"people": {"Jane Roe 555-1234": float("inf")}}
+        )
+    )
+    with pytest.raises(ConvertError) as caught:
+        convert_config(config)
+    assert "Jane" not in str(caught.value)
+
+
+_REPO = Path(__file__).resolve().parents[3]
+# Valid pipeline files the converter is right to refuse, and why.
+_REFUSED = {
+    "tests/fixtures/qa_first_user/pipeline_no_namespace.yaml": "a relationship with no namespace; a link would add one",
+}
+
+
+def _pipeline_files() -> list[Path]:
+    found = []
+    for folder in ("examples", "src/decoy/templates", "packaging_tools/smoke", "tests/fixtures"):
+        for path in sorted((_REPO / folder).rglob("*.y*ml")):
+            try:
+                config = yaml.safe_load(path.read_text(encoding="utf-8"))
+                parse_pipeline_config(copy.deepcopy(config))
+            except Exception:
+                continue
+            found.append(path)
+    return found
+
+
+def test_every_valid_pipeline_file_in_the_repository_converts_or_is_a_listed_refusal() -> None:
+    files = _pipeline_files()
+    assert len(files) >= 15
+    refused = set()
+    for path in files:
+        config = yaml.safe_load(path.read_text(encoding="utf-8"))
+        try:
+            _same_pipeline(config)
+        except ConvertError:
+            refused.add(path.relative_to(_REPO).as_posix())
+    assert refused == set(_REFUSED)

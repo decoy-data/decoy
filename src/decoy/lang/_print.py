@@ -12,6 +12,7 @@ otherwise (a word of the language, a space, a leading digit).
 from __future__ import annotations
 
 import json
+import math
 import re
 from decimal import Decimal
 from typing import Any
@@ -19,9 +20,11 @@ from typing import Any
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
 from decoy.lang._errors import fail
-from decoy.lang._grammar import KEYWORD_TERMINALS
+from decoy.lang._grammar import KEYWORD_TERMINALS, NAME_PATTERN
 
-_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_WORD = re.compile(NAME_PATTERN)
+# Words that begin a value or an expression, so cannot stand bare before the `:` of an option.
+OPTION_KEYS_QUOTED = frozenset({"true", "false", "not", "if"})
 INDENT = "  "
 ALIGN_LIMIT = 24
 
@@ -37,8 +40,10 @@ def text_literal(text: str) -> str:
 
 def name(text: str) -> str:
     """A table, column, namespace or `let` name: bare, or in single quotes."""
-    if _bare(text):
-        return text
+    return text if _bare(text) else _single_quoted(text)
+
+
+def _single_quoted(text: str) -> str:
     if "'" in text or "\n" in text or not text:
         raise fail("lang.unprintable_name", "a name with a quote or a line break cannot be written")
     return f"'{text}'"
@@ -47,7 +52,8 @@ def name(text: str) -> str:
 def number(value: int | float) -> str:
     if isinstance(value, int):
         return str(value)
-    # Plain decimal notation: the grammar has no exponent form.
+    if not math.isfinite(value):
+        raise fail("lang.unprintable_number", "a number that is not finite cannot be written")
     digits = format(Decimal(repr(value)), "f")
     return digits if "." in digits else f"{digits}.0"
 
@@ -66,7 +72,17 @@ def value(item: Any) -> str:
 
 
 def _key(text: str) -> str:
+    """A key in a map or in `settings { }` and `options { }`: bare, or in double quotes."""
     return text if _bare(text) else text_literal(text)
+
+
+def option_key(text: str) -> str:
+    """The name of a `key: value` option in a call. The grammar reads a word of the language as
+    a plain name there, except the few that can begin a value; those, and anything that is not
+    a word, are written in single quotes."""
+    if _WORD.fullmatch(text) is not None and text not in OPTION_KEYS_QUOTED:
+        return text
+    return name(text) if _bare(text) else _single_quoted(text)
 
 
 def _names(items: tuple[nodes.Name, ...]) -> str:
@@ -80,7 +96,7 @@ def _arguments(
 ) -> str:
     parts = [f"{name(ref.table.text)}.{name(ref.column.text)}" for ref in refs]
     parts += [value(plain(item)) for item in positional]
-    parts += [f"{_key(option.key.text)}: {value(plain(option.value))}" for option in options]
+    parts += [f"{option_key(option.key.text)}: {value(plain(option.value))}" for option in options]
     return ", ".join(parts)
 
 

@@ -1,8 +1,11 @@
 """Property: a valid pipeline config converts to a program that compiles back to the same model.
 
-The generator builds configs the language is meant to write: masked tables with rules, shaping
-and foreign keys, generated tables, settings and checks. Hypothesis runs derandomized, so a
-failure reproduces from the test alone.
+The generator builds masked tables (rules with options of every value type, option keys that are
+words of the language, conditions, shaping, one foreign key), a generated table, settings, a
+subset seed and three checks. It does not build coherent groups, composite keys or a column with
+both a link and a rule; those have enumerated cases in `test_convert.py`. Expressions are
+generated already spaced as the compiler writes them, so the comparison is exact; respacing has
+its own test there. Hypothesis runs derandomized, so a failure reproduces from the test alone.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
 
 from decoy.lang import compile_text, convert_config
+from decoy.lang._convert import typed
 from decoy.lang._parse import parse
 from decoy.lang._print import print_program
 
@@ -58,7 +62,20 @@ _VALUES = st.recursive(
     ),
     max_leaves=6,
 )
-_WHEN = st.sampled_from(["x == 1", "x==1 and  y != 'a'", "x in ['a', 'b']", "not (x < 2)"])
+# Equal to Python and different to the engine: adjacent columns must not be merged over these.
+_LOOKALIKES = st.sampled_from([1, True, 1.0, "1", "true", [1], [True]])
+_KEYS = st.sampled_from(["note", "seed", "true", "if", "unique", "in", "Odd Key"])
+_WHEN = st.sampled_from(["x == 1", "x == 1 and y != 'a'", "x in ['a', 'b']", "not (x < 2)"])
+_SHAPING = [
+    {"op": "filter", "expression": "x > 1 and y < 9"},
+    {"op": "derive", "column": "derived_total", "expression": "x * 2"},
+    {"op": "sort", "by": ["x", "y"], "ascending": [True, False]},
+    {"op": "sort", "by": ["x"]},
+    {"op": "limit", "n": 500},
+    {"op": "dedupe"},
+    {"op": "dedupe", "columns": ["x"]},
+    {"op": "drop_column", "columns": ["never_masked"]},
+]
 
 
 @st.composite
@@ -75,28 +92,43 @@ def _rule(draw: st.DrawFn) -> dict:
     if kind == "fpe":
         rule["provider_config"] = {"charset": draw(st.sampled_from(["digits", "ALPHANUM"]))}
     if kind == "truncate":
-        rule["provider_config"] = {"length": draw(st.integers(1, 9)), "note": draw(_VALUES)}
+        rule["provider_config"] = {
+            "length": draw(st.integers(1, 2)),
+            draw(_KEYS): draw(st.one_of(_LOOKALIKES, _VALUES)),
+        }
     if kind != "passthrough" and draw(st.booleans()):
         rule["when"] = draw(_WHEN)
     return rule
 
 
-@st.composite
-def _transforms(draw: st.DrawFn) -> list[dict]:
-    choices = [
-        {"op": "filter", "expression": "x>1 and y < 9"},
-        {"op": "derive", "column": "derived_total", "expression": "x * 2"},
-        {
-            "op": "sort",
-            "by": ["x", "y"],
-            "ascending": draw(st.lists(st.booleans(), min_size=2, max_size=2)),
-        },
-        {"op": "limit", "n": draw(st.integers(0, 10**6))},
-        {"op": "dedupe"},
-        {"op": "dedupe", "columns": ["x"]},
-        {"op": "drop_column", "columns": ["never_masked"]},
-    ]
-    return draw(st.lists(st.sampled_from(choices), max_size=3))
+def _source(draw: st.DrawFn) -> dict:
+    if draw(st.booleans()):
+        return {"type": "file", "format": "parquet", "path": draw(_WORDS)}
+    return {
+        "type": "file",
+        "format": "csv",
+        "path": draw(_WORDS),
+        "has_header": True,
+        "delimiter": draw(st.sampled_from([",", "|", ";"])),
+    }
+
+
+def _generated(draw: st.DrawFn) -> dict:
+    return {
+        "name": "generated rows",
+        "row_count": draw(st.integers(0, 50)),
+        "generate_columns": [
+            {"name": "id", "type": "sequence", "start": draw(st.integers(0, 9)), "unique": True},
+            {
+                "name": "kind",
+                "type": "categorical",
+                "categories": ["a b", "c"],
+                "weights": [0.25, 0.75],
+            },
+            {"name": "label", "type": "derived", "expression": "concat(kind, '-', id)"},
+            {"name": "flag", "type": "constant", "value": draw(_LOOKALIKES)},
+        ],
+    }
 
 
 @st.composite
@@ -109,11 +141,11 @@ def _configs(draw: st.DrawFn) -> dict:
     for name in names:
         columns = draw(st.lists(_NAMES, min_size=1, max_size=5, unique=True))
         table: dict = {"name": name, "columns": [{"name": c, **draw(_rule())} for c in columns]}
-        shaping = draw(_transforms())
+        shaping = draw(st.lists(st.sampled_from(_SHAPING), max_size=3))
         if shaping:
             table["transforms"] = shaping
         config["tables"].append(table)
-        config["sources"][name] = {"type": "file", "format": "parquet", "path": draw(_WORDS)}
+        config["sources"][name] = _source(draw)
         config["targets"][name] = {"type": "file", "format": "csv", "path": draw(_WORDS)}
     if len(names) > 1 and draw(st.booleans()):
         parent, child = config["tables"][0], config["tables"][1]
@@ -129,6 +161,22 @@ def _configs(draw: st.DrawFn) -> dict:
             }
         ]
     if draw(st.booleans()):
+        config["tables"].append(_generated(draw))
+        config["targets"]["generated rows"] = {
+            "type": "file",
+            "format": "parquet",
+            "path": "g.parquet",
+        }
+    if draw(st.booleans()):
+        first = config["tables"][0]
+        seed = {
+            "table": first["name"],
+            "mode": "sample",
+            "key_columns": [first["columns"][0]["name"]],
+            "fraction": draw(st.sampled_from([0.01, 0.125, 0.333, 1.0])),
+        }
+        config["subset"] = {"seeds": [seed]}
+    if draw(st.booleans()):
         config["delivery"] = {"mode": draw(st.sampled_from(["strict", "best_effort"]))}
     if draw(st.booleans()):
         config["pre_scan"] = {"detectors": ["regex"]}
@@ -143,35 +191,23 @@ def _model(config: dict) -> dict:
     return parse_pipeline_config(copy.deepcopy(config)).model_dump()
 
 
-@settings(
-    max_examples=150, deadline=None, derandomize=True, suppress_health_check=[HealthCheck.too_slow]
+_SETTINGS = settings(
+    max_examples=200, deadline=None, derandomize=True, suppress_health_check=[HealthCheck.too_slow]
 )
+
+
+@_SETTINGS
 @given(_configs())
 def test_a_valid_config_converts_and_compiles_back_to_the_same_model(config: dict) -> None:
     try:
         wanted = _model(config)
     except PipelineConfigError:
         assume(False)
-    text = convert_config(config)
-    compiled = compile_text(text).config
-    # The converter's own check compares models; this repeats it from outside, on the
-    # fields the generator leaves untouched by expression respacing.
-    for table, again in zip(wanted["tables"], _model(compiled)["tables"], strict=True):
-        assert [c["name"] for c in table["columns"]] == [c["name"] for c in again["columns"]]
-        assert [c["strategy"] for c in table["columns"]] == [
-            c["strategy"] for c in again["columns"]
-        ]
-        assert [c["provider_config"] for c in table["columns"]] == [
-            c["provider_config"] for c in again["columns"]
-        ]
-    assert _model(compiled)["relationships"] == wanted["relationships"]
-    assert _model(compiled)["sources"] == wanted["sources"]
-    assert _model(compiled)["targets"] == wanted["targets"]
+    compiled = compile_text(convert_config(config)).config
+    assert typed(_model(compiled)) == typed(wanted)
 
 
-@settings(
-    max_examples=150, deadline=None, derandomize=True, suppress_health_check=[HealthCheck.too_slow]
-)
+@_SETTINGS
 @given(_configs())
 def test_printing_is_a_fixed_point(config: dict) -> None:
     try:

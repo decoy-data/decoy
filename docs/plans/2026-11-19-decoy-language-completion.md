@@ -94,14 +94,22 @@ family (masking, generation, checks), not by line count.
 
 ## Test evidence, stated plainly
 
-- TESTLINE, measured with `pytest --cov=decoy.lang --cov-branch`.
+- 424 tests in `tests/unit/lang/`: enumerated cases plus two property tests.
+- Line and branch coverage of `src/decoy/lang/`: 97% (1819 statements, 44 missed; 692 branches, 34
+  partial), measured with `pytest --cov=decoy.lang --cov-branch`.
 - No mutation score has been measured. The two guard mutations above are the only mutations run.
 - One test runs a compiled foreign key through the engine and checks the join.
-- Two Hypothesis property tests (`test_roundtrip.py`, 150 generated configs each, derandomized):
-  a valid config converts and compiles back to the same engine model, and printing is a fixed
-  point. The generator covers rules, shaping, one foreign key, settings and three checks; it does
-  not generate generated tables, subsets or coherent groups, which have enumerated cases.
-- The converter was run over every valid pipeline YAML in both repositories: 20 of 22 convert.
+- Two Hypothesis property tests (`test_roundtrip.py`, 200 generated configs each, derandomized):
+  a valid config converts and compiles back to the same engine model, compared type-strictly, and
+  printing is a fixed point. The generator covers rules with options of every value type, option
+  keys that are words of the language, conditions, shaping, one foreign key, a generated table,
+  settings, a subset seed and three checks. It does not generate coherent groups, composite keys
+  or a column with a link and a rule; those have enumerated cases. Mutation shown red: with the
+  converter's own check off and `when` dropped, the first property test fails.
+- Respacing an expression: one engine run with `when` and `where` written tight and spaced gave
+  identical masked output (40 rows, `hash` and `faker` columns). One experiment, not a proof.
+- `test_convert.py` converts every valid pipeline YAML in this repository (one listed refusal).
+  Run by hand over both repositories: 20 of 22 convert.
   The two refusals are right: one declares a relationship with no namespace (a QA fixture for
   that failure), one uses strategy names the engine no longer has
   (`decoy-engine/examples/complex_healthcare_claims.yaml`, which is stale).
@@ -219,8 +227,9 @@ The owner asked (2026-11-19) for recommended choices to be taken and recorded he
 | Date | Scope | Reviewer | Verdict | Outcome |
 |---|---|---|---|---|
 | 2026-11-19 | `src/decoy/lang/` and its tests at `20bdc9b` (before the converter) | A separate agent, given the code and the review rulebooks, not the author's conclusions | NO-GO, 12 findings | All fixed in the two commits after it, each with a test; see below |
+| 2026-11-19 | The change `20bdc9b..0550214`: converter, printer, and the fixes above | A second separate agent | NO-GO for the converter (8 findings); GO for the earlier fixes, which it re-ran | All fixed, each with a test; see below. The fixes themselves are not yet re-reviewed |
 
-Findings and what was done:
+Findings of the first review and what was done:
 
 | # | Finding | Fix |
 |---|---|---|
@@ -237,8 +246,22 @@ Findings and what was done:
 | 11 | `decoy 1.0` accepted; no exponent numbers; reserved words missing from the docstring | Fixed. Not changed: inside a condition true and false are the engine's `True` and `False` (the hint says so); a quoted table name with a dot sends an engine error to the pipeline line |
 | 12 | Twins compared with `==` only; missing tests | Type-strict comparison; tests for every finding above |
 
-Still open from the review: `Compiled.source_map` has no consumer until milestone 8, and the
-coverage tests prove a field is passed through, not that the engine accepts a sample value for it.
+Still open from the first review: `Compiled.source_map` has no consumer until milestone 8, and
+the coverage tests prove a field is passed through, not that the engine accepts a sample value
+for it.
+
+Findings of the second review (the converter and printer) and what was done:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Adjacent columns were merged when their rules were equal to Python but not to the engine (`1`, `True`, `1.0`), and the faithfulness check could not see it | Rules and models are compared type-strictly |
+| 2 | Option keys that are words of the language were printed in a form the grammar does not read, so a column with `unique: true` could not be converted | Keys are written bare where the grammar reads them bare and in single quotes otherwise; a test tries every word of the language in every place |
+| 3 | Crashes on valid configs: a null block, a number written as text, a sort with the wrong number of directions | The converter works from the engine's own dump of what the config sets, so types are the engine's; the sort case is a refusal |
+| 4 | A refusal could name a map key from the config | Paths stop at the option |
+| 5 | The property test compared a few fields loosely and its generator was narrow | Full model, type-strict; wider generator; mutation shown red |
+| 6 | Refusals with no reason; the engine's full dump of a config was refused | The compiler's reason is included; unset and null fields are dropped |
+| 7 | Text rules differ inside expressions | Documented: an expression goes to the engine as written |
+| 8 | An over-large number read as infinity; a surrogate pair gave two half characters; duplicated word pattern | A number must be finite; pairs are joined; the pattern is defined once |
 
 ## Working rules
 
@@ -265,7 +288,7 @@ Items this branch cannot settle on its own. Each needs the owner or the orchestr
 | H4 | Roadmap row DECOY-LANG, the decisions log entry and the removed inbox line | Written | Confirm the row text and state |
 | H5 | `tests/sentry/test_engine_reason_code_copies.py` flags `_resources.py` and `ci/rule_codes.py` against the local engine checkout (0.28.0; the CLI pins 0.27.0) | Red, in files this work does not touch; cause not investigated | Someone who owns those files |
 | H6 | Engine follow-ups: a public list of validator names (so `expect` can check them); `examples/complex_healthcare_claims.yaml` uses strategy names the engine no longer has; the orphan-remap observation in the roadmap inbox | Recorded | Triage in the engine |
-| H7 | Independent review of everything after `20bdc9b`: the converter, the printer and the review fixes | Not reviewed | A review before merge |
+| H7 | Independent review of the fixes to the second review's findings | Not reviewed | A review before merge |
 | H8 | Milestones 7 to 9 change `decoy` commands and frozen 1.0 surfaces | Not started; each gets its own plan | Plan review, then build |
 
 ## Owner decisions
