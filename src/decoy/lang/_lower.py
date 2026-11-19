@@ -22,8 +22,9 @@ from typing import Any
 from decoy_engine import PipelineConfig, strategy_catalog
 
 from decoy.lang import _ast as nodes
-from decoy.lang._connectors import SourceMap, lower_connector, plain
-from decoy.lang._errors import Diagnostic, LangError, fail
+from decoy.lang._ast import plain
+from decoy.lang._connectors import lower_connector
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
 from decoy.lang._generate import generators, lower_generate
 from decoy.lang._links import CHILD_STRATEGY, relationships
 from decoy.lang._safety import SAFETY_SYNTAX, lower_blocks
@@ -43,11 +44,6 @@ COLUMN_SYNTAX = {
     "coherent_with": "a `{a, b} : rule` group",
 }
 # Settings and config blocks the language writes with its own syntax, never in the generic blocks.
-SETTING_SYNTAX = {
-    "seed": "`seed <number>`",
-    "mask_secret_ref": '`secret ref("...")`',
-    "unconfigured_column_policy": "`unconfigured columns warn` or `error`",
-}
 BLOCK_SYNTAX = {
     "version": "the `decoy 1` line; the config version is set by the compiler",
     "name": "`pipeline <name> { ... }`",
@@ -60,11 +56,14 @@ BLOCK_SYNTAX = {
     **SUBSET_SYNTAX,
 }
 _CALL = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\(")
-_SETTING_FIELDS = {
-    "seed": "seed",
-    "secret": "mask_secret_ref",
-    "unconfigured": "unconfigured_column_policy",
+# The settings with a statement of their own: the statement's word, the engine field it sets and
+# how it is written. Every other setting goes in `settings { }`.
+SETTING_STATEMENTS = {
+    "seed": ("seed", "`seed <number>`"),
+    "secret": ("mask_secret_ref", '`secret ref("...")`'),
+    "unconfigured": ("unconfigured_column_policy", "`unconfigured columns warn` or `error`"),
 }
+SETTING_SYNTAX = {field: written for field, written in SETTING_STATEMENTS.values()}
 
 
 @lru_cache(maxsize=1)
@@ -88,7 +87,7 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
 
     settings: dict[str, Any] = {}
     for setting in program.settings:
-        key = _SETTING_FIELDS[setting.kind]
+        key = SETTING_STATEMENTS[setting.kind][0]
         if key in settings:
             problems.append(
                 Diagnostic("lang.setting_repeated", f"`{setting.kind}` is set twice", setting.span)
@@ -211,24 +210,13 @@ def _table(
     problems: list[Diagnostic] = []
     transforms: list[dict[str, Any]] = []
     for statement in table.statements:
-        if isinstance(statement, nodes.Transform):
+        if isinstance(statement, nodes.Shaping):
             step = ("tables", index, "transforms", len(transforms))
             spans[step] = statement.span
-            transforms.append({"op": statement.op})
-            for key, value, span in statement.fields:
-                transforms[-1][key] = value
-                spans[(*step, key)] = span
-                called = _CALL.match(value) if key == "expression" else None
-                if statement.op == "derive" and called and called[1] in generators():
-                    problems.append(
-                        Diagnostic(
-                            "lang.generator_in_masked_table",
-                            f"`{called[1]}` is a generator; a masked table can only define a "
-                            "column from an expression",
-                            span,
-                            "generators belong in a `generate` table",
-                        )
-                    )
+            try:
+                transforms.append(_shaping(statement, step, spans))
+            except LangError as error:
+                problems.extend(error.diagnostics)
             continue
         is_link = isinstance(statement, nodes.Link)
         for column in statement.columns:
@@ -289,6 +277,43 @@ def _table(
     shaped = {"transforms": transforms} if transforms else {}
     config["tables"].append({"name": name, **shaped, "columns": columns})
     config["targets"][name] = target
+
+
+def _shaping(statement: nodes.Shaping, step: tuple[Any, ...], spans: SourceMap) -> dict[str, Any]:
+    """A table-shaping statement as the engine's transform."""
+    if isinstance(statement, nodes.Where):
+        spans[(*step, "expression")] = statement.expression.span
+        return {"op": "filter", "expression": statement.expression.text}
+    if isinstance(statement, nodes.Define):
+        called = _CALL.match(statement.expression.text)
+        if called and called[1] in generators():
+            raise fail(
+                "lang.generator_in_masked_table",
+                f"`{called[1]}` is a generator; a masked table can only define a column from "
+                "an expression",
+                statement.expression.span,
+                "generators belong in a `generate` table",
+            )
+        spans[(*step, "column")] = statement.name.span
+        spans[(*step, "expression")] = statement.expression.span
+        return {
+            "op": "derive",
+            "column": statement.name.text,
+            "expression": statement.expression.text,
+        }
+    if isinstance(statement, nodes.Sort):
+        out: dict[str, Any] = {"op": "sort", "by": [key.column.text for key in statement.keys]}
+        # The engine sorts ascending unless told otherwise, so only a descending key is stated.
+        if not all(key.ascending for key in statement.keys):
+            out["ascending"] = [key.ascending for key in statement.keys]
+        return out
+    if isinstance(statement, nodes.Limit):
+        spans[(*step, "n")] = statement.count.span
+        return {"op": "limit", "n": plain(statement.count)}
+    columns = [column.text for column in statement.columns]
+    if isinstance(statement, nodes.Drop):
+        return {"op": "drop_column", "columns": columns}
+    return {"op": "dedupe", "columns": columns} if columns else {"op": "dedupe"}
 
 
 def _resolve(used: nodes.Treatment, lets: dict[str, nodes.Treatment]) -> nodes.Treatment:

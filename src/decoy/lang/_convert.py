@@ -33,6 +33,7 @@ from decoy.lang._lower import (
     COLUMN_SYNTAX,
     CONFIG_VERSION,
     KEEP_STRATEGY,
+    SETTING_STATEMENTS,
     SETTING_SYNTAX,
     column_fields,
     lower,
@@ -46,11 +47,7 @@ from decoy.lang._validate import validate
 NOWHERE = Span(0, 0, 0, 0)
 _SPELLING = {engine: written for written, engine in PREDICATES.items()}
 _OPTION_NAME = {engine: written for written, engine in RENAMES.items()}
-_STATEMENT = {
-    "seed": "seed",
-    "mask_secret_ref": "secret",
-    "unconfigured_column_policy": "unconfigured",
-}
+_STATEMENT = {field: word for word, (field, _) in SETTING_STATEMENTS.items()}
 
 
 class ConvertError(Exception):
@@ -157,14 +154,24 @@ def _treatment(column: dict[str, Any], path: str) -> nodes.Treatment:
     )
 
 
-def _transform(op: dict[str, Any], path: str) -> nodes.Transform:
-    fields = [(key, item, NOWHERE) for key, item in op.items() if key != "op" and item is not None]
-    for index, (key, item, _) in enumerate(fields):
-        if key == "expression":
-            fields[index] = (key, _expression(item, f"{path}.expression").text, NOWHERE)
-        if key == "ascending" and isinstance(item, bool):
-            fields[index] = (key, [item] * len(op["by"]), NOWHERE)
-    return nodes.Transform(op["op"], tuple(fields), NOWHERE)
+def _shaping(op: dict[str, Any], path: str) -> nodes.Shaping:
+    kind = op["op"]
+    if kind == "filter":
+        return nodes.Where(_expression(op["expression"], f"{path}.expression"), NOWHERE)
+    if kind == "derive":
+        expression = _expression(op["expression"], f"{path}.expression")
+        return nodes.Define(_name(op["column"]), expression, NOWHERE)
+    if kind == "limit":
+        return nodes.Limit(_value(op["n"], f"{path}.n"), NOWHERE)
+    if kind == "drop_column":
+        return nodes.Drop(_names(op["columns"]), NOWHERE)
+    if kind == "dedupe":
+        return nodes.Dedupe(_names(op.get("columns") or []), NOWHERE)
+    ascending = op.get("ascending", True)
+    if isinstance(ascending, bool):
+        ascending = [ascending] * len(op["by"])
+    keys = zip(op["by"], ascending, strict=True)
+    return nodes.Sort(tuple(nodes.SortKey(_name(c), bool(up)) for c, up in keys), NOWHERE)
 
 
 def _mask_table(table: dict[str, Any], index: int, config: dict[str, Any]) -> nodes.Table:
@@ -172,8 +179,7 @@ def _mask_table(table: dict[str, Any], index: int, config: dict[str, Any]) -> no
     if name not in config.get("sources", {}) or name not in config.get("targets", {}):
         raise ConvertError(path, "a masked table needs both a source and a target")
     statements: list[Any] = [
-        _transform(op, f"{path}.transforms[{i}]")
-        for i, op in enumerate(table.get("transforms", []))
+        _shaping(op, f"{path}.transforms[{i}]") for i, op in enumerate(table.get("transforms", []))
     ]
     links = _links_of(name, config)
     columns = table.get("columns", [])

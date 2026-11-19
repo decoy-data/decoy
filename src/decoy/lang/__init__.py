@@ -19,9 +19,8 @@ from typing import Any
 
 import yaml
 
-from decoy.lang._connectors import SourceMap
 from decoy.lang._convert import ConvertError, convert_config
-from decoy.lang._errors import Diagnostic, LangError, Span, render
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span, render
 from decoy.lang._lower import lower
 from decoy.lang._parse import parse
 from decoy.lang._validate import validate

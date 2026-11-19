@@ -17,8 +17,7 @@ import difflib
 from typing import Any
 
 from decoy.lang import _ast as nodes
-from decoy.lang._connectors import SourceMap
-from decoy.lang._errors import Diagnostic
+from decoy.lang._errors import Diagnostic, SourceMap
 
 CHILD_STRATEGY = "from_parent"
 # A link whose parent link already failed adds no second report.

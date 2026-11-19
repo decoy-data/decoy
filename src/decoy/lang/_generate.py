@@ -20,8 +20,9 @@ from typing import Any
 from decoy_engine.config import generate_option_catalog
 
 from decoy.lang import _ast as nodes
-from decoy.lang._connectors import SourceMap, lower_connector, plain
-from decoy.lang._errors import Diagnostic, LangError, fail
+from decoy.lang._ast import plain
+from decoy.lang._connectors import lower_connector
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
 
 
 @lru_cache(maxsize=1)

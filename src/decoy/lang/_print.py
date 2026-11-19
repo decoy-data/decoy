@@ -17,6 +17,8 @@ from decimal import Decimal
 from typing import Any
 
 from decoy.lang import _ast as nodes
+from decoy.lang._ast import plain
+from decoy.lang._errors import fail
 from decoy.lang._grammar import KEYWORD_TERMINALS
 
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -37,8 +39,9 @@ def name(text: str) -> str:
     """A table, column, namespace or `let` name: bare, or in single quotes."""
     if _bare(text):
         return text
-    inner = json.dumps(text, ensure_ascii=False)[1:-1].replace('\\"', '"').replace("'", "\\'")
-    return f"'{inner}'"
+    if "'" in text or "\n" in text or not text:
+        raise fail("lang.unprintable_name", "a name with a quote or a line break cannot be written")
+    return f"'{text}'"
 
 
 def number(value: int | float) -> str:
@@ -66,14 +69,6 @@ def _key(text: str) -> str:
     return text if _bare(text) else text_literal(text)
 
 
-def _plain(item: nodes.Value) -> Any:
-    if isinstance(item.value, tuple):
-        return [_plain(inner) for inner in item.value]
-    if isinstance(item.value, dict):
-        return {key: _plain(inner) for key, inner in item.value.items()}
-    return item.value
-
-
 def _names(items: tuple[nodes.Name, ...]) -> str:
     return ", ".join(name(item.text) for item in items)
 
@@ -84,8 +79,8 @@ def _arguments(
     refs: tuple[nodes.Ref, ...] = (),
 ) -> str:
     parts = [f"{name(ref.table.text)}.{name(ref.column.text)}" for ref in refs]
-    parts += [value(_plain(item)) for item in positional]
-    parts += [f"{_key(option.key.text)}: {value(_plain(option.value))}" for option in options]
+    parts += [value(plain(item)) for item in positional]
+    parts += [f"{_key(option.key.text)}: {value(plain(option.value))}" for option in options]
     return ", ".join(parts)
 
 
@@ -112,23 +107,20 @@ def _key_columns(columns: tuple[nodes.Name, ...]) -> str:
     return name(columns[0].text) if len(columns) == 1 else f"({_names(columns)})"
 
 
-def _transform(transform: nodes.Transform) -> str:
-    fields = {key: item for key, item, _ in transform.fields}
-    if transform.op == "filter":
-        return f"where {fields['expression']}"
-    if transform.op == "derive":
-        return f"{name(fields['column'])} = {fields['expression']}"
-    if transform.op == "limit":
-        return f"limit {fields['n']}"
-    if transform.op == "drop_column":
-        return "drop " + ", ".join(name(column) for column in fields["columns"])
-    if transform.op == "dedupe":
-        columns = fields.get("columns")
-        return "dedupe on " + ", ".join(name(c) for c in columns) if columns else "dedupe"
-    ascending = fields.get("ascending", [True] * len(fields["by"]))
+def _shaping(statement: nodes.Shaping) -> str | tuple[str, str, str]:
+    if isinstance(statement, nodes.Where):
+        return f"where {statement.expression.text}"
+    if isinstance(statement, nodes.Define):
+        return (name(statement.name.text), "=", statement.expression.text)
+    if isinstance(statement, nodes.Limit):
+        return f"limit {number(statement.count.value)}"  # type: ignore[arg-type]
+    if isinstance(statement, nodes.Drop):
+        return f"drop {_names(statement.columns)}"
+    if isinstance(statement, nodes.Dedupe):
+        return f"dedupe on {_names(statement.columns)}" if statement.columns else "dedupe"
     keys = [
-        name(column) if up else f"{name(column)} desc"
-        for column, up in zip(fields["by"], ascending, strict=True)
+        name(key.column.text) if key.ascending else f"{name(key.column.text)} desc"
+        for key in statement.keys
     ]
     return "sort by " + ", ".join(keys)
 
@@ -158,8 +150,8 @@ def _aligned(rows: list[tuple[str, str, str] | str]) -> list[str]:
 def _table(table: nodes.Table) -> list[str]:
     rows: list[tuple[str, str, str] | str] = []
     for statement in table.statements:
-        if isinstance(statement, nodes.Transform):
-            rows.append(_transform(statement))
+        if isinstance(statement, nodes.Shaping):
+            rows.append(_shaping(statement))
         elif isinstance(statement, nodes.Keep):
             rows.append(f"keep {_names(statement.columns)}")
         elif isinstance(statement, nodes.Link):
@@ -216,7 +208,7 @@ def _condition(condition: nodes.Condition) -> str:
     column = name(condition.column.text)
     if condition.value is None:
         return f"{column} {condition.operator}"
-    return f"{column} {condition.operator} {value(_plain(condition.value))}"
+    return f"{column} {condition.operator} {value(plain(condition.value))}"
 
 
 def _subset(subset: nodes.Subset) -> list[str]:
@@ -232,7 +224,7 @@ def _subset(subset: nodes.Subset) -> list[str]:
             lines.append(f"{head} where " + ", ".join(_condition(c) for c in seed.conditions))
         else:
             assert seed.keys is not None
-            lines.append(f"{head} keys {_names(seed.key_columns)} in {value(_plain(seed.keys))}")
+            lines.append(f"{head} keys {_names(seed.key_columns)} in {value(plain(seed.keys))}")
     for follow in subset.follows:
         lines.append(
             f"follow {name(follow.parent_table.text)}.{_key_columns(follow.parent_columns)} -> "
@@ -247,7 +239,7 @@ def _subset(subset: nodes.Subset) -> list[str]:
 
 
 def _pairs(word: str, options: tuple[nodes.Option, ...]) -> list[str]:
-    lines = [f"{_key(option.key.text)}: {value(_plain(option.value))}" for option in options]
+    lines = [f"{_key(option.key.text)}: {value(plain(option.value))}" for option in options]
     return [f"{word} {{", *(INDENT + line for line in lines), "}"]
 
 

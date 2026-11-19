@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from decoy.lang import _ast as nodes
-from decoy.lang._connectors import SourceMap, plain
-from decoy.lang._errors import Diagnostic
+from decoy.lang._ast import plain
+from decoy.lang._errors import Diagnostic, SourceMap
 
 
 @dataclass(frozen=True)

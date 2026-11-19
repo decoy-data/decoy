@@ -7,6 +7,7 @@ language, strategies, tables and columns, never a value the config holds.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,10 @@ class Span:
     column: int
     end_line: int
     end_column: int
+
+
+# Config path to the source span that produced it, built during lowering.
+SourceMap = dict[tuple[Any, ...], "Span"]
 
 
 @dataclass(frozen=True)

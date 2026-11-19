@@ -21,8 +21,8 @@ from decimal import Decimal
 from typing import Any
 
 from decoy.lang import _ast as nodes
-from decoy.lang._connectors import SourceMap, plain
-from decoy.lang._errors import Diagnostic, LangError, fail
+from decoy.lang._ast import plain
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
 
 SUBSET_SYNTAX = {"subset": "`subset { ... }`"}
 # How a comparison is written, and the engine's name for it.

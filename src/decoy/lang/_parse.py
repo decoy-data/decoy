@@ -7,19 +7,19 @@ its source span, so later stages never see Lark types.
 
 from __future__ import annotations
 
-import ast as python_ast
 from functools import lru_cache
 from typing import Any
 
 from lark import Lark, Token, Tree
-from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken
+from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken
 
 from decoy.lang import _ast as nodes
 from decoy.lang._errors import LangError, Span, fail
-from decoy.lang._expressions import expression_text, generator_call, number_of, span_of
+from decoy.lang._expressions import expression_text, generator_call
 from decoy.lang._grammar import DISPLAY, GRAMMAR, KEYWORD_TERMINALS
+from decoy.lang._tokens import number_of, span_of, unquote
 
-SUPPORTED_VERSIONS = (1,)
+SUPPORTED_VERSIONS = ("1",)
 
 
 @lru_cache(maxsize=1)
@@ -38,17 +38,9 @@ def parse(text: str) -> nodes.Program:
 
 
 def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
-    if isinstance(error, UnexpectedEOF):
-        last = text.count("\n") + 1
-        span = Span(last, 1, last, 1)
-        found = "end of file"
-    else:
-        width = len(error.token) if isinstance(error, UnexpectedToken) else 1
-        span = Span(error.line, error.column, error.line, error.column + max(1, width))
-        if isinstance(error, UnexpectedToken):
-            found = _found(error.token)
-        else:
-            found = f"`{text[error.pos_in_stream]}`"
+    width = len(error.token) if isinstance(error, UnexpectedToken) else 1
+    span = Span(error.line, error.column, error.line, error.column + max(1, width))
+    found = _found(error.token) if isinstance(error, UnexpectedToken) else "a character"
     expected: set[str] = set()
     if isinstance(error, UnexpectedToken):
         expected = set(error.accepts or error.expected)
@@ -74,11 +66,12 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
 
 
 def _found(token: Token) -> str:
-    """How an unexpected token is named. A number or quoted text is named by kind, not shown:
-    it may be a seed or a path, and an error never quotes a config value."""
+    """How an unexpected token is named. Only a word of the language or punctuation is shown.
+    A number, quoted text or a bare word is named by kind: it may be a seed, a path or a secret
+    name, and an error never quotes a config value."""
     if token.type == "$END":
         return "end of file"
-    if token.type in ("NUMBER", "DQ_STRING", "SQ_STRING"):
+    if token.type in ("NAME", "NUMBER", "DQ_STRING", "SQ_STRING"):
         return DISPLAY[token.type]
     return f"`{token}`"
 
@@ -93,7 +86,7 @@ def _name(tree: Tree[Any]) -> nodes.Name:
     token = tree.children[0]
     if token.type == "NAME":
         return nodes.Name(str(token), span_of(token))
-    text = python_ast.literal_eval(str(token))
+    text = unquote(token)
     if not text:
         raise fail("lang.name_empty", "a name cannot be empty", span_of(token))
     return nodes.Name(text, span_of(token))
@@ -103,7 +96,7 @@ def _value(node: Tree[Any]) -> nodes.Value:
     span = span_of(node)
     kind = node.data
     if kind == "string":
-        return nodes.Value(python_ast.literal_eval(str(node.children[0])), span)
+        return nodes.Value(unquote(node.children[0]), span)
     if kind == "number":
         return nodes.Value(number_of(node.children[0]), span)
     if kind in ("true", "false"):
@@ -116,9 +109,11 @@ def _value(node: Tree[Any]) -> nodes.Value:
             if pair is None:
                 continue
             token, value = pair.children
-            key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
+            key = str(token) if token.type == "NAME" else unquote(token)
             if key in pairs:
-                raise fail("lang.option_repeated", f"key `{key}` is given twice", span_of(token))
+                raise fail(
+                    "lang.option_repeated", "a key is given twice in this map", span_of(token)
+                )
             pairs[key] = _value(value)
         return nodes.Value(pairs, span)
     return nodes.Value(tuple(_value(child) for child in node.children if child is not None), span)
@@ -170,49 +165,39 @@ def _names(tree: Tree[Any]) -> tuple[nodes.Name, ...]:
     return tuple(_name(child) for child in tree.children)
 
 
-def _expression(tree: Tree[Any]) -> tuple[str, Span]:
-    return expression_text(tree), span_of(tree)
+def _expression(tree: Tree[Any]) -> nodes.Expression:
+    return nodes.Expression(expression_text(tree), span_of(tree))
 
 
-def _where(tree: Tree[Any]) -> nodes.Transform:
-    text, span = _expression(tree.children[1])
-    return nodes.Transform("filter", (("expression", text, span),), span_of(tree))
+def _where(tree: Tree[Any]) -> nodes.Where:
+    return nodes.Where(_expression(tree.children[1]), span_of(tree))
 
 
-def _define(tree: Tree[Any]) -> nodes.Transform:
-    name = _name(tree.children[0])
-    text, span = _expression(tree.children[1])
-    fields = (("column", name.text, name.span), ("expression", text, span))
-    return nodes.Transform("derive", fields, span_of(tree))
+def _define(tree: Tree[Any]) -> nodes.Define:
+    return nodes.Define(_name(tree.children[0]), _expression(tree.children[1]), span_of(tree))
 
 
-def _sort(tree: Tree[Any]) -> nodes.Transform:
-    keys = tree.children[2:]
-    by = [_name(key.children[0]).text for key in keys]
-    ascending = [key.children[1] is None or key.children[1].type == "ASC" for key in keys]
-    fields: list[tuple[str, Any, Span]] = [("by", by, span_of(tree))]
-    if not all(ascending):
-        fields.append(("ascending", ascending, span_of(tree)))
-    return nodes.Transform("sort", tuple(fields), span_of(tree))
+def _sort(tree: Tree[Any]) -> nodes.Sort:
+    keys = tuple(
+        nodes.SortKey(
+            _name(key.children[0]), key.children[1] is None or key.children[1].type == "ASC"
+        )
+        for key in tree.children[2:]
+    )
+    return nodes.Sort(keys, span_of(tree))
 
 
-def _limit(tree: Tree[Any]) -> nodes.Transform:
-    token = tree.children[1]
-    return nodes.Transform("limit", (("n", number_of(token), span_of(token)),), span_of(tree))
+def _limit(tree: Tree[Any]) -> nodes.Limit:
+    return nodes.Limit(_token_value(tree.children[1]), span_of(tree))
 
 
-def _dedupe(tree: Tree[Any]) -> nodes.Transform:
+def _dedupe(tree: Tree[Any]) -> nodes.Dedupe:
     names = tree.children[2]
-    if names is None:
-        return nodes.Transform("dedupe", (), span_of(tree))
-    columns = [name.text for name in _names(names)]
-    return nodes.Transform("dedupe", (("columns", columns, span_of(names)),), span_of(tree))
+    return nodes.Dedupe(_names(names) if names is not None else (), span_of(tree))
 
 
-def _drop(tree: Tree[Any]) -> nodes.Transform:
-    names = tree.children[1]
-    columns = [name.text for name in _names(names)]
-    return nodes.Transform("drop_column", (("columns", columns, span_of(names)),), span_of(tree))
+def _drop(tree: Tree[Any]) -> nodes.Drop:
+    return nodes.Drop(_names(tree.children[1]), span_of(tree))
 
 
 _TRANSFORMS = {
@@ -241,7 +226,7 @@ def _link(tree: Tree[Any]) -> nodes.Link:
 
 def _table(tree: Tree[Any]) -> nodes.Table:
     _, name, _, source, _, target, *statements = tree.children
-    built: list[nodes.Mask | nodes.Keep | nodes.Link | nodes.Transform] = []
+    built: list[nodes.Mask | nodes.Keep | nodes.Link | nodes.Shaping] = []
     for statement in statements:
         if statement.data in _TRANSFORMS:
             built.append(_TRANSFORMS[statement.data](statement))
@@ -411,18 +396,17 @@ def _pairs(pairs: list[Tree[Any]]) -> list[nodes.Option]:
     built = []
     for pair in pairs:
         token, value = pair.children
-        key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
+        key = str(token) if token.type == "NAME" else unquote(token)
         built.append(nodes.Option(nodes.Name(key, span_of(token)), _value(value)))
     return built
 
 
 def _program(tree: Tree[Any]) -> nodes.Program:
     _, version_token, pipeline = tree.children
-    version = number_of(version_token)
-    if version not in SUPPORTED_VERSIONS:
+    if str(version_token) not in SUPPORTED_VERSIONS:
         raise fail(
             "lang.version",
-            f"language version {version_token} is not supported",
+            "this language version is not supported",
             span_of(version_token),
             "this compiler reads `decoy 1`",
         )
@@ -470,5 +454,5 @@ def _program(tree: Tree[Any]) -> nodes.Program:
 
 def _token_value(token: Token) -> nodes.Value:
     if token.type in ("DQ_STRING", "SQ_STRING"):
-        return nodes.Value(python_ast.literal_eval(str(token)), span_of(token))
+        return nodes.Value(unquote(token), span_of(token))
     return nodes.Value(number_of(token), span_of(token))

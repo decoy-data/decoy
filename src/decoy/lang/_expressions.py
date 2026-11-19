@@ -8,7 +8,6 @@ arguments of a generator call, plain values.
 
 from __future__ import annotations
 
-import ast as python_ast
 from functools import lru_cache
 from typing import Any
 
@@ -16,20 +15,9 @@ from lark import Lark, Token, Tree
 from lark.exceptions import UnexpectedInput
 
 from decoy.lang import _ast as nodes
-from decoy.lang._errors import Span, fail
+from decoy.lang._errors import fail
 from decoy.lang._grammar import GRAMMAR
-
-
-def span_of(node: Tree[Any] | Token) -> Span:
-    if isinstance(node, Token):
-        return Span(node.line or 1, node.column or 1, node.end_line or 1, node.end_column or 1)
-    meta = node.meta
-    return Span(meta.line, meta.column, meta.end_line, meta.end_column)
-
-
-def number_of(token: Token) -> int | float:
-    digits = str(token).replace("_", "")
-    return float(digits) if "." in digits else int(digits)
+from decoy.lang._tokens import number_of, span_of, unquote
 
 
 def expression_text(node: Tree[Any] | Token) -> str:
@@ -86,14 +74,14 @@ def plain_value(tree: Tree[Any]) -> nodes.Value:
             word = str(primary)
             return nodes.Value(word == "true" if word in ("true", "false") else word, span)
         if not negative:
-            return nodes.Value(python_ast.literal_eval(str(primary)), span)
+            return nodes.Value(unquote(primary), span)
     elif isinstance(primary, Tree) and not negative and primary.data == "e_list":
         return nodes.Value(tuple(plain_value(c) for c in primary.children if c is not None), span)
     elif isinstance(primary, Tree) and not negative and primary.data == "e_map":
         pairs: dict[str, nodes.Value] = {}
         for pair in (c for c in primary.children if c is not None):
             token, value = pair.children
-            key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
+            key = str(token) if token.type == "NAME" else unquote(token)
             if key in pairs:
                 raise fail("lang.option_repeated", f"key `{key}` is given twice", span_of(token))
             pairs[key] = plain_value(value)

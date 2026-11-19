@@ -12,9 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from decoy.lang import _ast as nodes
-from decoy.lang._errors import Span, fail
-
-SourceMap = dict[tuple[Any, ...], Span]
+from decoy.lang._ast import plain
+from decoy.lang._errors import SourceMap, fail
 
 
 @dataclass(frozen=True)
@@ -37,15 +36,6 @@ CONNECTORS: dict[str, Connector] = {
 # Shorter words in the language for engine field names.
 RENAMES = {"header": "has_header", "credentials": "credentials_ref"}
 FORMATS = {".csv": "csv", ".parquet": "parquet"}
-
-
-def plain(value: nodes.Value) -> Any:
-    """A syntax-tree value as the plain Python value the config holds."""
-    if isinstance(value.value, tuple):
-        return [plain(item) for item in value.value]
-    if isinstance(value.value, dict):
-        return {key: plain(item) for key, item in value.value.items()}
-    return value.value
 
 
 def lower_connector(

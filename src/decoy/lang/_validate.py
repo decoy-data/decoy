@@ -14,8 +14,7 @@ from typing import Any
 from decoy_engine import parse_pipeline_config
 from decoy_engine.config import PipelineConfigError
 
-from decoy.lang._connectors import SourceMap
-from decoy.lang._errors import Diagnostic, LangError, Span
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span
 
 _WHEN_HINT = (
     "a condition compares one column with a value (`country == 'US'`) or tests a list "

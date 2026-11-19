@@ -19,6 +19,15 @@ class Value:
     span: Span
 
 
+def plain(value: Value) -> Any:
+    """A value node as the plain Python value the config holds."""
+    if isinstance(value.value, tuple):
+        return [plain(item) for item in value.value]
+    if isinstance(value.value, dict):
+        return {key: plain(item) for key, item in value.value.items()}
+    return value.value
+
+
 @dataclass(frozen=True)
 class Name:
     text: str
@@ -92,13 +101,55 @@ class Keep:
 
 
 @dataclass(frozen=True)
-class Transform:
-    """A table-shaping statement, already in the engine's transform shape: the `op` and its
-    fields, each with the span it was written at."""
+class Where:
+    """`where <expression>`: keep the rows it holds for."""
 
-    op: str
-    fields: tuple[tuple[str, Any, Span], ...]
+    expression: Expression
     span: Span
+
+
+@dataclass(frozen=True)
+class Define:
+    """`name = <expression>` in a masked table: a new column."""
+
+    name: Name
+    expression: Expression
+    span: Span
+
+
+@dataclass(frozen=True)
+class SortKey:
+    column: Name
+    ascending: bool
+
+
+@dataclass(frozen=True)
+class Sort:
+    keys: tuple[SortKey, ...]
+    span: Span
+
+
+@dataclass(frozen=True)
+class Limit:
+    count: Value
+    span: Span
+
+
+@dataclass(frozen=True)
+class Dedupe:
+    """`dedupe`, or `dedupe on a, b`."""
+
+    columns: tuple[Name, ...]
+    span: Span
+
+
+@dataclass(frozen=True)
+class Drop:
+    columns: tuple[Name, ...]
+    span: Span
+
+
+Shaping = Where | Define | Sort | Limit | Dedupe | Drop
 
 
 @dataclass(frozen=True)
@@ -106,7 +157,7 @@ class Table:
     name: Name
     source: Call
     target: Call
-    statements: tuple[Mask | Keep | Link | Transform, ...]
+    statements: tuple[Mask | Keep | Link | Shaping, ...]
     span: Span
 
 
