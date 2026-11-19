@@ -74,6 +74,22 @@ def test_the_opened_value_is_the_checked_value() -> None:
             _outbound.open_url(url, purpose="notify_webhook")
 
 
+def test_the_checked_url_is_the_opened_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Class 7: the value that passed the scheme check is the value handed to the opener."""
+    checked: list[str] = []
+    opened: list[str] = []
+    real = _outbound.check_scheme
+    monkeypatch.setattr(
+        _outbound, "check_scheme", lambda url, purpose: (checked.append(url), real(url, purpose))
+    )
+    monkeypatch.setattr(
+        _outbound, "_open", lambda opener, req, timeout: opened.append(req.full_url)
+    )
+    url = "https://hooks.example.com/services/T0/B0/x?k=v"
+    _outbound.open_url(url, purpose="notify_slack", data=b"{}")
+    assert checked == [url] and opened == [url]
+
+
 @pytest.fixture
 def servers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict]:
     hits: list[str] = []
