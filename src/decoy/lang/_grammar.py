@@ -17,7 +17,7 @@ from __future__ import annotations
 _KEYWORDS = (
     "decoy pipeline seed secret ref unconfigured columns let table from to keep in "
     "deterministic vaulted when and or not if else true false "
-    "where sort by asc desc limit dedupe on drop"
+    "where sort by asc desc limit dedupe on drop orphans"
 ).split()
 
 GRAMMAR = r"""
@@ -34,9 +34,17 @@ let: LET name "=" treatment
 
 table: TABLE name FROM call TO call "{" statement* "}"
 
-?statement: mask | keep | where | define | sort | limit | dedupe | drop
+?statement: mask | group | link | keep | where | define | sort | limit | dedupe | drop
 mask: names ":" treatment
 keep: KEEP names
+
+// `{a, b} : rule` keeps the columns consistent with each other within a row.
+group: "{" names "}" ":" treatment
+
+// `child <- parent_table.key`: the child columns take the parent key's masked values.
+link: names ARROW name "." link_key [namespace] [orphans]
+link_key: name | "(" names ")"
+orphans: ORPHANS name
 names: name ("," name)*
 
 // Table shaping. These run before masking, in the order written.
@@ -89,6 +97,7 @@ SQ_STRING: /'([^'\\\n]|\\.)*'/
 NUMBER: /-?[0-9][0-9_]*(\.[0-9]+)?/
 OPERATOR: "==" | "!=" | "<=" | ">=" | "<" | ">" | "+" | "*" | "//" | "/"
 MINUS: "-"
+ARROW: "<-"
 COMMENT: /#[^\n]*/
 
 %import common.WS
@@ -116,5 +125,7 @@ DISPLAY = {
     "EQUAL": "`=`",
     "OPERATOR": "an operator",
     "MINUS": "`-`",
+    "ARROW": "`<-`",
+    "DOT": "`.`",
     "$END": "the end of the file",
 }

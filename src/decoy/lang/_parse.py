@@ -253,12 +253,33 @@ _TRANSFORMS = {
 }
 
 
+def _link(tree: Tree[Any]) -> nodes.Link:
+    columns, _, table, key, namespace, orphans = tree.children
+    target = key.children[0]
+    parent_columns = _names(target) if target.data == "names" else (_name(target),)
+    return nodes.Link(
+        _names(columns),
+        _name(table),
+        parent_columns,
+        _name(namespace.children[1]) if namespace is not None else None,
+        _name(orphans.children[1]) if orphans is not None else None,
+        _span(tree),
+    )
+
+
 def _table(tree: Tree[Any]) -> nodes.Table:
     _, name, _, source, _, target, *statements = tree.children
-    built: list[nodes.Mask | nodes.Keep | nodes.Transform] = []
+    built: list[nodes.Mask | nodes.Keep | nodes.Link | nodes.Transform] = []
     for statement in statements:
         if statement.data in _TRANSFORMS:
             built.append(_TRANSFORMS[statement.data](statement))
+        elif statement.data == "link":
+            built.append(_link(statement))
+        elif statement.data == "group":
+            names, treatment = statement.children
+            built.append(
+                nodes.Mask(_names(names), _treatment(treatment), _span(statement), coherent=True)
+            )
         elif statement.data == "mask":
             built.append(
                 nodes.Mask(

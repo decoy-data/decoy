@@ -71,6 +71,19 @@ class Mask:
     columns: tuple[Name, ...]
     treatment: Treatment
     span: Span
+    coherent: bool = False  # written `{a, b} : rule`: one consistent group per row
+
+
+@dataclass(frozen=True)
+class Link:
+    """`columns <- table.key`: a foreign key whose values follow the parent key's masking."""
+
+    columns: tuple[Name, ...]
+    parent_table: Name
+    parent_columns: tuple[Name, ...]
+    namespace: Name | None
+    orphans: Name | None
+    span: Span
 
 
 @dataclass(frozen=True)
@@ -94,7 +107,7 @@ class Table:
     name: Name
     source: Call
     target: Call
-    statements: tuple[Mask | Keep | Transform, ...]
+    statements: tuple[Mask | Keep | Link | Transform, ...]
     span: Span
 
 

@@ -168,12 +168,16 @@ This is where YAML is hardest to write, because one idea is spread across three 
 **Language:** the idea is written once, where it applies.
 
 ```
-link member_id to members.member_id                 # foreign key: child takes the parent's masked value
-link (member_id, plan_id) to enrollments.(member_id, plan_id) orphans fail
-mask {first_name, last_name, email} with faker(composite_name_email)   # stays consistent within a row
+member_id <- members.member_id orphans preserve       # foreign key: follows the parent key's masking
+member_id, plan_id <- enrollments.(member_id, plan_id) in enrollment orphans fail
+{first_name, last_name, email} : faker(composite_name_email)   # stays consistent within a row
 ```
 
-- `link` creates the relationship entry and the `from_parent` column together.
+- `<-` creates the relationship entry and the `from_parent` child column together. Links to the
+  same parent key share one entry.
+- `orphans` is required, as the engine gives it no default: `preserve`, `remap`, `warn` or `fail`.
+- The relationship's namespace is the link's own `in <name>`, else the first parent key column's,
+  followed up a chain of links.
 - Braces mark a coherent group; the compiler writes `coherent_with` on each member.
 - A namespace exists once any column says `in <name>`. No separate declaration block.
 
@@ -339,7 +343,7 @@ pipeline people {
   1. parse        Lark grammar → syntax tree; every node keeps its line and column
   2. build        syntax tree → typed AST (frozen dataclasses)
   3. resolve      let names, `use` imports, table and column references
-  4. desugar      groups → coherent_with; `link` → relationships; `in x` → namespaces;
+  4. desugar      groups → coherent_with; `<-` → relationships; `in x` → namespaces;
                   from/to → sources/targets; expect → validators and post_scan
   5. lower        AST → plain dict in the PipelineConfig shape, plus a source map
                   (dict path → source span)
@@ -396,7 +400,7 @@ programs, agree the syntax, then build.
 | 0 | Syntax trial. Hand-translate five real configs into two candidate styles (section 12, D1). Pick one. Write the agent card. | Agreed syntax for groups A to F |
 | 1 | Compiler skeleton: parse, AST, lower, validate, source-mapped errors. Groups A, B and the simple part of D. **Built** in `src/decoy/lang/`: the four mask templates compile to identical config. Not wired to a command; `when` waits for group G. | Recipe (a) compiles |
 | 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. **Built:** `when` conditions, nested `{key: value}` option values, fixed-width sources. An expression is only delimited by the compiler and sent to the engine as one line of text; the engine's grammars decide what is valid. Strategy options that hold an expression (`derived(expression: "age * 12")`) are still quoted strings. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
-| 3 | Group C transforms. **Built:** `where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`; a generator in a masked table is refused. The engine checks `where` and `=` expressions at plan compile, so the compiler does not report mistakes inside them yet. Group E: foreign keys (`<-` or `link`, to be chosen), composite keys, coherent groups, namespaces, vault: **not built.** | A multi-table foreign-key pipeline compiles |
+| 3 | Group C transforms. **Built:** `where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`; a generator in a masked table is refused. The engine checks `where` and `=` expressions at plan compile, so the compiler does not report mistakes inside them yet. Group E: **built:** `<-` foreign keys with composite keys and `orphans`, `{a, b} : rule` coherent groups; a test runs a compiled link through the engine and checks the join. The top-level `namespaces:` block has no syntax yet. | A multi-table foreign-key pipeline compiles |
 | 4 | Group F generation. | All seven `generate-*` templates compile to identical YAML |
 | 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. | **v0.1: usable for real pipelines** |
 | 6 | Group J checks. Group H policy and `use`. Group I subset. | Full coverage of `PipelineConfig` |

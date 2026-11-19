@@ -25,6 +25,7 @@ from decoy_engine.config import generate_option_catalog
 from decoy.lang import _ast as nodes
 from decoy.lang._connectors import SourceMap, lower_connector, plain
 from decoy.lang._errors import Diagnostic, LangError, fail
+from decoy.lang._links import CHILD_STRATEGY, relationships
 
 CONFIG_VERSION = 2
 KEEP_STRATEGY = "passthrough"
@@ -37,6 +38,7 @@ _OWN_SYNTAX = {
     "vault": "the word `vaulted` after the call",
     "when": "`when <condition>` after the call",
     "provider_config": "plain `key: value` options",
+    "coherent_with": "a `{a, b} : rule` group",
 }
 _CALL = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\(")
 _SETTING_FIELDS = {
@@ -90,6 +92,7 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
 
     lets = _lets(program, problems)
     config["sources"], config["tables"], config["targets"] = {}, [], {}
+    links: list[tuple[str, nodes.Link]] = []
     seen_tables: set[str] = set()
     for table in program.tables:
         if table.name.text in seen_tables:
@@ -103,9 +106,13 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
             continue
         seen_tables.add(table.name.text)
         try:
-            _table(table, lets, config, spans)
+            _table(table, lets, config, spans, links)
         except LangError as error:
             problems.extend(error.diagnostics)
+    if links and not problems:
+        targets = config.pop("targets")
+        config["relationships"] = relationships(links, config["tables"], spans, problems)
+        config["targets"] = targets
     if problems:
         raise LangError(problems)
     return config, spans
@@ -137,6 +144,7 @@ def _table(
     lets: dict[str, nodes.Treatment],
     config: dict[str, Any],
     spans: SourceMap,
+    links: list[tuple[str, nodes.Link]],
 ) -> None:
     name = table.name.text
     index = len(config["tables"])
@@ -184,10 +192,26 @@ def _table(
             try:
                 if isinstance(statement, nodes.Keep):
                     columns.append({"name": column.text, "strategy": KEEP_STRATEGY})
+                elif isinstance(statement, nodes.Link):
+                    columns.append({"name": column.text, "strategy": CHILD_STRATEGY})
                 else:
                     columns.append(_column(column, statement.treatment, lets, path, spans))
+                    if statement.coherent:
+                        others = [c.text for c in statement.columns if c.text != column.text]
+                        columns[-1]["coherent_with"] = others
             except LangError as error:
                 problems.extend(error.diagnostics)
+        if isinstance(statement, nodes.Link):
+            links.append((name, statement))
+        elif isinstance(statement, nodes.Mask) and statement.coherent:
+            if len(statement.columns) < 2:
+                problems.append(
+                    Diagnostic(
+                        "lang.group_too_small",
+                        "a `{...}` group needs at least two columns",
+                        statement.span,
+                    )
+                )
     if problems:
         raise LangError(problems)
     spans[("tables", index)] = table.span
