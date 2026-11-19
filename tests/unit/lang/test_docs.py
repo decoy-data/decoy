@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from decoy.lang import compile_text
+from decoy.lang import LangError, compile_text
 
 _GUIDES = Path(__file__).resolve().parents[3] / "docs" / "guides" / "decoy-language"
 _BLOCK = re.compile(r"```decoy\n(.*?)```", re.DOTALL)
@@ -37,3 +37,31 @@ def test_the_error_page_lists_every_code_the_compiler_can_raise() -> None:
     listed = set(re.findall(r"`(lang\.[a-z_]+)`", (_GUIDES / "07-errors.md").read_text("utf-8")))
     assert raised - listed == set()
     assert listed - raised == set()
+
+
+# A snippet that is not a whole program: the lines of a pipeline, or of one masked table.
+_WRAP = {
+    "decoy-pipeline": "decoy 1\npipeline {{\n  seed 1\n{body}\n}}\n",
+    "decoy-mask": (
+        'decoy 1\npipeline {{\n  seed 1\n  mask t from csv("a.csv") to csv("b.csv") {{\n{body}\n  }}\n}}\n'
+    ),
+}
+_SNIPPET = re.compile(r"```(decoy-pipeline|decoy-mask)\n(.*?)```", re.DOTALL)
+_SNIPPETS = [
+    (path.name, index, _WRAP[kind].format(body=body))
+    for path in sorted(_GUIDES.glob("*.md"))
+    for index, (kind, body) in enumerate(_SNIPPET.findall(path.read_text(encoding="utf-8")))
+]
+
+
+def test_the_guides_hold_snippets() -> None:
+    assert len(_SNIPPETS) >= 6
+
+
+@pytest.mark.parametrize(("page", "index", "program"), _SNIPPETS, ids=lambda item: str(item)[:24])
+def test_a_snippet_in_a_guide_is_valid_once_wrapped(page: str, index: int, program: str) -> None:
+    # The review mark is shown on purpose in one snippet; it is the only problem allowed.
+    try:
+        compile_text(program)
+    except LangError as error:
+        assert {problem.code for problem in error.diagnostics} == {"lang.unreviewed"}

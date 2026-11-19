@@ -36,6 +36,7 @@ decoy run pipeline.yaml
 | [5. Checks, safety and subsets](05-checks-and-subsets.md) | Scans, `expect`, quarantine, a referentially intact slice |
 | [6. Coming from YAML](06-from-yaml.md) | The two forms side by side, and the converter |
 | [7. Errors](07-errors.md) | Every compiler error and its fix |
+| [Cheat sheet](cheat-sheet.md) | Syntax at a glance |
 | [The language on one page](agent-card.md) | A complete reference sized for a prompt |
 
 Every complete program on these pages is compiled by `tests/unit/lang/test_docs.py`.
