@@ -2,14 +2,16 @@ Status: plan
 
 # DECOY-LANG commands: `decoy` reads, formats, converts and writes `.decoy`
 
-Date: 2026-11-19. Revision 2. Roadmap row: DECOY-LANG. Parent plan:
+Date: 2026-11-19. Revision 3. Roadmap row: DECOY-LANG. Parent plan:
 [2026-11-19-decoy-language-completion.md](2026-11-19-decoy-language-completion.md), milestones 7
 (command), 8 and 9.
 
 Rules consulted: `dev-rules/README.md`, `00-universal.md`, `risk-and-exceptions.md`,
-`development-loop.md`, `feature-dev.md`, `architecture.md`, `proportionality.md`,
-`cross-cutting-concerns.md`, `api-and-compatibility.md`, `testing.md`, `documentation.md`,
-`catalogs/recurring-defects.md`.
+`development-loop.md`, `profiles/local-operations.md`, `workspace-and-vcs.md`, `reuse-first.md`,
+`exploration.md`, `scope-discipline.md`, `proportionality.md`, `verification.md`, `feature-dev.md`,
+`code-review.md`, `testing.md`, `architecture.md`, `cross-cutting-concerns.md`,
+`api-and-compatibility.md`, `config-secrets-and-supply-chain.md`, `security.md`,
+`documentation.md`, and `catalogs/recurring-defects.md`.
 
 Risk: R2 overall; each slice has its own level in the slice table. The plan changes frozen 1.0
 surfaces: the pipeline file a command accepts, command names, help text, the project layout,
@@ -17,35 +19,34 @@ finding locations, and what a run record stores. Nothing in it is built.
 
 ## Change log
 
-Revision 2 answers Dennis plan review round 1. Each finding, and where it is answered:
+Revision 3 answers Dennis plan review round 2.
 
 | Finding | Answer | Section |
 |---|---|---|
-| H1 validation runs twice, codes differ | The loader lowers only (new `lower_text`); the gate validates once with engine codes; Guarantee 1 restated | Guarantee, The language side, Gate |
-| H2 the guard watches the wrong call | `parse_config_mapping` becomes private; exact caller allowlist for `read_config_text`; import rule for `decoy.lang`; seeded spellings; two named mutations | Choke points and guards |
-| H3 position types sit above the loader | New bottom-tier `decoy._source_positions`; `ci/locations.py` deleted, not wrapped (see Disagreements); `decoy.lang` to the bottom tier; allowlist key renamed; `GateFinding.position`; one walker for both kinds; parity test | Layers and positions |
-| H4 review-mark semantics | `PipelineFile.unreviewed`; a rule per command; `ConfigFileError.problems`; one finding per problem; S2 acceptance rewritten | The review mark, S2 |
-| M1 layout resolver | `PIPELINE_FILES`, `member_file()`, `member_destination()` in a new sibling module; `layout.pipeline_file_ambiguous`; `.decoy` in `_PATH_SUFFIXES` in S1; the real inventory plus a walk guard | Project layout |
-| M2 frozen surfaces | Frozen-surface rows, language versioning rule, one `lang.*` code registry with a guard, `validation_codes`, json-shapes, CHANGELOG, templates, CODEMAP, help text | Frozen contracts touched |
-| M3 run record | Owner-only sidecar plus two additive `cli-local-1` fields under `manifest_hash`; `report verify` rehashes it; the card leaves `evidence.py` first | What a run stores |
-| M4 init mechanism | `convert_config(..., review=)`; stale "INIT-WIZARD owners agree" acceptance dropped; journey tests named; init files listed; sizes | S6 mechanism |
-| M5 import cost | `decoy.lang` imported inside the `.decoy` branch only; subprocess import test | One loader |
-| M6 value-free conversion | Conversion cells for `__cause__` and `__context__`; S3 twin cells keep the marker assertion | S1, S3 |
-| L1 caller list | Built from the 14 `pipeline_argument` / `pipeline_option` sites; `plan`, `scan` and `explain pipeline` removed (they take no pipeline file) | Commands |
-| L2 compiled-YAML view | `decoy convert pipeline.decoy` prints the compiled YAML; no `show pipeline`, no `validate` flag | Commands |
-| L3 text, empty file, suffix case | `lang.not_utf8`, `lang.empty`, kind-neutral texts; `.decoy` matched case-insensitively | One loader |
-| L4 semantic fingerprint | V2-LOG | Non-goals |
-| L5 sizes | Per slice | Slices |
+| F1 | S3 writes a valid `.decoy` program by hand, derives its YAML twin from `load_pipeline(p).config`, uses separate marker names by kind, compares every exit code, and compares codes only for JSON cells. It also has a lowering-error marker cell. M-R2 stays. | Choke points and guards; S3 acceptance |
+| F2 | `CODES` is public. The language-import guard uses exact module and name pairs. S7 calls `decoy.cli.lang.compiled_yaml`. Every allowed pair has a seeded self-test. | Frozen contracts; Choke points and guards; S7 |
+| F3 | S1 now owns the `Position`, `segments`, and `YamlPositionIndex` move, adapter import switch, deletion, SARIF pin, and baseline-key rename. S2 owns `.decoy` positions, `GateFinding.position`, removal of the adapter read, guard test 1, and M-H2b. | Layers and positions; Slices; acceptance |
+| F4 | `_source_positions` alone owns path parsing, union-member removal, and nearest-construct lookup. YAML stays exact or file-level. `.decoy` uses nearest construct. The parity test rejects all-`None` positions and covers duplicate names. | Layers and positions; S2 acceptance |
+| F5 | Direct JSON adds `position` only to loader findings that have a region. CI JSON and SARIF use positions for loader and engine findings. The JSON shape changes once. | Guarantee; Layers and positions; Frozen contracts |
+| F6 | `parse_pipeline_yaml` returns a non-`None` `PipelineFile` with mark findings. The gates hold marks until schema findings and `_load_raw_config` refuses any non-empty finding list. | Gate; S2 acceptance |
+| F7 | `report.py` computes `hash_ok` and passes it to the moved UI card. The move adds no import-linter ignore. | Run record; S7 acceptance |
+| F8 | `decoy_scaffold` takes the parsed mapping. Keyed guidance comes from that mapping and is written into the `.decoy` header. The YAML-load allowlist stays at 11. | S6 mechanism; S6 acceptance |
+| F9 | Init kind comes from `-o`; `-o -` follows `--yaml`; conflicting `--yaml` and `.decoy` is usage error 2. Pathed presets render YAML first and do not keep bundled comments. | Commands; S6 mechanism; S6 acceptance |
+| F10 | `PIPELINE_SUFFIXES` and `is_decoy_path` live only in `_config_file`. Pipeline token parsing and completion import them. A sentry rejects another `.yml` literal under `src/decoy/cli`. | One loader; Project layout; S1 acceptance |
+| F11 | A manifest with only one compiled-pipeline field is malformed. The sidecar path resolves through `resolve_manifest_path`, like `pipeline_path`. | Run record; S7 acceptance |
+| F12 | `pci.decoy` is moved from the existing twins folder. It is not new. | What exists; Placement; S6 acceptance |
+| F13 | The caller and help-text count is 12. | Commands; Frozen contracts; Routes |
+| F14 | A config refusal keeps the exit each command gives today, including exit 3 for `report integrity --config`. | Review mark; S3 acceptance |
+| F15 | `fmt --write` uses the local atomic path that preserves an existing file's mode. | Commands; S5 acceptance |
+| F16 | The language-import guard seeds star import, dynamic package import, dynamic private import, and aliased private import spellings. | Choke points and guards |
+| F17 | The preflight success message says `Pipeline syntax is valid.` | S1 acceptance |
+| F18 | One private decoder serves `read_config_text` and `read_decoy_text`. | One loader; S1 acceptance |
+| F19 | Ambiguous member folders are invalid in `list_pipelines`, completion, `project show`, and `project list`. | Project layout; S4 acceptance |
+| F20 | Every named mutation is rerun on the final head of its slice. | Slices; acceptance |
+| F21 | S6 checks that the built wheel contains `decoy/templates/*.decoy`. | S6 acceptance |
 
-### Disagreements with round 1
-
-1. H3 asks for `ci.locations` as a thin wrapper. After S2 the CI adapter reads
-   `GateFinding.position` and builds no index, so a wrapper would have no caller. S2 deletes
-   `src/decoy/ci/locations.py` and moves its tests. Pre-GA rule: hard delete.
-2. H4 lists `convert` among the commands that proceed on a `?` mark. `decoy convert
-   pipeline.decoy` writes YAML, and YAML has no review mark, so proceeding would let `convert`
-   then `run` skip the review. Converting `.decoy` to YAML refuses on a mark. `fmt` proceeds
-   and keeps the marks. Converting YAML to `.decoy` cannot meet a mark.
+Revision 2 answered round 1. Revision 3 keeps those answers except where the table above
+changes slice ownership or a shared mechanism.
 
 ## What exists
 
@@ -54,8 +55,9 @@ The compiler, converter and formatter are in `src/decoy/lang/` (`compile_text`,
 `decoy` command reads a `.decoy` file. `compile_text` runs the engine's `parse_pipeline_config`
 itself and rewrites every engine problem to the code `lang.config`
 (`src/decoy/lang/_validate.py:46-50`), while the gate's schema layer reports engine codes
-(`src/decoy/cli/gate/_layers.py:119-129`). Of the 11 bundled templates, 10 have a `.decoy`
-twin in `tests/unit/lang/twins/`; `pci` has none.
+(`src/decoy/cli/gate/_layers.py:119-129`). All 11 bundled templates already have a `.decoy`
+twin in `tests/unit/lang/twins/`, including `pci.decoy`. S6 moves those twins into
+`src/decoy/templates/`.
 
 ## Guarantee and non-goals
 
@@ -64,22 +66,24 @@ twin in `tests/unit/lang/twins/`; `pci` has none.
    - the exit code is the same;
    - every engine, schema, compile-layer and preflight finding has the same code, severity,
      message and dotted `location` as for the YAML file;
-   - the `--json` result document is the same apart from the file name, its hash and
-     `position` keys (rule 2).
+   - the `--json` result document is the same apart from the file name and its hash. Direct
+     command JSON adds `position` only for a `yaml.*` or `lang.*` loader problem that has a
+     region. CI JSON and SARIF add a region for both loader and engine findings when known.
 
    Problems found while reading the `.decoy` text (parse and lowering, before any engine
    validation) carry `lang.*` codes. They have no YAML equivalent.
-2. Where `decoy ci check` gives a YAML finding a line and column, it gives the `.decoy` finding
-   the line and column of the `.decoy` construct that produced it. A `lang.*` problem carries
-   its line and column on every surface. Direct commands (`validate`, `run`) keep printing the
-   dotted `location` for engine findings on both kinds, so rule 1 holds.
+2. Where YAML gives an exact region, `.decoy` gives a non-`None` line for the construct that
+   produced the finding. A `lang.*` loader problem carries its line and column on direct JSON,
+   CI JSON, and SARIF. Direct commands keep the dotted `location` for engine findings. CI JSON
+   and SARIF also use `GateFinding.position` for engine findings of both file kinds.
 3. A `.decoy` file with a rule still marked `?` is refused by every command that reads data,
    before any source is read, with exit 1 and one finding per mark. `decoy validate` reports the
    marks beside every other config-layer problem.
 4. No message quotes a value from the file. A converted `LangError` has no `__cause__` and no
    `__context__`.
-5. YAML keeps working unchanged: same codes, texts, exit codes, locations and SARIF regions for
-   every YAML pipeline, pinned by the existing snapshots.
+5. YAML keeps the same codes, texts, exit codes, dotted locations, and SARIF regions. Its direct
+   JSON changes only when a loader problem already has a region, and that one additive shape
+   update is pinned in `json-shapes.json`.
 
 Non-goals: a `.decoy` form of the CI manifest, `decoy.yaml` or a policy file; changing what the
 engine receives; the `policy` block (milestone 12); stdin input (no pipeline command reads
@@ -107,8 +111,9 @@ on the source line through a map built during lowering is how Elm and Rust do it
   `_layout.py` is at its 800-line cap (M1); the flat `cli/` folder is frozen at 30 modules;
   `lang.*` codes are literals spread over 15 modules (M2).
 - Kind-neutral position: the loader returns a `locate` function, so no caller learns the kind.
-- One walker for both kinds: the YAML index and the `.decoy` index share the path parser and
-  the walker; only the node adapter differs. Parity holds by construction and a test pins it.
+- One position owner: YAML and `.decoy` share `segments`, union-member removal, and lookup rules
+  in `_source_positions`. YAML keeps exact-or-file-level lookup. `.decoy` uses nearest
+  construct. The parity test pins the intended difference.
 - No flag arguments: `Template` gains a `decoy_body` field instead of `get_template(kind=)`.
 
 ## Design
@@ -138,19 +143,25 @@ class PipelineFile:
 def load_pipeline(path: Path, *, text: str | None = None) -> PipelineFile
 def read_decoy_text(path: Path) -> str
 def load_config_mapping(path: Path) -> dict[str, Any]
+PIPELINE_SUFFIXES = (".yaml", ".yml", ".decoy")
+def is_decoy_path(path: str | Path) -> bool
 ```
 
-- Kind rule (L3): a path whose name ends in `.decoy`, compared case-insensitively, is a
-  `.decoy` file, as `.yaml` and `.yml` are compared today in `looks_like_path` and the
-  completer. Every other path is YAML. A member file name is exact (`pipeline.decoy`), as
-  `pipeline.yaml` is today.
+- Kind rule (L3): `PIPELINE_SUFFIXES` is the only pipeline suffix table and `is_decoy_path` is
+  the only kind check. Both live in `decoy._config_file`. A `.decoy` suffix is compared
+  case-insensitively. Every other path is YAML. `cli/io/_pipelines.py:56` uses
+  `PIPELINE_SUFFIXES` in `looks_like_path`; `cli/completers.py:130` uses it for file completion.
+  A member file name is exact (`pipeline.decoy`), as `pipeline.yaml` is today. A sentry asserts
+  that no other string literal equal to `.yml` exists under `src/decoy/cli`.
 - YAML: today's steps and the four `yaml.*` codes, unchanged. `locate` is
   `YamlPositionIndex.from_text(text).locate`, built on first call.
-- `.decoy`: `read_decoy_text` decodes the bytes once (strict UTF-8, BOM dropped). Non-UTF-8 is
+- One private decoder takes bytes plus the fixed not-UTF-8 code and text. Both
+  `read_config_text` and `read_decoy_text` call it. The existing read-and-decode sentry still
+  sees one owner. `read_decoy_text` drops a BOM and decodes strict UTF-8. Non-UTF-8 is
   `lang.not_utf8`, "Pipeline file is not UTF-8 text."; text that is empty or only whitespace is
-  `lang.empty`, "Pipeline file is empty." Then `decoy.lang.lower_text(text)`. A `LangError`
-  becomes one `ConfigFileError` with one `ConfigProblem` per diagnostic, raised after the
-  handler closes. `locate` is `DecoyPositionIndex(config, source_map).locate`.
+  `lang.empty`, "Pipeline file is empty." Then the loader calls `decoy.lang.lower_text(text)`.
+  A `LangError` becomes one `ConfigFileError` with one `ConfigProblem` per diagnostic, raised
+  after the handler closes. `locate` is `DecoyPositionIndex(config, source_map).locate`.
 - `decoy.lang` is imported inside the `.decoy` branch only (M5). Importing `decoy._config_file`
   loads neither `decoy_engine` nor `lark`; a subprocess test pins it.
 - `load_config_mapping(path)` returns `load_pipeline(path).config`, and raises a
@@ -186,50 +197,59 @@ def lower_text(text: str) -> Lowered    # parse and lower; no engine validation
 
 ### Layers and positions (H3)
 
-- New module `src/decoy/_source_positions.py`, bottom tier:
-  - `Position(line, column, end_line, end_column)`, every field optional; all `None` means
-    "the file, no region" (today's file-level `SourceLocation`).
-  - `segments(logical_path)`: the one path parser. It accepts the spellings the YAML index
-    accepts today: numeric (`tables.0.columns.2.provider`), bracket (`tables[0]...`), semantic
-    (`tables.customers.columns.email.provider`) and plain mapping keys. It refuses empty
-    segments, `*` and `<pseudo>` segments.
-  - One walker over a small node interface, with two adapters: PyYAML nodes
-    (`YamlPositionIndex`, the code moved from `ci/locations.py`) and a config value plus a
-    source map (`DecoyPositionIndex`). Both record a duplicate key or name as ambiguous, and
-    both give a file-level `Position` for a proven parent whose leaf is absent.
-  - It takes the source map as a mapping of path tuples to objects with `line` and `column`,
-    so it does not import `decoy.lang`.
-- `.importlinter`: the bottom tier becomes
-  `_private_file | _version | _yaml_errors | _source_positions | lang`, and `lang` leaves the
-  `ui | ... | templates | lang` tier. The layer snapshot in
-  `tests/sentry/layout/test_import_layers.py` changes with it. The builder checks
-  `tests/sentry/layout/test_package_fanout.py` for `src/decoy` (limit 25) before adding the
-  module.
+- S1 creates `src/decoy/_source_positions.py` and moves the YAML location code from
+  `ci/locations.py` into it without changing behavior. It owns:
+  - `Position(line, column, end_line, end_column)`, with every field optional. All `None` means
+    file-level only and never satisfies a region assertion.
+  - `segments(logical_path)`, the only parser for numeric, bracket, semantic, and mapping-key
+    paths. It rejects empty, `*`, and `<pseudo>` segments.
+  - `YamlPositionIndex`, which stays exact-or-file-level. A missing leaf under a proven parent
+    is file-level. Duplicate YAML keys or semantic names are ambiguous.
+  - the union-member removal and nearest-construct lookup used for source maps.
+- S1 deletes `src/decoy/ci/locations.py`. `ci/adapters.py` changes only its import to
+  `decoy._source_positions.YamlPositionIndex`; it still reads the text and builds the same YAML
+  index. The existing SARIF snapshot pins that no-behavior-change move.
+- S2 adds `DecoyPositionIndex`. It calls `segments`, drops a source or target union member in
+  the shared rule, and uses the shared nearest-construct lookup. `lang/_validate.py` calls the
+  same functions; its `path_of` and `locate` copies are deleted. `.decoy` positions use nearest
+  construct. YAML positions do not.
+- `_source_positions` takes a source map as path tuples mapped to objects with `line` and
+  `column`; it does not import `decoy.lang`.
+- `.importlinter`: `lang` moves to the low tier, and `_source_positions` is alone on a new last
+  layer below `lang`. The layer snapshot changes with it. The builder checks the root-package
+  fan-out limit before adding the module.
 - `src/decoy/lang/__main__.py` is deleted: it imports `_config_file`, which is now above it.
   `tests/unit/lang/test_package_boundary.py` then has `ALLOWED = set()`.
-- The baseline key `ci/locations.py::YamlSourceIndex.from_text::1` in
+- In S1, the baseline key `ci/locations.py::YamlSourceIndex.from_text::1` in
   `tests/sentry/baselines/config-load-allow.json` is renamed to
   `_source_positions.py::YamlPositionIndex.from_text::1`, same kind and reason. It is a move,
   not growth: the entry count stays 11.
-- `GateFinding` gains a last field `position: Position | None = None`. The gate fills it from
-  `PipelineFile.locate(logical_path or location)` for config, compile and preflight findings,
-  and from the `ConfigProblem` for loader problems.
-- `ci/adapters.py` stops reading the file and building an index. It calls the gate with the
-  path and builds `SourceLocation(uri=rel, ...)` from `item.position`. Its `yaml.not_utf8`
-  special case goes: the gate reports that code as a config finding, and the result (rule id
-  `validate.yaml.not_utf8`, exit 1, no region) is the same, pinned by the SARIF snapshot.
+- In S2, `GateFinding` gains a last field `position: Position | None = None`. The gate fills it
+  from `PipelineFile.locate(logical_path or location)` for schema, compile, and preflight
+  findings, and from `ConfigProblem.position` for loader problems.
+- In S2, `ci/adapters.py` stops its read and index build. It calls the gate with the path and
+  builds `SourceLocation(uri=rel, ...)` from `item.position`. Its `yaml.not_utf8` special case
+  goes. Guard test 1 and M-H2b land here, after the read is removed.
+- Direct command JSON includes `position` only for `yaml.*` and `lang.*` loader findings with
+  a non-`None` region. Engine findings keep dotted `location` only on direct JSON. CI JSON and
+  SARIF use `position` for both loader and engine findings. The JSON-shapes snapshot changes
+  once in S2.
+- Position parity uses a synthetic config and source map, including a duplicate table name.
+  Wherever YAML gives an exact region, `.decoy` must give a `Position` with a non-`None` line.
+  An all-`None` `Position` is not a pass.
 
 ### Gate (`cli/gate/_layers.py`)
 
 - `parse_pipeline_yaml(path, source_text)` calls `load_pipeline` and returns
-  `(PipelineFile | None, findings)`: one config-layer error finding per `ConfigProblem`.
-- `run_config_gate` and `run_gate` stop when the pipeline is `None` (today: on any finding).
-  With a pipeline, they run the config base as today, then append one config-layer error
-  finding per mark after the other config-layer findings. The config layer has failed, so the
-  gate stops before compile and preflight, as it does for any config error.
-- `run/_prepare.py:_load_raw_config` refuses on any finding, marks included. That is the step
-  where `run` refuses a YAML syntax error today, before the layout check and before any source
-  is opened.
+  `(PipelineFile | None, findings)`. A read, parse, or lowering failure returns `None` and one
+  finding per `ConfigProblem`. A successful load with marks returns the non-`None`
+  `PipelineFile` and one `lang.unreviewed` finding per mark.
+- `run_config_gate` and `run_gate` stop immediately only when the pipeline is `None`. They hold
+  mark findings, run the schema layer, then append marks after every schema finding. If schema
+  findings or marks exist, the config layer fails and compile and preflight do not run.
+- `run/_prepare.py:_load_raw_config` refuses whenever the returned finding list is non-empty,
+  including marks on a non-`None` pipeline. That is before layout and before any source opens.
+  Acceptance counts exactly two mark findings from `validate` and exactly two from `run`.
 - `cli/gen/_scaffold.py:144` calls `load_pipeline(staged_path, text=config_text)` instead of
   `parse_config_mapping` (CLI-written YAML, suffix `.yaml`).
 
@@ -239,8 +259,8 @@ def lower_text(text: str) -> Lowered    # parse and lower; no engine validation
 |---|---|
 | `validate`, `validate config`, `ci check` | Report every mark beside the other config-layer findings; exit 1 |
 | `run`, `project run --all` (each member) | Refuse at the parse step, one finding per mark; exit 1; no source read |
-| `validate compile`, `validate preflight`, `subset`, `tokenize`, `detokenize`, `unmask`, `report fidelity/integrity/vault --config`, Python `mask(config=path)` | Refuse through `load_config_mapping`; exit 1; the message names the first mark and the count |
-| `convert pipeline.decoy` (to YAML) | Refuse; exit 1 (see Disagreements) |
+| `validate compile`, `validate preflight`, `subset`, `tokenize`, `detokenize`, `unmask`, `report fidelity/integrity/vault --config`, Python `mask(config=path)` | Refuse through `load_config_mapping`; keep the exit each command gives a config refusal today. In particular, `report integrity --config` exits 3. The message names the first mark and the count. |
+| `convert pipeline.decoy` (to YAML) | Refuse with exit 1 because YAML cannot keep review marks |
 | `fmt` | Proceed; the marks are kept |
 
 A file with other compile problems as well raises them all, marks last, on every command.
@@ -254,6 +274,11 @@ A file with other compile problems as well raises them all, marks last, on every
   - `member_destination(root, name, kind) -> Path`: where `decoy init` writes; refuses with the
     same code when the other file is already present.
   - `member_has_link` and `_member` move here from `_pipelines.py` and check both names.
+- `list_pipelines` does not hide an ambiguous member. It raises
+  `layout.pipeline_file_ambiguous`. Pipeline completion catches that refusal, omits project
+  names, and still offers path completions. `project show` refuses with the code. `project
+  list` records the project as invalid with the same warning code instead of reporting a lower
+  pipeline count.
 - `_layout_errors.py` registers `PIPELINE_FILE_AMBIGUOUS` (the message names the folder, never
   file content) among the gate descriptors, so `GATE_CODES` and `validation_codes` carry it.
 - `_layout.py` stays at or under 800 lines: `PIPELINE_YAML` and `member_yaml` leave it, and
@@ -264,11 +289,11 @@ A file with other compile problems as well raises them all, marks last, on every
 |---|---|
 | `cli/io/_layout.py:55-60` (`PIPELINE_YAML`, `member_yaml`) | Removed; replaced by `_member_file.py` |
 | `cli/io/_layout.py:331` (`_taken`), `:350` (`pipeline_name_for`) | Either file name is a member |
-| `cli/io/_pipelines.py:56` (`_PATH_SUFFIXES`), `:116` | Adds `.decoy` (S1) |
+| `cli/io/_pipelines.py:56`, `:116` | Deletes `_PATH_SUFFIXES`; imports `PIPELINE_SUFFIXES` from `_config_file` (S1) |
 | `cli/io/_pipelines.py:182-205` (`member_has_link`, `_member`), `:310` | Use `member_file`; the error path names the file found |
 | `cli/io/__init__.py:48, 216` | Exports `member_file`, `member_destination`, `PIPELINE_FILES` instead of `member_yaml` |
 | `cli/project/_scaffold.py:36, 109-112` | Destination from `member_destination` |
-| `cli/completers.py:130` | Offers `.decoy` files |
+| `cli/completers.py:130` | Uses `PIPELINE_SUFFIXES`; offers `.decoy` files; no local suffix tuple |
 | `cli/project/_show.py:48` | Key `"yaml"` unchanged (frozen json shape); its value may name a `.decoy` file |
 | `cli/project/_run_all.py:164` | Unchanged; `entry.yaml` is the member file |
 | `cli/gen/_scaffold.py:147`, `cli/demo.py:153` | Unchanged; CLI-written YAML |
@@ -280,22 +305,28 @@ A file with other compile problems as well raises them all, marks last, on every
   `cli/io/_member_file.py`, and the two CLI-written sites `cli/gen/_scaffold.py` and
   `cli/demo.py`, by (file, function). Mutation M-S4: put `root / "pipelines" / name /
   "pipeline.yaml"` back in `cli/io/_pipelines.py`; the guard fails.
+- The same sentry rejects any `.yml` string literal under `src/decoy/cli`; the only suffix
+  registry is `decoy._config_file.PIPELINE_SUFFIXES`.
 
 ### What a run stores (M3)
 
 For a `.decoy` pipeline run with `--evidence-out`:
 
 - `pipeline_path` and `pipeline_fingerprint` name and hash the `.decoy` file, as written.
-- The compiled YAML (`emit_yaml` of the exact dict the run hands the engine) is written to an
+- The compiled YAML (`decoy.cli.lang.compiled_yaml` of the exact dict the run hands the engine)
+  is written to an
   owner-only sidecar beside the manifest, `<manifest stem>.compiled.yaml`, through
   `decoy._private_file` and `_atomic`. It holds the config, the same class of content as the
   user's own pipeline file, so it is owner-only and never inside the manifest.
 - The manifest gains two additive `cli-local-1` fields, `compiled_pipeline_path` and
   `compiled_pipeline_fingerprint`, both optional in `_FIELDS` and both covered by
-  `manifest_hash`. YAML runs and old manifests have neither and verify unchanged.
+  `manifest_hash`. `check_manifest` requires both or neither; a manifest with only one is
+  malformed. YAML runs and old manifests have neither and verify unchanged.
 - `report verify` and `decoy ci check` rehash the sidecar through `_stored_files` as a
   pipeline-kind entry: a missing sidecar is `pipeline_missing`, a changed one
-  `pipeline_fingerprint_changed`, each naming the sidecar path. No new issue code.
+  `pipeline_fingerprint_changed`, each naming the sidecar path. `_stored_files` passes the
+  recorded sidecar through `resolve_manifest_path` with the manifest's path-base rule, exactly
+  like `pipeline_path`. No new issue code.
 - The `no_raw_values` test gains a `.decoy` run whose config holds marker values: no marker in
   the manifest; the sidecar is mode 0600.
 - Write order: the sidecar first, then the manifest, so a manifest never names a sidecar that
@@ -303,8 +334,11 @@ For a `.decoy` pipeline run with `--evidence-out`:
   named in the same error line. The exit stays `EXIT_RUNTIME`, as today
   (`src/decoy/cli/run/_evidence.py:52-56`).
 - `evidence.py` is at 792 lines. S7 first moves `_render_manifest_card` (lines 700-781) to
-  `src/decoy/ui/evidence_card.py`, a move with no behaviour change, then adds about 10 lines.
-  The writer side goes in `cli/run/_evidence.py` (61 lines).
+  `src/decoy/ui/evidence_card.py`. The UI function takes `hash_ok: bool`; it does not import or
+  call `compute_manifest_hash`. `report.py:1130` computes the boolean and passes it with the
+  existing arguments. The output stays unchanged. No `.importlinter` ignore is added. The
+  writer side goes in `cli/run/_evidence.py` (61 lines) and gets YAML text only from
+  `decoy.cli.lang.compiled_yaml`.
 
 ### Commands (L1, L2)
 
@@ -324,9 +358,9 @@ a pipeline path another way:
 | `ci check` | the manifest's pipeline paths, `ci/adapters.py` | Accepts `.decoy` |
 | `project run --all` | members, `cli/project/_run_all.py` | Runs `pipeline.decoy` members |
 | Python API `mask(config=path)` | `api.py:105` | Accepts `.decoy` |
-| `decoy fmt FILE` (new) | `cli/lang/_fmt.py` | Prints the canonical layout; `--write` replaces the file through `_atomic`; `--check` exits 1 when the file would change; a non-`.decoy` path is a usage error (exit 2) |
+| `decoy fmt FILE` (new) | `cli/lang/_fmt.py` | Prints the canonical layout; `--write` replaces through `_atomic.staged_local_target` so an existing file keeps its mode; `--check` exits 1 when the file would change; a non-`.decoy` path is a usage error (exit 2) |
 | `decoy convert FILE` (new) | `cli/lang/_convert.py` | YAML in: prints the `.decoy` program (`convert_config`). `.decoy` in: prints the compiled YAML after the engine's schema check, refusing any problem or mark. `-o PATH` writes through `_atomic`. A refusal is exit 1 with its code (`lang.not_convertible` for a `ConvertError`) |
-| `decoy init` | `cli/init.py` | Writes `pipeline.decoy`, inferred rules marked `?`; `--yaml` writes today's output (S6) |
+| `decoy init` | `cli/init.py` | Writes Decoy by default, with inferred rules marked `?`. `-o .yaml` or `.yml` selects YAML, `-o .decoy` selects Decoy, another suffix is usage error 2, and `-o -` follows `--yaml`. `--yaml` with a `.decoy` destination is usage error 2. |
 | `decoy show template NAME` | `cli/templates.py` | Prints the `.decoy` body; `--yaml` prints the YAML body (S6) |
 
 `plan`, `scan` and `explain pipeline` take no pipeline file and are out of scope. The compiled
@@ -336,6 +370,10 @@ input's kind, so no `show pipeline` kind and no `validate` flag is added.
 `convert -o` into a pipeline folder that already holds the other file writes it and prints a
 warning that the folder is refused until one file is removed. Writing is safe because every
 reader refuses that folder.
+
+For `init --preset` with source or target paths, the existing renderer first builds the
+path-adjusted YAML mapping, then `decoy_scaffold(config, review={})` writes Decoy. Bundled YAML
+comments are not kept on that path. The config and keyed guidance are kept.
 
 `--json` for the new commands: `fmt` gives `{command, status, file, changed}`; `convert` gives
 `{command, status, from, to, output}` and needs `-o` (without it, `--json` is a usage error,
@@ -365,7 +403,8 @@ Language versioning rule, written into the frozen-surfaces page:
 
 One code registry: `src/decoy/lang/_codes.py` holds `CODES`, every `lang.*` code with a
 one-line meaning, including the new `lang.not_utf8`, `lang.empty` and `lang.not_convertible`.
-`_codes.py` imports nothing. `tests/unit/lang/test_codes.py` walks `src/decoy/lang/`,
+`_codes.py` imports nothing. `decoy.lang` exports `CODES` and includes it in `__all__`.
+`tests/unit/lang/test_codes.py` walks `src/decoy/lang/`,
 `src/decoy/_config_file.py` and `src/decoy/cli/lang/` for `lang.*` string literals: each is in
 `CODES`, and each entry of `CODES` is used. Seeded: a literal not in the registry is reported.
 
@@ -373,10 +412,10 @@ one-line meaning, including the new `lang.not_utf8`, `lang.empty` and `lang.not_
 codes are, so a `.decoy` finding never maps to the unknown rule id. It takes the whole
 registry, so the two sets cannot drift.
 
-Changed with the commands: the json-shapes snapshot
+Changed with the commands and loader positions: the json-shapes snapshot changes once
 (`tests/fixtures/release_freeze/json-shapes.json`, `tests/e2e/release_freeze/write_shapes.py`)
 for `fmt` and `convert`; `CHANGELOG.md`; `docs/cli-reference.md` regenerated; the help text at
-all 14 `pipeline_argument` / `pipeline_option` sites says "pipeline file (.yaml or .decoy)"
+all 12 `resolve_pipeline` call sites says "pipeline file (.yaml or .decoy)"
 (S1); the CODEMAP templates row (`<name>.yaml` and `<name>.decoy`), the lang row (no
 `python -m decoy.lang`), and a row for `src/decoy/cli/lang/`.
 
@@ -391,23 +430,32 @@ By construction:
 - `read_config_text` has an exact caller allowlist by (file, function):
   `ci/manifest.py::load_manifest` only (the CI manifest, a different kind). Calls inside
   `_config_file.py` are not counted.
-- Only `decoy._config_file` and `decoy.cli.lang` import `decoy.lang`. `decoy.cli.lang` may
-  import only `format_text`, `convert_config`, `emit_yaml`, `ConvertError`, `LangError` and
-  `render`, never `lower_text` or `compile_text`. Any config it needs comes from
-  `load_pipeline`.
+- The import guard uses exact `(importer module, imported public name)` pairs:
+  `decoy._config_file` may import `lower_text` and `LangError`; `decoy.cli.lang` may import
+  `format_text`, `convert_config`, `emit_yaml`, `ConvertError`, `LangError`, and `render`;
+  `decoy.ci.rule_codes` may import `CODES` only inside `validation_codes`. No importer may use a
+  private `decoy.lang._*` module. Any CLI config comes from `load_pipeline`.
+- `decoy.cli.lang.compiled_yaml(config)` is the command-layer helper that calls the allowed
+  public `emit_yaml`. S7 calls this helper and does not import `decoy.lang` from
+  `cli/run/_evidence.py`.
 
 Guard: `tests/sentry/io_policy/test_config_load_choke_point.py` gains three tests over
 `src/decoy`, with the AST walk in `_yaml_load_sites.py`:
 1. the `read_config_text` call sites equal the allowlist;
 2. no import of `_parse_yaml_mapping`, or of any `_` name of `decoy._config_file`, outside it;
-3. the `decoy.lang` import rule, with the name allowlist for `decoy.cli.lang`.
+3. the exact language import pairs above, including the function scope for
+   `decoy.ci.rule_codes::validation_codes`.
 
 Seeded spellings, each a self-test: `import decoy.lang as L` then `L.lower_text(t)`;
 `from decoy.lang import compile_text`; the attribute call `decoy.lang.compile_text(t)` after
 `import decoy`; `from decoy.lang._lower import lower`; `from decoy import lang`;
-`importlib.import_module("decoy.lang")`; and the bypass
+`from decoy.lang import *`; `__import__("decoy.lang")`;
+`importlib.import_module("decoy.lang")`; `importlib.import_module("decoy.lang._lower")`;
+`import decoy.lang._lower as x`; and the bypass
 `from decoy._config_file import _parse_yaml_mapping, read_config_text` then
 `_parse_yaml_mapping(read_config_text(p))`.
+Each allowed pair also has a seeded positive self-test. Moving the `CODES` import to module
+scope or adding one name to an allowed importer turns the guard red.
 
 Mutations that must turn the guard red:
 - M-H2a: in `cli/validate.py`, add `from decoy.lang import compile_text` and compile the
@@ -417,12 +465,18 @@ Mutations that must turn the guard red:
 
 Rule 2: a command that takes a pipeline file accepts both kinds and gives the same result.
 Guard: the route-cell table in `tests/sentry/defects/test_config_error_routes.py` already walks
-every command with a config parameter. Each cell runs twice: with the YAML marker config and
-with its `.decoy` twin, made in the test by `convert_config` so no fixture can drift. Both runs
-keep the existing assertion that no marker reaches stdout, stderr or `--json`, and the two runs
-must give the same exit code and the same finding codes. A command added later gets both runs
-or fails the walk. Mutation M-R2: make `cli/unmask.py` call `yaml.safe_load` on the path's text
-itself; its `.decoy` run fails, and the existing YAML reader sentry fails too.
+every command with a config parameter. The test writes the schema-invalid `.decoy` marker
+program by hand. It must parse and lower cleanly, then fail engine schema because an extra key
+was added through `options { }`. It does not call `convert_config` on an invalid config.
+The test loads that program with `load_pipeline(p).config`, then writes the YAML twin with
+`yaml.safe_dump`. `_FIRST_YAML`, `_EXTRA_YAML`, `_FIRST_DECOY`, and `_EXTRA_DECOY` are distinct,
+so each run proves its own marker is absent. Every cell compares the YAML and `.decoy` exit
+codes. Only cells that invoke `--json` compare finding-code lists, because human output has no
+stable code document. Each run keeps the marker checks on stdout, stderr, JSON, notifications,
+and output files that the existing cell covers. One extra `.decoy` cell puts markers inside a
+lowering error, asserts no marker escapes, and expects exit 1. A command added later gets both
+runs or fails the walk. Mutation M-R2 stays: make `cli/unmask.py` call `yaml.safe_load` on the
+path text. Its `.decoy` run fails, and the existing YAML reader sentry fails too.
 
 Rule 3: the review mark is refused by construction in `load_config_mapping` and in the gate's
 `parse_pipeline_yaml`. Mutation M-R3: drop the marks check from `load_config_mapping`; the S2
@@ -456,8 +510,9 @@ Code that owns files on the way out:
 
 - `decoy run --evidence-out` writes the manifest at `src/decoy/cli/run/_evidence.py:52`; S7
   adds the sidecar before it (class 2 row).
-- `decoy fmt --write` and `decoy convert -o`: one `_atomic` replace each; a failure leaves the
-  old file and exits 3, as other `write_local_target` failures do.
+- `decoy fmt --write` uses `_atomic.staged_local_target` so it keeps an existing mode;
+  `decoy convert -o` uses the normal local-target replace. A failure leaves the old file and
+  exits 3.
 - `decoy init` writes the member file through `cli/project/_scaffold.py:170`; S6 changes only
   the name and the body.
 - The gate and the loader own no files: refusal paths return findings
@@ -491,13 +546,14 @@ N/A: the plan does not change foreign-key handling. A `.decoy` link lowers to th
 
 ### Output surfaces
 
-- stdout human text and `--json` success documents (new `position` key; `fmt` and `convert`
-  shapes).
+- stdout human text and `--json` success documents (`position` only on positioned loader
+  findings; new `fmt` and `convert` shapes).
 - stderr error lines and the `--json` error object (`config_refusal`, two keys, unchanged
   schema).
 - SARIF and the CI JSON from `ci check` (regions on `.decoy` lines).
 - Files: the evidence manifest and sidecar, `fmt --write`, `convert -o`, `init` output.
-- Help text at the 14 parameter sites (`src/decoy/cli/io/_pipelines.py:148`, `:161`), the
+- Help text at the 12 `resolve_pipeline` call sites (`src/decoy/cli/io/_pipelines.py:148`,
+  `:161`), the
   completer, and Typer's own parse errors for a missing path (unchanged text).
 - Logs: the CI debug sink on a crashed check (unchanged; the loader adds no log line).
 
@@ -506,7 +562,8 @@ N/A: the plan does not change foreign-key handling. A `.decoy` link lowers to th
 - `decoy._config_file` and its sentry `test_config_load_choke_point.py`, with the shrink-only
   baseline `config-load-allow.json`.
 - The YAML mark walker in `ci/locations.py`, moved, not rewritten.
-- `decoy.lang`: `SourceMap`, `_validate.locate` (nearest construct, union-member rule), the
+- `decoy.lang`: `SourceMap`, the existing `_validate.locate` behavior moved into
+  `_source_positions`, the
   printer's `Notes`, `convert_config`'s round-trip check, `format_text`.
 - The gate's schema layer and `_schema_findings`, the one construction of engine findings.
 - `layout.*` descriptors in `_layout_errors.py` and `GATE_CODES`.
@@ -529,7 +586,7 @@ New machinery and its reason: `_source_positions.py` (the walker must sit below 
 - The first `.decoy` load is slow because Lark builds the grammar. S1 measures `decoy validate`
   on a twin against its YAML template and reports the difference; more than 300 ms stops the
   slice for a cached grammar.
-- Changing the help text at 14 sites breaks `docs/cli-reference.md`; S1 regenerates it.
+- Changing the help text at 12 sites breaks `docs/cli-reference.md`; S1 regenerates it.
 - The init default change breaks the QA journey document; S6 updates
   `docs/qa/cli-v1-journey.md` with the journey tests.
 - `src/decoy/lang/` is still being changed by another builder on
@@ -540,7 +597,7 @@ New machinery and its reason: `_source_positions.py` (the walker must sit below 
 
 | New file | Directory | CODEMAP "Where things go" line | Sits beside |
 |---|---|---|---|
-| `_source_positions.py` | `src/decoy/` | "Private shared filesystem or process primitives used by more than one package" (`src/decoy/_<noun>.py`); used by `_config_file`, the gate and `ci` | `_yaml_errors.py` |
+| `_source_positions.py` | `src/decoy/` | Expand the private-shared-primitives CODEMAP row to include source-position primitives used by more than one package; used by `_config_file`, `lang`, the gate and `ci` | `_yaml_errors.py` |
 | `_codes.py` | `src/decoy/lang/` | "Decoy language compiler" (`src/decoy/lang/_<stage>.py`) | `_errors.py` |
 | `_member_file.py` | `src/decoy/cli/io/` | "Project layout services ... the `layout.*` descriptors" | `_layout.py` |
 | `__init__.py`, `_fmt.py`, `_convert.py`, `_scaffold.py` | `src/decoy/cli/lang/` | "Command module ... new commands go in a named sub-package", and the lang row ("a `decoy` command for it goes in a sub-package below `src/decoy/cli/`") | `src/decoy/cli/setup/` |
@@ -560,13 +617,16 @@ switch to. Order: S1+S5, S2, S3, S4, S6, S7. S6 waits for S1 to S3 (owner O4).
 
 | # | Slice | Risk | Frozen surface | Size |
 |---|---|---|---|---|
-| S1 | Loader (`PipelineFile`, `load_pipeline`, `ConfigProblem`, `read_decoy_text`), `lower_text`, `_codes.py`, layer move, `__main__` deleted, `_PATH_SUFFIXES`, help text, guards for rules 1 and 3, language freeze test | R2 | loader shape, help text, the language | ~150 src lines in `_config_file.py`, ~45 in `lang/`, ~70 in `_codes.py`, -86 for `__main__`; ~400 test lines; 6 public names added, 1 made private |
+| S1 | Loader (`PipelineFile`, `load_pipeline`, `ConfigProblem`, `read_decoy_text`), shared decoder and suffix registry, `lower_text`, `_codes.py`, `Position`, `segments`, moved `YamlPositionIndex`, adapter import switch, `ci/locations.py` deletion, baseline rename, layer move, `__main__` deletion, help text, import guards except the adapter-read guard, language freeze test | R2 | loader shape, help text, the language, unchanged YAML SARIF | ~150 src lines in `_config_file.py`, ~45 in `lang/`, ~70 in `_codes.py`, ~190 moved position lines, -86 for `__main__`; ~450 test lines; 9 public names added, 1 made private |
 | S5 | `decoy fmt`, `decoy convert`; guide pages off `python -m decoy.lang` | R2 | command names, json shapes | ~250 src lines in `cli/lang/`; ~250 test lines; 2 commands |
-| S2 | `_source_positions.py`, `GateFinding.position`, gate marks, adapter change, `ci/locations.py` deleted, `validation_codes` | R2 | finding positions, SARIF | ~200 src lines moved or new, ~-60 in `ci/`, ~40 in the gate; ~250 test lines |
+| S2 | `DecoyPositionIndex`, shared nearest lookup, deletion of `lang/_validate.py` path copies, `GateFinding.position`, gate mark ordering, removal of the adapter read, guard test 1 and M-H2b, `validation_codes`, JSON and SARIF position output | R2 | finding positions, JSON, SARIF | ~70 source-position lines, ~40 in the gate, adapter deletion; ~250 test lines |
 | S3 | Both-kinds route cells | R1 | none | ~200 test lines |
 | S4 | `_member_file.py`, `layout.pipeline_file_ambiguous`, layout sites, completion, `run --all`, name guard | R2 | project layout | ~90 src lines new, ~20 changed; ~180 test lines |
 | S6 | `decoy init` and templates write `.decoy` | R2 | init output, template text | ~40 in `lang/_convert.py`, ~60 in `cli/lang/_scaffold.py`, ~25 in `init.py`, ~20 in templates; 11 `.decoy` bodies; ~200 test lines changed |
-| S7 | Run record sidecar and fields | R2 | `cli-local-1` | card move (~80 lines, no change), ~40 in `run/_evidence.py`, ~10 in `evidence.py`; ~120 test lines |
+| S7 | Run record sidecar and paired fields, `compiled_yaml` route, manifest path resolution | R2 | `cli-local-1` | card move (~80 lines, no output change), ~40 in `run/_evidence.py`, ~15 in `evidence.py`; ~140 test lines |
+
+Every named mutation is rerun after the last change on the final head of its slice. The build
+record names that head and each red test. A later edit voids the mutation evidence and reruns it.
 
 ### Acceptance tests
 
@@ -582,18 +642,27 @@ S1:
   the count.
 - Import test: in a fresh interpreter, `import decoy._config_file` leaves `decoy_engine` and
   `lark` out of `sys.modules`, and loading a YAML file does too.
+- Decoder tests call the private decoder through both `read_config_text` and `read_decoy_text`:
+  BOM, strict UTF-8 refusal, no exception context, and the kind-specific fixed code and text.
+- `PIPELINE_SUFFIXES` drives `looks_like_path` and completion. `.YML`, `.YAML`, and `.DECOY`
+  work. The sentry rejects a seeded `.yml` literal in a CLI module.
 - `decoy validate pipeline.decoy` on a twin: exit 0. On a file with a syntax error: exit 1 and
   a `lang.syntax` finding with its line.
+- The `YamlPositionIndex` move leaves its unit tests and the YAML SARIF snapshot unchanged. The
+  config-load baseline has 11 entries under the renamed key. The adapter imports the new module
+  but still performs its old read in this slice.
 - The layer contract, the layer snapshot and `test_package_boundary.py` (`ALLOWED = set()`)
-  pass. The guard tests and their seeded spellings pass; M-H2a, M-H2b and M-R3 turn them red.
+  pass. The import guard's positive and negative seeded spellings pass; M-H2a and M-R3 turn the
+  final S1 head red.
 - `test_language_freeze.py` and `test_codes.py` pass; a seeded unregistered literal fails.
+- `validate preflight` reports the kind-neutral pass message `Pipeline syntax is valid.`
 - `docs/cli-reference.md` regenerated; `tests/unit/test_cli_surface.py` passes.
 
 S5:
 - `fmt`: a twin is unchanged and `--check` exits 0. A reordered file is printed in the
   canonical layout, `--check` exits 1, `--write` replaces it, and a second `--check` exits 0.
-  Comments and `?` marks are kept. A syntax error is exit 1 with its line. A `.yaml` path is
-  exit 2.
+  A file set to mode 0640 stays 0640 after `--write`. Comments and `?` marks are kept. A syntax
+  error is exit 1 with its line. A `.yaml` path is exit 2.
 - `convert`: every bundled YAML template converts, and the output compiles to the same config.
   Every twin converts to YAML equal to its template's config. A marked `.decoy` file is exit 1
   with one finding per mark. A schema-invalid `.decoy` file is exit 1 with the engine code. A
@@ -610,22 +679,36 @@ S2:
   schema finding has the same code, message and `location` as the YAML twin's, its `position`
   is the line of the construct, and two `lang.unreviewed` findings follow; exit 1.
 - A file whose only problems are two marks: `validate` exits 1 with two findings. `run` exits 1
-  with two findings and never opens its source (the source path does not exist, and the error
-  is the mark, not the missing file). `tokenize` exits 1 naming the first mark and the count.
+  with exactly two findings and never opens its source. The source path does not exist, and the
+  error is the mark, not the missing file. `tokenize` exits with its current config-refusal code,
+  naming the first mark and the count.
 - `ci check` SARIF for the `.decoy` case puts each region on the `.decoy` line. The YAML SARIF
-  and `--json` snapshots are unchanged, including the `yaml.not_utf8` case.
-- Parity test (`tests/unit/test_source_positions.py`): for every template and its twin, every
-  path the YAML index records gives a `Position` from the `.decoy` index; both accept and
-  refuse the same spellings; a duplicated table name gives `None` from both.
+  snapshot stays unchanged, including `yaml.not_utf8`. Direct JSON adds `position` only to a
+  positioned loader problem. CI JSON and SARIF use positions for loader and engine findings.
+  `json-shapes.json` is updated once.
+- Parity test (`tests/unit/test_source_positions.py`): synthetic YAML, config, and source map
+  cover numeric, bracket, semantic, union-member, missing-leaf, and duplicate-table-name paths.
+  For every exact YAML region, `.decoy` returns a position with a non-`None` line. An all-`None`
+  position fails. YAML missing leaves stay file-level; `.decoy` uses nearest construct.
+- The adapter no longer reads or builds an index. Guard test 1 and M-H2b pass and turn red on
+  the final S2 head.
 
 S3:
-- Every route cell passes for the YAML run and the `.decoy` run, with the marker assertion in
-  both, and the two runs agree on exit code and finding codes. M-R2 turns the cell red.
+- The schema-invalid `.decoy` program is handwritten with an unknown key in `options { }` and
+  lowers cleanly. Its YAML twin is `yaml.safe_dump(load_pipeline(p).config)`. Separate
+  `_FIRST_*` and `_EXTRA_*` markers prove each kind independently.
+- Every route cell checks both kinds and compares exit codes. JSON cells also compare finding
+  codes. All cells check their own markers on every covered surface. Config errors keep the
+  exit each command gives today; `report integrity --config` is pinned at exit 3.
+- One `.decoy` lowering-error cell contains markers, emits none, and exits 1. M-R2 turns the
+  route cell red on the final S3 head.
 
 S4:
 - `pipelines/x/pipeline.decoy` alone is the member `x` for `run x`, `validate x`, completion and
   `project show`. Both files present is `layout.pipeline_file_ambiguous` (exit 1, names the
-  folder) for lookup, `run --all` and `init`. A linked `pipeline.decoy` is not a member.
+  folder) for lookup, `run --all`, and `init`. `list_pipelines` raises it, completion omits
+  project names but still returns path candidates, `project show` refuses, and `project list`
+  reports the project invalid with that code. A linked `pipeline.decoy` is not a member.
   `docs/project-layout.md` descriptor tests pass. `_layout.py` is at most 800 lines. The name
   guard passes and M-S4 turns it red.
 
@@ -633,10 +716,18 @@ S6:
 - `decoy init data.csv` writes `pipelines/data/pipeline.decoy`. Every inferred rule ends with
   `?` under a `# REVIEW:` comment that holds the `Inference.review` text. `decoy validate` on
   it lists one `lang.unreviewed` per inferred rule; after the marks are removed it validates.
-- `decoy init data.csv --yaml` writes output byte-identical to today's (snapshot).
+- One cell for each output-kind case: default member is `.decoy`; `-o p.yaml` and `-o p.yml`
+  are YAML; `-o p.decoy` is Decoy; another suffix exits 2; `-o -` is Decoy unless `--yaml` is
+  set; `--yaml -o p.decoy` exits 2.
+- `decoy init data.csv --yaml` writes output byte-identical to today's snapshot. The default
+  `.decoy` header includes the keyed-secret guidance when its mapping is keyed. The existing
+  `test_keyed_secret_guidance` runs on the default `.decoy` path and has a `--yaml` twin.
 - `decoy init --preset hipaa` and `decoy show template hipaa` give the `.decoy` body; `--yaml`
-  gives the YAML body. `test_twins.py`, now reading `src/decoy/templates/`, proves each pair,
-  including the new `pci.decoy`.
+  gives the YAML body. A preset with adjusted paths compiles from the adjusted mapping and does
+  not keep bundled comments. The `gdpr`, `hipaa`, and `pci` `.decoy` headers carry the same
+  keyed-secret guidance as their YAML twins. `test_twins.py`, now reading
+  `src/decoy/templates/`, proves each pair. `pci.decoy` is moved from
+  `tests/unit/lang/twins`; it is not newly authored.
 - Init-then-run tests updated. Journey tests (the `CJ` steps and
   `tests/e2e/first_user/journey/test_cli_journey.py`) follow the new default and clear the
   marks the way the docs tell users. Tests that only need a runnable pipeline pass `--yaml`:
@@ -646,15 +737,22 @@ S6:
   `tests/e2e/test_source_csv_dialect.py`, `tests/e2e/test_release_smoke.py`,
   `tests/e2e/test_unmask_command.py`, `tests/e2e/cli_fmt/test_target_format_readers.py`. The
   builder confirms the list by searching for tests that call `init` and then `run`.
+- Build the wheel and inspect its file list. It contains all `decoy/templates/*.decoy` files.
 
 S7:
 - A `.decoy` run with `--evidence-out ev.json` writes `ev.compiled.yaml` (mode 0600), equal to
-  `emit_yaml` of the run's config. The manifest has both new fields and verifies clean.
+  `decoy.cli.lang.compiled_yaml` of the run's config. The manifest has both new fields and
+  verifies clean.
+- Removing either new field alone makes `check_manifest` return `malformed`. Removing both is
+  accepted as an old manifest.
+- Project-relative and old-rule sidecar paths resolve through `resolve_manifest_path`, with the
+  same containment and path-base behavior as `pipeline_path`.
 - Editing or deleting the sidecar gives `pipeline_fingerprint_changed` or `pipeline_missing`
   naming it, in `report verify` and `ci check`.
 - A YAML run's manifest is unchanged (snapshot); an old manifest still verifies.
 - `no_raw_values` passes with marker values in the `.decoy` config.
-- `evidence.py` is at most 800 lines; `report show` output is unchanged after the card move.
+- `evidence.py` is at most 800 lines. `report.py` computes `hash_ok`; the UI card receives it.
+  `report show` output is unchanged and the import-layer baseline gains no ignore.
 
 ### S6 mechanism (M4)
 
@@ -662,9 +760,21 @@ S7:
   `(table, column)` key, the printed rule ends with `?` and gets a `# REVIEW: <note>` comment,
   through the printer's existing `Notes`. The round-trip check ignores marks, so it still
   proves the program.
-- `cli/lang/_scaffold.py:decoy_scaffold(yaml_text, review)`: parses the YAML the init wizard
-  already builds (`_build_scaffold_yaml`, a CLI-written-text site on the allowlist today) and
-  returns the `.decoy` text with a header that says to remove each `?` after checking the rule.
+- `cli/lang/_scaffold.py:decoy_scaffold(config: Mapping[str, Any], review)`: takes the parsed
+  mapping already held by init. It does not call `yaml.safe_load`. It derives whether the
+  config is keyed from that mapping and returns `.decoy` text with a header that says to remove
+  each `?` after checking the rule. A keyed config's header also carries the existing required
+  mask-secret guidance. The existing `_print_keyed_hint` CLI-written-YAML reader remains for
+  YAML output only, so its existing allowlist entry stays live. No new YAML load is added and
+  the config-load allowlist stays at 11.
+- Init decides kind once. A member defaults to `.decoy`. An explicit `.yaml` or `.yml` output
+  is YAML, `.decoy` is Decoy, any other suffix is usage error 2, and stdout uses YAML only with
+  `--yaml`. `--yaml` plus a `.decoy` output is usage error 2.
+- Column inference keeps the mapping used to build YAML and passes it with review notes to
+  `decoy_scaffold`. A preset with adjusted source or target paths renders YAML through the
+  existing path renderer, loads that CLI-written YAML through the existing allowed site, then
+  passes its mapping to `decoy_scaffold(config, review={})`. Bundled template comments are not
+  kept in this path-adjusted Decoy output.
 - Files that change: `src/decoy/cli/init.py` (`--yaml`, one call into `decoy_scaffold`, the
   destination kind; stays under 800 lines), `src/decoy/cli/project/_scaffold.py` (destination
   through `member_destination`), `src/decoy/templates/__init__.py` (`Template.decoy_body`),
