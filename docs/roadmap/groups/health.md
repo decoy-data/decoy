@@ -78,10 +78,9 @@ Fixes and cleanups with no user-visible change, from the audits and the old V2 l
 | The `decoy run` error text cap of 500 characters | ROADMAP row 65 (F31) | Text length in an error message. |
 | Atomic output: ACLs and xattrs of an old output are not copied; `_atomic.py` is over 400 lines; a second temp-create path; a `KeyboardInterrupt` during the temp chmod can leave an empty hidden temp; ENOSPC inside the writer block is not mapped to `atomic_write_failed` | ROADMAP row 21b, `docs/records/2026-11-07-atomic-output-build.md` | Defects and cleanup; the output for a working run is the same. (The `.gz` header item is in "Before 1.0 freeze".) |
 | VALUE-FREE-ERRORS B3, FU-5 and FU-6 | ROADMAP row 24a | In the vault backlog, tagged there. |
-| 5 FPE checksum-mode native acceleration (luhn, npi, iban, vin, isbn13, ean13, gtin) | platform V2 plan | Same output, KAT-locked to python-stdnum; removes a speed cliff. |
 | 10 Width-aware reorder ceiling | platform V2 plan | Guard counts bytes, not keys; same results. |
 | D5 certification coverage; flaky cgroup-launcher tests that hang | platform V2 plan | Tests. |
-| Secondary: Joinable-CDR telco demo config; `text_redact` full-Unicode Rust path | platform V2 plan | Demo and speedup with the same output. |
+| Secondary: Joinable-CDR telco demo config. (The `text_redact` full-Unicode Rust path is now in RUST-DATE-TEXT, [mask](mask.md), 1.2.) | platform V2 plan | Demo with the same output. |
 | Phase F: 200M generation and masking scale proofs (one pre-release run); GAP9 thread-count-versus-memory policy | platform V2 plan | Validation and a speed policy. |
 | F2 follow-up: cross-chunk warning aggregation; kernel-ABI backend-witness harness | platform V2 plan | Makes the chunked warning match the oracle's single warning; a test harness. |
 

@@ -49,6 +49,23 @@ FREEZE-OUTPUT (run) and FAKER-MIGRATE (mask). The default-on choices (F11, F38, 
 aggregates, the sibling FK key) stay opt-in and are listed in [2.0-holding.md](2.0-holding.md). The
 experimental tier is the 1.0 row EXPERIMENTAL-TIER (release). Nothing is left to triage here.
 
+## Engine speed and route record (promoted 2026-11-19, owner)
+
+The section 9 lines of `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine
+#715). The owner took the recommended answers on 2026-11-19, so each line is placed. Nothing is left
+to triage here.
+
+- NONFK-OOM (M1): promoted 2026-11-19 (owner). 1.0 row NONFK-OOM, [run](groups/run.md).
+- NATIVE-MISSING-WARN (M3): promoted 2026-11-19 (owner). 1.0 row NATIVE-MISSING-WARN, [run](groups/run.md).
+- GEN-WINDOWED-BATCH (F1): promoted 2026-11-19 (owner). 1.0 row GEN-WINDOWED-BATCH, [generate](groups/generate.md).
+- ENGINE-THREADS-DEFAULT (F3): promoted 2026-11-19 (owner). 1.0 row ENGINE-THREADS-DEFAULT, [run](groups/run.md).
+- FAKER-NATIVE-WIDEN (C1): promoted 2026-11-19 (owner). 1.0 row, V1 if a slot is free, else 1.0.x, [mask](groups/mask.md).
+- GEN-VECTOR-STREAMS (C2): promoted 2026-11-19 (owner). Later row, 1.0.x, [generate](groups/generate.md).
+- TEXT-REDACT-RUST-SPLICE (C3), FPE-CHECKSUM-NATIVE (C5): promoted 2026-11-19 (owner). Later rows, 1.0.x, [mask](groups/mask.md).
+- LARGE-STRING-CAST and UF-DOMAIN (C4): promoted 2026-11-19 (owner). 1.0 row, V1 if a slot is free, else 1.0.x, [mask](groups/mask.md).
+- RUN-STREAM M1 scope: promoted 2026-11-19 (owner). Added to row 63a, [run](groups/run.md).
+- DOC-DRIFT-ROUTES: promoted 2026-11-19 (owner). 1.0 row DOC-DRIFT-ROUTES, [run](groups/run.md).
+
 ## Open owner questions
 
 Carried whole from the old section 5.6.
