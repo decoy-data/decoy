@@ -249,6 +249,7 @@ def test_ambiguous_report_source_json_error_code_is_report_namespaced(tmp_path: 
     assert result.exit_code == 1, result.output
     payload = json.loads(result.output.strip().splitlines()[-1])
     assert payload["code"] == "report.source_ambiguous"
+    assert payload["error"].startswith("--source matches no declared source")
     assert "layout.report_source_ambiguous" not in result.output
 
 

@@ -11,6 +11,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Changed
 
+- **Breaking: the ambiguous `--source` refusal of `decoy report fidelity --config` has the code `report.source_ambiguous` (FREEZE-SURFACE S4).** It was `layout.report_source_ambiguous`; the code appears in the `--json` error `code` and in the CI rule set. The exit code (1) and the message are unchanged. The gate and warning code sets are now pinned by a snapshot test.
 - **A printed path is never folded.** Off a terminal, `decoy library path` and other one-line outputs (`OK <path>`, `Wrote <path>`, `Evidence: <path>`) split a long path across lines at 80 columns. The CLI console now keeps every text-only line whole and leaves tables and panels as they were. No flag or JSON change.
 
 - **Breaking: the `ml` extra is gone, and the NER install hint is `decoy models install ner`.** The classifier's packages are base engine dependencies, so `pip install decoy-cli[ml]` no longer resolves an extra and `all` is `cloud,ner,vault`. A pipeline that needs spaCy now prints `decoy models install ner` instead of `pip install decoy-cli[ner]` and the separate `spacy download` step. `requirements-certified.txt` names engine 0.27.0 in its header (the pins and fingerprint `789b1eae...` are unchanged).

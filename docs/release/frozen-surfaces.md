@@ -17,6 +17,7 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | YAML pipeline schema (engine-owned) | versioning.md item 3 | engine `PipelineConfig` | the engine snapshot (engine map); in the CLI `tests/e2e/test_schema_command.py` |
 | `--json` success shapes, per command | versioning.md item 4, the `--json` leaf commands | `src/decoy/cli/` | `tests/e2e/release_freeze/test_json_shapes.py`, `tests/fixtures/release_freeze/json-shapes.json` |
 | `--json` error object | versioning.md item 4, `docs/schemas/decoy-error-v1.schema.json` | `src/decoy/ui/output.py` | `tests/unit/test_ui_emit_error.py`, `tests/e2e/first_user/test_items_error_envelope.py` |
+| Gate and warning reason codes: `GATE_CODES`, `WARNING_CODES`, `_CLI_GATE_CODES` | versioning.md item 4 (the `--json` error `code`) | `src/decoy/cli/io/_layout_errors.py`, `src/decoy/ci/rule_codes.py` | `tests/sentry/io_policy/test_code_snapshot.py`. Other reason codes are not pinned: accepted-known-limit |
 | Bundled template set | versioning.md item 5 | `src/decoy/templates/` | `tests/e2e/test_release_smoke.py`, `tests/unit/test_bundled_templates.py` |
 | CI manifest | `docs/schemas/decoy-ci-v1.schema.json` | `src/decoy/ci/` | `tests/unit/test_ci_manifest.py` |
 | Python API: `mask`, `scan`, `MaskSecretConfigError`, `ConfigValidationError`, `UnsupportedCloudEndpointError` | `_LAZY_API` in `src/decoy/__init__.py` | `src/decoy/api.py` | `tests/unit/test_api.py` (the signature tests pin `mask` and `scan`) |
