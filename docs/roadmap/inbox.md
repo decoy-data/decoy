@@ -49,6 +49,14 @@ Carried from the old open-questions list:
   had. With `deterministic: true`, or with `hash`, the orphan got a distinct value. Possible safety
   item (a wrong join reported as success); needs a repro on the pinned engine before triage.
 
+- 2026-11-19, owner question during DECOY-LANG: a fixed-width `layout` can only be written inline
+  in the pipeline file; there is no way to keep it in a separate file, as `column_names_file` does
+  for a headerless CSV. Idea: an engine source option `layout_file` (and the same on a fixed-width
+  target), read where `column_names_file` is read. YAML and `.decoy` would both get it with no
+  language change, since options pass through. The engine's fixed-width notes already name a COBOL
+  copybook import as a separate later step; this is the plain-file form of the same need. Engine
+  work, additive; likely Later.
+
 ## Freeze candidates (decide before REL-GATE)
 
 Triaged 2026-11-18. The freeze-list items with no row became the 1.0 rows FREEZE-SURFACE (health),
