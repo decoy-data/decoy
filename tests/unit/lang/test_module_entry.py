@@ -65,3 +65,32 @@ def test_an_unreadable_file_exits_3(tmp_path: Path, capsys: pytest.CaptureFixtur
 def test_wrong_arguments_print_usage(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
     assert main(argv) == 2
     assert capsys.readouterr().err.startswith("usage: python -m decoy.lang")
+
+
+def test_format_prints_the_canonical_layout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    program = tmp_path / "p.decoy"
+    program.write_text(
+        'decoy 1\npipeline { seed 1  # fixed\n mask t from csv("a.csv") to csv("b.csv") { x : redact } }\n',
+        encoding="utf-8",
+    )
+    assert main(["--format", str(program)]) == 0
+    assert capsys.readouterr().out == (
+        "decoy 1\n\npipeline {\n  seed 1  # fixed\n\n"
+        '  mask t from csv("a.csv") to csv("b.csv") {\n    x : redact\n  }\n}\n'
+    )
+    program.write_text("decoy 1\npipeline { seed }\n", encoding="utf-8")
+    assert main(["--format", str(program)]) == 2
+
+
+def test_to_decoy_converts_a_pipeline_yaml(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    pipeline = tmp_path / "pipeline.yaml"
+    pipeline.write_text(get_template("pci").body, encoding="utf-8")
+    assert main(["--to-decoy", str(pipeline)]) == 0
+    assert capsys.readouterr().out == (_TWINS / "pci.decoy").read_text(encoding="utf-8")
+    pipeline.write_text("version: 2\n", encoding="utf-8")
+    assert main(["--to-decoy", str(pipeline)]) == 2
+    assert "error[lang.convert]" in capsys.readouterr().err

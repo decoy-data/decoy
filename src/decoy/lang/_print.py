@@ -14,12 +14,13 @@ from __future__ import annotations
 import json
 import math
 import re
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
-from decoy.lang._errors import fail
+from decoy.lang._errors import Span, fail
 from decoy.lang._grammar import KEYWORD_TERMINALS, NAME_PATTERN
 
 _WORD = re.compile(NAME_PATTERN)
@@ -163,50 +164,98 @@ def _aligned(rows: list[tuple[str, str, str] | str]) -> list[str]:
     return lines
 
 
-def _table(table: nodes.Table) -> list[str]:
-    rows: list[tuple[str, str, str] | str] = []
-    for statement in table.statements:
-        if isinstance(statement, nodes.Shaping):
-            rows.append(_shaping(statement))
-        elif isinstance(statement, nodes.Keep):
-            rows.append(f"keep {_names(statement.columns)}")
-        elif isinstance(statement, nodes.Link):
-            line = (
-                f"{_names(statement.columns)} <- {name(statement.parent_table.text)}."
-                f"{_key_columns(statement.parent_columns)}"
-            )
-            if statement.namespace is not None:
-                line += f" in {name(statement.namespace.text)}"
-            if statement.orphans is not None:
-                line += f" orphans {name(statement.orphans.text)}"
-            rows.append(line)
-        elif statement.coherent:
-            rows.append(f"{{{_names(statement.columns)}}} : {_treatment(statement.treatment)}")
-        else:
-            rows.append((_names(statement.columns), ":", _treatment(statement.treatment)))
+Row = tuple[str, str, str] | str
+
+
+def _indented(line: str) -> str:
+    return INDENT + line if line else ""
+
+
+@dataclass(frozen=True)
+class Notes:
+    """The comments of a program, by where they belong. A key is the source line and column at
+    which a statement starts; a node built by the converter has no position and so no comments."""
+
+    before: dict[tuple[int, int], tuple[str, ...]] = field(default_factory=dict)
+    after: dict[tuple[int, int], str] = field(default_factory=dict)
+    closing: dict[tuple[int, int], tuple[str, ...]] = field(default_factory=dict)
+    spaced: frozenset[tuple[int, int]] = frozenset()  # statements with a blank line above them
+    head: tuple[str, ...] = ()
+    tail: tuple[str, ...] = ()
+
+    def around(self, span: Span, row: Row) -> list[Row]:
+        """The row with the comments written above it, and the one written beside it."""
+        key = (span.line, span.column)
+        beside = self.after.get(key)
+        if beside is not None and isinstance(row, str):
+            row = f"{row}  {beside}"
+        elif beside is not None:
+            row = (row[0], row[1], f"{row[2]}  {beside}")
+        gap: list[Row] = [""] if key in self.spaced else []
+        return [*gap, *self.before.get(key, ()), row]
+
+    def block(self, span: Span, head: str, rows: list[Row]) -> list[str]:
+        """A braced block: its head, its aligned rows, the comments left before its `}`."""
+        key = (span.line, span.column)
+        opening = self.around(span, head)
+        inner = _aligned([*rows, *self.closing.get(key, ())])
+        return [*(str(line) for line in opening), *(_indented(line) for line in inner), "}"]
+
+
+def _table_row(statement: nodes.Mask | nodes.Keep | nodes.Link | nodes.Shaping) -> Row:
+    if isinstance(statement, nodes.Shaping):
+        return _shaping(statement)
+    if isinstance(statement, nodes.Keep):
+        return f"keep {_names(statement.columns)}"
+    if isinstance(statement, nodes.Link):
+        line = (
+            f"{_names(statement.columns)} <- {name(statement.parent_table.text)}."
+            f"{_key_columns(statement.parent_columns)}"
+        )
+        if statement.namespace is not None:
+            line += f" in {name(statement.namespace.text)}"
+        if statement.orphans is not None:
+            line += f" orphans {name(statement.orphans.text)}"
+        return line
+    if statement.coherent:
+        return f"{{{_names(statement.columns)}}} : {_treatment(statement.treatment)}"
+    return (_names(statement.columns), ":", _treatment(statement.treatment))
+
+
+def _table(table: nodes.Table, notes: Notes) -> list[str]:
+    rows = [
+        row
+        for statement in table.statements
+        for row in notes.around(statement.span, _table_row(statement))
+    ]
     head = f"mask {name(table.name.text)} from {_call(table.source)} to {_call(table.target)} {{"
-    return [head, *(INDENT + line for line in _aligned(rows)), "}"]
+    return notes.block(table.span, head, rows)
 
 
-def _generate(table: nodes.Generate) -> list[str]:
-    rows: list[tuple[str, str, str] | str] = []
-    for statement in table.statements:
-        if isinstance(statement, nodes.Unique):
-            rows.append(f"unique ({_names(statement.columns)})")
-        elif isinstance(statement, nodes.GenLink):
-            target = f"{name(statement.parent_table.text)}.{name(statement.parent_column.text)}"
-            rows.append((name(statement.name.text), "<-", target))
-        elif statement.expression is not None:
-            # The parser keeps both readings of `name = f(x)`; the expression text is the source.
-            rows.append((name(statement.name.text), "=", statement.expression.text))
-        else:
-            assert statement.call is not None
-            rows.append((name(statement.name.text), "=", _call(statement.call)))
+def _generate_row(statement: nodes.GenColumn | nodes.GenLink | nodes.Unique) -> Row:
+    if isinstance(statement, nodes.Unique):
+        return f"unique ({_names(statement.columns)})"
+    if isinstance(statement, nodes.GenLink):
+        target = f"{name(statement.parent_table.text)}.{name(statement.parent_column.text)}"
+        return (name(statement.name.text), "<-", target)
+    if statement.expression is not None:
+        # The parser keeps both readings of `name = f(x)`; the expression text is the source.
+        return (name(statement.name.text), "=", statement.expression.text)
+    assert statement.call is not None
+    return (name(statement.name.text), "=", _call(statement.call))
+
+
+def _generate(table: nodes.Generate, notes: Notes) -> list[str]:
+    rows = [
+        row
+        for statement in table.statements
+        for row in notes.around(statement.span, _generate_row(statement))
+    ]
     head = (
         f"generate {name(table.name.text)} rows {number(table.rows.value)} "  # type: ignore[arg-type]
         f"to {_call(table.target)} {{"
     )
-    return [head, *(INDENT + line for line in _aligned(rows)), "}"]
+    return notes.block(table.span, head, rows)
 
 
 def _block(block: nodes.Block) -> str:
@@ -227,36 +276,47 @@ def _condition(condition: nodes.Condition) -> str:
     return f"{column} {condition.operator} {value(plain(condition.value))}"
 
 
-def _subset(subset: nodes.Subset) -> list[str]:
-    lines = []
+def _seed(seed: nodes.Seed) -> str:
+    head = f"start {name(seed.table.text)}"
+    if seed.mode == "sample":
+        assert seed.amount is not None
+        amount = number(seed.amount.value)  # type: ignore[arg-type]
+        unit = "%" if seed.unit == "%" else " rows"
+        return f"{head} sample {amount}{unit} by {_names(seed.key_columns)}"
+    if seed.mode == "filter":
+        return f"{head} where " + ", ".join(_condition(c) for c in seed.conditions)
+    assert seed.keys is not None
+    return f"{head} keys {_names(seed.key_columns)} in {value(plain(seed.keys))}"
+
+
+def _follow(follow: nodes.Follow) -> str:
+    return (
+        f"follow {name(follow.parent_table.text)}.{_key_columns(follow.parent_columns)} -> "
+        f"{name(follow.child_table.text)}.{_key_columns(follow.child_columns)} "
+        f"{name(follow.direction.text)}"
+    )
+
+
+def _subset(subset: nodes.Subset, notes: Notes) -> list[str]:
+    rows: list[Row] = []
     for seed in subset.seeds:
-        head = f"start {name(seed.table.text)}"
-        if seed.mode == "sample":
-            assert seed.amount is not None
-            amount = number(seed.amount.value)  # type: ignore[arg-type]
-            unit = "%" if seed.unit == "%" else " rows"
-            lines.append(f"{head} sample {amount}{unit} by {_names(seed.key_columns)}")
-        elif seed.mode == "filter":
-            lines.append(f"{head} where " + ", ".join(_condition(c) for c in seed.conditions))
-        else:
-            assert seed.keys is not None
-            lines.append(f"{head} keys {_names(seed.key_columns)} in {value(plain(seed.keys))}")
+        rows += notes.around(seed.span, _seed(seed))
     for follow in subset.follows:
-        lines.append(
-            f"follow {name(follow.parent_table.text)}.{_key_columns(follow.parent_columns)} -> "
-            f"{name(follow.child_table.text)}.{_key_columns(follow.child_columns)} "
-            f"{name(follow.direction.text)}"
-        )
+        rows += notes.around(follow.span, _follow(follow))
     if subset.budget:
-        lines.append(f"budget({_arguments((), subset.budget)})")
+        rows.append(f"budget({_arguments((), subset.budget)})")
     if subset.allow_dangling:
-        lines.append("allow dangling")
-    return ["subset {", *(INDENT + line for line in lines), "}"]
+        rows.append("allow dangling")
+    return notes.block(subset.span, "subset {", rows)
 
 
-def _pairs(word: str, options: tuple[nodes.Option, ...]) -> list[str]:
-    lines = [f"{_key(option.key.text)}: {value(plain(option.value))}" for option in options]
-    return [f"{word} {{", *(INDENT + line for line in lines), "}"]
+def _pairs(word: str, options: tuple[nodes.Option, ...], notes: Notes) -> list[str]:
+    rows: list[Row] = []
+    for option in options:
+        rows += notes.around(
+            option.key.span, f"{_key(option.key.text)}: {value(plain(option.value))}"
+        )
+    return [f"{word} {{", *(_indented(str(row)) for row in rows), "}"]
 
 
 _SETTINGS = {
@@ -266,24 +326,36 @@ _SETTINGS = {
 }
 
 
-def print_program(program: nodes.Program) -> str:
-    """The program as text. Sections come in a set order, one blank line apart."""
+def print_program(program: nodes.Program, notes: Notes | None = None) -> str:
+    """The program as text. Sections come in a set order, one blank line apart; `notes` are the
+    comments to write with the statements they belong to."""
+    notes = notes or Notes()
+
+    def lines(items: Any, render: Any) -> list[str]:
+        return [str(row) for item in items for row in notes.around(item.span, render(item))]
+
     sections: list[list[str]] = [
-        [_SETTINGS[setting.kind](setting.value.value) for setting in program.settings]
+        lines(program.settings, lambda s: _SETTINGS[s.kind](s.value.value))
     ]
     if program.extra_settings:
-        sections.append(_pairs("settings", program.extra_settings))
+        sections.append(_pairs("settings", program.extra_settings, notes))
     sections.append(
-        [f"let {name(let.name.text)} = {_treatment(let.treatment)}" for let in program.lets]
+        lines(program.lets, lambda let: f"let {name(let.name.text)} = {_treatment(let.treatment)}")
     )
-    sections.extend(_subset(subset) for subset in program.subsets)
-    sections.append([_block(block) for block in program.blocks])
+    sections.extend(_subset(subset, notes) for subset in program.subsets)
+    sections.append(lines(program.blocks, _block))
     for table in program.tables:
-        sections.append(_generate(table) if isinstance(table, nodes.Generate) else _table(table))
+        printed = _generate if isinstance(table, nodes.Generate) else _table
+        sections.append(printed(table, notes))  # type: ignore[arg-type]
     if program.options:
-        sections.append(_pairs("options", program.options))
+        sections.append(_pairs("options", program.options, notes))
+    sections.append(list(notes.closing.get((program.span.line, program.span.column), ())))
     head = f"pipeline {name(program.name.text)} {{" if program.name is not None else "pipeline {"
     body = "\n\n".join(
-        "\n".join(INDENT + line for line in section) for section in sections if section
+        "\n".join(_indented(line) for line in section).strip("\n")
+        for section in sections
+        if section
     )
-    return f"decoy 1\n\n{head}\n{body}\n}}\n"
+    top = "".join(f"{comment}\n" for comment in notes.head)
+    bottom = "".join(f"{comment}\n" for comment in notes.tail)
+    return f"{top}decoy 1\n\n{head}\n{body}\n}}\n{bottom}"

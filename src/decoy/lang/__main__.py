@@ -2,6 +2,7 @@
 
     python -m decoy.lang pipeline.decoy > pipeline.yaml      compile to the pipeline YAML
     python -m decoy.lang --to-decoy pipeline.yaml > pipeline.decoy     convert a pipeline YAML
+    python -m decoy.lang --format pipeline.decoy                       print it in the canonical layout
 
 Problems go to stderr as `file:line:column: error[code]: message`, without the source line, in
 keeping with the CLI's rule that an error never quotes the config. Exit 0 on success, 2 when the
@@ -14,21 +15,44 @@ import sys
 from pathlib import Path
 
 from decoy._config_file import ConfigFileError, load_config_mapping, read_config_text
-from decoy.lang import ConvertError, LangError, compile_text, convert_config, emit_yaml, render
+from decoy.lang import (
+    ConvertError,
+    LangError,
+    compile_text,
+    convert_config,
+    emit_yaml,
+    format_text,
+    render,
+)
 
-USAGE = "usage: python -m decoy.lang <pipeline.decoy>\n       python -m decoy.lang --to-decoy <pipeline.yaml>"
+USAGE = """usage: python -m decoy.lang <pipeline.decoy>
+       python -m decoy.lang --to-decoy <pipeline.yaml>
+       python -m decoy.lang --format <pipeline.decoy>"""
 TO_DECOY = "--to-decoy"
+FORMAT = "--format"
 EXIT_INVALID = 2
 EXIT_UNREADABLE = 3
+
+
+def _report(error: LangError, path: Path) -> int:
+    for diagnostic in error.diagnostics:
+        sys.stderr.write(render(diagnostic, filename=path.name) + "\n")
+    return EXIT_INVALID
+
+
+def _format(path: Path) -> int:
+    try:
+        sys.stdout.write(format_text(read_config_text(path)))
+    except LangError as error:
+        return _report(error, path)
+    return 0
 
 
 def _compile(path: Path) -> int:
     try:
         compiled = compile_text(read_config_text(path))
     except LangError as error:
-        for diagnostic in error.diagnostics:
-            sys.stderr.write(render(diagnostic, filename=path.name) + "\n")
-        return EXIT_INVALID
+        return _report(error, path)
     sys.stdout.write(emit_yaml(compiled.config))
     return 0
 
@@ -44,14 +68,15 @@ def _convert(path: Path) -> int:
 
 
 def main(argv: list[str]) -> int:
-    to_decoy = argv[:1] == [TO_DECOY]
-    files = argv[1:] if to_decoy else argv
+    modes = {TO_DECOY: _convert, FORMAT: _format}
+    action = modes.get(argv[0], None) if argv else None
+    files = argv[1:] if action is not None else argv
     if len(files) != 1 or files[0].startswith("-"):
         sys.stderr.write(USAGE + "\n")
         return EXIT_INVALID
     path = Path(files[0])
     try:
-        return _convert(path) if to_decoy else _compile(path)
+        return (action or _compile)(path)
     except (OSError, ConfigFileError) as error:
         sys.stderr.write(f"{path.name}: cannot read the file: {type(error).__name__}\n")
         return EXIT_UNREADABLE

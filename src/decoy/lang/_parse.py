@@ -28,13 +28,42 @@ def _parser() -> Lark:
 
 
 def parse(text: str) -> nodes.Program:
+    return _program(_tree(_parser(), text))
+
+
+def _tree(parser: Lark, text: str) -> Tree[Any]:
     try:
-        tree = _parser().parse(text)
+        return parser.parse(text)
     except UnexpectedInput as error:
         failure = _syntax_error(error, text)
-    else:
-        return _program(tree)
     raise failure
+
+
+_seen_comments: list[Token] = []
+
+
+def _keep_comment(token: Token) -> Token:
+    _seen_comments.append(token)
+    return token
+
+
+@lru_cache(maxsize=1)
+def _commenting_parser() -> Lark:
+    return Lark(
+        GRAMMAR,
+        parser="lalr",
+        propagate_positions=True,
+        maybe_placeholders=True,
+        lexer_callbacks={"COMMENT": _keep_comment},
+    )
+
+
+def parse_with_comments(text: str) -> tuple[nodes.Program, list[tuple[int, int, str]]]:
+    """The program, and each comment as `(line, column, text)` in source order. The formatter is
+    the one caller: compiling has no use for comments."""
+    _seen_comments.clear()
+    program = _program(_tree(_commenting_parser(), text))
+    return program, [(t.line or 1, t.column or 1, str(t)) for t in _seen_comments]
 
 
 def _syntax_error(error: UnexpectedInput, text: str) -> Exception:

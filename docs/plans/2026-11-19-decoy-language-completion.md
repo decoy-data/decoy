@@ -83,7 +83,7 @@ Files the later milestones add, placed now so nothing moves later:
 |---|---|---|
 | 3 | `src/decoy/lang/_safety.py` | Lowering of scans, `expect`, quarantine, delivery, baseline, namespaces |
 | 4 | `src/decoy/lang/_subset.py` | Lowering of `subset { }` |
-| 5 | `src/decoy/lang/_convert.py`, `src/decoy/lang/_print.py` | Config to syntax tree; syntax tree to text (shared with the formatter) |
+| 5 | `src/decoy/lang/_convert.py`, `src/decoy/lang/_print.py` (built) | Config to syntax tree; syntax tree to text (shared with the formatter) |
 | 7 | `src/decoy/lang/_format.py` | Comment-keeping formatter over `_print.py` |
 | 8, 9 | `src/decoy/cli/lang/_<noun>.py` | The `decoy` command surface; `src/decoy/lang/__main__.py` is deleted then |
 
@@ -148,7 +148,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 | 4 | **Subsetting** (built) | A `subset { }` block: start tables, what to follow, row budgets | `subset` leaves the `options`-only list | No |
 | 5 | **Converter** (built) | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |
 | 6 | **Agent card and agent trial** (done; the trial did not show a validity gap) | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
-| 7 | **Formatter** | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
+| 7 | **Formatter** (library and interim entry built; the `decoy` command is hand-off H8) | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
 | 8 | **Commands read `.decoy`** | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
 | 9 | **Wizard writes `.decoy`** | `decoy init` output in the language, with the review marker | Init tests pass for both outputs | Yes |
 | 10 | **Docs** | Quickstart, tour, reference generated from the engine catalogs, cookbook, YAML side by side, error index | Published with the docs site | Docs only |
@@ -210,6 +210,27 @@ tree, and the faithfulness check); tests `tests/unit/lang/test_print.py`, `test_
 `test_roundtrip.py`. Expected size: about 500 source lines in the two modules, two public names
 (`convert_config`, `ConvertError`).
 
+## Milestone 7 plan: formatter
+
+Behavior. `format_text(text)` returns the program in the canonical layout with its comments.
+A comment belongs to the statement it shares a line with, else to the next statement in the same
+block, else it stays at the end of that block; comments before `decoy 1` and after the last `}`
+stay there. One blank line between statements is kept where the source had one.
+
+Guarantee. The result parses to the same program and holds every comment; `format_text` checks
+both before returning and raises `lang.format` otherwise. Formatting a formatted file changes
+nothing.
+
+Known limits: sections are printed in a set order, so a comment between two sections travels with
+the statement after it; a comment after a block's `}` on the same line moves to that block's
+opening line; blank lines inside `settings { }` and `options { }` are not kept.
+
+Acceptance tests (`test_format.py`): a worked example, exact; every twin unchanged; a property
+test that puts comments at random places in a twin and checks that all are kept, the lowered
+config is equal and a second pass changes nothing.
+
+Placement: `src/decoy/lang/_format.py` (comment placement and the checks); `Notes` in `_print.py`.
+
 ## Choices made without asking
 
 The owner asked (2026-11-19) for recommended choices to be taken and recorded here for review.
@@ -220,6 +241,8 @@ The owner asked (2026-11-19) for recommended choices to be taken and recorded he
 | C2 | A child key column may have both a link and a rule (`id <- t.id ...` and `id : hash in ns`) | Refuse it, as before | Existing YAML declares the child's own rule beside the relationship (engine recipe (b)); without this it cannot be written |
 | C3 | The converter refuses rather than approximates | Emit the nearest program with a warning | A converted pipeline that masks differently is a data-safety defect |
 | C4 | The printer aligns `:` and `=` within a run of single-line rules | No alignment | It is how the hand-written twins read; one layout rule, applied by the tool |
+| C6 | The formatter keeps a single blank line the author left between statements | One fixed layout with no blank lines inside a block | It is what gofmt and Black do, and it keeps a file's own grouping |
+| C7 | The formatter orders pipeline-level sections (settings, `let`, subset, checks, tables, options) | Keep the author's order | One layout; order between sections has no meaning in the language |
 | C5 | An independent review is run by a separate agent at milestone boundaries | Wait for the repository's named reviewers | They are not available in this session; findings and verdicts are recorded below |
 
 ## Reviews

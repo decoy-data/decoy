@@ -4,6 +4,7 @@
     compiled.config                   # the dict `yaml.safe_load` gives for the same pipeline
     emit_yaml(compiled.config)        # that config as YAML text
     convert_config(config)            # the other way: a config as `.decoy` text, checked
+    format_text(source)               # the program in the canonical layout, comments kept
 
 Built so far: pipeline settings, sources and targets, masking with `when` conditions, table
 shaping (`where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`), foreign keys (`<-`),
@@ -21,6 +22,7 @@ import yaml
 
 from decoy.lang._convert import ConvertError, convert_config
 from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span, render
+from decoy.lang._format import format_text
 from decoy.lang._lower import lower
 from decoy.lang._parse import parse
 from decoy.lang._validate import validate
@@ -34,6 +36,7 @@ __all__ = [
     "compile_text",
     "convert_config",
     "emit_yaml",
+    "format_text",
     "render",
 ]
 
