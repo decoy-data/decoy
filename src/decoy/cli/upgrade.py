@@ -55,10 +55,6 @@ def _fetch(url: str, purpose: str = "upgrade_artifact") -> bytes:
         return resp.read()
 
 
-def _fetch_document(url: str) -> bytes:
-    return _fetch(url, "upgrade_document")
-
-
 def _refuse_scheme(state, url: str) -> None:
     """Exit 1 before any socket when the version-document URL has a scheme the purpose refuses.
     The refusal is raised outside the `except` so the URL cannot ride in the exception context."""
@@ -129,8 +125,8 @@ def upgrade(
     doc_url = vd.resolve_version_url(url)
     _refuse_scheme(state, doc_url)
     try:
-        doc_bytes = _fetch_document(doc_url)
-        doc_sig = _fetch_document(doc_url + ".sig").decode("ascii").strip()
+        doc_bytes = _fetch(doc_url, "upgrade_document")
+        doc_sig = _fetch(doc_url + ".sig", "upgrade_document").decode("ascii").strip()
     except _outbound.OutboundRefused as exc:
         _refuse(state, "the version endpoint redirected somewhere not allowed", exc.code, exc)
     except Exception as exc:

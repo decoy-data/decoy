@@ -549,7 +549,7 @@ def test_upgrade_force_recovers_retained_bundle_without_current(tmp_path, monkey
     monkeypatch.setattr(sys, "prefix", str(slot / "python"))
 
     monkeypatch.setattr(upg.release_key, "pinned_public_pem", lambda: pub)
-    def fetch(u: str) -> bytes:
+    def fetch(u: str, purpose: str = "upgrade_artifact") -> bytes:
         if u.startswith("file://"):
             return _file_download(u)
         return sig.encode("ascii") if u.endswith(".sig") else doc
@@ -561,7 +561,7 @@ def test_upgrade_force_recovers_retained_bundle_without_current(tmp_path, monkey
         lambda *a, **k: sp.CompletedProcess(a, 0, stdout="decoy 0.1.0\n", stderr=""),
     )
 
-    r = CliRunner().invoke(app, ["upgrade", "--force", "--url", "http://h/cli/version.json"])
+    r = CliRunner().invoke(app, ["upgrade", "--force", "--url", "https://h/cli/version.json"])
     assert r.exit_code == 0, r.output
     assert "pip/dev" not in r.output
     assert layout.read_current_version(home) == "0.1.0"
@@ -1095,7 +1095,7 @@ def test_upgrade_force_local_reinstalls_not_swap(tmp_path, monkeypatch):
         raise AssertionError("--force must reinstall, not swap to the local runtime")
 
     monkeypatch.setattr(upg.installer, "activate_local_version", must_not_activate)
-    monkeypatch.setattr(upg, "_fetch", lambda url: b"{}")
+    monkeypatch.setattr(upg, "_fetch", lambda url, purpose="upgrade_artifact": b"{}")
     monkeypatch.setattr(upg.vd, "verify_document", lambda *a, **k: True)
     monkeypatch.setattr(upg.vd, "parse_document", lambda data: {"latest": "0.1.0"})
     monkeypatch.setattr(upg.vd, "newer_available", lambda cur, doc: False)
@@ -1108,7 +1108,7 @@ def test_upgrade_force_local_reinstalls_not_swap(tmp_path, monkeypatch):
 
     monkeypatch.setattr(upg.installer, "install_version", fake_install)
     with pytest.raises(typer.Exit) as ei:
-        _call_upgrade(version="0.1.0", force=True, url="http://x/version.json")
+        _call_upgrade(version="0.1.0", force=True, url="https://x/version.json")
     assert ei.value.exit_code == 0
     assert seen["pin"] == "0.1.0"  # reinstall of the pinned version, not a local swap
 
@@ -1356,7 +1356,7 @@ def test_upgrade_check_version_is_read_only(tmp_path, monkeypatch, keypair):
     # A signed doc whose latest is the installed current version (no newer available).
     doc2, sig2 = _doc_for_latest(serve, "0.2.0", urls["0.2.0"], key)
 
-    def fake_fetch(u: str) -> bytes:
+    def fake_fetch(u: str, purpose: str = "upgrade_artifact") -> bytes:
         return sig2.encode("ascii") if u.endswith(".sig") else doc2
 
     monkeypatch.setattr(upg, "_managed_home", lambda: home)
@@ -1374,7 +1374,7 @@ def test_upgrade_check_version_is_read_only(tmp_path, monkeypatch, keypair):
     monkeypatch.setattr(upg.installer, "activate_local_version", spy_activate)
 
     with pytest.raises(typer.Exit) as ei:
-        _call_upgrade(version="0.1.0", check=True, url="http://host/cli/version.json")
+        _call_upgrade(version="0.1.0", check=True, url="https://host/cli/version.json")
     assert ei.value.exit_code == 0
     assert calls == [], "`--check` must not activate the local runtime"
     assert layout.read_current_version(home) == "0.2.0"  # pointer unchanged
