@@ -149,7 +149,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 | 5 | **Converter** (built) | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |
 | 6 | **Agent card and agent trial** (done; the trial did not show a validity gap) | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
 | 7 | **Formatter** (library and interim entry built; the `decoy` command is hand-off H8) | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
-| 8 | **Commands read `.decoy`** | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
+| 8 | **Commands read `.decoy`** (planned for hand-off, see H8) | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
 | 9 | **Wizard writes `.decoy`** (the `?` review mark is built in the language; the wizard change is hand-off H8) | `decoy init` output in the language, with the review marker | Init tests pass for both outputs | Yes |
 | 10 | **Docs** | Quickstart, tour, reference generated from the engine catalogs, cookbook, YAML side by side, error index | Published with the docs site | Docs only |
 | 11 | **Freeze** | Syntax review, reserved-word list final, compatibility rule for `decoy 1`, editor highlighting | The language joins the compatibility contract | Contract |
@@ -324,7 +324,7 @@ Items this branch cannot settle on its own. Each needs the owner or the orchestr
 | H5 | `tests/sentry/test_engine_reason_code_copies.py` flags `_resources.py` and `ci/rule_codes.py` against the local engine checkout (0.28.0; the CLI pins 0.27.0) | Red, in files this work does not touch; cause not investigated | Someone who owns those files |
 | H6 | Engine follow-ups: a public list of validator names (so `expect` can check them); `examples/complex_healthcare_claims.yaml` uses strategy names the engine no longer has; the orphan-remap observation in the roadmap inbox | Recorded | Triage in the engine |
 | H7 | Independent review of the fixes to the second review's findings | Not reviewed | A review before merge |
-| H8 | Milestones 7 to 9 change `decoy` commands and frozen 1.0 surfaces | Not started; each gets its own plan | Plan review, then build |
+| H8 | Milestones 7 (command), 8 and 9 change `decoy` commands and frozen 1.0 surfaces | Planned, not built: [2026-11-19-decoy-language-commands.md](2026-11-19-decoy-language-commands.md), seven slices and five owner questions. The library side of each is built: `format_text`, `convert_config`, the `?` mark, the source map | Plan review, then build |
 
 ## Owner decisions
 
