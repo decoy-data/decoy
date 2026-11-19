@@ -25,7 +25,6 @@ os.environ["TERM"] = "dumb"
 # DECOY_DEBUG=1. The guard's own tests clear it to see the production default.
 os.environ["DECOY_DEBUG"] = "1"
 
-# The shared keyed-strategy secret fixture (`mask_secret`); see tests/keyed_secret.py.
 # ---------------------------------------------------------------------------------------------
 # Release-pin fixture (UPGRADE-KEY R2-H3). One fixture creates ephemeral Ed25519 keys K1, K2, K3
 # and backup B, then patches the MODULE-LEVEL pin paths, never an environment variable, so a test
@@ -40,6 +39,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+# The shared keyed-strategy secret fixture (`mask_secret`); see tests/keyed_secret.py.
 from tests.keyed_secret import mask_secret  # noqa: F401
 
 

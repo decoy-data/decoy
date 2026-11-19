@@ -15,6 +15,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from packaging_tools import sign_release
+from tests.conftest import public_pem
 
 from decoy.distribution import errors, installer, release_key, signing
 
@@ -23,24 +24,18 @@ DIST = ROOT / "src" / "decoy" / "distribution"
 RAW = (serialization.Encoding.Raw, serialization.PublicFormat.Raw)
 
 
-def _pem(key: Ed25519PrivateKey) -> str:
-    return key.public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
-
-
 # ---------------------------------------------------------------- signing.fingerprint (R2-M2)
 def test_fingerprint_is_sha256_of_the_raw_key_in_lower_hex():
     key = Ed25519PrivateKey.generate()
     raw = key.public_key().public_bytes(*RAW)
-    assert signing.raw_public_bytes(_pem(key)) == raw
-    assert signing.fingerprint(_pem(key)) == hashlib.sha256(raw).hexdigest()
+    assert signing.raw_public_bytes(public_pem(key)) == raw
+    assert signing.fingerprint(public_pem(key)) == hashlib.sha256(raw).hexdigest()
 
 
 def test_fingerprint_ignores_pem_wrapping_and_rejects_non_ed25519():
     key = Ed25519PrivateKey.generate()
-    crlf = _pem(key).replace("\n", "\r\n")
-    assert signing.fingerprint(crlf) == signing.fingerprint(_pem(key))
+    crlf = public_pem(key).replace("\n", "\r\n")
+    assert signing.fingerprint(crlf) == signing.fingerprint(public_pem(key))
     with pytest.raises(ValueError):
         signing.fingerprint("not a pem")
 
@@ -56,7 +51,9 @@ BACKUP_MARK = "__DECOY_RELEASE_BACKUP_PUBLIC_KEY__"
 
 
 def _placeholder(path: Path, marker: str) -> Path:
-    path.write_text(f"-----BEGIN PUBLIC KEY-----\n{marker}\n-----END PUBLIC KEY-----\n", encoding="utf-8")
+    path.write_text(
+        f"-----BEGIN PUBLIC KEY-----\n{marker}\n-----END PUBLIC KEY-----\n", encoding="utf-8"
+    )
     return path
 
 
@@ -70,9 +67,13 @@ def test_backup_override_is_honored_with_a_warning_while_both_pins_are_placehold
     tmp_path, monkeypatch, capsys
 ):
     override = tmp_path / "b.pem"
-    override.write_text(_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
-    monkeypatch.setattr(release_key, "_KEY_FILE", _placeholder(tmp_path / "m.pem", release_key.PLACEHOLDER_MARKER))
-    monkeypatch.setattr(release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK))
+    override.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    monkeypatch.setattr(
+        release_key, "_KEY_FILE", _placeholder(tmp_path / "m.pem", release_key.PLACEHOLDER_MARKER)
+    )
+    monkeypatch.setattr(
+        release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK)
+    )
     monkeypatch.setenv("DECOY_RELEASE_BACKUP_PUBKEY_FILE", str(override))
     assert release_key.pinned_backup_pem() == override.read_text(encoding="utf-8")
     assert "WARNING" in capsys.readouterr().err
@@ -82,9 +83,9 @@ def test_backup_override_is_ignored_with_a_warning_when_a_real_backup_key_is_com
     tmp_path, monkeypatch, capsys, release_pins
 ):
     override = tmp_path / "evil.pem"
-    override.write_text(_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    override.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
     monkeypatch.setenv("DECOY_RELEASE_BACKUP_PUBKEY_FILE", str(override))
-    assert release_key.pinned_backup_pem() == _pem(release_pins.b)
+    assert release_key.pinned_backup_pem() == public_pem(release_pins.b)
     assert "IGNORED" in capsys.readouterr().err
 
 
@@ -92,8 +93,10 @@ def test_backup_override_is_ignored_when_the_backup_is_a_placeholder_but_the_mai
     tmp_path, monkeypatch, capsys, release_pins
 ):
     override = tmp_path / "evil.pem"
-    override.write_text(_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
-    monkeypatch.setattr(release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK))
+    override.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    monkeypatch.setattr(
+        release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK)
+    )
     monkeypatch.setenv("DECOY_RELEASE_BACKUP_PUBKEY_FILE", str(override))
     with pytest.raises(release_key.NoPinnedKeyError):
         release_key.pinned_backup_pem()
@@ -102,15 +105,19 @@ def test_backup_override_is_ignored_when_the_backup_is_a_placeholder_but_the_mai
 
 def test_a_placeholder_backup_with_no_override_raises_no_pinned_key(tmp_path, monkeypatch):
     monkeypatch.delenv("DECOY_RELEASE_BACKUP_PUBKEY_FILE", raising=False)
-    monkeypatch.setattr(release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK))
+    monkeypatch.setattr(
+        release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK)
+    )
     with pytest.raises(release_key.NoPinnedKeyError):
         release_key.pinned_backup_pem()
 
 
 def test_the_main_override_rules_are_unchanged(tmp_path, monkeypatch):
     override = tmp_path / "o.pem"
-    override.write_text(_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
-    monkeypatch.setattr(release_key, "_KEY_FILE", _placeholder(tmp_path / "m.pem", release_key.PLACEHOLDER_MARKER))
+    override.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    monkeypatch.setattr(
+        release_key, "_KEY_FILE", _placeholder(tmp_path / "m.pem", release_key.PLACEHOLDER_MARKER)
+    )
     monkeypatch.setenv("DECOY_RELEASE_PUBKEY_FILE", str(override))
     assert release_key.pinned_public_pem() == override.read_text(encoding="utf-8")
 
@@ -120,7 +127,7 @@ def test_the_fixture_pins_through_module_paths_and_ignores_environment_seams(
     release_pins, monkeypatch, tmp_path
 ):
     other = tmp_path / "other.pem"
-    other.write_text(_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    other.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
     monkeypatch.setenv("DECOY_RELEASE_PUBKEY_FILE", str(other))
     monkeypatch.setenv("DECOY_RELEASE_BACKUP_PUBKEY_FILE", str(other))
     assert release_key.pinned_public_pem() == release_pins.pem(release_pins.k1)
@@ -140,7 +147,9 @@ def _answers(monkeypatch, *answers: str) -> list[str]:
     return prompts
 
 
-def test_keygen_encrypt_writes_an_encrypted_key_that_needs_the_passphrase(tmp_path, monkeypatch, capsys):
+def test_keygen_encrypt_writes_an_encrypted_key_that_needs_the_passphrase(
+    tmp_path, monkeypatch, capsys
+):
     _answers(monkeypatch, "correct horse", "correct horse")
     out, pub = tmp_path / "b.key", tmp_path / "b.pub"
     assert sign_release.main(["keygen", "--encrypt", "--out", str(out), "--pub", str(pub)]) == 0
@@ -152,12 +161,14 @@ def test_keygen_encrypt_writes_an_encrypted_key_that_needs_the_passphrase(tmp_pa
     with pytest.raises(ValueError):
         serialization.load_pem_private_key(data, password=b"wrong")
     key = serialization.load_pem_private_key(data, password=b"correct horse")
-    assert _pem(key) == pub.read_text()
+    assert public_pem(key) == pub.read_text()
     seen = capsys.readouterr()
     assert "correct horse" not in seen.out + seen.err and data.decode() not in seen.out + seen.err
 
 
-def test_keygen_encrypt_refuses_a_mismatched_or_empty_passphrase_and_writes_nothing(tmp_path, monkeypatch):
+def test_keygen_encrypt_refuses_a_mismatched_or_empty_passphrase_and_writes_nothing(
+    tmp_path, monkeypatch
+):
     out = tmp_path / "b.key"
     _answers(monkeypatch, "one", "two")
     assert sign_release.main(["keygen", "--encrypt", "--out", str(out)]) != 0
@@ -195,7 +206,9 @@ def test_backup_check_prints_only_the_fingerprint_when_the_key_matches_the_pin(
     assert "pw" not in seen.err and "PRIVATE" not in seen.out + seen.err
 
 
-@pytest.mark.parametrize("case", ["other key", "wrong passphrase", "not encrypted", "placeholder pin"])
+@pytest.mark.parametrize(
+    "case", ["other key", "wrong passphrase", "not encrypted", "placeholder pin"]
+)
 def test_backup_check_exits_one_with_one_fixed_line_otherwise(
     tmp_path, monkeypatch, capsys, release_pins, case
 ):
@@ -205,15 +218,27 @@ def test_backup_check_exits_one_with_one_fixed_line_otherwise(
     if case == "not encrypted":
         f.write_bytes(
             key.private_bytes(
-                serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+                serialization.Encoding.PEM,
+                serialization.PrivateFormat.PKCS8,
+                serialization.NoEncryption(),
             )
         )
     if case == "placeholder pin":
-        monkeypatch.setattr(release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK))
+        monkeypatch.setattr(
+            release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "bk.pem", BACKUP_MARK)
+        )
     _answers(monkeypatch, answer)
     assert sign_release.main(["backup-check", "--backup-key-file", str(f)]) == 1
     seen = capsys.readouterr()
     assert seen.out == "" and len(seen.err.strip().splitlines()) == 1
+    if case == "placeholder pin":
+        # Not "does not match": no backup key is committed yet, and the line says what to do.
+        assert (
+            seen.err.strip()
+            == "backup-check: no backup key is committed yet; commit the public half first"
+        )
+    else:
+        assert "does not match the committed backup key" in seen.err
     text = seen.err
     for secret in (answer, str(f), signing.fingerprint(release_pins.pem(release_pins.b))):
         assert secret not in text
@@ -222,7 +247,11 @@ def test_backup_check_exits_one_with_one_fixed_line_otherwise(
 def test_backup_check_reads_the_module_pin_not_the_installed_file(release_pins):
     src = (ROOT / "packaging_tools" / "sign_release.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
-    fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_cmd_backup_check")
+    fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_cmd_backup_check"
+    )
     body = ast.get_source_segment(src, fn)
     assert "pinned_backup_pem" in body and "release_backup_key.pub.pem" not in body
 
@@ -281,3 +310,60 @@ def test_gitattributes_keeps_key_files_byte_exact():
     }
     for pattern in ("src/decoy/distribution/*.pub.pem", "src/decoy/distribution/key_rotation.json"):
         assert (pattern, "text", "eol=lf") in rules, pattern
+
+
+# ---------------------------------------------------- unknown-OID keys never escape (Dennis M1)
+def _unknown_oid_pem() -> str:
+    import base64
+
+    der = serialization.load_pem_public_key(
+        public_pem(Ed25519PrivateKey.generate()).encode()
+    ).public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    assert der.count(bytes.fromhex("2b6570")) == 1
+    der = der.replace(bytes.fromhex("2b6570"), bytes.fromhex("2b6578"))  # OID 1.3.101.120, unknown
+    body = base64.encodebytes(der).decode().strip()
+    return f"-----BEGIN PUBLIC KEY-----\n{body}\n-----END PUBLIC KEY-----\n"
+
+
+def test_an_unknown_oid_key_is_a_value_error_with_no_context():
+    from cryptography.exceptions import UnsupportedAlgorithm
+
+    pem = _unknown_oid_pem()
+    with pytest.raises(UnsupportedAlgorithm):  # the precondition: the library really raises this
+        serialization.load_pem_public_key(pem.encode())
+    for call in (signing.raw_public_bytes, signing.fingerprint):
+        with pytest.raises(ValueError) as info:
+            call(pem)
+        assert info.value.__cause__ is None and info.value.__context__ is None
+
+
+def test_verify_functions_return_false_for_an_unknown_oid_key():
+    pem = _unknown_oid_pem()
+    assert signing.verify_detached(b"x", "AAAA", expected_public_pem=pem) is False
+    key = Ed25519PrivateKey.generate()
+    envelope = {
+        "alg": "ed25519",
+        "payload": {"schema_version": "s"},
+        "signature": "AAAA",
+        "public_key": public_pem(key),
+    }
+    assert signing.verify_envelope(envelope, expected_public_pem=pem, schema_version="s") is False
+    envelope["public_key"] = pem
+    assert (
+        signing.verify_envelope(envelope, expected_public_pem=public_pem(key), schema_version="s")
+        is False
+    )
+
+
+def test_a_trust_state_with_an_unknown_oid_main_key_is_the_fixed_refusal(tmp_path):
+    import json
+
+    from decoy.distribution import errors, trust_state
+
+    (tmp_path / "trust_state.json").write_text(
+        json.dumps(
+            {"serial": 1, "key_epoch": 2, "main_key": _unknown_oid_pem(), "revoked_keys": []}
+        )
+    )
+    with pytest.raises(errors.InstallError, match="trust state unreadable"):
+        trust_state.read_trust_state(tmp_path)
