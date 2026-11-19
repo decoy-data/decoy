@@ -8,7 +8,7 @@ decoy 1
 pipeline people_export {
   seed 42
 
-  mask people from csv("people.csv") to csv("out/people.csv") {
+  mask people from csv("people.csv", header: true) to csv("out/people.csv") {
     email : faker(person_email)
     ssn   : redact
     keep id, signup_date

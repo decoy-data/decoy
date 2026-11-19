@@ -20,7 +20,7 @@ pipeline nightly {   # the one pipeline
   seed 42  # fixed
 
   # identity columns first
-  mask customers from csv("c.csv") to csv("out/c.csv") {  # main table
+  mask customers from csv("c.csv", header: true) to csv("out/c.csv") {  # main table
     customer_id : hash in ids   # the key
     # contact details
     email : faker(person_email)
@@ -49,7 +49,7 @@ pipeline nightly {
   delivery(strict)  # safe mode
 
   # identity columns first
-  mask customers from csv("c.csv") to csv("out/c.csv") {  # main table
+  mask customers from csv("c.csv", header: true) to csv("out/c.csv") {  # main table
     customer_id : hash in ids  # the key
     # contact details
     email : faker(person_email)
@@ -78,9 +78,7 @@ def test_a_file_already_in_the_layout_is_unchanged(twin: Path) -> None:
 
 
 def test_a_hash_inside_text_is_not_a_comment() -> None:
-    text = (
-        'decoy 1\npipeline { seed 1 mask t from csv("a#b.csv") to csv("c.csv") { x : redact } }\n'
-    )
+    text = 'decoy 1\npipeline { seed 1 mask t from csv("a#b.csv", header: true) to csv("c.csv") { x : redact } }\n'
     assert '"a#b.csv"' in format_text(text)
     assert "#" not in format_text(text).replace('"a#b.csv"', "")
 
@@ -120,14 +118,14 @@ def test_comments_anywhere_are_all_kept_and_the_program_is_unchanged(data: st.Da
 
 
 def test_the_review_mark_is_kept() -> None:
-    text = 'decoy 1\npipeline { seed 1 mask t from csv("a.csv") to csv("b.csv") { x : redact?  keep y ? } }\n'
+    text = 'decoy 1\npipeline { seed 1 mask t from csv("a.csv", header: true) to csv("b.csv") { x : redact?  keep y ? } }\n'
     formatted = format_text(text)
     assert "    x : redact ?\n    keep y ?\n" in formatted
     assert format_text(formatted) == formatted
 
 
 _HEAD = "decoy 1\npipeline {\n seed 1\n"
-_TABLE = ' mask t from csv("a.csv") to csv("b.csv") {{\n{body}\n }}\n}}\n'
+_TABLE = ' mask t from csv("a.csv", header: true) to csv("b.csv") {{\n{body}\n }}\n}}\n'
 
 
 def _formatted(body: str, before: str = "") -> str:
@@ -149,13 +147,13 @@ def test_a_comment_inside_a_statement_stays_with_that_statement() -> None:
 def test_a_comment_after_a_closing_brace_goes_to_that_block_s_opening_line() -> None:
     text = (
         _HEAD
-        + ' mask t from csv("a.csv") to csv("b.csv") { a : redact } # t done\n'
+        + ' mask t from csv("a.csv", header: true) to csv("b.csv") { a : redact } # t done\n'
         + " let h = hash in n\n"
-        + ' mask u from csv("c.csv") to csv("d.csv") { b : redact } # u done\n}\n'
+        + ' mask u from csv("c.csv", header: true) to csv("d.csv") { b : redact } # u done\n}\n'
     )
     out = format_text(text)
-    assert 'mask t from csv("a.csv") to csv("b.csv") {  # t done\n' in out
-    assert 'mask u from csv("c.csv") to csv("d.csv") {  # u done\n' in out
+    assert 'mask t from csv("a.csv", header: true) to csv("b.csv") {  # t done\n' in out
+    assert 'mask u from csv("c.csv", header: true) to csv("d.csv") {  # u done\n' in out
     assert format_text(out) == out
 
 
@@ -234,7 +232,7 @@ def test_formatting_from_several_threads_at_once() -> None:
     from concurrent.futures import ThreadPoolExecutor
 
     tables = "".join(
-        f' mask t{i} from csv("a{i}.csv") to csv("b{i}.csv") {{ # table {i}\n x : redact # col {i}\n }}\n'
+        f' mask t{i} from csv("a{i}.csv", header: true) to csv("b{i}.csv") {{ # table {i}\n x : redact # col {i}\n }}\n'
         for i in range(60)
     )
     text = _HEAD + tables + "}\n"

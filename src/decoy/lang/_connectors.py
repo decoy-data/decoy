@@ -8,7 +8,7 @@ compiler reports that refusal on the option's source line.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from decoy.lang import _ast as nodes
@@ -21,12 +21,12 @@ class Connector:
     type: str
     positional: tuple[str, ...]
     format: str | None  # None: read from the file extension or a `format:` option
-    source_defaults: dict[str, Any] = field(default_factory=dict)
+    source_required: tuple[str, ...] = ()  # engine field names a source must state
 
 
 CONNECTORS: dict[str, Connector] = {
-    # A CSV source has a header row unless `header: false` says otherwise.
-    "csv": Connector("file", ("path",), "csv", {"has_header": True}),
+    # A CSV source states whether it has a header row: the engine has no default for it.
+    "csv": Connector("file", ("path",), "csv", ("has_header",)),
     "parquet": Connector("file", ("path",), "parquet"),
     "fixed_width": Connector("file", ("path",), "fixed_width"),
     "s3": Connector("s3", ("bucket", "key"), None),
@@ -64,8 +64,6 @@ def lower_connector(
     for key, value in zip(connector.positional, call.positional, strict=True):
         out[key] = plain(value)
         spans[(*path, key)] = value.span
-    if is_source:
-        out.update(connector.source_defaults)
     given: set[str] = set()
     for option in call.options:
         key = RENAMES.get(option.key.text, option.key.text)
@@ -83,6 +81,15 @@ def lower_connector(
         given.add(key)
         out[key] = plain(option.value)
         spans[(*path, key)] = option.value.span
+    missing = [k for k in connector.source_required if is_source and k not in given]
+    if missing:
+        written = next((w for w, e in RENAMES.items() if e == missing[0]), missing[0])
+        raise fail(
+            "lang.connector_option_required",
+            f"`{call.name.text}` as a source must say `{written}: true` or `{written}: false`",
+            call.span,
+            "the file either starts with a row of column names or it does not",
+        )
     if "format" not in out:
         located = str(out[connector.positional[-1]])
         suffix = next((s for s in FORMATS if located.lower().endswith(s)), None)

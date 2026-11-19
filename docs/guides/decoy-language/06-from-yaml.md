@@ -52,7 +52,7 @@ decoy 1
 pipeline {
   seed 42
 
-  mask transactions from csv("./transactions.csv") to csv("./transactions_masked.csv") {
+  mask transactions from csv("./transactions.csv", header: true) to csv("./transactions_masked.csv") {
     card_number : fpe(charset: digits, validate_luhn: true) in pan_identity
     cvv         : redact
     email       : faker(person_email)

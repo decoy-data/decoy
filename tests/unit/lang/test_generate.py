@@ -111,7 +111,7 @@ def test_the_arrow_and_the_call_both_give_a_reference_column() -> None:
 def test_masked_and_generated_tables_mix_in_one_pipeline() -> None:
     text = _PIPELINE.replace(
         "generate visits",
-        'mask people from csv("in.csv") to csv("out.csv") { ssn : redact }\n  generate visits',
+        'mask people from csv("in.csv", header: true) to csv("out.csv") { ssn : redact }\n  generate visits',
     )
     config = compile_text(text).config
     assert [t["name"] for t in config["tables"]] == ["patients", "people", "visits"]

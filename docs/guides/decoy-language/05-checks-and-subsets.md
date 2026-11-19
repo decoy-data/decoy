@@ -28,12 +28,12 @@ pipeline {
   quarantine("out/quarantine.jsonl", triggers: [validation_fail])
   delivery(strict)
 
-  mask customers from csv("customers.csv") to csv("out/customers.csv") {
+  mask customers from csv("customers.csv", header: true) to csv("out/customers.csv") {
     customer_id : hash in customer_identity
     email       : faker(person_email)
   }
 
-  mask orders from csv("orders.csv") to csv("out/orders.csv") {
+  mask orders from csv("orders.csv", header: true) to csv("out/orders.csv") {
     customer_id <- customers.customer_id orphans preserve
     keep total
   }

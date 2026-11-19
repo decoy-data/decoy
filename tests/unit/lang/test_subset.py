@@ -9,7 +9,7 @@ from decoy.lang import LangError, compile_text
 from decoy.lang._subset import PREDICATES
 
 _TABLES = "\n".join(
-    f'  mask {name} from csv("{name}.csv") to csv("out/{name}.csv") {{ id : hash in ids }}'
+    f'  mask {name} from csv("{name}.csv", header: true) to csv("out/{name}.csv") {{ id : hash in ids }}'
     for name in ("customers", "orders", "vips", "pairs", "big")
 )
 _PIPELINE = (

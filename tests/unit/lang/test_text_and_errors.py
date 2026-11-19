@@ -11,7 +11,7 @@ from decoy.lang._parse import parse
 _PROGRAM = """decoy 1
 pipeline {{
   seed 1
-  mask t from csv({path}) to csv("b.csv") {{
+  mask t from csv({path}, header: true) to csv("b.csv") {{
     x : {rule}
   }}
 }}

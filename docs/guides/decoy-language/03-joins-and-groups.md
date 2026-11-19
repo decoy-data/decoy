@@ -13,18 +13,18 @@ decoy 1
 pipeline {
   seed 7
 
-  mask customers from csv("customers.csv") to csv("out/customers.csv") {
+  mask customers from csv("customers.csv", header: true) to csv("out/customers.csv") {
     customer_id : hash in customer_identity
     keep region
   }
 
-  mask orders from csv("orders.csv") to csv("out/orders.csv") {
+  mask orders from csv("orders.csv", header: true) to csv("out/orders.csv") {
     order_id    : hash in order_identity
     customer_id <- customers.customer_id orphans preserve
     keep total
   }
 
-  mask order_lines from csv("lines.csv") to csv("out/lines.csv") {
+  mask order_lines from csv("lines.csv", header: true) to csv("out/lines.csv") {
     order_id, customer_id <- orders.(order_id, customer_id) in order_keys orphans fail
     keep sku
   }
@@ -57,7 +57,7 @@ decoy 1
 pipeline {
   seed 7
 
-  mask contacts from csv("contacts.csv") to csv("out/contacts.csv") {
+  mask contacts from csv("contacts.csv", header: true) to csv("out/contacts.csv") {
     {first_name, last_name, email} : faker(composite_name_email)
     keep id
   }

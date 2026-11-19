@@ -100,14 +100,23 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
     return fail("lang.syntax", message, span, hint)
 
 
+# "unexpected <noun>": DISPLAY holds phrases with an article, which read wrongly after "unexpected".
+_KIND_NOUN = {
+    "NAME": "word",
+    "NUMBER": "number",
+    "DQ_STRING": "quoted text",
+    "SQ_STRING": "quoted name",
+}
+
+
 def _found(token: Token) -> str:
     """How an unexpected token is named. Only a word of the language or punctuation is shown.
     A number, quoted text or a bare word is named by kind: it may be a seed, a path or a secret
     name, and an error never quotes a config value."""
     if token.type == "$END":
         return "end of file"
-    if token.type in ("NAME", "NUMBER", "DQ_STRING", "SQ_STRING"):
-        return DISPLAY[token.type]
+    if token.type in _KIND_NOUN:
+        return _KIND_NOUN[token.type]
     return f"`{token}`"
 
 

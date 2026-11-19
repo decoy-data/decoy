@@ -20,11 +20,11 @@ pipeline {
   delivery(best_effort)
   namespace ids for people.id, orders.person_id
 
-  mask people from csv("a.csv") to csv("b.csv") {
+  mask people from csv("a.csv", header: true) to csv("b.csv") {
     id : hash in ids
     email : redact
   }
-  mask orders from csv("o.csv") to csv("p.csv") {
+  mask orders from csv("o.csv", header: true) to csv("p.csv") {
     person_id : hash in ids
     keep card_number, email
   }

@@ -45,7 +45,9 @@ def name(text: str) -> str:
 
 
 def _single_quoted(text: str) -> str:
-    if "'" in text or "\n" in text or not text:
+    if not text:
+        raise fail("lang.unprintable_name", "a name cannot be empty")
+    if "'" in text or "\n" in text:
         raise fail("lang.unprintable_name", "a name with a quote or a line break cannot be written")
     return f"'{text}'"
 

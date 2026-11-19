@@ -109,7 +109,7 @@ dialect options, fixed-width layouts and an opaque `credentials_ref`. The CLI ad
 
 ```
 mask patients
-  from csv("in/patients.csv", delimiter: "|")
+  from csv("in/patients.csv", header: true, delimiter: "|")
   to   parquet("out/patients.parquet")
 { ... }
 
@@ -374,7 +374,7 @@ decoy 1
 pipeline people {
   seed 42
 
-  mask people from csv("people.csv") to csv("people_masked.csv") {
+  mask people from csv("people.csv", header: true) to csv("people_masked.csv") {
     email : faker(person_email)
     ssn   : redact
   }
@@ -490,7 +490,7 @@ test says by how much. It can never be ahead of it or disagree with it.
 | D2 | Name and file extension | `.decoy` |
 | D10 | Block words | **Decided:** `mask <table> from ... to ...` for a masked table, beside `generate <table> rows N to ...`; both name what happens to the table |
 | D7 | Comments | **Decided: `#`.** `//` is integer division in the engine's expression grammar |
-| D8 | CSV header | **Decided:** a CSV source has a header row unless `header: false` |
+| D8 | CSV header | **Decided (revised 2026-11-19):** a `csv()` source must say `header: true` or `header: false`; the language has no default, as the engine removed its own (CONFIG-EXPLICIT E1) |
 | D9 | Generators in a masked table | **Decided:** compile error until the engine supports mixed tables |
 | D3 | Which file is committed to a project | The `.decoy` file; compiled YAML goes with run outputs |
 | D4 | Release bucket | After 1.0 (it adds, breaks nothing); can ship earlier behind an experimental flag |

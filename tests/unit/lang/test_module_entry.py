@@ -25,7 +25,7 @@ def test_a_program_that_does_not_compile_exits_2_with_positions_on_stderr(
 ) -> None:
     program = tmp_path / "bad.decoy"
     program.write_text(
-        'decoy 1\npipeline { seed 987654\n mask t from csv("secret-path.csv") to csv("b.csv")'
+        'decoy 1\npipeline { seed 987654\n mask t from csv("secret-path.csv", header: true) to csv("b.csv")'
         " { ssn : redcat } }\n",
         encoding="utf-8",
     )
@@ -48,7 +48,7 @@ def test_errors_never_show_the_source_line_or_a_value(
     program.write_text('decoy 1\npipeline { seed 987654 "secret-text" }\n', encoding="utf-8")
     assert main([str(program)]) == 2
     err = capsys.readouterr().err
-    assert "unexpected a quoted string" in err
+    assert "unexpected quoted text" in err
     assert "987654" not in err
     assert "secret-text" not in err
 
@@ -72,13 +72,13 @@ def test_format_prints_the_canonical_layout(
 ) -> None:
     program = tmp_path / "p.decoy"
     program.write_text(
-        'decoy 1\npipeline { seed 1  # fixed\n mask t from csv("a.csv") to csv("b.csv") { x : redact } }\n',
+        'decoy 1\npipeline { seed 1  # fixed\n mask t from csv("a.csv", header: true) to csv("b.csv") { x : redact } }\n',
         encoding="utf-8",
     )
     assert main(["--format", str(program)]) == 0
     assert capsys.readouterr().out == (
         "decoy 1\n\npipeline {\n  seed 1  # fixed\n\n"
-        '  mask t from csv("a.csv") to csv("b.csv") {\n    x : redact\n  }\n}\n'
+        '  mask t from csv("a.csv", header: true) to csv("b.csv") {\n    x : redact\n  }\n}\n'
     )
     program.write_text("decoy 1\npipeline { seed }\n", encoding="utf-8")
     assert main(["--format", str(program)]) == 2
@@ -101,7 +101,7 @@ def test_a_program_with_unreviewed_rules_is_not_compiled_to_yaml(
 ) -> None:
     program = tmp_path / "p.decoy"
     program.write_text(
-        'decoy 1\npipeline { seed 1\n mask t from csv("a.csv") to csv("b.csv") {\n'
+        'decoy 1\npipeline { seed 1\n mask t from csv("a.csv", header: true) to csv("b.csv") {\n'
         "  x : redact ?\n  keep y\n } }\n",
         encoding="utf-8",
     )

@@ -14,7 +14,7 @@ _BASE = """decoy 1
 pipeline demo {
   seed 42
 
-  mask people from csv("in.csv") to parquet("out.parquet") {
+  mask people from csv("in.csv", header: true) to parquet("out.parquet") {
     ssn : redact
   }
 }
@@ -73,7 +73,9 @@ def test_csv_source_has_a_header_by_default_and_targets_do_not_carry_it() -> Non
 
 
 def test_source_options_are_renamed_and_passed_through() -> None:
-    text = _BASE.replace('csv("in.csv")', 'csv("in.csv", header: false, delimiter: "|")')
+    text = _BASE.replace(
+        'csv("in.csv", header: true)', 'csv("in.csv", header: false, delimiter: "|")'
+    )
     source = _lowered(text)["sources"]["people"]
     assert source["has_header"] is False
     assert source["delimiter"] == "|"
@@ -81,7 +83,7 @@ def test_source_options_are_renamed_and_passed_through() -> None:
 
 def test_cloud_sources_read_the_format_from_the_name() -> None:
     text = _BASE.replace(
-        'csv("in.csv")', 's3("landing", "members/2026.parquet", credentials: "ro")'
+        'csv("in.csv", header: true)', 's3("landing", "members/2026.parquet", credentials: "ro")'
     ).replace('parquet("out.parquet")', 'gcs("out", "members.dat", format: csv)')
     config = _config(text)
     assert config["sources"]["people"] == {
@@ -169,14 +171,26 @@ def test_comments_are_ignored() -> None:
             "lang.let_modified",
             8,
         ),
-        (_BASE.replace('csv("in.csv")', 'ftp("in.csv")'), "lang.unknown_connector", 6),
-        (_BASE.replace('csv("in.csv")', 'csv("a", "b")'), "lang.connector_arguments", 6),
-        (_BASE.replace('csv("in.csv")', 's3("b", "k")'), "lang.format_unknown", 6),
-        (_BASE.replace('csv("in.csv")', 'csv("in.csv", path: "x")'), "lang.option_not_allowed", 6),
+        (
+            _BASE.replace('csv("in.csv", header: true)', 'ftp("in.csv")'),
+            "lang.unknown_connector",
+            6,
+        ),
+        (
+            _BASE.replace('csv("in.csv", header: true)', 'csv("a", "b")'),
+            "lang.connector_arguments",
+            6,
+        ),
+        (_BASE.replace('csv("in.csv", header: true)', 's3("b", "k")'), "lang.format_unknown", 6),
+        (
+            _BASE.replace('csv("in.csv", header: true)', 'csv("in.csv", path: "x")'),
+            "lang.option_not_allowed",
+            6,
+        ),
         (
             _BASE.replace(
                 "mask people",
-                "mask people from csv('a.csv') to csv('b.csv') { keep x }\n  mask people",
+                "mask people from csv('a.csv', header: true) to csv('b.csv') { keep x }\n  mask people",
             ),
             "lang.table_repeated",
             7,
@@ -198,7 +212,7 @@ def test_every_problem_in_a_table_is_reported_together() -> None:
 
 
 def test_engine_refusals_point_at_the_source_line() -> None:
-    text = _BASE.replace('csv("in.csv")', 'csv("in.csv", bogus: 1)')
+    text = _BASE.replace('csv("in.csv", header: true)', 'csv("in.csv", header: true, bogus: 1)')
     [problem] = _errors(text)
     assert problem.code == "lang.config"
     assert (problem.span.line, problem.span.column) == (6, text.splitlines()[5].index("1)") + 1)
@@ -282,7 +296,7 @@ def test_map_values_nest() -> None:
 
 def test_fixed_width_source_takes_its_layout_inline() -> None:
     layout = "{columns: [{name: ssn, start: 0, width: 9}, {name: st, start: 9, width: 2}]}"
-    text = _BASE.replace('csv("in.csv")', f'fixed_width("in.txt", layout: {layout})')
+    text = _BASE.replace('csv("in.csv", header: true)', f'fixed_width("in.txt", layout: {layout})')
     source = _config(text)["sources"]["people"]
     assert source["format"] == "fixed_width"
     assert source["layout"]["columns"][1] == {"name": "st", "start": 9, "width": 2}
@@ -402,7 +416,7 @@ def test_a_let_with_an_unknown_strategy_is_reported_where_it_is_defined() -> Non
     ],
 )
 def test_a_connector_option_is_said_once(call: str, code: str) -> None:
-    assert _errors(_BASE.replace('csv("in.csv")', call))[0].code == code
+    assert _errors(_BASE.replace('csv("in.csv", header: true)', call))[0].code == code
 
 
 def test_a_rule_ending_in_a_question_mark_is_reported_as_unreviewed() -> None:
@@ -418,3 +432,15 @@ def test_a_rule_ending_in_a_question_mark_is_reported_as_unreviewed() -> None:
 def test_other_problems_are_reported_before_the_review_marks() -> None:
     codes = [p.code for p in _errors(_with_rule("ssn : redcat ?"))]
     assert codes == ["lang.unknown_strategy"]
+
+
+def test_a_csv_source_must_say_whether_it_has_a_header() -> None:
+    # The engine has no default for it, so the language does not invent one.
+    errors = _errors(_BASE.replace('csv("in.csv", header: true)', 'csv("in.csv")'))
+    assert errors[0].code == "lang.connector_option_required"
+    assert "header" in errors[0].message
+    assert errors[0].span.line == 6
+    assert (
+        _lowered(_BASE.replace("header: true", "header: false"))["sources"]["people"]["has_header"]
+        is False
+    )

@@ -26,7 +26,7 @@ _PROGRAM = """decoy 1
 pipeline {{
   seed 1
   {body}
-  mask t from csv("a.csv") to csv("b.csv") {{ ssn : redact{option} }}
+  mask t from csv("a.csv", header: true) to csv("b.csv") {{ ssn : redact{option} }}
 }}
 """
 
@@ -108,3 +108,12 @@ def test_every_source_and_target_kind_has_a_connector() -> None:
     }
     assert wanted
     assert reachable == wanted
+
+
+def test_the_subset_words_equal_the_engines_enums() -> None:
+    from decoy.lang._subset import PREDICATES, SEED_MODES
+
+    assert set(PREDICATES.values()) == set(
+        _DEFS["SubsetPredicateConfig"]["properties"]["op"]["enum"]
+    )
+    assert set(SEED_MODES) == set(_DEFS["SubsetSeedConfig"]["properties"]["mode"]["enum"])

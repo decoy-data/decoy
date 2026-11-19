@@ -3,7 +3,7 @@ decoy 1
 pipeline {
   seed 42
 
-  mask patients from csv("./patients.csv") to csv("./patients_masked.csv") {
+  mask patients from csv("./patients.csv", header: true) to csv("./patients_masked.csv") {
     first_name     : faker(person_first_name)
     last_name      : faker(person_last_name)
     street         : faker(address_street)

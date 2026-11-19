@@ -39,6 +39,10 @@ PREDICATES = {
 }
 
 
+# The seed modes, as the engine names them.
+SEED_MODES = ("sample", "filter", "keys")
+
+
 def lower_subsets(
     subsets: tuple[nodes.Subset, ...],
     config: dict[str, Any],

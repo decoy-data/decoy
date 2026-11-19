@@ -21,7 +21,7 @@ decoy 1
 pipeline nightly_export {
   seed 42
 
-  mask customers from csv("in/customers.csv") to parquet("out/customers.parquet") {
+  mask customers from csv("in/customers.csv", header: true) to parquet("out/customers.parquet") {
     customer_id : hash in customer_identity
     email       : faker(person_email)
     ssn         : fpe(charset: digits) in ssn_identity
@@ -42,7 +42,7 @@ Rules that hold everywhere:
 
 ## Masking a table: `mask <table> from <source> to <target> { }`
 
-Sources and targets: `csv("path")`, `parquet("path")`, `fixed_width("path", layout: {...})`,
+Sources and targets: `csv("path", header: true)` (a csv source must say `header: true` or `false`), `parquet("path")`, `fixed_width("path", layout: {...})`,
 `s3("bucket", "path/file.parquet")`, `gcs("bucket", "path/file.csv")`. An `s3` or `gcs` name must
 end in `.csv` or `.parquet`, or the call needs `format: csv` or `format: parquet`. A CSV source has
 a header row; one without is `csv("p.csv", header: false, column_names: [a, b])`. Other options
@@ -80,7 +80,7 @@ pipeline {
 
   let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
 
-  mask patients from csv("patients.csv", delimiter: "|") to csv("out/patients.csv") {
+  mask patients from csv("patients.csv", header: true, delimiter: "|") to csv("out/patients.csv") {
     where status != 'TEST' and age >= 18
     full_name = first_name + ' ' + last_name
     sort by admitted desc, patient_id
@@ -116,18 +116,18 @@ decoy 1
 pipeline {
   seed 7
 
-  mask customers from csv("customers.csv") to csv("out/customers.csv") {
+  mask customers from csv("customers.csv", header: true) to csv("out/customers.csv") {
     customer_id : hash in customer_identity
     {first_name, last_name, email} : faker(composite_name_email)
   }
 
-  mask orders from csv("orders.csv") to csv("out/orders.csv") {
+  mask orders from csv("orders.csv", header: true) to csv("out/orders.csv") {
     order_id    : hash in order_identity
     customer_id <- customers.customer_id orphans preserve
     keep total
   }
 
-  mask order_lines from csv("lines.csv") to csv("out/lines.csv") {
+  mask order_lines from csv("lines.csv", header: true) to csv("out/lines.csv") {
     order_id, customer_id <- orders.(order_id, customer_id) in order_keys orphans fail
     keep sku, quantity
   }
@@ -201,12 +201,12 @@ pipeline {
   delivery(strict)
   namespace customer_identity for customers.customer_id, orders.customer_id
 
-  mask customers from csv("customers.csv") to csv("out/customers.csv") {
+  mask customers from csv("customers.csv", header: true) to csv("out/customers.csv") {
     customer_id : hash in customer_identity
     email       : faker(person_email)
   }
 
-  mask orders from csv("orders.csv") to csv("out/orders.csv") {
+  mask orders from csv("orders.csv", header: true) to csv("out/orders.csv") {
     customer_id : hash in customer_identity
     keep total, status, closed_at
   }

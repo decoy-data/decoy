@@ -18,7 +18,7 @@ _PROGRAM = """decoy 1
 pipeline {{
   seed 1
   expect leak_check(t.a{expect})
-  mask t from csv("a.csv"{connector}) to csv("b.csv") {{
+  mask t from csv("a.csv", header: true{connector}) to csv("b.csv") {{
     a : hash(k: 1{mask}) in ids
   }}
   generate g rows 2 to csv("g.csv") {{
@@ -105,7 +105,7 @@ def test_a_number_that_is_not_finite_is_refused(item: float) -> None:
 def test_sections_come_in_a_set_order_with_rules_aligned() -> None:
     text = """decoy 1
 pipeline p {
-  mask t from csv("a.csv") to csv("b.csv") { long_column_name : redact  b : hash in ids
+  mask t from csv("a.csv", header: true) to csv("b.csv") { long_column_name : redact  b : hash in ids
     keep c  where b > 1  d <- t.b orphans fail }
   options { protected_quarantine: {max_rows: 1} }
   delivery(strict)
@@ -129,7 +129,7 @@ pipeline p {
 
   delivery(strict)
 
-  mask t from csv("a.csv") to csv("b.csv") {
+  mask t from csv("a.csv", header: true) to csv("b.csv") {
     long_column_name : redact
     b                : hash in ids
     keep c
@@ -147,3 +147,11 @@ pipeline p {
 
 def test_every_setting_statement_has_a_printed_form() -> None:
     assert set(_SETTINGS) == set(SETTING_STATEMENTS)
+
+
+def test_an_empty_name_is_refused_with_its_own_message() -> None:
+    from decoy.lang._print import name
+
+    with pytest.raises(LangError) as caught:
+        name("")
+    assert "empty" in caught.value.diagnostics[0].message

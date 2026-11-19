@@ -43,6 +43,7 @@ that is not on this page.
 | `lang.let_shadows_strategy` | A `let` has a strategy's name | Choose another name |
 | `lang.let_modified` | A `let` name was given options or words | Put them on the `let` line |
 | `lang.unknown_connector` | The source or target is not one the language has | Use `csv`, `parquet`, `fixed_width`, `s3` or `gcs` |
+| `lang.connector_option_required` | A `csv` source does not say `header: true` or `header: false`; the language has no default | Add `header: true` if the file starts with a row of column names, otherwise `header: false` |
 | `lang.connector_arguments` | A source or target was given the wrong number of plain values | See the list in the hint |
 | `lang.format_unknown` | The format of an `s3` or `gcs` object cannot be told from its name | Add `format: csv` or `format: parquet` |
 | `lang.generator_in_masked_table` | A masked table defines a column with a generator | Move it to a `generate` block |

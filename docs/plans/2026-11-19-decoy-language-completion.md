@@ -338,13 +338,13 @@ Items this branch cannot settle on its own. Each needs the owner or the orchestr
 
 | # | Item | State on the branch | What is needed |
 |---|---|---|---|
-| H1 | `tests/sentry/run/test_no_subset_edit.py` fails. The guard forbids any code under `src/decoy` from writing a config's `subset` key, so that the CLI never edits a user's config. `src/decoy/lang/_subset.py` writes that block because it builds a config from a `.decoy` program | **Red.** The guard was not changed and not sidestepped | A decision: a narrow exemption for the compiler (a store and a dict display in `lang/_subset.py` only; `pop`, `update` and `del` stay forbidden), or another design |
+| H1 | `tests/sentry/run/test_no_subset_edit.py` fails. The guard forbids any code under `src/decoy` from writing a config's `subset` key, so that the CLI never edits a user's config. `src/decoy/lang/_subset.py` writes that block because it builds a config from a `.decoy` program | **Done (commit 0bbb2de7).** Owner decision 2026-11-19 (O5): the guard allows a store and a dict display in `lang/_subset.py` only; `pop`, `setdefault`, `update`, delete and filtering stay forbidden everywhere. A mutation test covers `config.pop("subset", None)` in that file | Nothing |
 | H2 | Guard and registry files changed for the new package: `.importlinter` and its snapshot in `tests/sentry/layout/test_import_layers.py` (the `lang` layer), `tests/sentry/layout/test_codemap_paths.py` (one new layout kind) | Green | Confirm the placement |
 | H3 | `pyproject.toml` declares `lark>=1.1` and, for tests, `hypothesis>=6.0`; `requirements-dev.lock` regenerated with `scripts/dev/lock.sh` | `lock.sh --check` passes | Confirm; owner approved `lark` on 2026-11-19, `hypothesis` is choice C1 |
 | H4 | Roadmap row DECOY-LANG, the decisions log entry and the removed inbox line | Written | Confirm the row text and state |
 | H5 | `tests/sentry/test_engine_reason_code_copies.py` flags `_resources.py` and `ci/rule_codes.py` against the local engine checkout (0.28.0; the CLI pins 0.27.0) | Red, in files this work does not touch; cause not investigated | Someone who owns those files |
 | H6 | Engine follow-ups: a public list of validator names (so `expect` can check them); `examples/complex_healthcare_claims.yaml` uses strategy names the engine no longer has; the orphan-remap observation in the roadmap inbox | Recorded | Triage in the engine |
-| H7 | Independent review of the fixes to the third review's findings (the formatter's comment placement and checks, `?` as a compile error, the doc corrections) | Not reviewed | A review before merge |
+| H7 | Independent review of the fixes to the third review's findings (the formatter's comment placement and checks, `?` as a compile error, the doc corrections) | Reviewed by Dennis, 2026-11-19 (round 1: go with fixes; the fixes are on this branch) | Round 2 on the fixes |
 | H8 | Milestones 7 (command), 8 and 9 change `decoy` commands and frozen 1.0 surfaces | Planned, not built: [2026-11-19-decoy-language-commands.md](2026-11-19-decoy-language-commands.md), seven slices and five owner questions. The library side of each is built: `format_text`, `convert_config`, the `?` mark, the source map | Plan review, then build |
 
 ## Owner decisions
@@ -361,8 +361,11 @@ Items this branch cannot settle on its own. Each needs the owner or the orchestr
 
 ## Open items
 
-- The reason-code scan also flags `_resources.py` and `ci/rule_codes.py` when run against the local
-  engine checkout (0.28.0). Those files are not part of this work; cause not investigated.
+- The reason-code scan flagged `_resources.py` and `ci/rule_codes.py` only against a local engine
+  0.28.0 checkout; on the pinned 0.27.0 they are clean. It did flag `lang/_convert.py`, which read
+  `table["row_count"]` (also an engine reason code). Workaround, not an allowlist entry: the key
+  is read by keyword in `_row_count(**table)`. A shared helper for config keys that collide with
+  reason codes would be the long-term fix.
 - The engine has no public list of validator names, so `expect lunh(...)` compiles and is refused
   at run. A read-only accessor in the engine would let the compiler check the name and suggest
   the nearest one, as it does for strategies and generators.

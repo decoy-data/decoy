@@ -43,7 +43,7 @@ def test_the_error_page_lists_every_code_the_compiler_can_raise() -> None:
 _WRAP = {
     "decoy-pipeline": "decoy 1\npipeline {{\n  seed 1\n{body}\n}}\n",
     "decoy-mask": (
-        'decoy 1\npipeline {{\n  seed 1\n  mask t from csv("a.csv") to csv("b.csv") {{\n{body}\n  }}\n}}\n'
+        'decoy 1\npipeline {{\n  seed 1\n  mask t from csv("a.csv", header: true) to csv("b.csv") {{\n{body}\n  }}\n}}\n'
     ),
 }
 _SNIPPET = re.compile(r"```(decoy-pipeline|decoy-mask)\n(.*?)```", re.DOTALL)

@@ -16,24 +16,24 @@ _PIPELINE = """decoy 1
 pipeline shop {
   seed 7
 
-  mask customers from csv("customers.csv") to csv("out/customers.csv") {
+  mask customers from csv("customers.csv", header: true) to csv("out/customers.csv") {
     customer_id : hash in customer_identity
     {first_name, last_name, email} : faker(composite_name_email)
   }
 
-  mask orders from csv("orders.csv") to csv("out/orders.csv") {
+  mask orders from csv("orders.csv", header: true) to csv("out/orders.csv") {
     order_id : hash in order_identity
     customer_id <- customers.customer_id orphans preserve
     keep total
   }
 
-  mask lines from csv("lines.csv") to csv("out/lines.csv") {
+  mask lines from csv("lines.csv", header: true) to csv("out/lines.csv") {
     order_id <- orders.order_id orphans fail
     customer_id <- orders.customer_id orphans preserve
     keep sku
   }
 
-  mask refunds from csv("refunds.csv") to csv("out/refunds.csv") {
+  mask refunds from csv("refunds.csv", header: true) to csv("out/refunds.csv") {
     customer_id <- customers.customer_id orphans preserve
     keep amount
   }
@@ -234,7 +234,7 @@ def test_a_masked_table_can_follow_a_generated_key() -> None:
 pipeline {
   seed 1
   generate g rows 5 to csv("g.csv") { id = sequence(1) }
-  mask t from csv("a.csv") to csv("b.csv") {
+  mask t from csv("a.csv", header: true) to csv("b.csv") {
     gid <- g.id in gids orphans preserve
     x : redact
   }
@@ -251,9 +251,9 @@ def test_a_chained_composite_link_takes_the_namespace_of_its_own_key_column() ->
     text = """decoy 1
 pipeline {
   seed 1
-  mask p from csv("p.csv") to csv("p2.csv") { x : hash in nsx  y : hash in nsy }
-  mask c from csv("c.csv") to csv("c2.csv") { a, b <- p.(x, y) orphans preserve }
-  mask g from csv("g.csv") to csv("g2.csv") { k <- c.b orphans preserve }
+  mask p from csv("p.csv", header: true) to csv("p2.csv") { x : hash in nsx  y : hash in nsy }
+  mask c from csv("c.csv", header: true) to csv("c2.csv") { a, b <- p.(x, y) orphans preserve }
+  mask g from csv("g.csv", header: true) to csv("g2.csv") { k <- c.b orphans preserve }
 }
 """
     relationships = compile_text(text).config["relationships"]

@@ -14,7 +14,7 @@ decoy 1
 pipeline my_pipeline {
   seed 42
 
-  mask people from csv("people.csv") to csv("out/people.csv") {
+  mask people from csv("people.csv", header: true) to csv("out/people.csv") {
     email : faker(person_email)
     ssn   : redact
     keep id
@@ -46,8 +46,8 @@ Layout is free: spaces and line breaks only separate words.
 ## Sources and targets
 
 ```decoy-pipeline
-mask a from csv("a.csv") to parquet("out/a.parquet") { x : redact }
-mask b from csv("b.txt", delimiter: "|") to csv("out/b.csv") { x : redact }
+mask a from csv("a.csv", header: true) to parquet("out/a.parquet") { x : redact }
+mask b from csv("b.txt", header: true, delimiter: "|") to csv("out/b.csv") { x : redact }
 mask c from csv("c.csv", header: false, column_names: [x, y]) to csv("out/c.csv") { x : redact keep y }
 mask d from s3("bucket", "raw/d.parquet", credentials: "ro") to parquet("out/d.parquet") { x : redact }
 mask e from gcs("bucket", "raw/e.dat", format: csv) to csv("out/e.csv") { x : redact }
@@ -78,7 +78,7 @@ Reuse a rule with `let`, at the pipeline level:
 
 ```decoy-pipeline
 let shift = date_shift(min_days: -30, max_days: 30) in dates
-mask t from csv("t.csv") to csv("out/t.csv") { dob, admitted : shift }
+mask t from csv("t.csv", header: true) to csv("out/t.csv") { dob, admitted : shift }
 ```
 
 ## Shaping a table (runs before masking, in order)
@@ -100,12 +100,12 @@ Expressions: `+ - * / //`, `== != < <= > >=`, `and or not`, `in [...]`, `concat(
 ## Foreign keys
 
 ```decoy-pipeline
-mask customers from csv("c.csv") to csv("out/c.csv") { customer_id : hash in customer_ids }
-mask orders from csv("o.csv") to csv("out/o.csv") {
+mask customers from csv("c.csv", header: true) to csv("out/c.csv") { customer_id : hash in customer_ids }
+mask orders from csv("o.csv", header: true) to csv("out/o.csv") {
   order_id    : hash in order_ids
   customer_id <- customers.customer_id orphans preserve
 }
-mask lines from csv("l.csv") to csv("out/l.csv") {
+mask lines from csv("l.csv", header: true) to csv("out/l.csv") {
   order_id, customer_id <- orders.(order_id, customer_id) in order_keys orphans fail
 }
 ```
@@ -159,9 +159,9 @@ namespace customer_ids for customers.customer_id, orders.customer_id
 options {
   protected_quarantine: {schema_version: 1, access_policy: "ops", retention_seconds: 3600, max_rows: 1000, max_bytes: 1000000, required_protection: encrypted}
 }
-mask customers from csv("c.csv") to csv("out/c.csv") { customer_id : hash in customer_ids keep email }
-mask orders from csv("o.csv") to csv("out/o.csv") { customer_id : hash in customer_ids keep total, status, closed_at }
-mask vips from csv("v.csv") to csv("out/v.csv") { customer_id : hash in customer_ids }
+mask customers from csv("c.csv", header: true) to csv("out/c.csv") { customer_id : hash in customer_ids keep email }
+mask orders from csv("o.csv", header: true) to csv("out/o.csv") { customer_id : hash in customer_ids keep total, status, closed_at }
+mask vips from csv("v.csv", header: true) to csv("out/v.csv") { customer_id : hash in customer_ids }
 ```
 
 ## Names you will reach for

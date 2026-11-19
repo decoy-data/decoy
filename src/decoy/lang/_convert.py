@@ -41,7 +41,7 @@ from decoy.lang._lower import (
 from decoy.lang._parse import parse
 from decoy.lang._print import print_program
 from decoy.lang._safety import SHAPES
-from decoy.lang._subset import PREDICATES
+from decoy.lang._subset import PREDICATES, SEED_MODES
 from decoy.lang._validate import validate
 
 NOWHERE = Span(0, 0, 0, 0)
@@ -112,10 +112,34 @@ def _expression(text: Any, path: str) -> nodes.Expression:
     if not isinstance(text, str):
         raise ConvertError(path, "an expression must be text")
     try:
-        return nodes.Expression(canonical_expression(text), NOWHERE)
+        written = canonical_expression(text)
     except LangError:
         failure = ConvertError(path, "this expression cannot be written in the language")
+    else:
+        # The writer may only move whitespace. A `#` comment or a `1_000` the writer would drop
+        # changes the text, and a proof that compares both sides through the same writer cannot
+        # see it.
+        if _bare(written) == _bare(text):
+            return nodes.Expression(written, NOWHERE)
+        failure = ConvertError(
+            path, "this expression holds a comment or a number spelling the language does not keep"
+        )
     raise failure
+
+
+def _bare(text: str) -> str:
+    """The text without whitespace: what two spacings of one expression have in common."""
+    return "".join(text.split())
+
+
+def _respaced(text: str) -> str:
+    """`text` spaced as the compiler writes it, or unchanged when spacing is not the only
+    difference, so the comparison sees a real change."""
+    try:
+        written = canonical_expression(text)
+    except LangError:
+        return text
+    return written if _bare(written) == _bare(text) else text
 
 
 def _connector(entry: dict[str, Any], *, is_source: bool, path: str) -> nodes.Call:
@@ -128,10 +152,6 @@ def _connector(entry: dict[str, Any], *, is_source: bool, path: str) -> nodes.Ca
         if not all(key in rest for key in connector.positional):
             continue
         positional = [rest.pop(key) for key in connector.positional]
-        if is_source:
-            for key, default in connector.source_defaults.items():
-                if rest.get(key) == default:
-                    del rest[key]
         options = {_OPTION_NAME.get(key, key): item for key, item in rest.items()}
         located = str(positional[-1]).lower()
         if connector.format is None and FORMATS.get(located[located.rfind(".") :]) != declared:
@@ -376,6 +396,8 @@ def _subset(subset: dict[str, Any]) -> nodes.Subset:
     for index, seed in enumerate(subset["seeds"]):
         path = f"subset.seeds[{index}]"
         keys, conditions, amount, unit = None, [], None, None
+        if seed["mode"] not in SEED_MODES:
+            raise ConvertError(f"{path}.mode", "a subset seed of this kind cannot be written")
         if seed["mode"] == "sample" and seed.get("fraction") is not None:
             percent = Decimal(repr(float(seed["fraction"]))) * 100
             whole = percent == percent.to_integral_value()
@@ -388,6 +410,10 @@ def _subset(subset: dict[str, Any]) -> nodes.Subset:
             keys = _value(rows, f"{path}.keys")
         for position, predicate in enumerate(seed.get("predicates", [])):
             operand = predicate.get("value")
+            if predicate["op"] not in _SPELLING:
+                raise ConvertError(
+                    f"{path}.predicates[{position}]", "a test of this kind cannot be written"
+                )
             takes_value = not predicate["op"].startswith("is_")
             if takes_value == (operand is None):
                 raise ConvertError(f"{path}.predicates[{position}]", "this test cannot be written")
@@ -471,7 +497,7 @@ def _normalized(config: dict[str, Any]) -> dict[str, Any]:
     for table in out.get("tables", []):
         for op in table.get("transforms", []):
             if isinstance(op.get("expression"), str):
-                op["expression"] = canonical_expression(op["expression"])
+                op["expression"] = _respaced(op["expression"])
             if op.get("op") == "sort":
                 ascending = op.pop("ascending", True)
                 if isinstance(ascending, bool):
@@ -480,10 +506,10 @@ def _normalized(config: dict[str, Any]) -> dict[str, Any]:
                     op["ascending"] = ascending
         for column in table.get("columns", []):
             if column.get("when"):
-                column["when"] = canonical_expression(column["when"])
+                column["when"] = _respaced(column["when"])
         for column in table.get("generate_columns", []):
             if column.get("type") == "derived" and isinstance(column.get("expression"), str):
-                column["expression"] = canonical_expression(column["expression"])
+                column["expression"] = _respaced(column["expression"])
     return out
 
 
@@ -495,10 +521,10 @@ def _validated(config: dict[str, Any]) -> Any:
     raise failure
 
 
-def _first_difference(compiled: dict[str, Any], source: dict[str, Any]) -> str:
+def _first_difference(compiled: dict[str, Any], config: dict[str, Any]) -> str:
     """The top-level block in which the two configs first differ, as the engine models them."""
     ours = typed(_validated(_normalized(compiled)).model_dump())
-    theirs = typed(_validated(_normalized(source)).model_dump())
+    theirs = typed(_validated(_normalized(config)).model_dump())
     return next((key for key in theirs if ours.get(key) != theirs[key]), "")
 
 
@@ -511,18 +537,24 @@ def convert_config(config: dict[str, Any]) -> str:
         text = print_program(_program(source))
         compiled, spans = lower(parse(text))
         validate(compiled, spans)
+        # Against the input as given, not the dump used to build the program: that dump drops
+        # what the input left unset or null, so a difference there would not be seen.
         same = typed(_validated(_normalized(compiled)).model_dump()) == typed(
-            _validated(_normalized(source)).model_dump()
+            _validated(_normalized(config)).model_dump()
         )
     except LangError as error:
         # A diagnostic names words, strategies, tables and columns, never a value.
         reason = error.diagnostics[0].message
         failure = ConvertError("", f"the language cannot write this config: {reason}")
+    except ConvertError:
+        raise
     except RecursionError:
         failure = ConvertError("", "the config is nested too deeply to write")
+    except Exception:
+        failure = ConvertError("", "the config has a shape this writer cannot read")
     else:
         if same:
             return text
-        differing = _first_difference(compiled, source)
+        differing = _first_difference(compiled, config)
         failure = ConvertError(differing, "the program for this would not compile back to it")
     raise failure

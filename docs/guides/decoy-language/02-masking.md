@@ -13,7 +13,7 @@ pipeline {
 
   let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
 
-  mask patients from csv("patients.csv") to parquet("out/patients.parquet") {
+  mask patients from csv("patients.csv", header: true) to parquet("out/patients.parquet") {
     patient_id            : hash in patient_identity
     first_name, last_name : faker(person_name) in people deterministic
     dob, admitted         : shift
@@ -65,7 +65,7 @@ decoy 1
 pipeline {
   seed 7
 
-  mask signups from csv("signups.csv") to csv("out/signups.csv") {
+  mask signups from csv("signups.csv", header: true) to csv("out/signups.csv") {
     where status != 'TEST' and age >= 18
     full_name = first_name + ' ' + last_name
     sort by signup_date desc, id
@@ -88,7 +88,7 @@ values, use a `generate` block ([page 4](04-generating.md)).
 
 | Written | Reads or writes |
 |---|---|
-| `csv("people.csv")` | A CSV with a header row; `delimiter: "\|"` as an option. Without a header: `header: false, column_names: [a, b]` |
+| `csv("people.csv", header: true)` | A CSV source must say `header: true` or `header: false`; there is no default. `delimiter: "\|"` is an option. Without a header: `header: false, column_names: [a, b]`. A CSV target takes no `header` |
 | `parquet("people.parquet")` | A Parquet file |
 | `fixed_width("people.txt", layout: {...})` | A fixed-width file |
 | `s3("bucket", "path/people.parquet", credentials: "name")` | An object on S3 |

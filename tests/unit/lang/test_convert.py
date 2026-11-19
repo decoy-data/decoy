@@ -521,3 +521,84 @@ def test_zero_and_negative_zero_are_not_merged() -> None:
         for name, item in (("a", 0.0), ("b", -0.0))
     ]
     assert convert_config(_config(columns)).count("truncate(") == 2
+
+
+def _with_expression(kind: str, text: str) -> dict:
+    """A config that holds `text` as a filter, a derive or a generated derived column."""
+    if kind == "filter":
+        return _broken(
+            lambda c: c["tables"][0].update(transforms=[{"op": "filter", "expression": text}])
+        )
+    if kind == "derive":
+        return _broken(
+            lambda c: c["tables"][0].update(
+                transforms=[{"op": "derive", "column": "z", "expression": text}]
+            )
+        )
+    config = _config([])
+    config["sources"] = {}
+    config["tables"] = [
+        {
+            "name": "t",
+            "row_count": 5,
+            "generate_columns": [
+                {"name": "n", "type": "sequence", "start": 1, "step": 1},
+                {"name": "d", "type": "derived", "expression": text},
+            ],
+        }
+    ]
+    return config
+
+
+@pytest.mark.parametrize("kind", ["filter", "derive", "generated"])
+@pytest.mark.parametrize(
+    "text", ["1 == 1 # or drop everything", "n > 1_000"], ids=["comment", "number-underscore"]
+)
+def test_an_expression_the_writer_would_change_is_refused(kind: str, text: str) -> None:
+    # The equivalence proof runs both sides through the writer, so it cannot see a `#` comment
+    # or a `_` the writer drops. The writer itself must refuse.
+    with pytest.raises(ConvertError) as caught:
+        convert_config(_with_expression(kind, text))
+    assert "comment or a number" in caught.value.message
+    assert caught.value.__context__ is None
+
+
+def test_an_expression_that_differs_only_in_spacing_still_converts() -> None:
+    text = convert_config(_with_expression("filter", "x>1  and   y=='a  b'"))
+    assert "x > 1 and y == 'a  b'" in text or "'a  b'" in text
+
+
+def test_an_unexpected_failure_is_a_value_free_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    def explode(config: dict) -> None:
+        raise KeyError("SECRET-value")
+
+    monkeypatch.setattr("decoy.lang._convert._program", explode)
+    with pytest.raises(ConvertError) as caught:
+        convert_config(_config([dict(_ID)]))
+    assert "SECRET" not in str(caught.value)
+    assert caught.value.__context__ is None and caught.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda s: s["seeds"][0].update(mode="bogus"),
+        lambda s: s["seeds"][0]["predicates"][0].update(op="bogus"),
+    ],
+    ids=["mode", "op"],
+)
+def test_an_unknown_subset_op_or_mode_is_refused_not_a_key_error(change) -> None:
+    from decoy.lang._convert import _subset
+
+    subset = {
+        "seeds": [
+            {
+                "table": "t",
+                "mode": "filter",
+                "predicates": [{"column": "a", "op": "eq", "value": 1}],
+            }
+        ]
+    }
+    change(subset)
+    with pytest.raises(ConvertError):
+        _subset(subset)
