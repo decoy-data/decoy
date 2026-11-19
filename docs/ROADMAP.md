@@ -84,7 +84,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-56 rows block 1.0, 27 are Later and 13 are Maintenance (2026-11-18). Each cell lists the row
+54 rows block 1.0, 27 are Later and 13 are Maintenance (2026-11-19). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its v1+
 candidates that have no plan yet (88 in all), and the health file lists 32 maintenance candidates.
 
@@ -94,7 +94,7 @@ candidates that have no plan yet (88 in all), and the health file lists 32 maint
 | [Config, validation and the init wizard](roadmap/groups/config.md) | 24b QA-GATE, 24e CLI-QA1, 32b INIT-WIZARD | none | none |
 | [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 24z FAKER-POOL-DISTINCT, 24zb DATE-SHIFT-UNKEYED, 79 F09, FAKER-MIGRATE | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters | none |
 | [Fit and generate](roadmap/groups/generate.md) | 24f QA-FIT-REDACT, 24n GEN-REL, 24zp FIT-YEAR-CODING | 24p GEN-PROVIDERS, 24q GEN-TYPES, 24r GEN-INHERIT, 24s GEN-CATALOG | none |
-| [Run, publication and results](roadmap/groups/run.md) | 24zs F26-RESERVED-NAME, OUTPUT-METADATA-LEAK, 24zv REPORT-FIDELITY-PLACEHOLDERS, 24zw REPORT-VAULT-HELP, 58 F25, 59 F22, 61 CLI delivery, 62 RESULT, 63 SAMPLE CLI half, 63a RUN-STREAM, 66 F29 remainder, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT | 84 F24 engine half, 85 F23 resume, CLI half | none |
+| [Run, publication and results](roadmap/groups/run.md) | 24zs F26-RESERVED-NAME, OUTPUT-METADATA-LEAK, 58 F25, 59 F22, 61 CLI delivery, 62 RESULT, 63 SAMPLE CLI half, 63a RUN-STREAM, 66 F29 remainder, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT | 84 F24 engine half, 85 F23 resume, CLI half | none |
 | [Local record library](roadmap/groups/library.md) | 34 L1b-cli, 36 L2-cli, 37 L3a-cli, 39 L4a-cli, 40 L4b-cli | 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02 | none |
 | [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10 | none |
