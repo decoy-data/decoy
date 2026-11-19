@@ -181,3 +181,14 @@ def test_help_names_the_flag(args: list[str]) -> None:
     assert result.exit_code == 0, result.output
     assert "--mask-secret" in result.output
     assert "same seed" not in " ".join(result.output.split())
+
+
+def test_report_vault_help_never_calls_the_seed_a_key() -> None:
+    """24zw: the help says the vault opens under the mask secret and the seed is not key material."""
+    result = runner.invoke(app, ["report", "vault", "--help"], terminal_width=200)
+    assert result.exit_code == 0
+    text = " ".join(result.output.split())
+    assert "derived from the config's seed" not in text
+    assert "global_settings.seed" not in text
+    assert "mask secret" in text
+    assert "seed is not key material" in text
