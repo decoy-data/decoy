@@ -34,9 +34,11 @@ def _score(value: object) -> str:
 
 
 def _name_scores(value: object) -> list[tuple[str, object]]:
-    """Read `name=score` strings (engine 0.28.0) and the older `[name, score]` pairs alike."""
+    """Read the engine's joined `name=score, name=score` string (0.28.0) and the older
+    `[name, score]` pairs alike."""
+    items = [p for p in value.split(", ") if p] if isinstance(value, str) else (value or [])  # type: ignore[attr-defined]
     out: list[tuple[str, object]] = []
-    for item in value or []:  # type: ignore[attr-defined]
+    for item in items:
         if isinstance(item, str):
             name, sep, score = item.rpartition("=")
             try:

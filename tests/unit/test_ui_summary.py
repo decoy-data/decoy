@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from decoy_engine import QualityWarning
 
 from decoy.ui.summary import (
@@ -17,8 +19,8 @@ _DETAIL = {
     "overall_score": 0.42,
     "threshold": 0.8,
     "trigger": "overall",
-    "worst_columns": [["start_date", 0.39], ["age", 0.5]],
-    "below_columns": [["start_date", 0.39]],
+    "worst_columns": ["start_date=0.39", "age=0.5"],
+    "below_columns": ["start_date=0.39"],
 }
 
 
@@ -45,7 +47,7 @@ def test_column_trigger_sentence() -> None:
                 table="people",
                 trigger="column",
                 overall_score=0.861,
-                below_columns=[["null90", 0.096]],
+                below_columns=["null90=0.096"],
             )
         ]
     )
@@ -95,7 +97,9 @@ def test_report_drift_lines_one_per_column() -> None:
 
 def test_huge_dict_detail_stays_short_in_human_line_and_whole_in_json() -> None:
     big = {f"row{i}": i for i in range(10_000)}
-    w = QualityWarning(code="pool_fallback", provider="p", column="c", detail={"by_row": big})
+    # QualityWarning refuses a dict detail since engine 0.28.0; the CLI still prints other
+    # warning-shaped records, so keep proving the human line stays short for one.
+    w = SimpleNamespace(code="pool_fallback", provider="p", column="c", detail={"by_row": big})
     (rec,) = warning_records([w])
     assert rec["message"] == "pool_fallback (column c): by_row=<10000 entries>"
     assert len(rec["message"]) < 200
