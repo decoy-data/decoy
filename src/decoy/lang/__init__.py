@@ -21,14 +21,16 @@ from typing import Any
 import yaml
 
 from decoy.lang._ast import Table
+from decoy.lang._codes import CODES, NESTING, UNREVIEWED
 from decoy.lang._convert import ConvertError, convert_config
-from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span, render
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span, diagnostic, render
 from decoy.lang._format import format_text
 from decoy.lang._lower import lower
 from decoy.lang._parse import parse
 from decoy.lang._validate import validate
 
 __all__ = [
+    "CODES",
     "Compiled",
     "ConvertError",
     "Diagnostic",
@@ -40,9 +42,6 @@ __all__ = [
     "format_text",
     "render",
 ]
-
-
-UNREVIEWED = "this rule was inferred and has not been reviewed"
 
 
 @dataclass(frozen=True)
@@ -60,11 +59,11 @@ def compile_text(text: str) -> Compiled:
         program = parse(text)
         config, spans = lower(program)
     except RecursionError:
-        too_deep = LangError([Diagnostic("lang.nesting", "the program is nested too deeply")])
+        too_deep = LangError([diagnostic(NESTING)])
     else:
         validate(config, spans)
         marked = [
-            Diagnostic("lang.unreviewed", UNREVIEWED, s.span, "check the rule, then remove the `?`")
+            diagnostic(UNREVIEWED, s.span, "check the rule, then remove the `?`")
             for table in program.tables
             if isinstance(table, Table)
             for s in table.statements
@@ -81,5 +80,5 @@ def emit_yaml(config: dict[str, Any]) -> str:
     try:
         return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
     except RecursionError:
-        too_deep = LangError([Diagnostic("lang.nesting", "the program is nested too deeply")])
+        too_deep = LangError([diagnostic(NESTING)])
     raise too_deep

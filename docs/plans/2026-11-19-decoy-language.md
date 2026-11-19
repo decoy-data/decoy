@@ -1,8 +1,8 @@
-Status: draft
+Status: plan
 
 # DECOY-LANG: a small language for writing Decoy pipelines
 
-Date: 2026-11-19. Scope: CLI repo only. No engine behavior changes. Not a 1.0 blocker.
+Date: 2026-11-19. Scope: CLI repo only. No engine behavior changes. The language is in scope for 1.0 (owner, 2026-11-19).
 
 This is the broad plan. It says what the language covers, how it should read, how the compiler
 works, and the order to build it in. Each group in section 4 gets its own short design pass before

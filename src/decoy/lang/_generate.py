@@ -21,8 +21,16 @@ from decoy_engine.config import generate_option_catalog
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
+from decoy.lang._codes import (
+    COLUMN_REPEATED_GENERATED,
+    GENERATOR_ARGUMENT_BARE,
+    GENERATOR_ARGUMENTS,
+    OPTION_NOT_AN_OPTION,
+    OPTION_REPEATED,
+    UNKNOWN_GENERATOR,
+)
 from decoy.lang._connectors import lower_connector
-from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, diagnostic, fail
 from decoy.lang._expressions import leading_call
 
 
@@ -49,10 +57,8 @@ def lower_generate(table: nodes.Generate, config: dict[str, Any], spans: SourceM
         if column.text in seen:
             first = seen[column.text].span
             problems.append(
-                Diagnostic(
-                    "lang.column_repeated",
-                    f"column `{column.text}` is already defined on line {first.line}",
-                    column.span,
+                diagnostic(
+                    COLUMN_REPEATED_GENERATED, column.span, column=column.text, line=first.line
                 )
             )
             continue
@@ -86,21 +92,16 @@ def _refuse_a_generator_slip(expression: nodes.Expression) -> None:
     if word in generators():
         bare = expression.text == word
         raise fail(
-            "lang.generator_argument",
-            f"`{word}` is a generator and is written as a call with plain values",
+            GENERATOR_ARGUMENT_BARE,
             expression.span,
             f"write `{word}(...)`"
             if bare
             else "for a computed column do not start with a generator",
+            word=word,
         )
     close = difflib.get_close_matches(word, sorted(generators()), n=1, cutoff=0.8)
     if close and expression.text != word:
-        raise fail(
-            "lang.unknown_generator",
-            f"`{word}` is not a generator",
-            expression.span,
-            f"did you mean `{close[0]}`?",
-        )
+        raise fail(UNKNOWN_GENERATOR, expression.span, f"did you mean `{close[0]}`?", word=word)
 
 
 def _column(
@@ -120,10 +121,10 @@ def _column(
             assert call is not None
             close = difflib.get_close_matches(call.name.text, sorted(generators()), n=1)
             raise fail(
-                "lang.unknown_generator",
-                f"`{call.name.text}` is not a generator",
+                UNKNOWN_GENERATOR,
                 call.name.span,
                 f"did you mean `{close[0]}`?" if close else None,
+                word=call.name.text,
             )
         _refuse_a_generator_slip(statement.expression)
         spans[(*path, "expression")] = statement.expression.span
@@ -135,10 +136,12 @@ def _column(
     if len(call.positional) > len(fills):
         takes = ", ".join(fills) if fills else "none"
         raise fail(
-            "lang.generator_arguments",
-            f"`{kind}` takes at most {len(fills)} plain value(s): {takes}",
+            GENERATOR_ARGUMENTS,
             call.positional[len(fills)].span,
             "write the other values as `key: value` options",
+            kind=kind,
+            count=len(fills),
+            takes=takes,
         )
     for key, value in zip(fills, call.positional, strict=False):
         if kind == "categorical" and isinstance(value.value, dict):
@@ -151,9 +154,9 @@ def _column(
     for option in call.options:
         key = option.key.text
         if key in ("name", "type"):
-            raise fail("lang.option_not_allowed", f"`{key}` is not an option", option.key.span)
+            raise fail(OPTION_NOT_AN_OPTION, option.key.span, key=key)
         if key in out:
-            raise fail("lang.option_repeated", f"`{key}` is given twice", option.key.span)
+            raise fail(OPTION_REPEATED, option.key.span, key=key)
         out[key] = plain(option.value)
         spans[(*path, key)] = option.value.span
     return out

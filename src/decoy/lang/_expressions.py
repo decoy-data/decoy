@@ -16,6 +16,15 @@ from lark import Lark, Token, Tree
 from lark.exceptions import UnexpectedInput
 
 from decoy.lang import _ast as nodes
+from decoy.lang._codes import (
+    EXPRESSION,
+    GENERATOR_ARGUMENT_VALUES,
+    GENERATOR_IN_MASKED_TABLE,
+    MAP_KEY_REPEATED,
+    OPTION_REPEATED,
+    POSITIONAL_AFTER_OPTION,
+    SYNTAX_MAP_IN_EXPRESSION,
+)
 from decoy.lang._errors import fail
 from decoy.lang._grammar import GRAMMAR
 from decoy.lang._tokens import number_of, span_of, unquote
@@ -36,11 +45,10 @@ def expression_text(node: Tree[Any] | Token) -> str:
     if node.data == "prefix":
         return "not " if parts[0].type == "NOT" else "-"
     if node.data == "e_map":
-        raise fail("lang.syntax", "an expression cannot hold a `{...}` map", span_of(node))
+        raise fail(SYNTAX_MAP_IN_EXPRESSION, span_of(node))
     if node.data == "e_option":
         raise fail(
-            "lang.generator_in_masked_table",
-            "a masked table can only define a column from an expression",
+            GENERATOR_IN_MASKED_TABLE,
             span_of(node),
             "generators such as `sequence(start: 1)` belong in a `generate` table",
         )
@@ -94,14 +102,11 @@ def plain_value(tree: Tree[Any]) -> nodes.Value:
             token, value = pair.children
             key = str(token) if token.type == "NAME" else unquote(token)
             if key in pairs:
-                raise fail(
-                    "lang.option_repeated", "a key is given twice in this map", span_of(token)
-                )
+                raise fail(MAP_KEY_REPEATED, span_of(token))
             pairs[key] = plain_value(value)
         return nodes.Value(pairs, span)
     raise fail(
-        "lang.generator_argument",
-        "a generator takes plain values: numbers, text, words, lists and maps",
+        GENERATOR_ARGUMENT_VALUES,
         span,
         "for a computed column write the expression on its own: `total = price * quantity`",
     )
@@ -121,15 +126,10 @@ def generator_call(expression: Tree[Any]) -> nodes.Call | None:
             token, value = argument.children
             key = nodes.Name(str(token) if token.type == "NAME" else unquote(token), span_of(token))
             if any(o.key.text == key.text for o in options):
-                raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
+                raise fail(OPTION_REPEATED, key.span, key=key.text)
             options.append(nodes.Option(key, plain_value(value)))
         elif options:
-            raise fail(
-                "lang.positional_after_option",
-                "a plain value cannot follow a `key: value` option",
-                span_of(argument),
-                "put plain values first",
-            )
+            raise fail(POSITIONAL_AFTER_OPTION, span_of(argument), "put plain values first")
         else:
             positional.append(plain_value(argument))
     name = nodes.Name(str(head), span_of(head))
@@ -148,7 +148,7 @@ def canonical_expression(text: str) -> str:
     try:
         tree = _expression_parser().parse(text)
     except UnexpectedInput:
-        failure = fail("lang.expression", "this expression cannot be written in the language")
+        failure = fail(EXPRESSION)
     else:
         return expression_text(tree)
     raise failure

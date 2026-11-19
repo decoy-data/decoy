@@ -14,7 +14,8 @@ from typing import Any
 from decoy_engine import parse_pipeline_config
 from decoy_engine.config import PipelineConfigError
 
-from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span
+from decoy.lang._codes import CONFIG
+from decoy.lang._errors import LangError, SourceMap, Span, diagnostic
 
 _WHEN_HINT = (
     "a condition compares one column with a value (`country == 'US'`) or tests a list "
@@ -48,7 +49,7 @@ def validate(config: dict[str, Any], spans: SourceMap) -> None:
             path = path_of(problem.location)
             hint = _WHEN_HINT if path and path[-1] == "when" else None
             text = f"{problem.text} [{problem.code}]"
-            problems.append(Diagnostic("lang.config", text, locate(path, spans), hint))
+            problems.append(diagnostic(CONFIG, locate(path, spans), hint, text=text))
     else:
         return
     # Raised outside the handler so the engine error is not attached as context.

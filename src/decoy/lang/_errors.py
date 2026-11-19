@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from decoy.lang._codes import Code
+
 
 @dataclass(frozen=True)
 class Span:
@@ -40,8 +42,17 @@ class LangError(Exception):
         super().__init__("; ".join(d.message for d in diagnostics))
 
 
-def fail(code: str, message: str, span: Span | None = None, hint: str | None = None) -> LangError:
-    return LangError([Diagnostic(code, message, span, hint)])
+def diagnostic(
+    code: Code, span: Span | None = None, hint: str | None = None, **fields: object
+) -> Diagnostic:
+    """The one place a `Diagnostic` is built. `fields` fill the `{name}` slots of the message."""
+    return Diagnostic(code.code, code.message.format(**fields), span, hint)
+
+
+def fail(
+    code: Code, span: Span | None = None, hint: str | None = None, **fields: object
+) -> LangError:
+    return LangError([diagnostic(code, span, hint, **fields)])
 
 
 def render(diagnostic: Diagnostic, filename: str = "<input>") -> str:

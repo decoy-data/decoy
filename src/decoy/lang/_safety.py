@@ -20,7 +20,15 @@ from typing import Any
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
-from decoy.lang._errors import Diagnostic, SourceMap
+from decoy.lang._codes import (
+    BLOCK_ARGUMENTS,
+    BLOCK_REPEATED,
+    BLOCK_REPEATED_NAMESPACE,
+    EXPECT_ARGUMENT,
+    OPTION_SET_BY_STATEMENT,
+    REFERENCE_NOT_ALLOWED,
+)
+from decoy.lang._errors import Diagnostic, SourceMap, diagnostic
 
 
 @dataclass(frozen=True)
@@ -82,9 +90,7 @@ def _options(
     for option in block.options:
         key = option.key.text
         if key in out:
-            return Diagnostic(
-                "lang.option_repeated", f"`{key}` is already set by this statement", option.key.span
-            )
+            return diagnostic(OPTION_SET_BY_STATEMENT, option.key.span, key=key)
         out[key] = plain(option.value)
         spans[(*path, key)] = option.value.span
     return None
@@ -98,18 +104,10 @@ def _shaped(
     problems: list[Diagnostic],
 ) -> None:
     if shape.key in config:
-        problems.append(
-            Diagnostic("lang.block_repeated", f"`{block.kind}` is written twice", block.span)
-        )
+        problems.append(diagnostic(BLOCK_REPEATED, block.span, kind=block.kind))
         return
     if block.refs:
-        problems.append(
-            Diagnostic(
-                "lang.reference_not_allowed",
-                f"`{block.kind}` does not take a `table.column`",
-                block.refs[0].span,
-            )
-        )
+        problems.append(diagnostic(REFERENCE_NOT_ALLOWED, block.refs[0].span, kind=block.kind))
         return
     out: dict[str, Any] = dict(shape.fixed)
     if shape.variadic is not None:
@@ -119,11 +117,13 @@ def _shaped(
     elif len(block.positional) > len(shape.positional):
         takes = ", ".join(shape.positional)
         problems.append(
-            Diagnostic(
-                "lang.block_arguments",
-                f"`{block.kind}` takes {len(shape.positional)} plain value(s): {takes}",
+            diagnostic(
+                BLOCK_ARGUMENTS,
                 block.positional[len(shape.positional)].span,
                 "write the other values as `key: value` options",
+                kind=block.kind,
+                count=len(shape.positional),
+                takes=takes,
             )
         )
         return
@@ -145,9 +145,8 @@ def _expect(
     assert block.name is not None
     if block.positional:
         problems.append(
-            Diagnostic(
-                "lang.expect_argument",
-                "a check takes columns and settings",
+            diagnostic(
+                EXPECT_ARGUMENT,
                 block.positional[0].span,
                 "write a column as `table.column` and a setting as `key: value`",
             )
@@ -179,13 +178,7 @@ def _namespace(
     assert block.name is not None
     declared = config.setdefault("namespaces", {})
     if block.name.text in declared:
-        problems.append(
-            Diagnostic(
-                "lang.block_repeated",
-                f"namespace `{block.name.text}` is declared twice",
-                block.name.span,
-            )
-        )
+        problems.append(diagnostic(BLOCK_REPEATED_NAMESPACE, block.name.span, name=block.name.text))
         return
     spans[("namespaces", block.name.text)] = block.span
     declared[block.name.text] = {

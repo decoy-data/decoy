@@ -20,6 +20,7 @@ from typing import Any
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
+from decoy.lang._codes import UNPRINTABLE_NAME_CHARS, UNPRINTABLE_NAME_EMPTY, UNPRINTABLE_NUMBER
 from decoy.lang._errors import Span, fail
 from decoy.lang._grammar import KEYWORD_TERMINALS, NAME_PATTERN
 
@@ -46,9 +47,9 @@ def name(text: str) -> str:
 
 def _single_quoted(text: str) -> str:
     if not text:
-        raise fail("lang.unprintable_name", "a name cannot be empty")
+        raise fail(UNPRINTABLE_NAME_EMPTY)
     if "'" in text or "\n" in text:
-        raise fail("lang.unprintable_name", "a name with a quote or a line break cannot be written")
+        raise fail(UNPRINTABLE_NAME_CHARS)
     return f"'{text}'"
 
 
@@ -56,7 +57,7 @@ def number(value: int | float) -> str:
     if isinstance(value, int):
         return str(value)
     if not math.isfinite(value):
-        raise fail("lang.unprintable_number", "a number that is not finite cannot be written")
+        raise fail(UNPRINTABLE_NUMBER)
     digits = format(Decimal(repr(value)), "f")
     return digits if "." in digits else f"{digits}.0"
 

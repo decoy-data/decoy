@@ -22,8 +22,25 @@ from decoy_engine import PipelineConfig, strategy_catalog
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
+from decoy.lang._codes import (
+    COLUMN_REPEATED,
+    GENERATOR_IN_MASKED_TABLE_CALL,
+    GROUP_TOO_SMALL,
+    LET_MODIFIED,
+    LET_REPEATED,
+    LET_SHADOWS_STRATEGY,
+    OPTION_NOT_AS_OPTION,
+    OPTION_NOT_IN_OPTIONS,
+    OPTION_NOT_IN_SETTINGS,
+    OPTION_REPEATED,
+    SEED_MISSING,
+    SETTING_REPEATED,
+    STRATEGY_ARGUMENTS,
+    TABLE_REPEATED,
+    UNKNOWN_STRATEGY,
+)
 from decoy.lang._connectors import lower_connector
-from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, diagnostic, fail
 from decoy.lang._expressions import leading_call
 from decoy.lang._generate import generators, lower_generate
 from decoy.lang._links import CHILD_STRATEGY, relationships
@@ -88,34 +105,23 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
     for setting in program.settings:
         key = SETTING_STATEMENTS[setting.kind][0]
         if key in settings:
-            problems.append(
-                Diagnostic("lang.setting_repeated", f"`{setting.kind}` is set twice", setting.span)
-            )
+            problems.append(diagnostic(SETTING_REPEATED, setting.span, setting=setting.kind))
         settings[key] = plain(setting.value)
         spans[("global_settings", key)] = setting.span
     for option in program.extra_settings:
         key = option.key.text
         if key in SETTING_SYNTAX:
             problems.append(
-                Diagnostic(
-                    "lang.option_not_allowed",
-                    f"`{key}` is not written in `settings`",
-                    option.key.span,
-                    f"use {SETTING_SYNTAX[key]}",
+                diagnostic(
+                    OPTION_NOT_IN_SETTINGS, option.key.span, f"use {SETTING_SYNTAX[key]}", key=key
                 )
             )
         elif key in settings:
-            problems.append(
-                Diagnostic("lang.setting_repeated", f"`{key}` is set twice", option.key.span)
-            )
+            problems.append(diagnostic(SETTING_REPEATED, option.key.span, setting=key))
         settings[key] = plain(option.value)
         spans[("global_settings", key)] = option.value.span
     if "seed" not in settings:
-        problems.append(
-            Diagnostic(
-                "lang.seed_missing", "the pipeline has no seed", program.span, "add `seed 42`"
-            )
-        )
+        problems.append(diagnostic(SEED_MISSING, program.span, "add `seed 42`"))
     config["global_settings"] = settings
     spans[("global_settings",)] = program.span
 
@@ -125,13 +131,7 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
     seen_tables: set[str] = set()
     for table in program.tables:
         if table.name.text in seen_tables:
-            problems.append(
-                Diagnostic(
-                    "lang.table_repeated",
-                    f"table `{table.name.text}` is declared twice",
-                    table.name.span,
-                )
-            )
+            problems.append(diagnostic(TABLE_REPEATED, table.name.span, table=table.name.text))
             continue
         seen_tables.add(table.name.text)
         try:
@@ -152,17 +152,12 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
         key = option.key.text
         if key in BLOCK_SYNTAX:
             problems.append(
-                Diagnostic(
-                    "lang.option_not_allowed",
-                    f"`{key}` is not written in `options`",
-                    option.key.span,
-                    f"use {BLOCK_SYNTAX[key]}",
+                diagnostic(
+                    OPTION_NOT_IN_OPTIONS, option.key.span, f"use {BLOCK_SYNTAX[key]}", key=key
                 )
             )
         elif key in config:
-            problems.append(
-                Diagnostic("lang.option_repeated", f"`{key}` is given twice", option.key.span)
-            )
+            problems.append(diagnostic(OPTION_REPEATED, option.key.span, key=key))
         else:
             config[key] = plain(option.value)
             spans[(key,)] = option.value.span
@@ -176,17 +171,9 @@ def _lets(program: nodes.Program, problems: list[Diagnostic]) -> dict[str, nodes
     for let in program.lets:
         name = let.name.text
         if name in _strategies():
-            problems.append(
-                Diagnostic(
-                    "lang.let_shadows_strategy",
-                    f"`{name}` is a strategy and cannot be reused as a `let` name",
-                    let.name.span,
-                )
-            )
+            problems.append(diagnostic(LET_SHADOWS_STRATEGY, let.name.span, name=name))
         elif name in lets:
-            problems.append(
-                Diagnostic("lang.let_repeated", f"`{name}` is defined twice", let.name.span)
-            )
+            problems.append(diagnostic(LET_REPEATED, let.name.span, name=name))
         else:
             # Resolved here, so a `let` that names an earlier `let` means that one's strategy.
             try:
@@ -229,11 +216,12 @@ def _table(
             if column.text in earlier:
                 first = earlier[column.text].span
                 problems.append(
-                    Diagnostic(
-                        "lang.column_repeated",
-                        f"column `{column.text}` already has a "
-                        f"{'link' if is_link else 'rule'} on line {first.line}",
+                    diagnostic(
+                        COLUMN_REPEATED,
                         column.span,
+                        column=column.text,
+                        what="link" if is_link else "rule",
+                        line=first.line,
                     )
                 )
                 continue
@@ -266,13 +254,7 @@ def _table(
             links.append((name, statement))
         elif isinstance(statement, nodes.Mask) and statement.coherent:
             if len(statement.columns) < 2:
-                problems.append(
-                    Diagnostic(
-                        "lang.group_too_small",
-                        "a `{...}` group needs at least two columns",
-                        statement.span,
-                    )
-                )
+                problems.append(diagnostic(GROUP_TOO_SMALL, statement.span))
     if problems:
         raise LangError(problems)
     spans[("tables", index)] = table.span
@@ -292,11 +274,10 @@ def _shaping(statement: nodes.Shaping, step: tuple[Any, ...], spans: SourceMap) 
         called = leading_call(statement.expression.text)
         if called in generators():
             raise fail(
-                "lang.generator_in_masked_table",
-                f"`{called}` is a generator; a masked table can only define a column from "
-                "an expression",
+                GENERATOR_IN_MASKED_TABLE_CALL,
                 statement.expression.span,
                 "generators belong in a `generate` table",
+                called=called,
             )
         spans[(*step, "column")] = statement.name.span
         spans[(*step, "expression")] = statement.expression.span
@@ -334,18 +315,18 @@ def _resolve(used: nodes.Treatment, lets: dict[str, nodes.Treatment]) -> nodes.T
             or used.when
         ):
             raise fail(
-                "lang.let_modified",
-                f"`{name.text}` is a `let` name and is used as it is",
+                LET_MODIFIED,
                 used.span,
                 "put options and settings on the `let` line, or write the strategy in full",
+                name=name.text,
             )
         return lets[name.text]
     close = difflib.get_close_matches(name.text, sorted(_strategies() | set(lets)), n=1)
     raise fail(
-        "lang.unknown_strategy",
-        f"`{name.text}` is not a strategy or a `let` name",
+        UNKNOWN_STRATEGY,
         name.span,
         f"did you mean `{close[0]}`?" if close else None,
+        name=name.text,
     )
 
 
@@ -362,10 +343,10 @@ def _column(
     spans[(*path, "strategy")] = call.name.span
     if len(call.positional) > 1:
         raise fail(
-            "lang.strategy_arguments",
-            f"`{call.name.text}` takes at most one plain value, the provider",
+            STRATEGY_ARGUMENTS,
             call.positional[1].span,
             "write the other values as `key: value` options",
+            strategy=call.name.text,
         )
     if call.positional:
         out["provider"] = plain(call.positional[0])
@@ -384,14 +365,9 @@ def _column(
     for option in call.options:
         key = option.key.text
         if key in COLUMN_SYNTAX:
-            raise fail(
-                "lang.option_not_allowed",
-                f"`{key}` is not written as an option",
-                option.key.span,
-                f"use {COLUMN_SYNTAX[key]}",
-            )
+            raise fail(OPTION_NOT_AS_OPTION, option.key.span, f"use {COLUMN_SYNTAX[key]}", key=key)
         if key in out:
-            raise fail("lang.option_repeated", f"`{key}` is given twice", option.key.span)
+            raise fail(OPTION_REPEATED, option.key.span, key=key)
         if key in column_fields():
             out[key] = plain(option.value)
             spans[(*path, key)] = option.value.span

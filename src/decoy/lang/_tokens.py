@@ -17,6 +17,7 @@ from typing import Any
 
 from lark import Token, Tree
 
+from decoy.lang._codes import NUMBER_TOO_LARGE, STRING_ESCAPE, STRING_ESCAPE_HALF
 from decoy.lang._errors import Span, fail
 
 _ESCAPE = re.compile(r"\\(u[0-9a-fA-F]{4}|.)", re.DOTALL)
@@ -36,7 +37,7 @@ def number_of(token: Token) -> int | float:
         return int(digits)
     value = float(digits)
     if not math.isfinite(value):
-        raise fail("lang.number", "this number is too large to hold", span_of(token))
+        raise fail(NUMBER_TOO_LARGE, span_of(token))
     return value
 
 
@@ -53,8 +54,7 @@ def unquote(token: Token) -> str:
         if escape in _SIMPLE:
             return _SIMPLE[escape]
         raise fail(
-            "lang.string_escape",
-            "this backslash sequence is not one the language reads",
+            STRING_ESCAPE,
             span_of(token),
             "write a backslash as two, or use single quotes, where a backslash is just a backslash",
         )
@@ -64,7 +64,5 @@ def unquote(token: Token) -> str:
         # Two `\\u` escapes for one character (a surrogate pair) become that character.
         return decoded.encode("utf-16", "surrogatepass").decode("utf-16")
     except UnicodeDecodeError:
-        failure = fail(
-            "lang.string_escape", "this `\\u` escape is half of a character", span_of(token)
-        )
+        failure = fail(STRING_ESCAPE_HALF, span_of(token))
     raise failure

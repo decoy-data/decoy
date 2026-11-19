@@ -7,9 +7,10 @@ Rules consulted: `dev-rules/README.md`, `00-universal.md`, `risk-and-exceptions.
 `cross-cutting-concerns.md`, `api-and-compatibility.md`, `testing.md`, `reuse-first.md`,
 `documentation.md`, `config-secrets-and-supply-chain.md`, `catalogs/recurring-defects.md`.
 
-Risk: R2 (a new component with a compatibility surface). Gates not yet met: this plan has had no
-independent plan review, and the code no independent review. Both are required before any merge
-to the main branch. All work is on the branch `claude/sweet-einstein-u3104u`.
+Risk: R2 (a new component with a compatibility surface). Reviews so far: Dennis and Codex have
+each reviewed the plan and the code on this branch (2026-11-19), and their findings are fixed
+on it; a last review of the fixes is still required before any merge to the main branch. All
+work is on the branch `claude/sweet-einstein-u3104u`.
 
 Date: 2026-11-19. Design and syntax: [2026-11-19-decoy-language.md](2026-11-19-decoy-language.md).
 This page is the one place that tracks what is built and what is left.
@@ -69,13 +70,17 @@ One row of the CODEMAP layout map covers the package ("Decoy language compiler")
 
 | File | Directory | Sits beside | Present consumer |
 |---|---|---|---|
-| `_grammar.py`, `_parse.py`, `_expressions.py`, `_ast.py`, `_errors.py` | `src/decoy/lang/` | each other | `compile_text` |
-| `_lower.py`, `_connectors.py`, `_links.py`, `_generate.py` | `src/decoy/lang/` | each other | `compile_text` |
+| `__init__.py` (public names, `Compiled`, `CODES`) | `src/decoy/lang/` | | `compile_text`; `Compiled.source_map` is for milestone 8, when commands map findings to `.decoy` lines |
+| `_grammar.py`, `_tokens.py`, `_parse.py`, `_expressions.py`, `_ast.py` | `src/decoy/lang/` | each other | `compile_text` (text to syntax tree) |
+| `_errors.py`, `_codes.py` | `src/decoy/lang/` | each other | every stage: `_codes.py` is the one registry of `lang.*` codes and messages; `_errors.py` builds every diagnostic from it |
+| `_lower.py`, `_connectors.py`, `_links.py`, `_generate.py`, `_safety.py`, `_subset.py` | `src/decoy/lang/` | each other | `compile_text` (syntax tree to config) |
 | `_validate.py` | `src/decoy/lang/` | `_lower.py` | `compile_text` |
+| `_convert.py`, `_print.py`, `_format.py` | `src/decoy/lang/` | each other | `convert_config`, `format_text` (config or tree to text) |
 | `__main__.py` | `src/decoy/lang/` | `__init__.py` | `python -m decoy.lang`, the interim compile step until milestone 8 |
-| `Compiled.source_map` | `src/decoy/lang/__init__.py` | | Milestone 8: commands map findings to `.decoy` lines |
-| Tests | `tests/unit/lang/test_<area>.py` | | |
-| Twins | `tests/unit/lang/twins/<template>.decoy` | | `test_twins.py`; they move to `src/decoy/templates/` at milestone 9, when the wizard needs them as template bodies |
+| Tests: `test_<area>.py` for compile, convert, coverage, docs, format, generate, links, module_entry, package_boundary, print, roundtrip, safety, subset, text_and_errors, twins, and `test_codes.py` | `tests/unit/lang/` | | the compiler |
+| Twins `<template>.decoy` | `tests/unit/lang/twins/` | | `test_twins.py`; they move to `src/decoy/templates/` at milestone 9, when the wizard needs them as template bodies |
+| Guide pages `README.md`, `01-first-pipeline.md` to `07-errors.md`, `cheat-sheet.md`, `agent-card.md` | `docs/guides/decoy-language/` | | `test_docs.py` compiles every program and snippet and checks the error page against `CODES` |
+| Plans and record: the broad plan, the syntax trial, this plan, the commands plan, the agent-trial record | `docs/plans/`, `docs/records/` | the other plans | the roadmap row DECOY-LANG |
 
 Files the later milestones add, placed now so nothing moves later:
 

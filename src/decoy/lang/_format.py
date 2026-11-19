@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from decoy.lang import _ast as nodes
+from decoy.lang._codes import FORMAT, NESTING
 from decoy.lang._errors import Span, fail
 from decoy.lang._parse import parse_with_comments
 from decoy.lang._print import Notes, print_program
@@ -172,12 +173,10 @@ def format_text(text: str) -> str:
         again, kept = parse_with_comments(formatted)
         same_program = _shape(again) == _shape(program)
     except RecursionError:
-        failure = fail("lang.nesting", "the program is nested too deeply")
+        failure = fail(NESTING)
     else:
         same_comments = Counter(c for _, _, c in kept) == Counter(c for _, _, c in comments)
         if same_program and same_comments:
             return formatted
-        failure = fail(
-            "lang.format", "formatting would change this program; the file is left as it is"
-        )
+        failure = fail(FORMAT)
     raise failure

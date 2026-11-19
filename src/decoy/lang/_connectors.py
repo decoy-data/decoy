@@ -13,6 +13,14 @@ from typing import Any
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
+from decoy.lang._codes import (
+    CONNECTOR_ARGUMENTS,
+    CONNECTOR_OPTION_REQUIRED,
+    FORMAT_UNKNOWN,
+    OPTION_REPEATED,
+    OPTION_SET_BY_CONNECTOR,
+    UNKNOWN_CONNECTOR,
+)
 from decoy.lang._errors import SourceMap, fail
 
 
@@ -45,17 +53,20 @@ def lower_connector(
     connector = CONNECTORS.get(call.name.text)
     if connector is None:
         raise fail(
-            "lang.unknown_connector",
-            f"`{call.name.text}` is not a {role} this version of the language can write",
+            UNKNOWN_CONNECTOR,
             call.name.span,
             "use one of: " + ", ".join(sorted(CONNECTORS)),
+            connector=call.name.text,
+            role=role,
         )
     if len(call.positional) != len(connector.positional):
         wanted = ", ".join(connector.positional)
         raise fail(
-            "lang.connector_arguments",
-            f"`{call.name.text}` takes {len(connector.positional)} plain value(s): {wanted}",
+            CONNECTOR_ARGUMENTS,
             call.span,
+            connector=call.name.text,
+            count=len(connector.positional),
+            wanted=wanted,
         )
     spans[path] = call.span
     out: dict[str, Any] = {"type": connector.type}
@@ -70,14 +81,13 @@ def lower_connector(
         fixed = key == "type" or (key == "format" and connector.format is not None)
         if key in connector.positional or fixed:
             raise fail(
-                "lang.option_not_allowed",
-                f"`{option.key.text}` is set by `{call.name.text}` itself",
+                OPTION_SET_BY_CONNECTOR,
                 option.key.span,
+                key=option.key.text,
+                connector=call.name.text,
             )
         if key in given:
-            raise fail(
-                "lang.option_repeated", f"`{option.key.text}` is given twice", option.key.span
-            )
+            raise fail(OPTION_REPEATED, option.key.span, key=option.key.text)
         given.add(key)
         out[key] = plain(option.value)
         spans[(*path, key)] = option.value.span
@@ -85,20 +95,18 @@ def lower_connector(
     if missing:
         written = next((w for w, e in RENAMES.items() if e == missing[0]), missing[0])
         raise fail(
-            "lang.connector_option_required",
-            f"`{call.name.text}` as a source must say `{written}: true` or `{written}: false`",
+            CONNECTOR_OPTION_REQUIRED,
             call.span,
             "the file either starts with a row of column names or it does not",
+            connector=call.name.text,
+            written=written,
         )
     if "format" not in out:
         located = str(out[connector.positional[-1]])
         suffix = next((s for s in FORMATS if located.lower().endswith(s)), None)
         if suffix is None:
             raise fail(
-                "lang.format_unknown",
-                f"cannot tell the file format of this {role} from its name",
-                call.span,
-                "add `format: csv` or `format: parquet`",
+                FORMAT_UNKNOWN, call.span, "add `format: csv` or `format: parquet`", role=role
             )
         out["format"] = FORMATS[suffix]
     return out

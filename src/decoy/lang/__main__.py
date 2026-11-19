@@ -24,6 +24,7 @@ from decoy.lang import (
     format_text,
     render,
 )
+from decoy.lang._codes import CONVERT
 
 USAGE = """usage: python -m decoy.lang <pipeline.decoy>
        python -m decoy.lang --to-decoy <pipeline.yaml>
@@ -61,7 +62,7 @@ def _convert(path: Path) -> int:
     try:
         text = convert_config(load_config_mapping(path))
     except ConvertError as error:
-        sys.stderr.write(f"{path.name}: error[lang.convert]: {error}\n")
+        sys.stderr.write(f"{path.name}: error[{CONVERT.code}]: {error}\n")
         return EXIT_INVALID
     sys.stdout.write(text)
     return 0

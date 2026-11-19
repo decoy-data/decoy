@@ -17,7 +17,14 @@ import difflib
 from typing import Any
 
 from decoy.lang import _ast as nodes
-from decoy.lang._errors import Diagnostic, SourceMap
+from decoy.lang._codes import (
+    LINK_ARITY,
+    LINK_NEEDS_NAMESPACE,
+    LINK_UNKNOWN_COLUMN,
+    LINK_UNKNOWN_TABLE,
+    ORPHANS_MISSING,
+)
+from decoy.lang._errors import Diagnostic, SourceMap, diagnostic
 
 CHILD_STRATEGY = "from_parent"
 # A link whose parent link already failed adds no second report.
@@ -71,44 +78,25 @@ def relationships(
             close = difflib.get_close_matches(parent, sorted(declared), n=1)
             hint = f"did you mean `{close[0]}`?" if close else None
             problems.append(
-                Diagnostic(
-                    "lang.link_unknown_table",
-                    f"`{parent}` is not a table of this pipeline",
-                    link.parent_table.span,
-                    hint,
-                )
+                diagnostic(LINK_UNKNOWN_TABLE, link.parent_table.span, hint, parent=parent)
             )
         elif parent not in columns:
             failed.add(id(link))  # the parent table has errors of its own, already reported
             continue
         elif len(link.columns) != len(link.parent_columns):
             problems.append(
-                Diagnostic(
-                    "lang.link_arity",
-                    f"{len(link.columns)} column(s) cannot follow a key of "
-                    f"{len(link.parent_columns)} column(s)",
-                    link.span,
+                diagnostic(
+                    LINK_ARITY, link.span, columns=len(link.columns), keys=len(link.parent_columns)
                 )
             )
         else:
             problems.extend(
-                Diagnostic(
-                    "lang.link_unknown_column",
-                    f"table `{parent}` has no rule for column `{key.text}`",
-                    key.span,
-                )
+                diagnostic(LINK_UNKNOWN_COLUMN, key.span, parent=parent, column=key.text)
                 for key in link.parent_columns
                 if key.text not in columns[parent]
             )
         if link.orphans is None:
-            problems.append(
-                Diagnostic(
-                    "lang.orphans_missing",
-                    "this link does not say what happens to rows with no matching parent",
-                    link.span,
-                    ORPHAN_HINT,
-                )
-            )
+            problems.append(diagnostic(ORPHANS_MISSING, link.span, ORPHAN_HINT))
         if len(problems) > before:
             failed.add(id(link))
             continue
@@ -124,11 +112,12 @@ def relationships(
         if namespace is None:
             failed.add(id(link))
             problems.append(
-                Diagnostic(
-                    "lang.link_needs_namespace",
-                    f"the parent key `{parent}.{key_names[0]}` has no namespace",
+                diagnostic(
+                    LINK_NEEDS_NAMESPACE,
                     link.parent_columns[0].span,
                     "add `in <namespace>` to that column's rule, or to this link",
+                    parent=parent,
+                    key=key_names[0],
                 )
             )
             continue

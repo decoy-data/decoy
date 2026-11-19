@@ -22,7 +22,8 @@ from typing import Any
 
 from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
-from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
+from decoy.lang._codes import BLOCK_REPEATED, BLOCK_REPEATED_LINK, SAMPLE_ROWS, SUBSET_CONDITION
+from decoy.lang._errors import Diagnostic, LangError, SourceMap, diagnostic, fail
 
 SUBSET_SYNTAX = {"subset": "`subset { ... }`"}
 # How a comparison is written, and the engine's name for it.
@@ -52,9 +53,7 @@ def lower_subsets(
     if not subsets:
         return
     if len(subsets) > 1:
-        problems.append(
-            Diagnostic("lang.block_repeated", "`subset` is written twice", subsets[1].span)
-        )
+        problems.append(diagnostic(BLOCK_REPEATED, subsets[1].span, kind="subset"))
         return
     subset = subsets[0]
     spans[("subset",)] = subset.span
@@ -78,11 +77,7 @@ def lower_subsets(
                 f"{follow.child_table.text}.{_joined(follow.child_columns)}"
             )
             if edge in out["edge_directions"]:
-                problems.append(
-                    Diagnostic(
-                        "lang.block_repeated", "this link already has a direction", follow.span
-                    )
-                )
+                problems.append(diagnostic(BLOCK_REPEATED_LINK, follow.span))
             out["edge_directions"][edge] = follow.direction.text
             spans[("subset", "edge_directions", edge)] = follow.span
     if subset.allow_dangling:
@@ -108,8 +103,7 @@ def _seed(seed: nodes.Seed) -> dict[str, Any]:
             out["count"] = amount
         else:
             raise fail(
-                "lang.sample_rows",
-                "a row count is a whole number",
+                SAMPLE_ROWS,
                 seed.amount.span,
                 "write `sample 500 rows`, or `sample 2.5%` for a share of the table",
             )
@@ -118,10 +112,10 @@ def _seed(seed: nodes.Seed) -> dict[str, Any]:
         for condition in seed.conditions:
             if condition.operator not in PREDICATES:
                 raise fail(
-                    "lang.subset_condition",
-                    f"`{condition.operator}` is not a comparison a subset can filter on",
+                    SUBSET_CONDITION,
                     condition.span,
                     "use ==, !=, <, <=, >, >=, `in [...]`, `is null` or `is not null`",
+                    operator=condition.operator,
                 )
             predicate: dict[str, Any] = {
                 "column": condition.column.text,

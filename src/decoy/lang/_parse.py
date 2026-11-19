@@ -15,6 +15,17 @@ from lark import Lark, Token, Tree
 from lark.exceptions import UnexpectedCharacters, UnexpectedInput, UnexpectedToken
 
 from decoy.lang import _ast as nodes
+from decoy.lang._codes import (
+    BLOCK_ARGUMENTS_BUDGET,
+    BLOCK_REPEATED,
+    GENERATOR_ARGUMENT_OPTIONS,
+    MAP_KEY_REPEATED,
+    NAME_EMPTY,
+    OPTION_REPEATED,
+    POSITIONAL_AFTER_OPTION,
+    SYNTAX_UNEXPECTED,
+    VERSION,
+)
 from decoy.lang._errors import LangError, Span, fail
 from decoy.lang._expressions import expression_text, generator_call
 from decoy.lang._grammar import DISPLAY, GRAMMAR, KEYWORD_TERMINALS
@@ -82,7 +93,6 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
     elif isinstance(error, UnexpectedCharacters):
         expected = set(error.allowed or ())
     shown = sorted({DISPLAY.get(name, name) for name in expected})
-    message = f"unexpected {found}"
     hint = f"expected {_one_of(shown)}" if shown else None
     # A language word where a column name was meant: either the word itself is refused where a
     # name fits, or it was read as a statement and the name's punctuation is refused after it.
@@ -97,7 +107,7 @@ def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
         word = str(keyword)
         quoted = f"`{word}` is a word of the language; for a column of that name write '{word}'"
         hint = f"{hint}. {quoted}" if hint else quoted
-    return fail("lang.syntax", message, span, hint)
+    return fail(SYNTAX_UNEXPECTED, span, hint, found=found)
 
 
 # "unexpected <noun>": DISPLAY holds phrases with an article, which read wrongly after "unexpected".
@@ -132,7 +142,7 @@ def _name(tree: Tree[Any]) -> nodes.Name:
         return nodes.Name(str(token), span_of(token))
     text = unquote(token)
     if not text:
-        raise fail("lang.name_empty", "a name cannot be empty", span_of(token))
+        raise fail(NAME_EMPTY, span_of(token))
     return nodes.Name(text, span_of(token))
 
 
@@ -155,9 +165,7 @@ def _value(node: Tree[Any]) -> nodes.Value:
             token, value = pair.children
             key = str(token) if token.type == "NAME" else unquote(token)
             if key in pairs:
-                raise fail(
-                    "lang.option_repeated", "a key is given twice in this map", span_of(token)
-                )
+                raise fail(MAP_KEY_REPEATED, span_of(token))
             pairs[key] = _value(value)
         return nodes.Value(pairs, span)
     return nodes.Value(tuple(_value(child) for child in node.children if child is not None), span)
@@ -173,15 +181,10 @@ def _call(tree: Tree[Any]) -> nodes.Call:
         if argument.data == "option":
             if any(o.key.text == _name(argument.children[0]).text for o in options):
                 key = _name(argument.children[0])
-                raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
+                raise fail(OPTION_REPEATED, key.span, key=key.text)
             options.append(nodes.Option(_name(argument.children[0]), _value(argument.children[1])))
         elif options:
-            raise fail(
-                "lang.positional_after_option",
-                "a plain value cannot follow a `key: value` option",
-                span_of(argument),
-                "put plain values first",
-            )
+            raise fail(POSITIONAL_AFTER_OPTION, span_of(argument), "put plain values first")
         else:
             positional.append(_value(argument))
     return nodes.Call(
@@ -335,10 +338,7 @@ def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
             raise
     if only_a_call and call is None:
         raise fail(
-            "lang.generator_argument",
-            "`key: value` options and `{...}` maps belong to a generator call",
-            span_of(body),
-            "write one call: `id = sequence(start: 1)`",
+            GENERATOR_ARGUMENT_OPTIONS, span_of(body), "write one call: `id = sequence(start: 1)`"
         )
     expression = None if only_a_call else nodes.Expression(expression_text(body), span_of(body))
     return nodes.GenColumn(_name(statement.children[0]), call, expression, span_of(statement))
@@ -396,13 +396,10 @@ def _subset(tree: Tree[Any]) -> nodes.Subset:
             block = _block(statement)
             if block.positional or block.refs:
                 raise fail(
-                    "lang.block_arguments",
-                    "`budget` takes `key: value` options only",
-                    block.span,
-                    "write `budget(max_total_rows: 1_000_000)`",
+                    BLOCK_ARGUMENTS_BUDGET, block.span, "write `budget(max_total_rows: 1_000_000)`"
                 )
             if budget:
-                raise fail("lang.block_repeated", "`budget` is written twice", block.span)
+                raise fail(BLOCK_REPEATED, block.span, kind="budget")
             budget.extend(block.options)
         else:
             dangling = True
@@ -439,7 +436,7 @@ def _block(tree: Tree[Any]) -> nodes.Block:
         elif argument.data == "option":
             key = _name(argument.children[0])
             if any(o.key.text == key.text for o in options):
-                raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
+                raise fail(OPTION_REPEATED, key.span, key=key.text)
             options.append(nodes.Option(key, _value(argument.children[1])))
         else:
             positional.append(_value(argument))
@@ -458,12 +455,7 @@ def _pairs(pairs: list[Tree[Any]]) -> list[nodes.Option]:
 def _program(tree: Tree[Any]) -> nodes.Program:
     _, version_token, pipeline = tree.children
     if str(version_token) not in SUPPORTED_VERSIONS:
-        raise fail(
-            "lang.version",
-            "this language version is not supported",
-            span_of(version_token),
-            "this compiler reads `decoy 1`",
-        )
+        raise fail(VERSION, span_of(version_token), "this compiler reads `decoy 1`")
     _, name, *items = pipeline.children
     settings: list[nodes.Setting] = []
     lets: list[nodes.Let] = []
