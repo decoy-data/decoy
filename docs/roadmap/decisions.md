@@ -10,6 +10,14 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
   inferred line from `decoy init` carries a `?` review marker and `decoy run` refuses until it is
   cleared. The `lark` dependency and the lock regeneration it needs are approved. Row DECOY-LANG;
   plan `docs/plans/2026-11-19-decoy-language-completion.md` (decisions E1, E3, E4, E5).
+- **2026-11-19 (Decoy language commands, O1 to O5).** The format command is `decoy fmt`. A run
+  record keeps the compiled YAML next to the `.decoy` file's hash. A folder with both
+  `pipeline.yaml` and `pipeline.decoy` is refused. `decoy init` writes `.decoy` by default at 1.0,
+  with `--yaml` for the old output, after the loader and the run commands read `.decoy`; this is
+  an output-format change only, so the wizard freeze otherwise holds. The subset guard gets one
+  narrow exemption: `lang/_subset.py` may build the `subset` block (stores and dict displays);
+  pop, delete and filtering stay banned everywhere. Plan
+  `docs/plans/2026-11-19-decoy-language-commands.md`.
 - **2026-11-18 (owner calls on the bucket list).**
   - Opt-in defaults: F11 output ordering, F38 dataset metadata and F08 free-text identity binding stay
     opt-in for 1.0 (option A). The docs tell users to turn F08 on for free-text columns.

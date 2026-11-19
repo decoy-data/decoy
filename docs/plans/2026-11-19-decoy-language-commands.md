@@ -156,7 +156,9 @@ S6 depends on the wizard's state at the time.
 
 ## Owner questions
 
-| # | Question | Recommendation |
+Owner answered all five on 2026-11-19: each recommendation below is the decision.
+
+| # | Question | Decision (owner 2026-11-19) |
 |---|---|---|
 | O1 | Is `decoy fmt` named `fmt` or `format`? | `fmt`, as in `go fmt` and `terraform fmt` |
 | O2 | Does a run record keep the compiled YAML beside the `.decoy` hash? | Yes: it is what the engine ran, and it makes a record readable without the compiler |
