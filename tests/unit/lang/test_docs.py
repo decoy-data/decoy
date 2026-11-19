@@ -32,7 +32,7 @@ def test_the_error_page_lists_every_code_the_compiler_can_raise() -> None:
     raised = {
         code
         for path in source.glob("*.py")
-        for code in re.findall(r'"(lang\.[a-z_]+)"', path.read_text(encoding="utf-8"))
+        for code in re.findall(r'["\[](lang\.[a-z_]+)', path.read_text(encoding="utf-8"))
     }
     listed = set(re.findall(r"`(lang\.[a-z_]+)`", (_GUIDES / "07-errors.md").read_text("utf-8")))
     assert raised - listed == set()

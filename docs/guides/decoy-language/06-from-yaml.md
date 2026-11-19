@@ -10,8 +10,8 @@ python -m decoy.lang --to-decoy pipeline.yaml > pipeline.decoy
 ```
 
 The converter checks its own work. It compiles the program it wrote and compares the result with
-your YAML as the engine sees it; if they differ, it refuses and says why rather than write
-something close.
+your YAML as the engine sees it. If they differ it refuses, naming the block that would change,
+rather than write something close.
 
 ## Side by side
 

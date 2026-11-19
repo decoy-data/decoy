@@ -379,8 +379,9 @@ def test_a_program_that_would_mean_something_else_is_refused() -> None:
     # No namespace on the relationship: a link would add the parent key's, changing the pipeline.
     config = _related({"name": "tid", "strategy": "from_parent"})
     del config["relationships"][0]["namespace"]
-    with pytest.raises(ConvertError, match="would not compile back"):
+    with pytest.raises(ConvertError, match="would not compile back") as caught:
         convert_config(config)
+    assert caught.value.path == "relationships"
 
 
 def test_a_refusal_names_no_value_from_the_config() -> None:
@@ -512,3 +513,11 @@ def test_every_valid_pipeline_file_in_the_repository_converts_or_is_a_listed_ref
         except ConvertError:
             refused.add(path.relative_to(_REPO).as_posix())
     assert refused == set(_REFUSED)
+
+
+def test_zero_and_negative_zero_are_not_merged() -> None:
+    columns = [
+        {"name": name, "strategy": "truncate", "provider_config": {"length": 3, "x": item}}
+        for name, item in (("a", 0.0), ("b", -0.0))
+    ]
+    assert convert_config(_config(columns)).count("truncate(") == 2

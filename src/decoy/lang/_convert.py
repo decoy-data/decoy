@@ -91,7 +91,8 @@ def typed(value: Any) -> Any:
         return {key: typed(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [typed(item) for item in value]
-    return (type(value).__name__, value)
+    # `repr`, so that 0.0 and -0.0 differ as well.
+    return (type(value).__name__, repr(value) if isinstance(value, float) else value)
 
 
 def _options(items: dict[str, Any], path: str) -> tuple[nodes.Option, ...]:
@@ -485,6 +486,13 @@ def _validated(config: dict[str, Any]) -> Any:
     raise failure
 
 
+def _first_difference(compiled: dict[str, Any], source: dict[str, Any]) -> str:
+    """The top-level block in which the two configs first differ, as the engine models them."""
+    ours = typed(_validated(_normalized(compiled)).model_dump())
+    theirs = typed(_validated(_normalized(source)).model_dump())
+    return next((key for key in theirs if ours.get(key) != theirs[key]), "")
+
+
 def convert_config(config: dict[str, Any]) -> str:
     """The `.decoy` program for a pipeline config, checked to compile back to the same pipeline."""
     # The engine's own account of what the config sets: its types, not the file's (a seed
@@ -506,5 +514,6 @@ def convert_config(config: dict[str, Any]) -> str:
     else:
         if same:
             return text
-        failure = ConvertError("", "the program for this config would not compile back to it")
+        differing = _first_difference(compiled, source)
+        failure = ConvertError(differing, "the program for this would not compile back to it")
     raise failure

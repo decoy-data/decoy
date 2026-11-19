@@ -80,5 +80,6 @@ that is not on this page.
 | `lang.expression` | An expression cannot be held by the language | Use the forms on [page 2](02-masking.md) |
 | `lang.unreviewed` | A rule still ends with `?` | Check the rule, then remove the `?` |
 | `lang.format` | Formatting would have changed the program; the file is left alone | Report it; this is a formatter bug |
+| `lang.convert` | A YAML pipeline cannot be written as a `.decoy` program; the message names the block or gives the compiler's reason | See [page 6](06-from-yaml.md) for what the converter will not write |
 | `lang.unprintable_name` | A name has a quote or a line break and cannot be written | Rename the column or table |
 | `lang.unprintable_number` | A number is not finite and cannot be written | Use a finite number |

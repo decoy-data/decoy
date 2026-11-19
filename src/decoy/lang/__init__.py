@@ -42,19 +42,20 @@ __all__ = [
 ]
 
 
+UNREVIEWED = "this rule was inferred and has not been reviewed"
+
+
 @dataclass(frozen=True)
 class Compiled:
     config: dict[str, Any]
     source_map: SourceMap
-    # Where a rule still ends with `?`. The config is complete either way; a caller that is
-    # about to run it refuses while this is not empty.
-    unreviewed: tuple[Span, ...] = ()
 
 
 def compile_text(text: str) -> Compiled:
     """Compile a `.decoy` program: parse, lower, then the engine's own validation.
 
-    Raises `LangError` with every problem found."""
+    Raises `LangError` with every problem found. A rule that still ends with `?` is a problem
+    too, reported last, so no caller is handed a config for a pipeline nobody has checked."""
     try:
         program = parse(text)
         config, spans = lower(program)
@@ -62,17 +63,23 @@ def compile_text(text: str) -> Compiled:
         too_deep = LangError([Diagnostic("lang.nesting", "the program is nested too deeply")])
     else:
         validate(config, spans)
-        unreviewed = tuple(
-            statement.span
+        marked = [
+            Diagnostic("lang.unreviewed", UNREVIEWED, s.span, "check the rule, then remove the `?`")
             for table in program.tables
             if isinstance(table, Table)
-            for statement in table.statements
-            if getattr(statement, "unreviewed", False)
-        )
-        return Compiled(config, spans, unreviewed)
+            for s in table.statements
+            if getattr(s, "unreviewed", False)
+        ]
+        if marked:
+            raise LangError(marked)
+        return Compiled(config, spans)
     raise too_deep
 
 
 def emit_yaml(config: dict[str, Any]) -> str:
     """The compiled config as YAML, keys in the order the compiler wrote them."""
-    return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+    try:
+        return yaml.safe_dump(config, sort_keys=False, default_flow_style=False)
+    except RecursionError:
+        too_deep = LangError([Diagnostic("lang.nesting", "the program is nested too deeply")])
+    raise too_deep

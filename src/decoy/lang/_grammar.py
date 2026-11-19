@@ -151,7 +151,7 @@ ARROW: "<-"
 ARROW_RIGHT: "->"
 REVIEW_MARK: "?"
 PERCENT_SIGN: "%"
-COMMENT: /#[^\n]*/
+COMMENT: /#[^\r\n]*/
 
 %import common.WS
 %ignore WS

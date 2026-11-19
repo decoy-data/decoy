@@ -30,7 +30,7 @@ They come in this order, each optional.
 
 | Word | What it does |
 |---|---|
-| `in <namespace>` | Columns in the same namespace turn equal inputs into equal outputs. Use one name across tables for values that must still match. `hash`, `fpe` and `tokenize` need one. |
+| `in <namespace>` | Columns in the same namespace turn equal inputs into equal outputs. Use one name across tables for values that must still match. `hash`, `fpe` and `tokenize` need one; the engine checks this when it plans the run. |
 | `deterministic` | For `faker`, `categorical` and `shuffle`: equal inputs give equal outputs. Without it the value depends on the row's position. |
 | `vaulted` | Records the mapping in the token vault so it can be reversed later. |
 | `when <condition>` | Masks only the rows where the condition holds. |
@@ -88,8 +88,8 @@ values, use a `generate` block ([page 4](04-generating.md)).
 
 | Written | Reads or writes |
 |---|---|
-| `csv("people.csv")` | A CSV with a header row; `header: false`, `delimiter: "\|"` as options |
+| `csv("people.csv")` | A CSV with a header row; `delimiter: "\|"` as an option. Without a header: `header: false, column_names: [a, b]` |
 | `parquet("people.parquet")` | A Parquet file |
 | `fixed_width("people.txt", layout: {...})` | A fixed-width file |
 | `s3("bucket", "path/people.parquet", credentials: "name")` | An object on S3 |
-| `gcs("bucket", "path/people.csv")` | An object on Google Cloud Storage |
+| `gcs("bucket", "path/people.csv")` | An object on Google Cloud Storage. For `s3` and `gcs` the name ends in `.csv` or `.parquet`, or the call says `format: csv` |

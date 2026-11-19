@@ -55,7 +55,6 @@ design extends it rather than adding a second one.
 class PipelineFile:
     config: dict[str, Any]          # the mapping every command already works with
     locate: Callable[[str], SourceLocation | None]   # config path -> line in the file as written
-    unreviewed: tuple[SourceLocation, ...]           # always empty for YAML
 
 def load_pipeline(path: Path, *, text: str | None = None) -> PipelineFile
 ```
@@ -89,8 +88,9 @@ Sixteen sites read a pipeline file today. By what they need:
 
 ### The review mark
 
-The gate's config layer adds one error finding per entry of `PipelineFile.unreviewed`, code
-`lang.unreviewed`. `run` already refuses on a gate error, so no second check is written.
+`compile_text` reports a rule that still ends with `?` as a problem, code `lang.unreviewed`, after
+every other problem. The loader turns it into a config finding like any other, and `run` already
+refuses on a gate error, so no second check is written and no caller can forget one.
 
 ### Project layout
 

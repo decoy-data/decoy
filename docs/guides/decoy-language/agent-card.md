@@ -43,15 +43,16 @@ Rules that hold everywhere:
 ## Masking a table: `mask <table> from <source> to <target> { }`
 
 Sources and targets: `csv("path")`, `parquet("path")`, `fixed_width("path", layout: {...})`,
-`s3("bucket", "key")`, `gcs("bucket", "object")`. A CSV source has a header row unless
-`header: false`. Other options pass through: `delimiter: "|"`, `credentials: "name"`,
-`format: csv` (for `s3`/`gcs` when the name does not end in `.csv` or `.parquet`).
+`s3("bucket", "path/file.parquet")`, `gcs("bucket", "path/file.csv")`. An `s3` or `gcs` name must
+end in `.csv` or `.parquet`, or the call needs `format: csv` or `format: parquet`. A CSV source has
+a header row; one without is `csv("p.csv", header: false, column_names: [a, b])`. Other options
+pass through: `delimiter: "|"`, `credentials: "name"`.
 
 A rule is `columns : strategy(...)` followed by optional words, in this order:
 
 | Word | Meaning |
 |---|---|
-| `in <namespace>` | Columns in one namespace mask equal inputs to equal outputs. `hash`, `fpe` and `tokenize` need one. |
+| `in <namespace>` | Columns in one namespace mask equal inputs to equal outputs. `hash`, `fpe` and `tokenize` need one (the engine checks this when it plans the run). |
 | `deterministic` | For `faker`, `categorical`, `shuffle`: equal inputs give equal outputs. |
 | `vaulted` | Record the mapping in the token vault so it can be reversed. |
 | `when <condition>` | Mask only the rows where it holds: `when country == 'US' and age >= 18`. |
@@ -101,7 +102,7 @@ pipeline {
 
 - `let name = rule` names a rule for reuse; use it bare (`dob : shift`).
 - A rule or `keep` that ends with `?` (`email : faker(person_email) ?`) was inferred by a tool and
-  has not been checked. The pipeline will not run until the `?` is removed.
+  has not been checked. The file does not compile until the `?` is removed.
 - Shaping runs before masking, in the order written: `where <condition>`, `name = <expression>`
   (a new column), `sort by a desc, b`, `limit N`, `dedupe` or `dedupe on a, b`, `drop a, b`.
 - Expressions: `+ - * / //`, comparisons, `and or not`, `in [...]`, `concat(a, b)`, `slice(s, 0, 3)`,
@@ -222,7 +223,9 @@ pipeline {
   separated by commas; `start <table> keys key in [1, 2]`; `follow parent.key -> child.key`
   with `both`, `downward`, `upward` or `none`; `budget(...)`; `allow dangling`. A subset follows
   every foreign key both ways unless a `follow` line says otherwise, so `follow` is optional.
-- `scan before(...)` and `scan after(...)` take detectors: `regex`, `classifier`, `ner`.
+- `scan before(...)` and `scan after(...)` take detectors. `regex` is always one of them; `ner` and
+  `classifier` are added to it: `scan before(regex, ner)`. After masking, any detector beyond
+  `regex` needs `integrity: true`.
 - `expect <check>(table.column, key: value)`: `leak_check`, `fk_intact`, `no_orphan_children`,
   `luhn`, `npi`, `iban`, `vin`, `regex_match`, `column_in_set`.
 - `quarantine("path", triggers: [...])`, `baseline("path", on_drift: warn)`, `delivery(strict)` or

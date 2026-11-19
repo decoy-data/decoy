@@ -305,19 +305,23 @@ def _subset(subset: nodes.Subset, notes: Notes) -> list[str]:
     for follow in subset.follows:
         rows += notes.around(follow.span, _follow(follow))
     if subset.budget:
-        rows.append(f"budget({_arguments((), subset.budget)})")
+        rows += notes.around(subset.budget[0].key.span, f"budget({_arguments((), subset.budget)})")
     if subset.allow_dangling:
         rows.append("allow dangling")
     return notes.block(subset.span, "subset {", rows)
 
 
-def _pairs(word: str, options: tuple[nodes.Option, ...], notes: Notes) -> list[str]:
+def _pairs(
+    word: str, options: tuple[nodes.Option, ...], span: Span | None, notes: Notes
+) -> list[str]:
     rows: list[Row] = []
     for option in options:
         rows += notes.around(
             option.key.span, f"{_key(option.key.text)}: {value(plain(option.value))}"
         )
-    return [f"{word} {{", *(_indented(str(row)) for row in rows), "}"]
+    if span is None:
+        return [f"{word} {{", *(_indented(str(row)) for row in rows), "}"]
+    return notes.block(span, f"{word} {{", rows)
 
 
 _SETTINGS = {
@@ -339,7 +343,7 @@ def print_program(program: nodes.Program, notes: Notes | None = None) -> str:
         lines(program.settings, lambda s: _SETTINGS[s.kind](s.value.value))
     ]
     if program.extra_settings:
-        sections.append(_pairs("settings", program.extra_settings, notes))
+        sections.append(_pairs("settings", program.extra_settings, program.settings_span, notes))
     sections.append(
         lines(program.lets, lambda let: f"let {name(let.name.text)} = {_treatment(let.treatment)}")
     )
@@ -349,7 +353,7 @@ def print_program(program: nodes.Program, notes: Notes | None = None) -> str:
         printed = _generate if isinstance(table, nodes.Generate) else _table
         sections.append(printed(table, notes))  # type: ignore[arg-type]
     if program.options:
-        sections.append(_pairs("options", program.options, notes))
+        sections.append(_pairs("options", program.options, program.options_span, notes))
     sections.append(list(notes.closing.get((program.span.line, program.span.column), ())))
     head = f"pipeline {name(program.name.text)} {{" if program.name is not None else "pipeline {"
     body = "\n\n".join(

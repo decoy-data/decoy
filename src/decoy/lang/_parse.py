@@ -7,6 +7,7 @@ its source span, so later stages never see Lark types.
 
 from __future__ import annotations
 
+import threading
 from functools import lru_cache
 from typing import Any
 
@@ -39,11 +40,13 @@ def _tree(parser: Lark, text: str) -> Tree[Any]:
     raise failure
 
 
-_seen_comments: list[Token] = []
+# Lark takes a lexer callback when the parser is built, not per call, so the comments of the
+# parse in progress are kept per thread.
+_collecting = threading.local()
 
 
 def _keep_comment(token: Token) -> Token:
-    _seen_comments.append(token)
+    _collecting.comments.append(token)
     return token
 
 
@@ -61,9 +64,12 @@ def _commenting_parser() -> Lark:
 def parse_with_comments(text: str) -> tuple[nodes.Program, list[tuple[int, int, str]]]:
     """The program, and each comment as `(line, column, text)` in source order. The formatter is
     the one caller: compiling has no use for comments."""
-    _seen_comments.clear()
-    program = _program(_tree(_commenting_parser(), text))
-    return program, [(t.line or 1, t.column or 1, str(t)) for t in _seen_comments]
+    _collecting.comments = []
+    try:
+        program = _program(_tree(_commenting_parser(), text))
+        return program, [(t.line or 1, t.column or 1, str(t)) for t in _collecting.comments]
+    finally:
+        del _collecting.comments
 
 
 def _syntax_error(error: UnexpectedInput, text: str) -> Exception:
@@ -454,6 +460,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
     lets: list[nodes.Let] = []
     tables: list[nodes.Table | nodes.Generate] = []
     extra: list[nodes.Option] = []
+    block_spans: dict[str, Span] = {}
     subsets: list[nodes.Subset] = []
     blocks: list[nodes.Block] = []
     options: list[nodes.Option] = []
@@ -470,8 +477,12 @@ def _program(tree: Tree[Any]) -> nodes.Program:
             subsets.append(_subset(item))
         elif item.data in _BLOCKS:
             blocks.append(_block(item))
-        elif item.data in ("settings", "options"):
-            (extra if item.data == "settings" else options).extend(_pairs(item.children[1:]))
+        elif item.data == "settings":
+            extra.extend(_pairs(item.children[1:]))
+            block_spans["settings_span"] = span
+        elif item.data == "options":
+            options.extend(_pairs(item.children[1:]))
+            block_spans["options_span"] = span
         elif item.data == "let":
             lets.append(nodes.Let(_name(item.children[1]), _treatment(item.children[2]), span))
         elif item.data == "generate":
@@ -488,6 +499,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         tuple(options),
         tuple(blocks),
         tuple(subsets),
+        **block_spans,
     )
 
 

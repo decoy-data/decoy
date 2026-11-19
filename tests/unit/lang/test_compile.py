@@ -409,7 +409,12 @@ def test_a_rule_ending_in_a_question_mark_is_reported_as_unreviewed() -> None:
     rule = (
         "ssn : redact when a == 1 ?\n    {x, y} : hash in ids ?\n    keep id ?\n    email : redact"
     )
-    compiled = compile_text(_with_rule(rule))
-    assert [span.line for span in compiled.unreviewed] == [7, 8, 9]
-    assert compiled.config == compile_text(_with_rule(rule.replace(" ?", ""))).config
-    assert compile_text(_BASE).unreviewed == ()
+    problems = _errors(_with_rule(rule))
+    assert [(p.code, p.span.line) for p in problems] == [("lang.unreviewed", n) for n in (7, 8, 9)]
+    assert "remove the `?`" in problems[0].hint
+    assert _lowered(_with_rule(rule)) == _lowered(_with_rule(rule.replace(" ?", "")))
+
+
+def test_other_problems_are_reported_before_the_review_marks() -> None:
+    codes = [p.code for p in _errors(_with_rule("ssn : redcat ?"))]
+    assert codes == ["lang.unknown_strategy"]

@@ -296,3 +296,5 @@ class Program:
     options: tuple[Option, ...] = ()  # the `options { }` block
     blocks: tuple[Block, ...] = ()
     subsets: tuple[Subset, ...] = ()
+    settings_span: Span | None = None  # where `settings { }` and `options { }` stand,
+    options_span: Span | None = None  # for the comments written inside them

@@ -2,18 +2,20 @@
 
 `format_text` parses the text, decides which statement each comment belongs to, prints the tree
 with those comments, and checks the result before returning it: the formatted text must parse to
-the same program and hold every comment. It follows gofmt in the two things users notice: one
+the same syntax tree and hold every comment. It follows gofmt in the two things users notice: one
 layout with no options, and a single blank line between statements kept where the author left one.
 
-A comment belongs to the statement it shares a line with, else to the next statement in the same
-block, else it stays at the end of that block. Sections are printed in a set order, so a comment
-travels with its statement.
+A comment belongs, in this order, to the statement it is written inside or beside; to the block
+whose closing brace it follows; to the next statement in the same block; else it stays at the end
+of that block. Sections are printed in a set order, so a comment travels with its statement.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from collections import Counter
 from dataclasses import dataclass
+from typing import Any
 
 from decoy.lang import _ast as nodes
 from decoy.lang._errors import Span, fail
@@ -49,20 +51,30 @@ def _anchors(program: nodes.Program) -> tuple[list[_Anchor], dict[Position, Posi
     def add(span: Span, block: Position, end: Span | None = None) -> None:
         anchors.append(_Anchor(_key(span), _end(end or span), block))
 
+    def open_block(span: Span) -> Position:
+        add(span, top)
+        blocks[_key(span)] = _end(span)
+        return _key(span)
+
     for item in (*program.settings, *program.lets, *program.blocks):
         add(item.span, top)
-    for option in (*program.extra_settings, *program.options):
-        add(option.key.span, top, option.value.span)
+    for options, span in (
+        (program.extra_settings, program.settings_span),
+        (program.options, program.options_span),
+    ):
+        inside = open_block(span) if span is not None else top
+        for option in options:
+            add(option.key.span, inside, option.value.span)
     for subset in program.subsets:
-        add(subset.span, top)
-        blocks[_key(subset.span)] = _end(subset.span)
+        inside = open_block(subset.span)
         for inner in (*subset.seeds, *subset.follows):
-            add(inner.span, _key(subset.span))
+            add(inner.span, inside)
+        if subset.budget:
+            add(subset.budget[0].key.span, inside, subset.budget[-1].value.span)
     for table in program.tables:
-        add(table.span, top)
-        blocks[_key(table.span)] = _end(table.span)
+        inside = open_block(table.span)
         for statement in table.statements:
-            add(statement.span, _key(table.span))
+            add(statement.span, inside)
     return sorted(anchors, key=lambda anchor: anchor.start), blocks
 
 
@@ -77,6 +89,15 @@ def _notes(
     head: list[str] = []
     tail: list[str] = []
     first_line: dict[Position, int] = {anchor.start: anchor.start[0] for anchor in anchors}
+
+    def attach(start: Position, text: str, line: int) -> None:
+        """Beside the statement if nothing is there yet, else above it."""
+        if start not in after:
+            after[start] = text
+        else:
+            before.setdefault(start, []).append(text)
+            first_line[start] = min(first_line[start], line)
+
     for line, column, text in comments:
         at = (line, column)
         if at < top:
@@ -88,13 +109,16 @@ def _notes(
         # The innermost block the comment sits in: the last one to open before it and still open.
         block = max(start for start, end in blocks.items() if start < at < end)
         inside = [anchor for anchor in anchors if anchor.block == block]
-        beside = [a for a in inside if a.end[0] == line and a.end <= at and a.start not in blocks]
-        opening = block[0] == line and not any(a.start < at for a in inside)
+        within = [a for a in inside if a.start < at < a.end and a.start not in blocks]
+        beside = [a for a in inside if a.end[0] == line and a.end <= at]
+        opening = block[0] == line and block != top and not any(a.start < at for a in inside)
         later = [anchor for anchor in inside if anchor.start > at]
-        if beside and beside[-1].start not in after:
-            after[beside[-1].start] = text
-        elif opening and block not in after and block != top:
-            after[block] = text
+        if within:
+            attach(within[-1].start, text, line)
+        elif beside:
+            attach(beside[-1].start, text, line)
+        elif opening:
+            attach(block, text, line)
         elif later:
             before.setdefault(later[0].start, []).append(text)
             first_line[later[0].start] = min(first_line[later[0].start], line)
@@ -104,10 +128,7 @@ def _notes(
     spaced = {
         start
         for start, line in first_line.items()
-        if start[0] > 1
-        and line >= 2
-        and not source[line - 2].strip()
-        and _not_first(start, anchors)
+        if line >= 2 and not source[line - 2].strip() and _not_first(start, anchors)
     }
     return Notes(
         {key: tuple(lines) for key, lines in before.items()},
@@ -125,14 +146,38 @@ def _not_first(start: Position, anchors: list[_Anchor]) -> bool:
     return any(anchor.block == block and anchor.start < start for anchor in anchors)
 
 
+def _shape(node: Any) -> Any:
+    """A syntax tree with its positions removed and every scalar paired with its type, so two
+    parses of the same program compare equal and nothing else does."""
+    if dataclasses.is_dataclass(node) and not isinstance(node, type):
+        return {
+            f.name: _shape(getattr(node, f.name))
+            for f in dataclasses.fields(node)
+            if not isinstance(getattr(node, f.name), Span) and not f.name.endswith("_span")
+        }
+    if isinstance(node, dict):
+        return {key: _shape(item) for key, item in node.items()}
+    if isinstance(node, (list, tuple)):
+        return [_shape(item) for item in node]
+    return (type(node).__name__, repr(node))
+
+
 def format_text(text: str) -> str:
     """`text` in the canonical layout. Raises `LangError` when the text does not parse, or if
     the formatted result would not be the same program with the same comments."""
-    program, comments = parse_with_comments(text)
-    formatted = print_program(program, _notes(program, comments, text.splitlines()))
-    again, kept = parse_with_comments(formatted)
-    same_program = print_program(again) == print_program(program)
-    same_comments = Counter(c for _, _, c in kept) == Counter(c for _, _, c in comments)
-    if not (same_program and same_comments):
-        raise fail("lang.format", "formatting would change this program; the file is left as it is")
-    return formatted
+    try:
+        program, comments = parse_with_comments(text)
+        # Lark counts lines by "\\n" alone, so the source is split the same way.
+        formatted = print_program(program, _notes(program, comments, text.split("\n")))
+        again, kept = parse_with_comments(formatted)
+        same_program = _shape(again) == _shape(program)
+    except RecursionError:
+        failure = fail("lang.nesting", "the program is nested too deeply")
+    else:
+        same_comments = Counter(c for _, _, c in kept) == Counter(c for _, _, c in comments)
+        if same_program and same_comments:
+            return formatted
+        failure = fail(
+            "lang.format", "formatting would change this program; the file is left as it is"
+        )
+    raise failure

@@ -94,8 +94,8 @@ family (masking, generation, checks), not by line count.
 
 ## Test evidence, stated plainly
 
-- 424 tests in `tests/unit/lang/`: enumerated cases plus two property tests.
-- Line and branch coverage of `src/decoy/lang/`: 97% (1819 statements, 44 missed; 692 branches, 34
+- 476 tests in `tests/unit/lang/`: enumerated cases plus three property tests.
+- Line and branch coverage of `src/decoy/lang/`: 97% (2022 statements, 45 missed; 740 branches, 36
   partial), measured with `pytest --cov=decoy.lang --cov-branch`.
 - No mutation score has been measured. The two guard mutations above are the only mutations run.
 - One test runs a compiled foreign key through the engine and checks the join.
@@ -251,7 +251,8 @@ The owner asked (2026-11-19) for recommended choices to be taken and recorded he
 | Date | Scope | Reviewer | Verdict | Outcome |
 |---|---|---|---|---|
 | 2026-11-19 | `src/decoy/lang/` and its tests at `20bdc9b` (before the converter) | A separate agent, given the code and the review rulebooks, not the author's conclusions | NO-GO, 12 findings | All fixed in the two commits after it, each with a test; see below |
-| 2026-11-19 | The change `20bdc9b..0550214`: converter, printer, and the fixes above | A second separate agent | NO-GO for the converter (8 findings); GO for the earlier fixes, which it re-ran | All fixed, each with a test; see below. The fixes themselves are not yet re-reviewed |
+| 2026-11-19 | The change `20bdc9b..0550214`: converter, printer, and the fixes above | A second separate agent | NO-GO for the converter (8 findings); GO for the earlier fixes, which it re-ran | All fixed, each with a test; see below |
+| 2026-11-19 | The change `0550214..d818493`: the second round of fixes, the formatter, the review mark, the guide | A third separate agent | GO-WITH-FIXES: converter and review mark sound (it re-ran the second review's findings); 6 formatter findings, 5 smaller ones | Fixed, each with a test; see below. These last fixes are not re-reviewed |
 
 Findings of the first review and what was done:
 
@@ -286,6 +287,25 @@ Findings of the second review (the converter and printer) and what was done:
 | 6 | Refusals with no reason; the engine's full dump of a config was refused | The compiler's reason is included; unset and null fields are dropped |
 | 7 | Text rules differ inside expressions | Documented: an expression goes to the engine as written |
 | 8 | An over-large number read as infinity; a surrogate pair gave two half characters; duplicated word pattern | A number must be finite; pairs are joined; the pattern is defined once |
+
+Findings of the third review (the formatter, the review mark, the guide) and what was done:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | A comment inside a multi-line statement moved to the next statement; `budget(...)` took no comments | A comment written inside or beside a statement stays with it; `budget` is an anchor |
+| 2 | A comment after a block's `}` attached to a later statement; comments in `settings { }` left the block | It goes to that block's opening line; `settings` and `options` are blocks |
+| 3 | Not idempotent when the file held a form feed or another separator Python splits on | Lines are split on the newline only, as the parser counts them |
+| 4 | `RecursionError` on deep nesting, in the formatter and in the YAML writer | Both report `lang.nesting` |
+| 5 | The formatter's check compared the printer with itself | It compares the two syntax trees, positions removed; tests break the printer and the comment placement and expect `lang.format` |
+| 6 | The comment collector was shared between threads | Kept per thread; a test formats from four threads |
+| 7 | Only the interim entry refused a `?`; `compile_text` returned a config | A `?` is a compile problem, so no caller receives a config for an unreviewed pipeline |
+| 8 | Windows line endings came out mixed | A comment stops before `\r`; output uses the newline |
+| 9 | `0.0` and `-0.0` were merged | Floats compare by their text |
+| 10 | The converter compares against the engine's reduced dump, so an explicit null is dropped | Left as is: the reviewer found no engine field where that changes meaning |
+| 11 | Guide: detectors, `header: false`, `gcs` format, "says why", a missing error code | Corrected; a refusal names the block that would change; the error-page test also sees codes inside messages |
+
+Not fixed: a comment beside `allow dangling` attaches to the next statement or the end of the
+block, because that statement keeps no position.
 
 ## Working rules
 
@@ -324,7 +344,7 @@ Items this branch cannot settle on its own. Each needs the owner or the orchestr
 | H4 | Roadmap row DECOY-LANG, the decisions log entry and the removed inbox line | Written | Confirm the row text and state |
 | H5 | `tests/sentry/test_engine_reason_code_copies.py` flags `_resources.py` and `ci/rule_codes.py` against the local engine checkout (0.28.0; the CLI pins 0.27.0) | Red, in files this work does not touch; cause not investigated | Someone who owns those files |
 | H6 | Engine follow-ups: a public list of validator names (so `expect` can check them); `examples/complex_healthcare_claims.yaml` uses strategy names the engine no longer has; the orphan-remap observation in the roadmap inbox | Recorded | Triage in the engine |
-| H7 | Independent review of the fixes to the second review's findings | Not reviewed | A review before merge |
+| H7 | Independent review of the fixes to the third review's findings (the formatter's comment placement and checks, `?` as a compile error, the doc corrections) | Not reviewed | A review before merge |
 | H8 | Milestones 7 (command), 8 and 9 change `decoy` commands and frozen 1.0 surfaces | Planned, not built: [2026-11-19-decoy-language-commands.md](2026-11-19-decoy-language-commands.md), seven slices and five owner questions. The library side of each is built: `format_text`, `convert_config`, the `?` mark, the source map | Plan review, then build |
 
 ## Owner decisions
