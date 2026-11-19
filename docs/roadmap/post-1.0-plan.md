@@ -63,6 +63,8 @@ before and after numbers.
 | 1.2 | RUST-DATE-TEXT | [mask](groups/mask.md) |
 | 1.3 | CHUNK-PARALLEL | [run](groups/run.md) |
 | 1.x | PIP-NATIVE-EXTRA | [release](groups/release.md) |
+| 1.x | OOC-QUARANTINE, then OOC-DATE-BUCKET | [run](groups/run.md) |
+| 1.x, on demand | FK-CHUNKED-HASH-CHILD | [run](groups/run.md) |
 
 ## Corrective backlog (vault)
 
