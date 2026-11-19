@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+from tests import loopback_tls
 from typer.testing import CliRunner
 
 from decoy import _update_check
@@ -47,6 +48,8 @@ class _Loopback:
                 self.end_headers()
                 self.wfile.write(server.body)
 
+            do_CONNECT = do_GET  # a proxied https request opens with CONNECT
+
             def log_message(self, *args: object) -> None:
                 pass
 
@@ -61,9 +64,13 @@ class _Loopback:
 
 
 @pytest.fixture
-def serve(request: pytest.FixtureRequest):
-    def start(*args, **kwargs) -> _Loopback:
+def serve(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    def start(*args, tls: bool = True, **kwargs) -> _Loopback:
         server = _Loopback(*args, **kwargs)
+        if tls:
+            # The update check opens only https, so the loopback server speaks it.
+            loopback_tls.secure(server._httpd, tmp_path, monkeypatch)
+            server.url = server.url.replace("http://", "https://", 1)
         request.addfinalizer(server.close)
         return server
 
@@ -192,12 +199,13 @@ def test_the_no_update_check_flag_stops_the_request(
 
 
 def test_a_configured_proxy_still_carries_the_check(monkeypatch, home, serve) -> None:
-    proxy = serve(body=_document("99.0.0"))
+    proxy = serve(body=_document("99.0.0"), tls=False)  # a plain-http proxy
     monkeypatch.delenv("no_proxy")
-    monkeypatch.setenv("http_proxy", f"http://127.0.0.1:{proxy.port}")
-    monkeypatch.setenv("DECOY_VERSION_URL", "http://update.invalid/cli/version.json")
-    assert "99.0.0" in _start()
-    assert proxy.requests[0][0] == "GET http://update.invalid/cli/version.json HTTP/1.1"
+    monkeypatch.setenv("https_proxy", f"http://127.0.0.1:{proxy.port}")
+    monkeypatch.setenv("DECOY_VERSION_URL", "https://update.invalid/cli/version.json")
+    _start()
+    # An https request goes through a proxy as a CONNECT tunnel to the host the URL names.
+    assert proxy.requests[0][0].startswith("CONNECT update.invalid:443 ")
 
 
 # AT-C5 (P5): a bad response is cached as null, prints nothing, and costs one request a day -

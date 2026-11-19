@@ -20,6 +20,7 @@ from typing import NoReturn
 
 import typer
 
+from decoy import _outbound
 from decoy._version import __version__
 from decoy.cli.exit_codes import EXIT_OK, EXIT_RUNTIME, EXIT_USAGE
 from decoy.distribution import installer, layout, release_key
@@ -49,11 +50,32 @@ def _managed_home() -> Path | None:
     return layout.managed_home()
 
 
-def _fetch(url: str) -> bytes:
-    import urllib.request
-
-    with urllib.request.urlopen(url, timeout=30) as resp:
+def _fetch(url: str, purpose: str = "upgrade_artifact") -> bytes:
+    with _outbound.open_url(url, purpose=purpose, timeout=30) as resp:
         return resp.read()
+
+
+def _fetch_document(url: str) -> bytes:
+    return _fetch(url, "upgrade_document")
+
+
+def _refuse_scheme(state, url: str) -> None:
+    """Exit 1 before any socket when the version-document URL has a scheme the purpose refuses.
+    The refusal is raised outside the `except` so the URL cannot ride in the exception context."""
+    try:
+        _outbound.check_scheme(url, "upgrade_document")
+        refused = None
+    except _outbound.OutboundRefused as exc:
+        refused = exc
+    if refused is not None:
+        allowed = " or ".join(_outbound.allowed_schemes("upgrade_document"))
+        emit_error(
+            state,
+            "upgrade",
+            f"the version-document URL scheme is not allowed (use {allowed}).",
+            code=refused.code,
+        )
+        raise typer.Exit(code=EXIT_USAGE)
 
 
 def upgrade(
@@ -69,6 +91,8 @@ def upgrade(
 ) -> None:
     """Upgrade (or pin) the managed Decoy runtime from the Decoy-hosted channel."""
     state = setup_output(json_, quiet, verbose)
+    if url is not None:
+        _refuse_scheme(state, url)
 
     home = _managed_home()
     if home is None:
@@ -103,9 +127,12 @@ def upgrade(
         raise typer.Exit(code=EXIT_OK)
 
     doc_url = vd.resolve_version_url(url)
+    _refuse_scheme(state, doc_url)
     try:
-        doc_bytes = _fetch(doc_url)
-        doc_sig = _fetch(doc_url + ".sig").decode("ascii").strip()
+        doc_bytes = _fetch_document(doc_url)
+        doc_sig = _fetch_document(doc_url + ".sig").decode("ascii").strip()
+    except _outbound.OutboundRefused as exc:
+        _refuse(state, "the version endpoint redirected somewhere not allowed", exc.code, exc)
     except Exception as exc:
         _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", exc)
 
@@ -170,6 +197,8 @@ def upgrade(
             download=_fetch,
             post_swap_validate=_post_swap,
         )
+    except _outbound.OutboundRefused as exc:
+        _refuse(state, "a download was redirected somewhere not allowed", exc.code, exc)
     except installer.InstallError as exc:
         _refuse(state, "the upgrade failed and the installed runtime is unchanged", "upgrade_install_failed", exc)
 

@@ -32,6 +32,8 @@ ALLOWLIST = frozenset(
         ("src/decoy/_outbound.py", "RefuseRedirects"),
         ("src/decoy/_outbound.py", "_PurposeRedirects"),
         ("src/decoy/_outbound.py", "_scheme_of"),
+        ("src/decoy/_outbound.py", "_open"),
+        ("src/decoy/_outbound.py", "redirect_handler"),
         ("src/decoy/_outbound.py", "open_url"),
         ("src/decoy/telemetry.py", "_DecoySpanExporter.__init__"),
         ("src/decoy/telemetry.py", "_DecoySpanExporter.export"),
@@ -117,8 +119,8 @@ def test_the_allowlisted_owners_apply_their_rule() -> None:
     assert "check_scheme" in _body("src/decoy/_outbound.py", "open_url")
     assert "otel_endpoint_problem" in _body("src/decoy/telemetry.py", "validate_endpoint")
     assert "validate_endpoint" in _body("src/decoy/telemetry.py", "configure")
-    assert 'purpose="notify_webhook"' in _body("src/decoy/notify.py", "send_webhook")
-    assert 'purpose="notify_slack"' in _body("src/decoy/notify.py", "send_slack")
+    assert "purpose='notify_webhook'" in _body("src/decoy/notify.py", "send_webhook")
+    assert "purpose='notify_slack'" in _body("src/decoy/notify.py", "send_slack")
     assert "check_scheme" in _body("src/decoy/notify.py", "parse_notify_spec")
 
 

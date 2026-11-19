@@ -13,7 +13,9 @@ from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_USAGE
 
 
-def test_a_refused_scheme_exits_1_with_no_socket_and_no_url(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_refused_scheme_exits_1_with_no_socket_and_no_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     def trap(*args: object, **kwargs: object) -> None:
         raise AssertionError("a socket or opener was used")
 

@@ -6,16 +6,14 @@ throwaway self-signed certificate that `SSL_CERT_FILE` makes the default context
 
 from __future__ import annotations
 
-import datetime
 import http.server
-import ipaddress
-import ssl
 import threading
 import urllib.error
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from tests import loopback_tls
 
 from decoy import _outbound
 from decoy.notify import NotifySpecError, parse_notify_spec
@@ -58,7 +56,8 @@ def test_a_notify_spec_error_is_value_free(spec: str, code: str) -> None:
     with pytest.raises(NotifySpecError) as info:
         parse_notify_spec(spec)
     assert info.value.code == code
-    assert SECRET not in str(info.value) and spec not in str(info.value)
+    assert SECRET not in str(info.value)
+    assert spec.endswith(":") or spec not in str(info.value)  # `kind:` alone is a fixed word
     _no_context(info.value)
 
 
@@ -77,38 +76,6 @@ def test_the_opened_value_is_the_checked_value() -> None:
 
 @pytest.fixture
 def servers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict]:
-    from cryptography import x509
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
-
-    key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "127.0.0.1")])
-    now = datetime.datetime.now(datetime.timezone.utc)
-    cert = (
-        x509.CertificateBuilder()
-        .subject_name(name)
-        .issuer_name(name)
-        .public_key(key.public_key())
-        .serial_number(x509.random_serial_number())
-        .not_valid_before(now - datetime.timedelta(days=1))
-        .not_valid_after(now + datetime.timedelta(days=1))
-        .add_extension(
-            x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]),
-            critical=False,
-        )
-        .sign(key, hashes.SHA256())
-    )
-    pem = tmp_path / "cert.pem"
-    pem.write_bytes(
-        cert.public_bytes(serialization.Encoding.PEM)
-        + key.private_bytes(
-            serialization.Encoding.PEM,
-            serialization.PrivateFormat.TraditionalOpenSSL,
-            serialization.NoEncryption(),
-        )
-    )
-    monkeypatch.setenv("SSL_CERT_FILE", str(pem))
     hits: list[str] = []
     state: dict = {"hits": hits}
 
@@ -133,9 +100,7 @@ def servers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict]:
 
     plain = http.server.HTTPServer(("127.0.0.1", 0), Handler)
     tls = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ctx.load_cert_chain(pem)
-    tls.socket = ctx.wrap_socket(tls.socket, server_side=True)
+    loopback_tls.secure(tls, tmp_path, monkeypatch)
     http_base = f"http://127.0.0.1:{plain.server_port}"
     https_base = f"https://127.0.0.1:{tls.server_port}"
     state["targets"] = {
@@ -199,7 +164,11 @@ def test_webhook_follows_allowed_hops_and_rechecks_each(servers: dict) -> None:
         ("https://h/x?a=1", False, "OTEL: must not carry a query string or fragment"),
         ("https://h/x#f", False, "OTEL: must not carry a query string or fragment"),
         ("https://h/x?", False, "OTEL: must not carry a query string or fragment"),
-        ("http://h/x", True, "DECOY_OTEL_HEADERS needs an https:// OTEL (http only for a loopback host)"),
+        (
+            "http://h/x",
+            True,
+            "DECOY_OTEL_HEADERS needs an https:// OTEL (http only for a loopback host)",
+        ),
         ("http://[::1", False, "OTEL: not a URL"),
     ],
 )
@@ -210,7 +179,9 @@ def test_the_otel_purpose_refuses_what_validate_endpoint_refused(
         endpoint, has_headers=has_headers, setting="OTEL", headers_setting="DECOY_OTEL_HEADERS"
     )
     assert got == message
-    with pytest.raises(OtelSettingsError, match="^" + message.replace("(", r"\(").replace(")", r"\)")):
+    with pytest.raises(
+        OtelSettingsError, match="^" + message.replace("(", r"\(").replace(")", r"\)")
+    ):
         validate_endpoint(endpoint, has_headers=has_headers, setting="OTEL")
 
 

@@ -111,11 +111,17 @@ def parse_channels(ctx: RunContext) -> None:
             if ctx.state.mode is OutputMode.json:
                 emit_json(
                     ctx.state,
-                    {"command": "run", "status": "error", "config": ctx.config_str, "error": msg},
+                    {
+                        "command": "run",
+                        "status": "error",
+                        "config": ctx.config_str,
+                        "error": msg,
+                        "code": exc.code,
+                    },
                 )
             elif ctx.state.mode is not OutputMode.quiet:
-                # The message quotes the user's spec: print it verbatim (no markup) and
-                # unfolded, like the run error prints below.
+                # Fixed text, never the spec: print it verbatim (no markup) and unfolded, like
+                # the run error prints below.
                 ctx.state.err_console.print(error("error:"), msg, markup=False)
             raise typer.Exit(code=EXIT_USAGE)
 
