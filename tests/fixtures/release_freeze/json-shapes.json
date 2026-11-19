@@ -317,7 +317,8 @@
       "/manifest/warnings[]/code": "string",
       "/manifest/warnings[]/column": "null",
       "/manifest/warnings[]/detail/message": "string",
-      "/manifest/warnings[]/detail/shapes[]": "string",
+      "/manifest/warnings[]/detail/no_sink": "boolean",
+      "/manifest/warnings[]/detail/resident_source": "boolean",
       "/manifest/warnings[]/provider": "string",
       "/status": "string"
     }

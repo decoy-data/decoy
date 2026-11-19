@@ -98,7 +98,7 @@ def test_f3_json_payload_names_policy_and_columns(tmp_path: Path) -> None:
     result, _ = _fit(tmp_path, "--json")
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
-    assert payload["value_policy"] == "flagged-redacted/v1"
+    assert payload["value_policy"] == "flagged-redacted/v2"
     assert "ssn" in payload["redacted_columns"]
     assert _leaks(result.stdout) == []
 

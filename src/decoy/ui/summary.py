@@ -33,11 +33,33 @@ def _score(value: object) -> str:
     return f"{value:.2f}" if isinstance(value, (int, float)) else "n/a"
 
 
+def _name_scores(value: object) -> list[tuple[str, object]]:
+    """Read `name=score` strings (engine 0.28.0) and the older `[name, score]` pairs alike."""
+    out: list[tuple[str, object]] = []
+    for item in value or []:  # type: ignore[attr-defined]
+        if isinstance(item, str):
+            name, sep, score = item.rpartition("=")
+            try:
+                out.append((name, float(score)) if sep else (item, None))
+            except ValueError:
+                out.append((item, None))
+        else:
+            out.append((str(item[0]), item[1]))
+    return out
+
+
+def _column_names(value: object) -> list[str]:
+    """The engine joins a list of names with ", " in a warning's detail (0.28.0)."""
+    if isinstance(value, str):
+        return [n for n in value.split(", ") if n]
+    return [str(c) for c in value or []]  # type: ignore[attr-defined]
+
+
 def _fidelity_message(table: object, detail: Mapping[str, Any]) -> str:
     threshold = _score(detail.get("threshold"))
     overall = _score(detail.get("overall_score"))
     if detail.get("trigger") == "column":
-        below = [(str(n), s) for n, s in detail.get("below_columns") or []]
+        below = _name_scores(detail.get("below_columns"))
         if len(below) == 1:
             name, score = below[0]
             return (
@@ -50,7 +72,7 @@ def _fidelity_message(table: object, detail: Mapping[str, Any]) -> str:
             f"fidelity_warn_threshold {threshold} (overall {overall})"
         )
     text = f"table {table}: fidelity {overall} is below fidelity_warn_threshold {threshold}"
-    worst = detail.get("worst_columns") or []
+    worst = _name_scores(detail.get("worst_columns"))
     if worst:
         text += f"; lowest: {worst[0][0]} {_score(worst[0][1])}"
     return text
@@ -75,7 +97,7 @@ def _generic_message(code_: str, table: object, column: object, detail: Mapping[
 
 def _joint_cap_message(detail: Mapping[str, Any]) -> str:
     """`fit_joint_cells_truncated`: counts and column names only, never a kept or dropped label."""
-    pair = " x ".join(str(c) for c in detail.get("columns") or [])
+    pair = " x ".join(_column_names(detail.get("columns")))
     cap_dropped = detail.get("cap_dropped", 0)
     policy_dropped = detail.get("policy_dropped", 0)
     text = (
