@@ -4,7 +4,8 @@ Block structure follows HCL (named blocks in braces); calls take `key: value` op
 and Kotlin. Keywords are contextual: a column may be called `seed` or `table`, because the lexer
 only offers a keyword where the parser can accept one. Inside a table that leaves four reserved
 words (`keep`, `in`, `deterministic`, `vaulted`); a column with one of those names, or with a
-space in it, is written in backticks.
+space in it, is written in single quotes. Where a value is expected, single and double quotes
+both give a string.
 
 Layout is free: spaces and line breaks only separate words, as in JSON or C.
 """
@@ -25,7 +26,7 @@ pipeline: PIPELINE [name] "{" item* "}"
 ?item: seed | secret | unconfigured | let | table
 
 seed: SEED NUMBER
-secret: SECRET REF "(" STRING ")"
+secret: SECRET REF "(" (DQ_STRING | SQ_STRING) ")"
 unconfigured: UNCONFIGURED COLUMNS name
 let: LET name "=" treatment
 
@@ -44,19 +45,19 @@ arguments: "(" [argument ("," argument)*] ")"
 ?argument: option | value
 option: name ":" value
 
-?value: STRING -> string
+?value: (DQ_STRING | SQ_STRING) -> string
       | NUMBER -> number
       | TRUE -> true
       | FALSE -> false
-      | name -> word
+      | NAME -> word
       | list
 list: "[" [value ("," value)*] "]"
 
-name: NAME | QUOTED_NAME
+name: NAME | SQ_STRING
 
 NAME: /[A-Za-z_][A-Za-z0-9_]*/
-QUOTED_NAME: /`[^`\n]+`/
-STRING: /"([^"\\\n]|\\.)*"/ | /'([^'\\\n]|\\.)*'/
+DQ_STRING: /"([^"\\\n]|\\.)*"/
+SQ_STRING: /'([^'\\\n]|\\.)*'/
 NUMBER: /-?[0-9][0-9_]*(\.[0-9]+)?/
 COMMENT: /#[^\n]*/
 
@@ -69,8 +70,8 @@ COMMENT: /#[^\n]*/
 DISPLAY = {
     **{word.upper(): f"`{word}`" for word in _KEYWORDS},
     "NAME": "a name",
-    "QUOTED_NAME": "a name",
-    "STRING": "a quoted string",
+    "DQ_STRING": "a quoted string",
+    "SQ_STRING": "a 'quoted' name or string",
     "NUMBER": "a number",
     "LBRACE": "`{`",
     "RBRACE": "`}`",

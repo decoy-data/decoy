@@ -306,7 +306,7 @@ Writing rules:
    nothing depends on layout; one rule per line is the convention the formatter applies.
    Indentation mistakes are the most common YAML failure for people and agents alike. Inside a
    table four words are reserved (`keep`, `in`, `deterministic`, `vaulted`); a column with one of
-   those names, or with a space in it, is written in backticks.
+   those names, or with a space in it, is written in single quotes: `'First Name' : redact`.
 3. **Things live where they apply.** A table's source sits on the table. A foreign key sits on the
    child column.
 4. **Defaults are silent, overrides are visible.** A minimal pipeline is a few lines.

@@ -275,7 +275,7 @@ column names where the eye lands. The one thing to learn (`:` masks, `=` defines
 | Q8 | Paths are kept as written |
 | Comments | `#`, not `//`: `//` is integer division in the engine's expression grammar |
 | New column in a masked table | `name = expression`; a generator there is a compile error |
-| Layout | Spaces and line breaks only separate words. Inside a table `keep`, `in`, `deterministic` and `vaulted` are reserved; such a column name goes in backticks |
+| Layout | Spaces and line breaks only separate words. Inside a table `keep`, `in`, `deterministic` and `vaulted` are reserved; such a column name goes in single quotes |
 
 The Style 2 examples above are kept as the record of what was compared. The built form is in
 `src/decoy/lang/` and the `.decoy` twins of the templates in `tests/unit/lang/twins/`.

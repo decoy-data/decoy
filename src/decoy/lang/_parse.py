@@ -79,8 +79,12 @@ def _number(token: Token) -> int | float:
 
 def _name(tree: Tree[Any]) -> nodes.Name:
     token = tree.children[0]
-    text = str(token)
-    return nodes.Name(text[1:-1] if token.type == "QUOTED_NAME" else text, _span(token))
+    if token.type == "NAME":
+        return nodes.Name(str(token), _span(token))
+    text = python_ast.literal_eval(str(token))
+    if not text:
+        raise fail("lang.name_empty", "a name cannot be empty", _span(token))
+    return nodes.Name(text, _span(token))
 
 
 def _value(node: Tree[Any]) -> nodes.Value:
@@ -93,7 +97,7 @@ def _value(node: Tree[Any]) -> nodes.Value:
     if kind in ("true", "false"):
         return nodes.Value(kind == "true", span)
     if kind == "word":
-        return nodes.Value(_name(node.children[0]).text, span)
+        return nodes.Value(str(node.children[0]), span)
     return nodes.Value(tuple(_value(child) for child in node.children if child is not None), span)
 
 
@@ -193,6 +197,6 @@ def _program(tree: Tree[Any]) -> nodes.Program:
 
 
 def _token_value(token: Token) -> nodes.Value:
-    if token.type == "STRING":
+    if token.type in ("DQ_STRING", "SQ_STRING"):
         return nodes.Value(python_ast.literal_eval(str(token)), _span(token), quoted=True)
     return nodes.Value(_number(token), _span(token))

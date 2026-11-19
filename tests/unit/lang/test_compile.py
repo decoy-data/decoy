@@ -128,7 +128,7 @@ def test_keep_several_columns_and_let_reuse() -> None:
 
 
 def test_keywords_and_spaced_names_work_as_column_names() -> None:
-    rule = "seed, table, `First Name`, `keep` : redact\n    keep from, `in`"
+    rule = "seed, table, 'First Name', 'keep' : redact\n    keep from, 'in'"
     names = [c["name"] for c in _config(_with_rule(rule))["tables"][0]["columns"]]
     assert names == ["seed", "table", "First Name", "keep", "from", "in"]
 
@@ -226,9 +226,11 @@ def test_layout_is_free_spaces_and_line_breaks_only_separate_words() -> None:
     assert _config(one_line) == _config(spread) == _config(_BASE)
 
 
-def test_reserved_words_in_a_table_need_backticks_as_column_names() -> None:
+def test_reserved_words_in_a_table_need_quotes_as_column_names() -> None:
     assert _errors(_with_rule("keep : redact"))[0].code == "lang.syntax"
+    assert _errors(_with_rule("'' : redact"))[0].code == "lang.name_empty"
+    assert _errors(_with_rule('"ssn" : redact'))[0].code == "lang.syntax"
     assert (
-        _config(_with_rule("`keep`, `vaulted` : redact"))["tables"][0]["columns"][1]["name"]
+        _config(_with_rule("'keep', 'vaulted' : redact"))["tables"][0]["columns"][1]["name"]
         == "vaulted"
     )
