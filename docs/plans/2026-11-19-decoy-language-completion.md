@@ -147,7 +147,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 | 3 | **Checks and safety** (built) | Syntax for scans (before and after), `expect` checks, quarantine, delivery mode, the scan baseline, the `namespaces` block | Those blocks leave the `options`-only list | No |
 | 4 | **Subsetting** (built) | A `subset { }` block: start tables, what to follow, row budgets | `subset` leaves the `options`-only list | No |
 | 5 | **Converter** (built) | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |
-| 6 | **Agent card and agent trial** | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
+| 6 | **Agent card and agent trial** (done; the trial did not show a validity gap) | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
 | 7 | **Formatter** | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
 | 8 | **Commands read `.decoy`** | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
 | 9 | **Wizard writes `.decoy`** | `decoy init` output in the language, with the review marker | Init tests pass for both outputs | Yes |
@@ -275,6 +275,18 @@ Findings of the second review (the converter and printer) and what was done:
    that runs it.
 5. Errors carry positions and never the source line or a config value.
 6. A syntax change updates the twins, the tests, this page and the design page in one commit.
+
+## Agent trial result
+
+Record: [../records/2026-11-19-decoy-language-agent-trial.md](../records/2026-11-19-decoy-language-agent-trial.md).
+Twenty tasks, one agent per format, closed-book and first-attempt. Both formats: 20 of 20 files
+valid. Doing what the task asked: 20 of 20 in `.decoy`, 19 of 20 in YAML. The `.decoy` files were
+243 lines against 678, written from a one-page reference against 220 KB of YAML documentation.
+
+The bar this milestone set, "more often valid in `.decoy`", is not met as worded: there is no
+validity gap for a capable agent with the full documentation. What the trial supports is the same
+correctness from a much smaller reference in about a third of the lines. One run, one model; the
+record lists the limits and what a harder trial would change.
 
 ## Hand-off to the main orchestration
 

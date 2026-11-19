@@ -61,6 +61,10 @@ Strategies: `redact`, `hash`, `fpe`, `tokenize`, `faker(<provider>)`, `date_shif
 `text_redact`, `text_mask`, `joint_mask`, `formula`, `derived`, `derived_aggregate`, `group_key`,
 `grouped_series`, `windowed_date`. `keep a, b` leaves columns unchanged.
 
+Options used most: `fpe(charset: digits)` (also `alpha`, `alphanum`, `ALPHANUM`; `validate_luhn: true`
+for card numbers), `date_shift(min_days: -30, max_days: 30)`, `truncate(length: 3)`,
+`geo_generalize(type: zip, ...)`. `redact`, `hash` and `shuffle` need none.
+
 Common providers for `faker`: `person_name`, `person_first_name`, `person_last_name`,
 `person_email`, `person_phone`, `address_street`, `address_city`, `address_state`, `address_zip`,
 `synthetic_ssn`, `synthetic_account_number`, `uuid`.
@@ -214,7 +218,8 @@ pipeline {
 - `subset { }`: `start <table> sample N% by key` or `sample N rows by key`; `start <table> where`
   with simple tests (`==`, `!=`, `<`, `<=`, `>`, `>=`, `in [...]`, `is null`, `is not null`)
   separated by commas; `start <table> keys key in [1, 2]`; `follow parent.key -> child.key`
-  with `both`, `downward`, `upward` or `none`; `budget(...)`; `allow dangling`.
+  with `both`, `downward`, `upward` or `none`; `budget(...)`; `allow dangling`. A subset follows
+  every foreign key both ways unless a `follow` line says otherwise, so `follow` is optional.
 - `scan before(...)` and `scan after(...)` take detectors: `regex`, `classifier`, `ner`.
 - `expect <check>(table.column, key: value)`: `leak_check`, `fk_intact`, `no_orphan_children`,
   `luhn`, `npi`, `iban`, `vin`, `regex_match`, `column_in_set`.
