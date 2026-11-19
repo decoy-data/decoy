@@ -268,15 +268,28 @@ subset {
 validators (leak check, FK checks), quarantine, protected quarantine, delivery mode (strict or
 best effort), scan baseline.
 
-**Language:** `expect` statements for checks, small blocks for the rest.
+**Language:** each is a word and call-style arguments, the shape strategies and generators have.
+`table.column` names a column.
 
 ```
-scan before with regex, ner
-expect no_leaks(exempt: [state])
-expect joins claims.member_id -> members.member_id
-quarantine to "out/quarantine/" on [parse_error]
-delivery strict
+scan before(regex, ner)
+scan after(regex, ner, integrity: true, ner_findings: fail)
+expect leak_check(orders.card_number, orders.email, max_identical_ratio: 0.02)
+expect fk_intact
+quarantine("out/bad.jsonl", triggers: [validation_fail, format_error])
+baseline("scans/base.json", on_drift: warn)
+delivery(best_effort)
+namespace member_identity for members.member_id, claims.member_id
 ```
+
+- Plain values fill the obvious option: a scan's detectors, the quarantine path, the baseline
+  path, the delivery mode. Every `key: value` option goes to the engine under the same name.
+- `expect` groups its columns by table and puts its settings in the check's `params`. The engine
+  has no public list of check names, so a misspelled check is refused when the pipeline runs, not
+  when it compiles.
+- Writing `quarantine(...)` turns quarantine on.
+- `protected_quarantine` stays in `options { }` on purpose: five plain settings that a dedicated
+  statement would not make clearer.
 
 ### Outside the language
 

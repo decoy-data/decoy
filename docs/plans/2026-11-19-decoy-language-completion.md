@@ -119,7 +119,8 @@ family (masking, generation, checks), not by line count.
 | All 11 bundled templates have a `.decoy` twin that compiles to the same config | Built |
 | `python -m decoy.lang file.decoy` prints the pipeline YAML | Built; interim until the commands read `.decoy` |
 | `settings { }` for any pipeline setting; `options { }` escape hatch for any config block | Built |
-| Coverage test against the engine's config schema (`tests/unit/lang/test_coverage.py`); nine blocks are `options`-only | Built |
+| Coverage test against the engine's config schema (`tests/unit/lang/test_coverage.py`); two blocks are `options`-only (`subset`, and `protected_quarantine` on purpose) | Built |
+| Checks and safety: `scan before/after`, `expect`, `quarantine`, `baseline`, `delivery`, `namespace ... for` | Built |
 
 ## Milestones
 
@@ -130,7 +131,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 |---|---|---|---|---|
 | 1 | **Coverage test** (built) | A test that reads the engine's config schema and lists every field the language cannot write with its own syntax. The list may only shrink. | The test is green and fails when the engine adds a field | No |
 | 2 | **Nothing locked out** (built) | `settings { }` for every pipeline setting; `options { }` as the escape hatch for any config block without syntax yet | Every `PipelineConfig` field can be written, by syntax or by `options` | No |
-| 3 | **Checks and safety** | Syntax for scans (before and after), `expect` checks, quarantine, delivery mode, the scan baseline, the `namespaces` block | Those blocks leave the `options`-only list | No |
+| 3 | **Checks and safety** (built) | Syntax for scans (before and after), `expect` checks, quarantine, delivery mode, the scan baseline, the `namespaces` block | Those blocks leave the `options`-only list | No |
 | 4 | **Subsetting** | A `subset { }` block: start tables, what to follow, row budgets | `subset` leaves the `options`-only list | No |
 | 5 | **Converter** | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |
 | 6 | **Agent card and agent trial** | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
@@ -192,5 +193,8 @@ Notes on the order:
 
 - The reason-code scan also flags `_resources.py` and `ci/rule_codes.py` when run against the local
   engine checkout (0.28.0). Those files are not part of this work; cause not investigated.
+- The engine has no public list of validator names, so `expect lunh(...)` compiles and is refused
+  at run. A read-only accessor in the engine would let the compiler check the name and suggest
+  the nearest one, as it does for strategies and generators.
 - Mistakes inside `where` and `name = expression` are found by the engine only at plan compile,
   which the compiler does not run. Milestone 8 closes this, because the commands do run it.

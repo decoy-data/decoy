@@ -307,6 +307,43 @@ def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
     return nodes.GenColumn(_name(statement.children[0]), call, expression, span_of(statement))
 
 
+_BLOCKS = ("scan", "expect", "block", "declare")
+
+
+def _ref(tree: Tree[Any]) -> nodes.Ref:
+    return nodes.Ref(_name(tree.children[0]), _name(tree.children[1]), span_of(tree))
+
+
+def _block(tree: Tree[Any]) -> nodes.Block:
+    """A check or safety statement, with its arguments sorted into values, refs and options."""
+    head, second, *rest = tree.children
+    if tree.data == "declare":
+        refs = tuple(_ref(child) for child in rest[1:])
+        return nodes.Block("namespace", _name(second), (), refs, (), span_of(tree))
+    if tree.data == "scan":
+        kind, name, arguments = f"scan {second}", None, rest[0]
+    elif tree.data == "expect":
+        kind, name, arguments = "expect", _name(second), rest[0]
+    else:
+        kind, name, arguments = str(head), None, second
+    positional: list[nodes.Value] = []
+    refs: list[nodes.Ref] = []
+    options: list[nodes.Option] = []
+    for argument in arguments.children if arguments is not None else ():
+        if argument is None:
+            continue
+        if argument.data == "ref":
+            refs.append(_ref(argument))
+        elif argument.data == "option":
+            key = _name(argument.children[0])
+            if any(o.key.text == key.text for o in options):
+                raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
+            options.append(nodes.Option(key, _value(argument.children[1])))
+        else:
+            positional.append(_value(argument))
+    return nodes.Block(kind, name, tuple(positional), tuple(refs), tuple(options), span_of(tree))
+
+
 def _pairs(pairs: list[Tree[Any]]) -> list[nodes.Option]:
     built = []
     for pair in pairs:
@@ -331,6 +368,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
     lets: list[nodes.Let] = []
     tables: list[nodes.Table | nodes.Generate] = []
     extra: list[nodes.Option] = []
+    blocks: list[nodes.Block] = []
     options: list[nodes.Option] = []
     for item in items:
         span = span_of(item)
@@ -341,6 +379,8 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         elif item.data == "unconfigured":
             word = _name(item.children[2])
             settings.append(nodes.Setting("unconfigured", nodes.Value(word.text, word.span), span))
+        elif item.data in _BLOCKS:
+            blocks.append(_block(item))
         elif item.data in ("settings", "options"):
             (extra if item.data == "settings" else options).extend(_pairs(item.children[1:]))
         elif item.data == "let":
@@ -357,6 +397,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         span_of(pipeline),
         tuple(extra),
         tuple(options),
+        tuple(blocks),
     )
 
 

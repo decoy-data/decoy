@@ -352,10 +352,10 @@ def test_settings_block_takes_any_setting_by_its_engine_name() -> None:
 
 
 def test_options_block_writes_top_level_config_after_the_targets() -> None:
-    text = _BASE.replace("seed 42", "seed 42\n  options { delivery: {mode: best_effort} }")
-    config = _config(text)
-    assert config["delivery"] == {"mode": "best_effort"}
-    assert list(config)[-2:] == ["targets", "delivery"]
+    text = _BASE.replace("seed 42", "seed 42\n  options { subset: {allow_dangling: true} }")
+    config = _lowered(text)
+    assert config["subset"] == {"allow_dangling": True}
+    assert list(config)[-2:] == ["targets", "subset"]
 
 
 @pytest.mark.parametrize(
@@ -367,7 +367,7 @@ def test_options_block_writes_top_level_config_after_the_targets() -> None:
         ("settings { no_such_setting: 1 }", "lang.config", 5),
         ("options { sources: {} }", "lang.option_not_allowed", 5),
         (
-            "options { delivery: {mode: strict} delivery: {mode: strict} }",
+            "options { subset: {a: 1} subset: {a: 1} }",
             "lang.option_repeated",
             5,
         ),

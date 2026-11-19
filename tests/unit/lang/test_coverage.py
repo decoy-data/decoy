@@ -19,7 +19,7 @@ _DEFS = _SCHEMA["$defs"]
 # Top-level blocks with no syntax of their own yet: the to-do list, written through `options`.
 _OPTIONS_ONLY = sorted(set(_SCHEMA["properties"]) - set(BLOCK_SYNTAX))
 # May only go down. Each block that gains syntax lowers it by one.
-OPTIONS_ONLY_CEILING = 9
+OPTIONS_ONLY_CEILING = 2
 
 _PROGRAM = """decoy 1
 pipeline {{

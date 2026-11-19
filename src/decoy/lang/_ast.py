@@ -111,6 +111,28 @@ class Table:
 
 
 @dataclass(frozen=True)
+class Ref:
+    """`table.column`."""
+
+    table: Name
+    column: Name
+    span: Span
+
+
+@dataclass(frozen=True)
+class Block:
+    """A pipeline-level check or safety statement: `scan before(...)`, `expect name(...)`,
+    `quarantine(...)`, `baseline(...)`, `delivery(...)`, `namespace name for ...`."""
+
+    kind: str
+    name: Name | None
+    positional: tuple[Value, ...]
+    refs: tuple[Ref, ...]
+    options: tuple[Option, ...]
+    span: Span
+
+
+@dataclass(frozen=True)
 class GenColumn:
     """`name = generator(...)` or `name = expression` in a generated table. A generator call has
     `call`; anything else is an expression the engine's `derived` type evaluates."""
@@ -173,3 +195,4 @@ class Program:
     span: Span
     extra_settings: tuple[Option, ...] = ()  # the `settings { }` block
     options: tuple[Option, ...] = ()  # the `options { }` block
+    blocks: tuple[Block, ...] = ()

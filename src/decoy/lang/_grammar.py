@@ -18,7 +18,7 @@ _KEYWORDS = (
     "decoy pipeline seed secret ref unconfigured columns let mask from to keep in "
     "deterministic vaulted when and or not if else true false "
     "where sort by asc desc limit dedupe on drop orphans generate rows unique "
-    "settings options"
+    "settings options scan before after expect quarantine baseline delivery namespace for"
 ).split()
 
 GRAMMAR = r"""
@@ -27,6 +27,7 @@ start: DECOY NUMBER pipeline
 pipeline: PIPELINE [name] "{" item* "}"
 
 ?item: seed | secret | unconfigured | settings | options | let | table | generate
+     | scan | expect | block | declare
 
 seed: SEED NUMBER
 secret: SECRET REF "(" (DQ_STRING | SQ_STRING) ")"
@@ -39,6 +40,15 @@ settings: SETTINGS "{" (pair ","?)* "}"
 options: OPTIONS "{" (pair ","?)* "}"
 
 table: MASK name FROM call TO call "{" statement* "}"
+
+// Checks and safety. Each is a word and call-style arguments; `table.column` names a column.
+scan: SCAN (BEFORE | AFTER) [check_args]
+expect: EXPECT name [check_args]
+block: (QUARANTINE | BASELINE | DELIVERY) check_args
+declare: NAMESPACE name FOR ref ("," ref)*
+check_args: "(" [check_arg ("," check_arg)*] ")"
+?check_arg: option | ref | value
+ref: name "." name
 
 // A generated table: every column is defined with `=`, by a generator call or an expression.
 generate: GENERATE name ROWS NUMBER TO call "{" gen_statement* "}"
