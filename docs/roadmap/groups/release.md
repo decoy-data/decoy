@@ -31,6 +31,7 @@ Additive. Not scheduled until a 1.x release picks it up.
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 90a | REL-IMAGE: official container image for pipelines (owner 2026-11-07: ship the download plus an official image; a GitHub Action, Helm chart and Terraform wait until after V1). Built on each release from the same signed Linux bundle (x86_64 and aarch64), signed and version-pinned by digest; a slim default tag plus a `-ner` tag with the NER model included; runs as a non-root user; recipes for GitHub Actions, GitLab CI and a Kubernetes job in the public docs. Registry and pull access (owner 2026-11-08): a public image that refuses to run without a valid license | CLI | NOT STARTED; needs a plan | none | REL-PKG (row 90); SCAN-ML model install (row 32a) for the `-ner` tag |
+| PIP-NATIVE-EXTRA | 1.x. A `native` extra for pip installs, with companion wheels on PyPI. In V1 a pip install gets only the NATIVE-MISSING-WARN warning ([run](run.md)). Owner 2026-11-19, Q6 | engine, CLI | NOT STARTED | record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) section 8 Q6; plan not written | row 90 |
 
 ## Maintenance
 
