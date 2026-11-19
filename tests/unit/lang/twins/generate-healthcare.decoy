@@ -1,0 +1,29 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  generate patients rows 1000 to csv("./patients.csv") {
+    patient_id     = sequence(100000, step: 1)
+    first_name     = faker(first_name)
+    last_name      = faker(last_name)
+    date_of_birth  = faker(date_of_birth)
+    phone          = faker(phone_number)
+    city           = faker(city)
+    insurance_plan = categorical({Basic: 0.3, Standard: 0.4, Premium: 0.2, "Self-pay": 0.1})
+  }
+
+  generate visits rows 3000 to csv("./visits.csv") {
+    visit_id   = sequence(1, step: 1)
+    patient_id <- patients.patient_id
+    visit_date = faker(date_this_year)
+    visit_type = categorical({Checkup: 0.35, Emergency: 0.1, Specialist: 0.2, "Follow-up": 0.25, Lab: 0.1})
+  }
+
+  generate claims rows 3000 to csv("./claims.csv") {
+    claim_id      = sequence(1, step: 1)
+    visit_id <- visits.visit_id
+    amount_billed = faker(random_int, faker_kwargs: {min: 50, max: 5000})
+    claim_status  = categorical({Approved: 0.7, Pending: 0.2, Denied: 0.1})
+  }
+}

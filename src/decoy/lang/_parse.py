@@ -15,7 +15,7 @@ from lark import Lark, Token, Tree
 from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken
 
 from decoy.lang import _ast as nodes
-from decoy.lang._errors import Span, fail
+from decoy.lang._errors import LangError, Span, fail
 from decoy.lang._grammar import DISPLAY, GRAMMAR, KEYWORD_TERMINALS
 
 SUPPORTED_VERSIONS = (1,)
@@ -139,6 +139,8 @@ def _expression_text(node: Tree[Any] | Token) -> str:
         return "".join(_expression_text(part) for part in parts)
     if node.data == "prefix":
         return "not " if parts[0].type == "NOT" else "-"
+    if node.data == "e_map":
+        raise fail("lang.syntax", "an expression cannot hold a `{...}` map", _span(node))
     if node.data == "e_option":
         raise fail(
             "lang.generator_in_masked_table",
@@ -293,6 +295,120 @@ def _table(tree: Tree[Any]) -> nodes.Table:
     return nodes.Table(_name(name), _call(source), _call(target), tuple(built), _span(tree))
 
 
+def _single(tree: Tree[Any], kind: str) -> Tree[Any] | Token | None:
+    """The one child of an `expression` or `operand` that is nothing but that child."""
+    parts = [child for child in tree.children if child is not None]
+    return parts[0] if tree.data == kind and len(parts) == 1 else None
+
+
+def _plain_value(tree: Tree[Any]) -> nodes.Value:
+    """A generator argument as a value: a number, text, a bare word, a list or a map.
+
+    Generator calls are read by the expression grammar, since `name = ...` may hold either, so
+    their arguments arrive as expression trees and anything computed is refused here."""
+    span = _span(tree)
+    operand = _single(tree, "expression")
+    parts = [c for c in operand.children if c is not None] if isinstance(operand, Tree) else []
+    negative = (
+        len(parts) == 2 and isinstance(parts[0], Tree) and parts[0].children[0].type == "MINUS"
+    )
+    primary = parts[-1] if parts and (len(parts) == 1 or negative) else None
+    if isinstance(primary, Token):
+        if primary.type == "NUMBER":
+            return nodes.Value(-_number(primary) if negative else _number(primary), span)
+        if not negative and primary.type == "NAME":
+            word = str(primary)
+            return nodes.Value(word == "true" if word in ("true", "false") else word, span)
+        if not negative:
+            return nodes.Value(python_ast.literal_eval(str(primary)), span, quoted=True)
+    elif isinstance(primary, Tree) and not negative and primary.data == "e_list":
+        return nodes.Value(tuple(_plain_value(c) for c in primary.children if c is not None), span)
+    elif isinstance(primary, Tree) and not negative and primary.data == "e_map":
+        pairs: dict[str, nodes.Value] = {}
+        for pair in (c for c in primary.children if c is not None):
+            token, value = pair.children
+            key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
+            if key in pairs:
+                raise fail("lang.option_repeated", f"key `{key}` is given twice", _span(token))
+            pairs[key] = _plain_value(value)
+        return nodes.Value(pairs, span)
+    raise fail(
+        "lang.generator_argument",
+        "a generator takes plain values: numbers, text, words, lists and maps",
+        span,
+        "for a computed column write the expression on its own: `total = price * quantity`",
+    )
+
+
+def _generator_call(expression: Tree[Any]) -> nodes.Call | None:
+    """The call `name(...)` when the whole right-hand side is one call, else None."""
+    operand = _single(expression, "expression")
+    call = _single(operand, "operand") if isinstance(operand, Tree) else None
+    if not isinstance(call, Tree) or call.data != "e_call":
+        return None
+    head = call.children[0]
+    positional: list[nodes.Value] = []
+    options: list[nodes.Option] = []
+    for argument in (c for c in call.children[1:] if isinstance(c, Tree)):
+        if argument.data == "e_option":
+            token, value = argument.children
+            key = nodes.Name(str(token), _span(token))
+            if any(o.key.text == key.text for o in options):
+                raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
+            options.append(nodes.Option(key, _plain_value(value)))
+        elif options:
+            raise fail(
+                "lang.positional_after_option",
+                "a plain value cannot follow a `key: value` option",
+                _span(argument),
+                "put plain values first",
+            )
+        else:
+            positional.append(_plain_value(argument))
+    name = nodes.Name(str(head), _span(head))
+    return nodes.Call(name, tuple(positional), tuple(options), True, _span(call))
+
+
+def _generate(tree: Tree[Any]) -> nodes.Generate:
+    _, name, _, rows, _, target, *statements = tree.children
+    built: list[nodes.GenColumn | nodes.GenLink | nodes.Unique] = []
+    for statement in statements:
+        span = _span(statement)
+        if statement.data == "gen_link":
+            column, _, table, parent = statement.children
+            built.append(nodes.GenLink(_name(column), _name(table), _name(parent), span))
+        elif statement.data == "unique":
+            built.append(nodes.Unique(_names(statement.children[1]), span))
+        else:
+            built.append(_gen_column(statement))
+    return nodes.Generate(_name(name), _token_value(rows), _call(target), tuple(built), _span(tree))
+
+
+def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
+    """`name = ...` in a generated table, kept in both readings where both are possible.
+
+    `faker(first_name)` and `concat(first, last)` look alike; lowering knows the engine's
+    generator names and picks. `key: value` options and maps only occur in a generator call, so
+    with those there is no expression reading, and a call that cannot be read is an error."""
+    body = statement.children[1]
+    only_a_call = any(True for _ in body.find_pred(lambda t: t.data in ("e_option", "e_map")))
+    call = None
+    try:
+        call = _generator_call(body)
+    except LangError:
+        if only_a_call:
+            raise
+    if only_a_call and call is None:
+        raise fail(
+            "lang.generator_argument",
+            "`key: value` options and `{...}` maps belong to a generator call",
+            _span(body),
+            "write one call: `id = sequence(start: 1)`",
+        )
+    expression = None if only_a_call else nodes.Expression(_expression_text(body), _span(body))
+    return nodes.GenColumn(_name(statement.children[0]), call, expression, _span(statement))
+
+
 def _program(tree: Tree[Any]) -> nodes.Program:
     _, version_token, pipeline = tree.children
     version = _number(version_token)
@@ -306,7 +422,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
     _, name, *items = pipeline.children
     settings: list[nodes.Setting] = []
     lets: list[nodes.Let] = []
-    tables: list[nodes.Table] = []
+    tables: list[nodes.Table | nodes.Generate] = []
     for item in items:
         span = _span(item)
         if item.data == "seed":
@@ -318,6 +434,8 @@ def _program(tree: Tree[Any]) -> nodes.Program:
             settings.append(nodes.Setting("unconfigured", nodes.Value(word.text, word.span), span))
         elif item.data == "let":
             lets.append(nodes.Let(_name(item.children[1]), _treatment(item.children[2]), span))
+        elif item.data == "generate":
+            tables.append(_generate(item))
         else:
             tables.append(_table(item))
     return nodes.Program(

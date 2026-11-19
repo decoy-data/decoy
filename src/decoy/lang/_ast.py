@@ -112,6 +112,44 @@ class Table:
 
 
 @dataclass(frozen=True)
+class GenColumn:
+    """`name = generator(...)` or `name = expression` in a generated table. A generator call has
+    `call`; anything else is an expression the engine's `derived` type evaluates."""
+
+    name: Name
+    call: Call | None
+    expression: Expression | None
+    span: Span
+
+
+@dataclass(frozen=True)
+class GenLink:
+    """`name <- table.column` in a generated table: values drawn from that table's column."""
+
+    name: Name
+    parent_table: Name
+    parent_column: Name
+    span: Span
+
+
+@dataclass(frozen=True)
+class Unique:
+    """`unique (a, b)`: the listed columns' value combinations do not repeat."""
+
+    columns: tuple[Name, ...]
+    span: Span
+
+
+@dataclass(frozen=True)
+class Generate:
+    name: Name
+    rows: Value
+    target: Call
+    statements: tuple[GenColumn | GenLink | Unique, ...]
+    span: Span
+
+
+@dataclass(frozen=True)
 class Let:
     name: Name
     treatment: Treatment
@@ -133,5 +171,5 @@ class Program:
     name: Name | None
     settings: tuple[Setting, ...]
     lets: tuple[Let, ...]
-    tables: tuple[Table, ...]
+    tables: tuple[Table | Generate, ...]
     span: Span

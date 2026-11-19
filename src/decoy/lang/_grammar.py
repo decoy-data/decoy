@@ -17,7 +17,7 @@ from __future__ import annotations
 _KEYWORDS = (
     "decoy pipeline seed secret ref unconfigured columns let table from to keep in "
     "deterministic vaulted when and or not if else true false "
-    "where sort by asc desc limit dedupe on drop orphans"
+    "where sort by asc desc limit dedupe on drop orphans generate rows unique"
 ).split()
 
 GRAMMAR = r"""
@@ -25,7 +25,7 @@ start: DECOY NUMBER pipeline
 
 pipeline: PIPELINE [name] "{" item* "}"
 
-?item: seed | secret | unconfigured | let | table
+?item: seed | secret | unconfigured | let | table | generate
 
 seed: SEED NUMBER
 secret: SECRET REF "(" (DQ_STRING | SQ_STRING) ")"
@@ -33,6 +33,12 @@ unconfigured: UNCONFIGURED COLUMNS name
 let: LET name "=" treatment
 
 table: TABLE name FROM call TO call "{" statement* "}"
+
+// A generated table: every column is defined with `=`, by a generator call or an expression.
+generate: GENERATE name ROWS NUMBER TO call "{" gen_statement* "}"
+?gen_statement: define | gen_link | unique
+gen_link: name ARROW name "." name
+unique: UNIQUE "(" names ")"
 
 ?statement: mask | group | link | keep | where | define | sort | limit | dedupe | drop
 mask: names ":" treatment
@@ -66,12 +72,15 @@ expression: operand (operator operand)*
 !operator: OPERATOR | MINUS | AND | OR | IN | NOT IN | IF | ELSE
 operand: prefix* primary
 !prefix: NOT | MINUS
-?primary: NUMBER | DQ_STRING | SQ_STRING | NAME | e_call | e_group | e_list
+?primary: NUMBER | DQ_STRING | SQ_STRING | NAME | e_call | e_group | e_list | e_map
 !e_call: (NAME | IF) "(" [e_argument ("," e_argument)*] ")"
 ?e_argument: expression | e_option
 e_option: NAME ":" expression
 e_group: "(" expression ")"
 e_list: "[" [expression ("," expression)*] "]"
+// Maps and `key: value` arguments only occur in generator calls; an expression has neither.
+e_map: "{" [e_pair ("," e_pair)*] "}"
+e_pair: (NAME | DQ_STRING | SQ_STRING) ":" expression
 
 call: name [arguments]
 arguments: "(" [argument ("," argument)*] ")"

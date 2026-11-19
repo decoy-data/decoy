@@ -1,4 +1,4 @@
-"""Each bundled mask template has a `.decoy` twin that must compile to the same config."""
+"""Each bundled template has a `.decoy` twin that must compile to the same config."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 from decoy.lang import compile_text, emit_yaml
-from decoy.templates import get_template
+from decoy.templates import get_template, template_names
 
 _TWINS = Path(__file__).parent / "twins"
 _NAMES = sorted(path.stem for path in _TWINS.glob("*.decoy"))
@@ -18,8 +18,8 @@ def _twin(name: str) -> str:
     return (_TWINS / f"{name}.decoy").read_text(encoding="utf-8")
 
 
-def test_every_mask_template_has_a_twin() -> None:
-    assert _NAMES == ["gdpr", "hipaa", "minimal", "pci"]
+def test_every_bundled_template_has_a_twin() -> None:
+    assert _NAMES == sorted(template_names())
 
 
 @pytest.mark.parametrize("name", _NAMES)

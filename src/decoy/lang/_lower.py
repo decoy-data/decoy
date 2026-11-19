@@ -20,11 +20,11 @@ from functools import lru_cache
 from typing import Any
 
 from decoy_engine import PipelineConfig, strategy_catalog
-from decoy_engine.config import generate_option_catalog
 
 from decoy.lang import _ast as nodes
 from decoy.lang._connectors import SourceMap, lower_connector, plain
 from decoy.lang._errors import Diagnostic, LangError, fail
+from decoy.lang._generate import generators, lower_generate
 from decoy.lang._links import CHILD_STRATEGY, relationships
 
 CONFIG_VERSION = 2
@@ -51,11 +51,6 @@ _SETTING_FIELDS = {
 @lru_cache(maxsize=1)
 def _strategies() -> frozenset[str]:
     return frozenset(info.name for info in strategy_catalog())
-
-
-@lru_cache(maxsize=1)
-def _generators() -> frozenset[str]:
-    return frozenset(generate_option_catalog())
 
 
 @lru_cache(maxsize=1)
@@ -106,7 +101,10 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
             continue
         seen_tables.add(table.name.text)
         try:
-            _table(table, lets, config, spans, links)
+            if isinstance(table, nodes.Generate):
+                lower_generate(table, config, spans)
+            else:
+                _table(table, lets, config, spans, links)
         except LangError as error:
             problems.extend(error.diagnostics)
     if links and not problems:
@@ -163,7 +161,7 @@ def _table(
                 transforms[-1][key] = value
                 spans[(*step, key)] = span
                 called = _CALL.match(value) if key == "expression" else None
-                if statement.op == "derive" and called and called[1] in _generators():
+                if statement.op == "derive" and called and called[1] in generators():
                     problems.append(
                         Diagnostic(
                             "lang.generator_in_masked_table",

@@ -188,22 +188,29 @@ member_id, plan_id <- enrollments.(member_id, plan_id) in enrollment orphans fai
 `grouped_series`, `windowed_date`, `group_key`, `constant`, `distribution`, `lookup`,
 `statistical`). Options are checked per type by the engine's registry.
 
-**Language:** a `generate` block. Columns are defined with `name = generator(...)`.
+**Language:** a `generate` block. Columns use `=`, because they are being defined, not masked.
 
 ```
 generate customers rows 1000 to csv("out/customers.csv") {
-  customer_id  = sequence(start: 10000)
+  customer_id  = sequence(10000, step: 1)
   first_name   = faker(first_name)
-  loyalty_tier = categorical { "None": 0.6, "Silver": 0.3, "Gold": 0.1 }
+  loyalty_tier = categorical({None: 0.6, Silver: 0.3, Gold: 0.1})
+  spend        = faker(random_int, faker_kwargs: {min: 1, max: 500})
 }
 
-generate orders rows 3000 {
-  order_id    = sequence(start: 1)
-  customer_id = ref customers.customer_id
-  label       = concat(status, ':', order_id)      # an expression, not a quoted string
-  unique (customer_id, ordered_on)
+generate orders rows 3000 to csv("out/orders.csv") {
+  order_id    = sequence(1)
+  customer_id <- customers.customer_id             # values drawn from that column
+  label       = concat(status, ':', order_id)      # an expression: a `derived` column
+  unique (customer_id, product_id)
 }
 ```
+
+- A generator's plain values fill its required options in the order the engine's catalog lists
+  them: `sequence(1000)` is `start: 1000`. Everything else is a `key: value` option.
+- `categorical` takes a `{value: weight}` map, so a weight cannot drift away from its category.
+- `<-` is a plain `reference` column; `reference(table, column, distribution: ...)` takes options.
+- `name = expression` is a `derived` column.
 
 The rule to remember: **`:` masks a column that exists, `=` defines a new one.** In a masked
 table, `name = expression` adds a column from an expression (the `derive` transform), so there is
@@ -401,7 +408,7 @@ programs, agree the syntax, then build.
 | 1 | Compiler skeleton: parse, AST, lower, validate, source-mapped errors. Groups A, B and the simple part of D. **Built** in `src/decoy/lang/`: the four mask templates compile to identical config. Not wired to a command; `when` waits for group G. | Recipe (a) compiles |
 | 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. **Built:** `when` conditions, nested `{key: value}` option values, fixed-width sources. An expression is only delimited by the compiler and sent to the engine as one line of text; the engine's grammars decide what is valid. Strategy options that hold an expression (`derived(expression: "age * 12")`) are still quoted strings. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
 | 3 | Group C transforms. **Built:** `where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`; a generator in a masked table is refused. The engine checks `where` and `=` expressions at plan compile, so the compiler does not report mistakes inside them yet. Group E: **built:** `<-` foreign keys with composite keys and `orphans`, `{a, b} : rule` coherent groups; a test runs a compiled link through the engine and checks the join. The top-level `namespaces:` block has no syntax yet. | A multi-table foreign-key pipeline compiles |
-| 4 | Group F generation. | All seven `generate-*` templates compile to identical YAML |
+| 4 | Group F generation. **Built:** `generate` blocks with generator calls, expressions, `<-` references and `unique`. | All seven `generate-*` templates compile to identical YAML (done) |
 | 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. | **v0.1: usable for real pipelines** |
 | 6 | Group J checks. Group H policy and `use`. Group I subset. | Full coverage of `PipelineConfig` |
 | 7 | Formatter, YAML converter, round-trip test, coverage test. | Safe to hand to others |

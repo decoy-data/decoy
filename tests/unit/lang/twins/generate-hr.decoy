@@ -1,0 +1,28 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  generate departments rows 12 to csv("./departments.csv") {
+    department_id   = sequence(1, step: 1)
+    department_name = categorical(categories: [Engineering, Marketing, Sales, HR, Finance, Support])
+    cost_center     = faker(bothify, faker_kwargs: {text: "CC-####"})
+  }
+
+  generate employees rows 500 to csv("./employees.csv") {
+    employee_id   = sequence(1000, step: 1)
+    department_id <- departments.department_id
+    first_name    = faker(first_name)
+    last_name     = faker(last_name)
+    email         = faker(email)
+    job_title     = faker(job)
+    hired_on      = faker(date_this_decade)
+  }
+
+  generate payroll rows 3000 to csv("./payroll.csv") {
+    payroll_id  = sequence(1, step: 1)
+    employee_id <- employees.employee_id
+    pay_date    = faker(date_this_year)
+    gross_pay   = faker(random_int, faker_kwargs: {min: 1500, max: 12000})
+  }
+}
