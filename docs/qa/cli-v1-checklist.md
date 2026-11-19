@@ -3,7 +3,7 @@
 Status: current
 
 Roadmap row 92a (CLI-QA-CHECKLIST). Written 2026-11-15 from CLI `origin/main` `5628920`
-(`src/decoy/cli/`, `docs/cli-reference.md`, `README.md`, `docs/`) and roadmap section 5.3. Not yet
+(`src/decoy/cli/`, `docs/cli-reference.md`, `README.md`, `docs/`) and the roadmap track (old section 5.3; now the group files under `docs/roadmap/groups/`). Not yet
 run.
 
 This file lists what the V1 `decoy` CLI must do, grouped by feature group, and the check a QA pass
@@ -19,7 +19,7 @@ A check that fails becomes a roadmap row in `docs/ROADMAP.md`, as the 2026-11-08
 
 Owner rule (2026-11-11, standing): QA runs only on a feature group that is V1 complete. A group is
 ready when every row in its "Waits on rows" line has a State that starts with `MERGED` or `DONE` in
-`docs/ROADMAP.md` section 5.3. Never run part of a group, so no check is run twice. Repo-wide scans
+the roadmap track. Never run part of a group, so no check is run twice. Repo-wide scans
 (pip-audit, semgrep, gitleaks) file their findings against the group and wait for its pass.
 
 Some rows never hold a group, although checks cite them:
@@ -58,7 +58,7 @@ Sixteen groups, 204 checks.
 | 15 | [Help, explain and docs truth](#15-help-explain-and-docs-truth) | DOC-01 to DOC-10 | 24e, 24o, 56, 75, 92 |
 | 16 | [Release build and repo health](#16-release-build-and-repo-health) | BLD-01 to BLD-08 | 5, 5b, 5c, 7, 18, 24ze, 46, 53, 76 |
 
-The row index at the end lists every section 5.3 row that touches the CLI and the checks that cover
+The row index at the end lists every track row that touches the CLI and the checks that cover
 it, and the rows no check covers.
 
 ## Conventions for a QA pass
@@ -513,7 +513,7 @@ same change. Each failure becomes a roadmap row.
 
 ## Row index
 
-Every section 5.3 row whose Repo column names the CLI, plus rows 6 (infra) and 91 (web) because CLI
+Every track row whose Repo column names the CLI, plus rows 6 (infra) and 91 (web) because CLI
 checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a group is ready").
 
 | Row | Item | Checks |
