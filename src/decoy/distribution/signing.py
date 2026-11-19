@@ -31,6 +31,7 @@ reproduce this encoding.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from typing import Any
 
@@ -49,7 +50,7 @@ def canonical_bytes(payload: dict[str, Any]) -> bytes:
     ).encode("utf-8")
 
 
-def _raw_public_bytes_from_pem(public_pem: str) -> bytes:
+def raw_public_bytes(public_pem: str) -> bytes:
     """Load an Ed25519 public key from PEM and return its 32 raw bytes.
 
     Raises ValueError if the PEM is not a loadable Ed25519 public key."""
@@ -61,6 +62,12 @@ def _raw_public_bytes_from_pem(public_pem: str) -> bytes:
     )
 
 
+def fingerprint(public_pem: str) -> str:
+    """The key id used for revocation: sha256 of the raw 32-byte Ed25519 key, lower-case hex.
+    Raises ValueError if the PEM is not a loadable Ed25519 public key."""
+    return hashlib.sha256(raw_public_bytes(public_pem)).hexdigest()
+
+
 def verify_detached(payload_bytes: bytes, signature_b64: str, *, expected_public_pem: str) -> bool:
     """Verify a base64 detached Ed25519 signature over exact ``payload_bytes`` against a
     PINNED public key. This is the byte-for-byte equivalent of what `openssl pkeyutl
@@ -68,7 +75,7 @@ def verify_detached(payload_bytes: bytes, signature_b64: str, *, expected_public
     the shell installer accepts is one `decoy upgrade` accepts. Returns False on any
     malformed, mismatched, or failing input (never raises)."""
     try:
-        pub = Ed25519PublicKey.from_public_bytes(_raw_public_bytes_from_pem(expected_public_pem))
+        pub = Ed25519PublicKey.from_public_bytes(raw_public_bytes(expected_public_pem))
         signature = base64.b64decode(signature_b64, validate=True)
         pub.verify(signature, payload_bytes)
         return True
@@ -88,8 +95,8 @@ def verify_envelope(
         payload = signed["payload"]
         if not isinstance(payload, dict) or payload.get("schema_version") != schema_version:
             return False
-        embedded_raw = _raw_public_bytes_from_pem(signed["public_key"])
-        if embedded_raw != _raw_public_bytes_from_pem(expected_public_pem):
+        embedded_raw = raw_public_bytes(signed["public_key"])
+        if embedded_raw != raw_public_bytes(expected_public_pem):
             return False
         pub = Ed25519PublicKey.from_public_bytes(embedded_raw)
         signature = base64.b64decode(signed["signature"], validate=True)

@@ -22,12 +22,15 @@ import sys
 from pathlib import Path
 
 PLACEHOLDER_MARKER = "__DECOY_RELEASE_PUBLIC_KEY__"
+BACKUP_PLACEHOLDER_MARKER = "__DECOY_RELEASE_BACKUP_PUBLIC_KEY__"
 _KEY_FILE = Path(__file__).resolve().parent / "release_key.pub.pem"
+_BACKUP_KEY_FILE = Path(__file__).resolve().parent / "release_backup_key.pub.pem"
 
 
 class NoPinnedKeyError(RuntimeError):
     """Raised when this build carries no real pinned release key (still the placeholder)
-    and no ``DECOY_RELEASE_PUBKEY_FILE`` override is set."""
+    and no override is set (``DECOY_RELEASE_PUBKEY_FILE``, or for the backup key
+    ``DECOY_RELEASE_BACKUP_PUBKEY_FILE``)."""
 
 
 def _warn(msg: str) -> None:
@@ -61,3 +64,34 @@ def pinned_public_pem() -> str:
         "this decoy build has no pinned release key (placeholder present); "
         "a release build injects it. Dev/test builds may set DECOY_RELEASE_PUBKEY_FILE."
     )
+
+
+def pinned_backup_pem() -> str:
+    """Return the pinned offline backup public key PEM (``release_backup_key.pub.pem``).
+
+    Same rules as `pinned_public_pem`, one stricter: ``DECOY_RELEASE_BACKUP_PUBKEY_FILE`` is
+    honored only while BOTH the backup pin and the main pin are placeholders (a dev checkout),
+    with a loud warning. Otherwise it is ignored with a warning, so no environment variable can
+    add a backup key to a build that pins a real main key. A placeholder backup pin with no usable
+    override raises NoPinnedKeyError; that matters only when a rotation needs the backup key."""
+    text = _BACKUP_KEY_FILE.read_text(encoding="utf-8")
+    override = os.environ.get("DECOY_RELEASE_BACKUP_PUBKEY_FILE")
+    backup_is_placeholder = BACKUP_PLACEHOLDER_MARKER in text
+    main_is_placeholder = PLACEHOLDER_MARKER in _KEY_FILE.read_text(encoding="utf-8")
+    if backup_is_placeholder and main_is_placeholder and override:
+        _warn(
+            f"trusting the backup key from DECOY_RELEASE_BACKUP_PUBKEY_FILE={override} instead of a "
+            "pinned key. This is a dev/test build; never do this with a real install."
+        )
+        return Path(override).read_text(encoding="utf-8")
+    if override:
+        _warn(
+            "DECOY_RELEASE_BACKUP_PUBKEY_FILE is set but IGNORED: this build pins its release "
+            "keys and an environment variable cannot add or replace a trust anchor."
+        )
+    if backup_is_placeholder:
+        raise NoPinnedKeyError(
+            "this decoy build has no pinned backup key (placeholder present); "
+            "a release build commits it. Dev/test builds may set DECOY_RELEASE_BACKUP_PUBKEY_FILE."
+        )
+    return text
