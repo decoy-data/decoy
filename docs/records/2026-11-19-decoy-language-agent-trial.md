@@ -38,7 +38,7 @@ a capable agent that is given the full documentation.
 - Two fresh agents of the same model, one per format, each closed-book and first-attempt: no code,
   compiler or validator could be run, and nothing outside the given reference could be read.
 - The `.decoy` agent had `docs/guides/decoy-language/agent-card.md` as it stood at commit
-  `37e9e53`. The YAML agent had the engine's `recipes.md`, `strategies.md` and `relationships.md`,
+  `074d4f0`. The YAML agent had the engine's `recipes.md`, `strategies.md` and `relationships.md`,
   the eleven bundled templates and the config JSON schema.
 - Grading was automatic. Valid: `compile_text` succeeds, or `parse_pipeline_config` accepts the
   YAML. Does what was asked: a per-task check on the resulting config (the strategies, namespaces,
