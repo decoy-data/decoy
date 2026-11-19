@@ -137,6 +137,10 @@ Everything below was run in a clean environment on engine `0.28.0` (main `208478
 
 ## Decision needed: finish it or shrink it
 
+**Decided 2026-11-19: option C.** The owner chose to keep the compiler as an explainer. The roadmap
+rows are SEAM-REASONS and SEAM-EXPLAIN (run group, 1.x). The option A path below is kept for
+reference only.
+
 The proportionality audit (`docs/records/2026-11-15-proportionality-audit/REMEDIATION.md`) lists:
 
 | Id | Item | What it says | Today's placement |
