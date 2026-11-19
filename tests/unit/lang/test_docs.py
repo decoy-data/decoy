@@ -25,3 +25,15 @@ def test_the_guides_hold_programs() -> None:
 @pytest.mark.parametrize(("page", "index", "program"), _PROGRAMS, ids=lambda item: str(item)[:24])
 def test_a_program_in_a_guide_compiles(page: str, index: int, program: str) -> None:
     assert compile_text(program).config["version"] == 2
+
+
+def test_the_error_page_lists_every_code_the_compiler_can_raise() -> None:
+    source = _GUIDES.parents[2] / "src" / "decoy" / "lang"
+    raised = {
+        code
+        for path in source.glob("*.py")
+        for code in re.findall(r'"(lang\.[a-z_]+)"', path.read_text(encoding="utf-8"))
+    }
+    listed = set(re.findall(r"`(lang\.[a-z_]+)`", (_GUIDES / "07-errors.md").read_text("utf-8")))
+    assert raised - listed == set()
+    assert listed - raised == set()

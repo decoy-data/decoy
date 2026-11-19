@@ -151,7 +151,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 | 7 | **Formatter** (library and interim entry built; the `decoy` command is hand-off H8) | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
 | 8 | **Commands read `.decoy`** (planned for hand-off, see H8) | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
 | 9 | **Wizard writes `.decoy`** (the `?` review mark is built in the language; the wizard change is hand-off H8) | `decoy init` output in the language, with the review marker | Init tests pass for both outputs | Yes |
-| 10 | **Docs** | Quickstart, tour, reference generated from the engine catalogs, cookbook, YAML side by side, error index | Published with the docs site | Docs only |
+| 10 | **Docs** (guide written: `docs/guides/decoy-language/`, eight pages; publishing with the docs site is hand-off) | Quickstart, tour, reference generated from the engine catalogs, cookbook, YAML side by side, error index | Published with the docs site | Docs only |
 | 11 | **Freeze** | Syntax review, reserved-word list final, compatibility rule for `decoy 1`, editor highlighting | The language joins the compatibility contract | Contract |
 | 12 | **Policy and disguises** | `use <disguise>`, `match ... =>`, `forbid` | Compiles to the engine's `policy` block | Waits on the CLI |
 
@@ -243,6 +243,7 @@ The owner asked (2026-11-19) for recommended choices to be taken and recorded he
 | C4 | The printer aligns `:` and `=` within a run of single-line rules | No alignment | It is how the hand-written twins read; one layout rule, applied by the tool |
 | C6 | The formatter keeps a single blank line the author left between statements | One fixed layout with no blank lines inside a block | It is what gofmt and Black do, and it keeps a file's own grouping |
 | C7 | The formatter orders pipeline-level sections (settings, `let`, subset, checks, tables, options) | Keep the author's order | One layout; order between sections has no meaning in the language |
+| C8 | The guide links to the engine's strategy reference instead of carrying a generated copy | A reference generated from the engine catalogs and committed | A committed copy would differ between engine versions (the CLI pins one, a developer may run another); the catalogs are already printed by existing commands |
 | C5 | An independent review is run by a separate agent at milestone boundaries | Wait for the repository's named reviewers | They are not available in this session; findings and verdicts are recorded below |
 
 ## Reviews
