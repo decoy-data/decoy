@@ -12,8 +12,8 @@
  "canonical-json-allow": {
   "ci/manifest.py": {"reason": "Pretty-printed committed JSON Schema (indent=2) drift-tested against its file; a stable display form, never hashed.", "sites": 1},
   "cli/report.py": {"reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Move to records.canonical_bytes when report.py is next split.", "sites": 1},
-  "distribution/installer.py": {"reason": "Trust-state file that install.sh reads with a shell pattern; part of the install contract, not a content hash (plan 3.1).", "sites": 1},
   "distribution/signing.py": {"reason": "Frozen release-signature input shared with openssl and the build host; rewiring it would tie release verification to an engine version (plan 3.1).", "sites": 1},
+  "distribution/trust_state.py": {"reason": "Trust-state file that install.sh reads with a shell pattern; part of the install contract, not a content hash (plan 3.1).", "sites": 1},
   "notify.py": {"reason": "Webhook body signed with HMAC; different bytes on the wire by design (ASCII-escaped, platform webhook contract), not a content hash (plan 3.1).", "sites": 1}
  },
  "config-load-allow": {
@@ -112,9 +112,7 @@
   "decoy/cli/setup/__init__.py::setup_command::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
   "decoy/cli/setup/__init__.py::setup_command::1": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
   "decoy/cli/setup/__init__.py::setup_command::2": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
-  "decoy/distribution/installer.py::check_document_freshness::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
-  "decoy/distribution/lock.py::exclusive::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
-  "decoy/telemetry.py::validate_endpoint::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"}
+  "decoy/distribution/lock.py::exclusive::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"}
  },
  "exit-code-owner": {
   "cli/demo.py::_demo": {"reason": "demo's three-type map (usage versus runtime); CL4 calls exit_code_for instead"},

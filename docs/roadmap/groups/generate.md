@@ -45,6 +45,7 @@ Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above
 | A certified DP stack for normal users (a DP fit on a default install works) | ROADMAP row 24g | Turns the `dp_stack_uncertified` message into a success. Exit code 3 stays for the cases still refused. |
 | GEN-PROVIDERS per-provider options and `unique` | ROADMAP row 24p | New optional keys on `type: provider`. |
 | F2 follow-up: dirty generated output (nullable, NaN, nested) on the mixed route | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Lifts a decline. |
+| Generate columns on a masked table: a masked table declares generate columns that add new columns beside its masked ones (today a table is either masked through `columns` or generated through `generate_columns`, never both) | Owner, 2026-11-19 | New optional config on a masked table; existing configs unchanged. |
 
 ## Maintenance
 

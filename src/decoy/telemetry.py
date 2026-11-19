@@ -23,7 +23,6 @@ each lets the environment or the collector widen what leaves the process:
 
 from __future__ import annotations
 
-import ipaddress
 import logging
 import re
 import threading
@@ -31,7 +30,6 @@ import time
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 import requests
 from opentelemetry.context import Context
@@ -48,13 +46,13 @@ from opentelemetry.sdk.trace.sampling import ParentBased, TraceIdRatioBased
 from opentelemetry.trace import StatusCode, set_span_in_context
 from requests.adapters import HTTPAdapter
 
+from decoy import _outbound
 from decoy._version import __version__ as _cli_version
 
 FLUSH_BUDGET_MS = 2000
 HEADERS_SETTING = "DECOY_OTEL_HEADERS"
 _TOKEN = re.compile(r"[!#$%&'*+\-.^_`|~0-9A-Za-z]+")  # RFC 9110 field-name token
 _PRINTABLE = re.compile(r"[\x20-\x7e]+")
-_URL_CHARS = re.compile(r"[\x21-\x7e]+")
 
 
 class OtelSettingsError(ValueError):
@@ -78,38 +76,13 @@ def parse_otel_headers(raw: str | None) -> dict[str, str]:
     return headers
 
 
-def _is_loopback(host: str) -> bool:
-    if host == "localhost":
-        return True
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    if addr.version == 4:
-        return addr in ipaddress.ip_network("127.0.0.0/8")
-    return addr == ipaddress.IPv6Address("::1")
-
-
 def validate_endpoint(endpoint: str, *, has_headers: bool, setting: str) -> None:
-    """Refuse a collector URL that is not plain `http(s)://host[:port]/path`, and credential
-    headers over cleartext to a non-loopback host."""
-    if not _URL_CHARS.fullmatch(endpoint):
-        raise OtelSettingsError(f"{setting}: not a URL")
-    try:
-        parts = urlsplit(endpoint)
-        host, _port = (parts.hostname or "").lower(), parts.port
-    except ValueError:
-        raise OtelSettingsError(f"{setting}: not a URL") from None
-    if parts.scheme not in {"http", "https"} or not host:
-        raise OtelSettingsError(f"{setting}: must be an http:// or https:// URL with a host")
-    if "@" in parts.netloc:
-        raise OtelSettingsError(f"{setting}: must not carry credentials; use {HEADERS_SETTING}")
-    if parts.query or parts.fragment or endpoint.endswith(("?", "#")):
-        raise OtelSettingsError(f"{setting}: must not carry a query string or fragment")
-    if has_headers and parts.scheme == "http" and not _is_loopback(host):
-        raise OtelSettingsError(
-            f"{HEADERS_SETTING} needs an https:// {setting} (http only for a loopback host)"
-        )
+    """Refuse a collector URL the `otel` outbound purpose refuses (see `decoy._outbound`)."""
+    problem = _outbound.otel_endpoint_problem(
+        endpoint, has_headers=has_headers, setting=setting, headers_setting=HEADERS_SETTING
+    )
+    if problem is not None:
+        raise OtelSettingsError(problem)
 
 
 class _DecoySpanExporter(SpanExporter):

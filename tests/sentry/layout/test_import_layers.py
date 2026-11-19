@@ -48,7 +48,7 @@ LAYERS: tuple[str, ...] = (
     "ci | _resources",
     "ui | distribution | notify | telemetry | templates | lang",
     "_mask_secret | _mask_secret_guidance | _native_gate | _atomic | _row_sample | _env_flags",
-    "_config_file",
+    "_config_file | _outbound",
     "_private_file | _version | _yaml_errors",
 )
 
