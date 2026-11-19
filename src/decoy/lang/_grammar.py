@@ -2,11 +2,12 @@
 
 Block structure follows HCL (named blocks in braces); calls take `key: value` options as in Swift
 and Kotlin. Keywords are contextual: a column may be called `seed` or `mask`, because the lexer
-only offers a keyword where the parser can accept one. Inside a table that leaves a few reserved
-words (the statement words `keep`, `where`, `sort`, `limit`, `dedupe`, `drop`, the rule words `in`,
-`deterministic`, `vaulted`, `when`, and inside an expression `and`, `or`, `not`, `if`, `else`); a
-column with one of those names, or with a space in it, is written in single quotes. Where a value is expected, single and double quotes
-both give a string.
+only offers a keyword where the parser can accept one. Inside a table that leaves the words
+that start or continue a statement there (`keep`, `where`, `sort`, `limit`, `dedupe`, `drop`, `in`,
+`deterministic`, `vaulted`, `when`, `orphans`, `on`, `asc`, `desc`, and inside an expression `and`,
+`or`, `not`, `if`, `else`); a column with one of those names, or with a space in it, is written in
+single quotes. Text in single quotes is taken as written; text in double quotes takes the JSON
+escapes.
 
 Layout is free: spaces and line breaks only separate words, as in JSON or C.
 """

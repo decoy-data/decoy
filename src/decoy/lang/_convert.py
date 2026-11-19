@@ -481,7 +481,7 @@ def convert_config(config: dict[str, Any]) -> str:
         compiled, spans = lower(parse(text))
         validate(compiled, spans)
         wanted = _model(_normalized(config), "")
-    except LangError:
+    except (LangError, RecursionError):
         failure = ConvertError("", "the language cannot write this config")
     else:
         if _model(_normalized(compiled), "") == wanted:

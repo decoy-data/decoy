@@ -15,7 +15,6 @@ validation can be reported on the line that caused it.
 from __future__ import annotations
 
 import difflib
-import re
 from functools import lru_cache
 from typing import Any
 
@@ -25,6 +24,7 @@ from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
 from decoy.lang._connectors import lower_connector
 from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
+from decoy.lang._expressions import leading_call
 from decoy.lang._generate import generators, lower_generate
 from decoy.lang._links import CHILD_STRATEGY, relationships
 from decoy.lang._safety import SAFETY_SYNTAX, lower_blocks
@@ -55,7 +55,6 @@ BLOCK_SYNTAX = {
     **SAFETY_SYNTAX,
     **SUBSET_SYNTAX,
 }
-_CALL = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)\(")
 # The settings with a statement of their own: the statement's word, the engine field it sets and
 # how it is written. Every other setting goes in `settings { }`.
 SETTING_STATEMENTS = {
@@ -142,9 +141,10 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
                 _table(table, lets, config, spans, links)
         except LangError as error:
             problems.extend(error.diagnostics)
-    if links and not problems:
+    if links:
         targets = config.pop("targets")
-        config["relationships"] = relationships(links, config["tables"], spans, problems)
+        declared = [table.name.text for table in program.tables]
+        config["relationships"] = relationships(links, config["tables"], declared, spans, problems)
         config["targets"] = targets
     lower_subsets(program.subsets, config, spans, problems)
     lower_blocks(program.blocks, config, spans, problems)
@@ -188,7 +188,11 @@ def _lets(program: nodes.Program, problems: list[Diagnostic]) -> dict[str, nodes
                 Diagnostic("lang.let_repeated", f"`{name}` is defined twice", let.name.span)
             )
         else:
-            lets[name] = let.treatment
+            # Resolved here, so a `let` that names an earlier `let` means that one's strategy.
+            try:
+                lets[name] = _resolve(let.treatment, lets)
+            except LangError as error:
+                problems.extend(error.diagnostics)
     return lets
 
 
@@ -285,11 +289,11 @@ def _shaping(statement: nodes.Shaping, step: tuple[Any, ...], spans: SourceMap) 
         spans[(*step, "expression")] = statement.expression.span
         return {"op": "filter", "expression": statement.expression.text}
     if isinstance(statement, nodes.Define):
-        called = _CALL.match(statement.expression.text)
-        if called and called[1] in generators():
+        called = leading_call(statement.expression.text)
+        if called in generators():
             raise fail(
                 "lang.generator_in_masked_table",
-                f"`{called[1]}` is a generator; a masked table can only define a column from "
+                f"`{called}` is a generator; a masked table can only define a column from "
                 "an expression",
                 statement.expression.span,
                 "generators belong in a `generate` table",

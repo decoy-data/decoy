@@ -137,6 +137,13 @@ def test_every_engine_predicate_has_a_spelling() -> None:
             "lang.config",
             3,
         ),
+        ("    allow dangling\n", "    budget(max_total_rows: 1)\n", "lang.block_repeated", 15),
+        (
+            "follow pairs.(a, b) -> big.(a, b) none",
+            "follow customers.customer_id -> orders.customer_id upward",
+            "lang.block_repeated",
+            13,
+        ),
     ],
 )
 def test_subset_errors(old: str, new: str, code: str, line: int) -> None:

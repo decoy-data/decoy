@@ -141,3 +141,29 @@ def test_generate_errors(old: str, new: str, code: str, line: int) -> None:
 def test_unknown_generator_suggests_the_nearest_name() -> None:
     problem = _errors(_PIPELINE.replace("sequence(1)", "sequnce(start: 1)"))[0]
     assert problem.hint == "did you mean `sequence`?"
+
+
+@pytest.mark.parametrize(
+    ("written", "code"),
+    [
+        ("fakr(first_name)", "lang.unknown_generator"),
+        ("sequence", "lang.generator_argument"),
+        ("sequence(1 + 1)", "lang.generator_argument"),
+        ("faker(first_name) + 1", "lang.generator_argument"),
+    ],
+)
+def test_a_generator_written_wrongly_is_not_taken_for_an_expression(
+    written: str, code: str
+) -> None:
+    assert _errors(_PIPELINE.replace("constant(-1)", written))[0].code == code
+
+
+@pytest.mark.parametrize(
+    "written", ["concat(first_name, plan)", "first_name", "if(fee > 1, 'a', 'b')"]
+)
+def test_an_expression_function_is_still_an_expression(written: str) -> None:
+    columns = {
+        c["name"]: c
+        for c in _tables(_PIPELINE.replace("constant(-1)", written))[0]["generate_columns"]
+    }
+    assert columns["flag"] == {"name": "flag", "type": "derived", "expression": written}

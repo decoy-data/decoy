@@ -31,10 +31,17 @@ ORPHAN_HINT = (
 def relationships(
     links: list[tuple[str, nodes.Link]],
     tables: list[dict[str, Any]],
+    declared: list[str],
     spans: SourceMap,
     problems: list[Diagnostic],
 ) -> list[dict[str, Any]]:
-    columns = {t["name"]: {c["name"]: c for c in t["columns"]} for t in tables}
+    """The relationship entries for `links`. `tables` are the tables that lowered cleanly and
+    `declared` every table the program names, so a link to a table with its own errors is left
+    alone instead of being reported as unknown."""
+    columns = {
+        t["name"]: {c["name"]: c for c in (*t.get("columns", ()), *t.get("generate_columns", ()))}
+        for t in tables
+    }
     parent_of = {
         (child, column.text): (link, position)
         for child, link in links
@@ -52,7 +59,7 @@ def relationships(
             return link.namespace.text
         if position >= len(link.parent_columns):
             return None
-        upward = link.parent_columns[0].text
+        upward = link.parent_columns[position].text
         return namespace_of(link.parent_table.text, upward, visited | {(table, column)})
 
     entries: dict[tuple[Any, ...], dict[str, Any]] = {}
@@ -60,8 +67,8 @@ def relationships(
     for child, link in links:
         parent = link.parent_table.text
         before = len(problems)
-        if parent not in columns:
-            close = difflib.get_close_matches(parent, sorted(columns), n=1)
+        if parent not in declared:
+            close = difflib.get_close_matches(parent, sorted(declared), n=1)
             hint = f"did you mean `{close[0]}`?" if close else None
             problems.append(
                 Diagnostic(
@@ -71,6 +78,9 @@ def relationships(
                     hint,
                 )
             )
+        elif parent not in columns:
+            failed.add(id(link))  # the parent table has errors of its own, already reported
+            continue
         elif len(link.columns) != len(link.parent_columns):
             problems.append(
                 Diagnostic(

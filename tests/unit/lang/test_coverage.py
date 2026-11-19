@@ -11,6 +11,7 @@ import pytest
 from decoy_engine import PipelineConfig
 
 from decoy.lang import LangError
+from decoy.lang._connectors import CONNECTORS
 from decoy.lang._lower import BLOCK_SYNTAX, COLUMN_SYNTAX, SETTING_SYNTAX, lower
 from decoy.lang._parse import parse
 
@@ -91,3 +92,19 @@ def test_transform_kinds_are_the_ones_the_language_has_statements_for() -> None:
         if "op" in definition.get("properties", {}) and "const" in definition["properties"]["op"]
     }
     assert ops == {"filter", "derive", "sort", "limit", "dedupe", "drop_column"}
+
+
+def test_every_source_and_target_kind_has_a_connector() -> None:
+    wanted = set()
+    for name, definition in _DEFS.items():
+        if name.endswith(("Source", "Target")):
+            kind = definition["properties"]["type"]["const"]
+            wanted |= {(kind, fmt) for fmt in definition["properties"]["format"]["enum"]}
+    reachable = {
+        (kind, fmt)
+        for connector in CONNECTORS.values()
+        for (kind, fmt) in wanted
+        if connector.type == kind and connector.format in (None, fmt)
+    }
+    assert wanted
+    assert reachable == wanted

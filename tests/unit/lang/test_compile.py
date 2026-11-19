@@ -377,3 +377,29 @@ def test_options_block_writes_top_level_config_after_the_targets() -> None:
 def test_settings_and_options_errors(block: str, code: str, line: int) -> None:
     first = _errors(_BASE.replace("seed 42", f"seed 42\n  {block}"))[0]
     assert (first.code, first.span.line) == (code, line)
+
+
+def test_a_let_that_names_an_earlier_let_means_its_strategy() -> None:
+    text = _BASE.replace("seed 42", "seed 42\n  let a = hash in ids\n  let b = a").replace(
+        "ssn : redact", "ssn : b"
+    )
+    assert _config(text)["tables"][0]["columns"] == [
+        {"name": "ssn", "strategy": "hash", "namespace": "ids"}
+    ]
+
+
+def test_a_let_with_an_unknown_strategy_is_reported_where_it_is_defined() -> None:
+    first = _errors(_BASE.replace("seed 42", "seed 42\n  let a = b\n  let b = redact"))[0]
+    assert (first.code, first.span.line) == ("lang.unknown_strategy", 5)
+
+
+@pytest.mark.parametrize(
+    ("call", "code"),
+    [
+        ('csv("in.csv", has_header: false, header: true)', "lang.option_repeated"),
+        ('csv("in.csv", format: parquet)', "lang.option_not_allowed"),
+        ('s3("b", "k.csv", credentials: "a", credentials_ref: "b")', "lang.option_repeated"),
+    ],
+)
+def test_a_connector_option_is_said_once(call: str, code: str) -> None:
+    assert _errors(_BASE.replace('csv("in.csv")', call))[0].code == code

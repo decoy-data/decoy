@@ -73,6 +73,12 @@ def lower_subsets(
                 f"{follow.parent_table.text}.{_joined(follow.parent_columns)} -> "
                 f"{follow.child_table.text}.{_joined(follow.child_columns)}"
             )
+            if edge in out["edge_directions"]:
+                problems.append(
+                    Diagnostic(
+                        "lang.block_repeated", "this link already has a direction", follow.span
+                    )
+                )
             out["edge_directions"][edge] = follow.direction.text
             spans[("subset", "edge_directions", edge)] = follow.span
     if subset.allow_dangling:

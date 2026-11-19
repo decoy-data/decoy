@@ -66,14 +66,21 @@ def lower_connector(
         spans[(*path, key)] = value.span
     if is_source:
         out.update(connector.source_defaults)
+    given: set[str] = set()
     for option in call.options:
         key = RENAMES.get(option.key.text, option.key.text)
-        if key in connector.positional or key == "type":
+        fixed = key == "type" or (key == "format" and connector.format is not None)
+        if key in connector.positional or fixed:
             raise fail(
                 "lang.option_not_allowed",
-                f"`{option.key.text}` is set by the plain values of `{call.name.text}`",
+                f"`{option.key.text}` is set by `{call.name.text}` itself",
                 option.key.span,
             )
+        if key in given:
+            raise fail(
+                "lang.option_repeated", f"`{option.key.text}` is given twice", option.key.span
+            )
+        given.add(key)
         out[key] = plain(option.value)
         spans[(*path, key)] = option.value.span
     if "format" not in out:

@@ -349,6 +349,8 @@ def _subset(tree: Tree[Any]) -> nodes.Subset:
                     block.span,
                     "write `budget(max_total_rows: 1_000_000)`",
                 )
+            if budget:
+                raise fail("lang.block_repeated", "`budget` is written twice", block.span)
             budget.extend(block.options)
         else:
             dangling = True

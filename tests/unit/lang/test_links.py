@@ -227,3 +227,42 @@ def test_a_key_column_may_have_a_link_and_a_rule_of_its_own() -> None:
             "namespace": "customer_identity",
         }
         assert config["relationships"] == compile_text(_PIPELINE).config["relationships"]
+
+
+def test_a_masked_table_can_follow_a_generated_key() -> None:
+    text = """decoy 1
+pipeline {
+  seed 1
+  generate g rows 5 to csv("g.csv") { id = sequence(1) }
+  mask t from csv("a.csv") to csv("b.csv") {
+    gid <- g.id in gids orphans preserve
+    x : redact
+  }
+}
+"""
+    assert compile_text(text).config["relationships"][0]["parent"] == {
+        "table": "g",
+        "columns": ["id"],
+    }
+    assert _errors(text.replace(" in gids", ""))[0].code == "lang.link_needs_namespace"
+
+
+def test_a_chained_composite_link_takes_the_namespace_of_its_own_key_column() -> None:
+    text = """decoy 1
+pipeline {
+  seed 1
+  mask p from csv("p.csv") to csv("p2.csv") { x : hash in nsx  y : hash in nsy }
+  mask c from csv("c.csv") to csv("c2.csv") { a, b <- p.(x, y) orphans preserve }
+  mask g from csv("g.csv") to csv("g2.csv") { k <- c.b orphans preserve }
+}
+"""
+    relationships = compile_text(text).config["relationships"]
+    assert [r["namespace"] for r in relationships] == ["nsx", "nsy"]
+
+
+def test_link_problems_are_reported_beside_other_problems() -> None:
+    text = _PIPELINE.replace(
+        "customers.customer_id orphans preserve\n    keep total", "nope.x\n    total : nostrategy"
+    )
+    codes = {d.code for d in _errors(text)}
+    assert {"lang.unknown_strategy", "lang.link_unknown_table", "lang.orphans_missing"} <= codes

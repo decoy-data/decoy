@@ -18,7 +18,8 @@ from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span
 
 _WHEN_HINT = (
     "a condition compares one column with a value (`country == 'US'`) or tests a list "
-    "(`state in ['CA', 'NY']`), joined with `and`, `or`, `not`"
+    "(`state in ['CA', 'NY']`), joined with `and`, `or`, `not`; inside a condition, true and false "
+    "are written `True` and `False`"
 )
 _STEP = re.compile(r"\[(\d+)\]|([^.\[\]]+)")
 

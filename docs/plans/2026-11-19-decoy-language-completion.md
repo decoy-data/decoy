@@ -94,13 +94,17 @@ family (masking, generation, checks), not by line count.
 
 ## Test evidence, stated plainly
 
-- 201 tests in `tests/unit/lang/`, all enumerated cases. None is a property test yet.
-- Line and branch coverage of `src/decoy/lang/`: 98% (1200 statements, 17 missed; 432 branches, 19
-  partial), measured with `pytest --cov=decoy.lang --cov-branch`.
+- TESTLINE, measured with `pytest --cov=decoy.lang --cov-branch`.
 - No mutation score has been measured. The two guard mutations above are the only mutations run.
 - One test runs a compiled foreign key through the engine and checks the join.
-- The round-trip property test arrives with milestone 5 and needs Hypothesis, which is not in the
-  dev lock (decision E6).
+- Two Hypothesis property tests (`test_roundtrip.py`, 150 generated configs each, derandomized):
+  a valid config converts and compiles back to the same engine model, and printing is a fixed
+  point. The generator covers rules, shaping, one foreign key, settings and three checks; it does
+  not generate generated tables, subsets or coherent groups, which have enumerated cases.
+- The converter was run over every valid pipeline YAML in both repositories: 20 of 22 convert.
+  The two refusals are right: one declares a relationship with no namespace (a QA fixture for
+  that failure), one uses strategy names the engine no longer has
+  (`decoy-engine/examples/complex_healthcare_claims.yaml`, which is stale).
 - The full repository suite has not been run on this head. The last full `tests/sentry` run was
   before the cleanup in this change; since then only the language tests and the layout, config
   route, engine boundary, source hygiene and config-load guards were rerun.
@@ -134,7 +138,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 | 2 | **Nothing locked out** (built) | `settings { }` for every pipeline setting; `options { }` as the escape hatch for any config block without syntax yet | Every `PipelineConfig` field can be written, by syntax or by `options` | No |
 | 3 | **Checks and safety** (built) | Syntax for scans (before and after), `expect` checks, quarantine, delivery mode, the scan baseline, the `namespaces` block | Those blocks leave the `options`-only list | No |
 | 4 | **Subsetting** (built) | A `subset { }` block: start tables, what to follow, row budgets | `subset` leaves the `options`-only list | No |
-| 5 | **Converter** | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |
+| 5 | **Converter** (built) | Any pipeline YAML to `.decoy` text; round-trip test (config to `.decoy` to config gives the same config) over the templates and generated configs | The 11 twins are produced by the converter; the round-trip test is green | No |
 | 6 | **Agent card and agent trial** | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
 | 7 | **Formatter** | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
 | 8 | **Commands read `.decoy`** | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
@@ -210,6 +214,32 @@ The owner asked (2026-11-19) for recommended choices to be taken and recorded he
 | C4 | The printer aligns `:` and `=` within a run of single-line rules | No alignment | It is how the hand-written twins read; one layout rule, applied by the tool |
 | C5 | An independent review is run by a separate agent at milestone boundaries | Wait for the repository's named reviewers | They are not available in this session; findings and verdicts are recorded below |
 
+## Reviews
+
+| Date | Scope | Reviewer | Verdict | Outcome |
+|---|---|---|---|---|
+| 2026-11-19 | `src/decoy/lang/` and its tests at `20bdc9b` (before the converter) | A separate agent, given the code and the review rulebooks, not the author's conclusions | NO-GO, 12 findings | All fixed in the two commits after it, each with a test; see below |
+
+Findings and what was done:
+
+| # | Finding | Fix |
+|---|---|---|
+| 1 | Crash (`KeyError`) when a link points at a generated table | Links read generated columns too; a masked table can follow a generated key |
+| 2 | Quoted text was decoded with Python's literal rules: bad escapes crashed, `"C:\temp"` became a tab | The language has its own rules: JSON escapes in double quotes, literal text in single quotes, an error with a hint otherwise |
+| 3 | Deep nesting raised `RecursionError` | Reported as `lang.nesting` |
+| 4 | A `let` naming another `let` compiled to the inner name as a strategy | A `let` is resolved when defined; an unknown name is an error on the `let` line |
+| 5 | A misspelled generator became a computed column | A call close to a generator name, or a generator with computed arguments, is an error |
+| 6 | Repeated connector options, `budget` and `follow` kept the last one silently | Each is an error; a connector's own format cannot be overridden |
+| 7 | Syntax errors could show a bare word, a map key or the version number | Only words of the language and punctuation are shown |
+| 8 | A chained composite link took the namespace of the wrong key column | It follows its own position in the key |
+| 9 | Link problems were hidden when a table had another problem | Reported together |
+| 10 | The parser produced engine shapes; shared helpers sat in unrelated modules; parallel tables | Syntax nodes for table shaping, `_tokens.py`, `plain` in `_ast.py`, `SourceMap` in `_errors.py`, one settings table, a coverage test for connectors |
+| 11 | `decoy 1.0` accepted; no exponent numbers; reserved words missing from the docstring | Fixed. Not changed: inside a condition true and false are the engine's `True` and `False` (the hint says so); a quoted table name with a dot sends an engine error to the pipeline line |
+| 12 | Twins compared with `==` only; missing tests | Type-strict comparison; tests for every finding above |
+
+Still open from the review: `Compiled.source_map` has no consumer until milestone 8, and the
+coverage tests prove a field is passed through, not that the engine accepts a sample value for it.
+
 ## Working rules
 
 1. No change to engine behavior. If the compiler needs an engine fact that is private, that is a
@@ -222,6 +252,21 @@ The owner asked (2026-11-19) for recommended choices to be taken and recorded he
    that runs it.
 5. Errors carry positions and never the source line or a config value.
 6. A syntax change updates the twins, the tests, this page and the design page in one commit.
+
+## Hand-off to the main orchestration
+
+Items this branch cannot settle on its own. Each needs the owner or the orchestrating session.
+
+| # | Item | State on the branch | What is needed |
+|---|---|---|---|
+| H1 | `tests/sentry/run/test_no_subset_edit.py` fails. The guard forbids any code under `src/decoy` from writing a config's `subset` key, so that the CLI never edits a user's config. `src/decoy/lang/_subset.py` writes that block because it builds a config from a `.decoy` program | **Red.** The guard was not changed and not sidestepped | A decision: a narrow exemption for the compiler (a store and a dict display in `lang/_subset.py` only; `pop`, `update` and `del` stay forbidden), or another design |
+| H2 | Guard and registry files changed for the new package: `.importlinter` and its snapshot in `tests/sentry/layout/test_import_layers.py` (the `lang` layer), `tests/sentry/layout/test_codemap_paths.py` (one new layout kind) | Green | Confirm the placement |
+| H3 | `pyproject.toml` declares `lark>=1.1` and, for tests, `hypothesis>=6.0`; `requirements-dev.lock` regenerated with `scripts/dev/lock.sh` | `lock.sh --check` passes | Confirm; owner approved `lark` on 2026-11-19, `hypothesis` is choice C1 |
+| H4 | Roadmap row DECOY-LANG, the decisions log entry and the removed inbox line | Written | Confirm the row text and state |
+| H5 | `tests/sentry/test_engine_reason_code_copies.py` flags `_resources.py` and `ci/rule_codes.py` against the local engine checkout (0.28.0; the CLI pins 0.27.0) | Red, in files this work does not touch; cause not investigated | Someone who owns those files |
+| H6 | Engine follow-ups: a public list of validator names (so `expect` can check them); `examples/complex_healthcare_claims.yaml` uses strategy names the engine no longer has; the orphan-remap observation in the roadmap inbox | Recorded | Triage in the engine |
+| H7 | Independent review of everything after `20bdc9b`: the converter, the printer and the review fixes | Not reviewed | A review before merge |
+| H8 | Milestones 7 to 9 change `decoy` commands and frozen 1.0 surfaces | Not started; each gets its own plan | Plan review, then build |
 
 ## Owner decisions
 

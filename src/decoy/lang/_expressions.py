@@ -8,6 +8,7 @@ arguments of a generator call, plain values.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Any
 
@@ -47,6 +48,16 @@ def expression_text(node: Tree[Any] | Token) -> str:
     if node.data == "e_call":
         return f"{parts[0]}({inner})"
     return f"({inner})" if node.data == "e_group" else f"[{inner}]"
+
+
+_LEADING_WORD = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)(\(|\Z)")
+
+
+def leading_call(text: str) -> str | None:
+    """The word an expression starts with when it is `word(...)` or the word alone, else None.
+    That is where a generator name would stand if a generator were written by mistake."""
+    found = _LEADING_WORD.match(text)
+    return found[1] if found else None
 
 
 def _single(tree: Tree[Any], kind: str) -> Tree[Any] | Token | None:

@@ -23,6 +23,7 @@ from decoy.lang import _ast as nodes
 from decoy.lang._ast import plain
 from decoy.lang._connectors import lower_connector
 from decoy.lang._errors import Diagnostic, LangError, SourceMap, fail
+from decoy.lang._expressions import leading_call
 
 
 @lru_cache(maxsize=1)
@@ -74,6 +75,34 @@ def lower_generate(table: nodes.Generate, config: dict[str, Any], spans: SourceM
     config["targets"][name] = target
 
 
+def _refuse_a_generator_slip(expression: nodes.Expression) -> None:
+    """An expression that is really a generator written wrongly is an error, not a column.
+
+    The engine checks an expression only when the plan is compiled, so `fakr(first_name)` would
+    otherwise pass here as a computed column."""
+    word = leading_call(expression.text)
+    if word is None:
+        return
+    if word in generators():
+        bare = expression.text == word
+        raise fail(
+            "lang.generator_argument",
+            f"`{word}` is a generator and is written as a call with plain values",
+            expression.span,
+            f"write `{word}(...)`"
+            if bare
+            else "for a computed column do not start with a generator",
+        )
+    close = difflib.get_close_matches(word, sorted(generators()), n=1, cutoff=0.8)
+    if close and expression.text != word:
+        raise fail(
+            "lang.unknown_generator",
+            f"`{word}` is not a generator",
+            expression.span,
+            f"did you mean `{close[0]}`?",
+        )
+
+
 def _column(
     statement: nodes.GenColumn | nodes.GenLink, path: tuple[Any, ...], spans: SourceMap
 ) -> dict[str, Any]:
@@ -96,6 +125,7 @@ def _column(
                 call.name.span,
                 f"did you mean `{close[0]}`?" if close else None,
             )
+        _refuse_a_generator_slip(statement.expression)
         spans[(*path, "expression")] = statement.expression.span
         return {"type": "derived", "expression": statement.expression.text}
     kind = call.name.text

@@ -48,9 +48,14 @@ def compile_text(text: str) -> Compiled:
     """Compile a `.decoy` program: parse, lower, then the engine's own validation.
 
     Raises `LangError` with every problem found."""
-    config, spans = lower(parse(text))
-    validate(config, spans)
-    return Compiled(config, spans)
+    try:
+        config, spans = lower(parse(text))
+    except RecursionError:
+        too_deep = LangError([Diagnostic("lang.nesting", "the program is nested too deeply")])
+    else:
+        validate(config, spans)
+        return Compiled(config, spans)
+    raise too_deep
 
 
 def emit_yaml(config: dict[str, Any]) -> str:
