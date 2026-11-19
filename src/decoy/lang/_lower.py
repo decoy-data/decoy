@@ -30,7 +30,7 @@ from decoy.lang._links import CHILD_STRATEGY, relationships
 CONFIG_VERSION = 2
 KEEP_STRATEGY = "passthrough"
 # Column fields the language writes with its own syntax, never as a call option.
-_OWN_SYNTAX = {
+COLUMN_SYNTAX = {
     "name": "the column name before `:`",
     "strategy": "the name of the call",
     "namespace": "`in <namespace>` after the call",
@@ -41,12 +41,12 @@ _OWN_SYNTAX = {
     "coherent_with": "a `{a, b} : rule` group",
 }
 # Settings and config blocks the language writes with its own syntax, never in the generic blocks.
-_SETTING_SYNTAX = {
+SETTING_SYNTAX = {
     "seed": "`seed <number>`",
     "mask_secret_ref": '`secret ref("...")`',
     "unconfigured_column_policy": "`unconfigured columns warn` or `error`",
 }
-_BLOCK_SYNTAX = {
+BLOCK_SYNTAX = {
     "version": "the `decoy 1` line; the config version is set by the compiler",
     "name": "`pipeline <name> { ... }`",
     "global_settings": "`seed`, `secret ref` and the `settings { }` block",
@@ -93,13 +93,13 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
         spans[("global_settings", key)] = setting.span
     for option in program.extra_settings:
         key = option.key.text
-        if key in _SETTING_SYNTAX:
+        if key in SETTING_SYNTAX:
             problems.append(
                 Diagnostic(
                     "lang.option_not_allowed",
                     f"`{key}` is not written in `settings`",
                     option.key.span,
-                    f"use {_SETTING_SYNTAX[key]}",
+                    f"use {SETTING_SYNTAX[key]}",
                 )
             )
         elif key in settings:
@@ -145,13 +145,13 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
         config["targets"] = targets
     for option in program.options:
         key = option.key.text
-        if key in _BLOCK_SYNTAX:
+        if key in BLOCK_SYNTAX:
             problems.append(
                 Diagnostic(
                     "lang.option_not_allowed",
                     f"`{key}` is not written in `options`",
                     option.key.span,
-                    f"use {_BLOCK_SYNTAX[key]}",
+                    f"use {BLOCK_SYNTAX[key]}",
                 )
             )
         elif key in config:
@@ -333,12 +333,12 @@ def _column(
     provider_config: dict[str, Any] = {}
     for option in call.options:
         key = option.key.text
-        if key in _OWN_SYNTAX:
+        if key in COLUMN_SYNTAX:
             raise fail(
                 "lang.option_not_allowed",
                 f"`{key}` is not written as an option",
                 option.key.span,
-                f"use {_OWN_SYNTAX[key]}",
+                f"use {COLUMN_SYNTAX[key]}",
             )
         if key in out:
             raise fail("lang.option_repeated", f"`{key}` is given twice", option.key.span)

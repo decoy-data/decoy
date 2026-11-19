@@ -12,12 +12,11 @@ Scalar = str | int | float | bool
 
 @dataclass(frozen=True)
 class Value:
-    """An option value. `quoted` separates the string `"zip"` from the bare word `zip`; both
-    compile to the same string, the difference is kept for the formatter."""
+    """An option value: a scalar, a list or a map. A quoted string and a bare word are the same
+    string."""
 
     value: Scalar | tuple["Value", ...] | dict[str, "Value"]
     span: Span
-    quoted: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,7 +166,6 @@ class Setting:
 
 @dataclass(frozen=True)
 class Program:
-    language_version: int
     name: Name | None
     settings: tuple[Setting, ...]
     lets: tuple[Let, ...]

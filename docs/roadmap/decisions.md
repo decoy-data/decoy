@@ -4,6 +4,12 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-19 (Decoy language).** The Decoy language (`.decoy` files) is a 1.0 focus: it is the
+  native way to define a pipeline, ahead of the wizard plus hand-edited YAML. YAML stays supported.
+  `decoy validate`, `decoy run` and the other pipeline commands read `.decoy` directly in 1.0. An
+  inferred line from `decoy init` carries a `?` review marker and `decoy run` refuses until it is
+  cleared. The `lark` dependency and the lock regeneration it needs are approved. Row DECOY-LANG;
+  plan `docs/plans/2026-11-19-decoy-language-completion.md` (decisions E1, E3, E4, E5).
 - **2026-11-18 (owner calls on the bucket list).**
   - Opt-in defaults: F11 output ordering, F38 dataset metadata and F08 free-text identity binding stay
     opt-in for 1.0 (option A). The docs tell users to turn F08 on for free-text columns.

@@ -1,8 +1,8 @@
 """Every field of the engine's pipeline config can be written in the language.
 
-The field lists come from the engine's JSON schema at test time, so a field the engine adds makes
-a test here fail until the language accounts for it. `OPTIONS_ONLY` is the to-do list: config
-blocks that can only be written through the `options { }` escape hatch. It may only shrink.
+The field lists come from the engine's JSON schema and the syntax tables from the compiler, so
+nothing is restated here. A field the engine adds shows up as one more block that only
+`options { }` can write, and the ratchet below fails until the language accounts for it.
 """
 
 from __future__ import annotations
@@ -10,48 +10,16 @@ from __future__ import annotations
 import pytest
 from decoy_engine import PipelineConfig
 
-from decoy.lang import compile_text
+from decoy.lang import LangError
+from decoy.lang._lower import BLOCK_SYNTAX, COLUMN_SYNTAX, SETTING_SYNTAX, lower
+from decoy.lang._parse import parse
 
 _SCHEMA = PipelineConfig.model_json_schema()
 _DEFS = _SCHEMA["$defs"]
-
-# Top-level blocks with syntax of their own, and the syntax.
-OWN_SYNTAX = {
-    "version": "decoy 1",
-    "name": "pipeline <name>",
-    "global_settings": "seed, secret ref, unconfigured columns, settings { }",
-    "sources": "mask <table> from ...",
-    "targets": "... to ...",
-    "tables": "mask { } and generate { }",
-    "relationships": "child <- table.key orphans <policy>",
-}
-# Top-level blocks written only through `options { }`, with the milestone that gives each its
-# syntax (docs/plans/2026-11-19-decoy-language-completion.md).
-OPTIONS_ONLY = {
-    "namespaces": 3,
-    "pre_scan": 3,
-    "post_scan": 3,
-    "validators": 3,
-    "quarantine": 3,
-    "protected_quarantine": 3,
-    "delivery": 3,
-    "scan_baseline": 3,
-    "subset": 4,
-}
-# Settings with a statement of their own; every other one is written in `settings { }`.
-SETTING_STATEMENTS = {"seed", "mask_secret_ref", "unconfigured_column_policy"}
-# Column fields with syntax of their own; every other one is written as a call option.
-COLUMN_SYNTAX = {
-    "name",
-    "strategy",
-    "provider",
-    "namespace",
-    "deterministic",
-    "vault",
-    "when",
-    "coherent_with",
-    "provider_config",
-}
+# Top-level blocks with no syntax of their own yet: the to-do list, written through `options`.
+_OPTIONS_ONLY = sorted(set(_SCHEMA["properties"]) - set(BLOCK_SYNTAX))
+# May only go down. Each block that gains syntax lowers it by one.
+OPTIONS_ONLY_CEILING = 9
 
 _PROGRAM = """decoy 1
 pipeline {{
@@ -62,42 +30,40 @@ pipeline {{
 """
 
 
-def _config(body: str = "", option: str = "") -> dict:
-    return compile_text(_PROGRAM.format(body=body, option=option), check=False).config
+def _lowered(body: str = "", option: str = "") -> dict:
+    return lower(parse(_PROGRAM.format(body=body, option=option)))[0]
 
 
-def test_every_top_level_block_is_accounted_for() -> None:
-    assert set(OWN_SYNTAX) | set(OPTIONS_ONLY) == set(_SCHEMA["properties"])
-    assert not set(OWN_SYNTAX) & set(OPTIONS_ONLY)
+def test_the_compiler_names_only_real_config_blocks() -> None:
+    assert set(BLOCK_SYNTAX) <= set(_SCHEMA["properties"])
+    assert set(SETTING_SYNTAX) <= set(_DEFS["GlobalSettings"]["properties"])
+    assert set(COLUMN_SYNTAX) <= set(_DEFS["ColumnConfig"]["properties"])
 
 
 def test_the_options_only_list_has_not_grown() -> None:
-    assert len(OPTIONS_ONLY) <= 9
+    assert len(_OPTIONS_ONLY) <= OPTIONS_ONLY_CEILING, _OPTIONS_ONLY
 
 
-@pytest.mark.parametrize("block", sorted(OPTIONS_ONLY))
+@pytest.mark.parametrize("block", _OPTIONS_ONLY)
 def test_a_block_without_syntax_is_written_through_options(block: str) -> None:
-    assert _config(f"options {{ {block}: {{a: [1, x]}} }}")[block] == {"a": [1, "x"]}
+    assert _lowered(f"options {{ {block}: {{a: [1, x]}} }}")[block] == {"a": [1, "x"]}
 
 
-@pytest.mark.parametrize("block", sorted(OWN_SYNTAX))
+@pytest.mark.parametrize("block", sorted(BLOCK_SYNTAX))
 def test_a_block_with_syntax_is_refused_in_options(block: str) -> None:
-    with pytest.raises(Exception, match="not written in `options`"):
-        _config(f"options {{ {block}: 1 }}")
+    with pytest.raises(LangError, match="not written in `options`"):
+        _lowered(f"options {{ {block}: 1 }}")
 
 
 def test_every_setting_can_be_written() -> None:
-    fields = set(_DEFS["GlobalSettings"]["properties"])
-    assert SETTING_STATEMENTS <= fields
-    for field in sorted(fields - SETTING_STATEMENTS):
-        assert _config(f"settings {{ {field}: 7 }}")["global_settings"][field] == 7
+    for field in sorted(set(_DEFS["GlobalSettings"]["properties"]) - set(SETTING_SYNTAX)):
+        assert _lowered(f"settings {{ {field}: 7 }}")["global_settings"][field] == 7
 
 
 def test_every_column_field_can_be_written() -> None:
-    fields = set(_DEFS["ColumnConfig"]["properties"])
-    assert COLUMN_SYNTAX <= fields
-    for field in sorted(fields - COLUMN_SYNTAX):
-        column = _config(option=f"({field}: 7)")["tables"][0]["columns"][0]
+    # `provider` is the call's plain value and also accepted as an option.
+    for field in sorted(set(_DEFS["ColumnConfig"]["properties"]) - set(COLUMN_SYNTAX)):
+        column = _lowered(option=f"({field}: 7)")["tables"][0]["columns"][0]
         assert column[field] == 7, field
 
 

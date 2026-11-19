@@ -17,11 +17,11 @@ from typing import Any
 
 import yaml
 
-from decoy.lang._check import locate, validate
 from decoy.lang._connectors import SourceMap
 from decoy.lang._errors import Diagnostic, LangError, Span, render
 from decoy.lang._lower import lower
 from decoy.lang._parse import parse
+from decoy.lang._validate import validate
 
 __all__ = [
     "Compiled",
@@ -30,7 +30,6 @@ __all__ = [
     "Span",
     "compile_text",
     "emit_yaml",
-    "locate",
     "render",
 ]
 
@@ -41,14 +40,12 @@ class Compiled:
     source_map: SourceMap
 
 
-def compile_text(text: str, *, check: bool = True) -> Compiled:
-    """Compile a `.decoy` program. Raises `LangError` with every problem found.
+def compile_text(text: str) -> Compiled:
+    """Compile a `.decoy` program: parse, lower, then the engine's own validation.
 
-    `check=False` skips the engine's validation and returns the config as lowered.
-    """
+    Raises `LangError` with every problem found."""
     config, spans = lower(parse(text))
-    if check:
-        validate(config, spans)
+    validate(config, spans)
     return Compiled(config, spans)
 
 

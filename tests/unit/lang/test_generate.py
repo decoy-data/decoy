@@ -32,8 +32,8 @@ pipeline {
 """
 
 
-def _tables(text: str = _PIPELINE, *, check: bool = True) -> list[dict]:
-    return compile_text(text, check=check).config["tables"]
+def _tables(text: str = _PIPELINE) -> list[dict]:
+    return compile_text(text).config["tables"]
 
 
 def _errors(text: str) -> list:

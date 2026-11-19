@@ -16,6 +16,7 @@ from lark.exceptions import UnexpectedCharacters, UnexpectedEOF, UnexpectedInput
 
 from decoy.lang import _ast as nodes
 from decoy.lang._errors import LangError, Span, fail
+from decoy.lang._expressions import expression_text, generator_call, number_of, span_of
 from decoy.lang._grammar import DISPLAY, GRAMMAR, KEYWORD_TERMINALS
 
 SUPPORTED_VERSIONS = (1,)
@@ -88,35 +89,23 @@ def _one_of(items: list[str]) -> str:
     return "one of: " + ", ".join(items)
 
 
-def _span(node: Tree[Any] | Token) -> Span:
-    if isinstance(node, Token):
-        return Span(node.line or 1, node.column or 1, node.end_line or 1, node.end_column or 1)
-    meta = node.meta
-    return Span(meta.line, meta.column, meta.end_line, meta.end_column)
-
-
-def _number(token: Token) -> int | float:
-    digits = str(token).replace("_", "")
-    return float(digits) if "." in digits else int(digits)
-
-
 def _name(tree: Tree[Any]) -> nodes.Name:
     token = tree.children[0]
     if token.type == "NAME":
-        return nodes.Name(str(token), _span(token))
+        return nodes.Name(str(token), span_of(token))
     text = python_ast.literal_eval(str(token))
     if not text:
-        raise fail("lang.name_empty", "a name cannot be empty", _span(token))
-    return nodes.Name(text, _span(token))
+        raise fail("lang.name_empty", "a name cannot be empty", span_of(token))
+    return nodes.Name(text, span_of(token))
 
 
 def _value(node: Tree[Any]) -> nodes.Value:
-    span = _span(node)
+    span = span_of(node)
     kind = node.data
     if kind == "string":
-        return nodes.Value(python_ast.literal_eval(str(node.children[0])), span, quoted=True)
+        return nodes.Value(python_ast.literal_eval(str(node.children[0])), span)
     if kind == "number":
-        return nodes.Value(_number(node.children[0]), span)
+        return nodes.Value(number_of(node.children[0]), span)
     if kind in ("true", "false"):
         return nodes.Value(kind == "true", span)
     if kind == "word":
@@ -129,39 +118,10 @@ def _value(node: Tree[Any]) -> nodes.Value:
             token, value = pair.children
             key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
             if key in pairs:
-                raise fail("lang.option_repeated", f"key `{key}` is given twice", _span(token))
+                raise fail("lang.option_repeated", f"key `{key}` is given twice", span_of(token))
             pairs[key] = _value(value)
         return nodes.Value(pairs, span)
     return nodes.Value(tuple(_value(child) for child in node.children if child is not None), span)
-
-
-def _expression_text(node: Tree[Any] | Token) -> str:
-    """One line of canonical text for an expression: the engine's `when` grammar admits spaces
-    and tabs only, and equal programs must compile to equal configs whatever their layout."""
-    if isinstance(node, Token):
-        return str(node).replace("_", "") if node.type == "NUMBER" else str(node)
-    parts = [child for child in node.children if child is not None]
-    if node.data == "expression":
-        return " ".join(_expression_text(part) for part in parts)
-    if node.data == "operator":
-        return " ".join(str(part) for part in parts)
-    if node.data == "operand":
-        return "".join(_expression_text(part) for part in parts)
-    if node.data == "prefix":
-        return "not " if parts[0].type == "NOT" else "-"
-    if node.data == "e_map":
-        raise fail("lang.syntax", "an expression cannot hold a `{...}` map", _span(node))
-    if node.data == "e_option":
-        raise fail(
-            "lang.generator_in_masked_table",
-            "a masked table can only define a column from an expression",
-            _span(node),
-            "generators such as `sequence(start: 1)` belong in a `generate` table",
-        )
-    inner = ", ".join(_expression_text(part) for part in parts if not isinstance(part, Token))
-    if node.data == "e_call":
-        return f"{parts[0]}({inner})"
-    return f"({inner})" if node.data == "e_group" else f"[{inner}]"
 
 
 def _call(tree: Tree[Any]) -> nodes.Call:
@@ -180,13 +140,13 @@ def _call(tree: Tree[Any]) -> nodes.Call:
             raise fail(
                 "lang.positional_after_option",
                 "a plain value cannot follow a `key: value` option",
-                _span(argument),
+                span_of(argument),
                 "put plain values first",
             )
         else:
             positional.append(_value(argument))
     return nodes.Call(
-        _name(name_tree), tuple(positional), tuple(options), arguments is not None, _span(tree)
+        _name(name_tree), tuple(positional), tuple(options), arguments is not None, span_of(tree)
     )
 
 
@@ -195,14 +155,14 @@ def _treatment(tree: Tree[Any]) -> nodes.Treatment:
     when = None
     if condition is not None:
         expression = condition.children[1]
-        when = nodes.Expression(_expression_text(expression), _span(expression))
+        when = nodes.Expression(expression_text(expression), span_of(expression))
     return nodes.Treatment(
         _call(call),
         _name(namespace.children[1]) if namespace is not None else None,
         deterministic is not None,
         vaulted is not None,
         when,
-        _span(tree),
+        span_of(tree),
     )
 
 
@@ -211,48 +171,48 @@ def _names(tree: Tree[Any]) -> tuple[nodes.Name, ...]:
 
 
 def _expression(tree: Tree[Any]) -> tuple[str, Span]:
-    return _expression_text(tree), _span(tree)
+    return expression_text(tree), span_of(tree)
 
 
 def _where(tree: Tree[Any]) -> nodes.Transform:
     text, span = _expression(tree.children[1])
-    return nodes.Transform("filter", (("expression", text, span),), _span(tree))
+    return nodes.Transform("filter", (("expression", text, span),), span_of(tree))
 
 
 def _define(tree: Tree[Any]) -> nodes.Transform:
     name = _name(tree.children[0])
     text, span = _expression(tree.children[1])
     fields = (("column", name.text, name.span), ("expression", text, span))
-    return nodes.Transform("derive", fields, _span(tree))
+    return nodes.Transform("derive", fields, span_of(tree))
 
 
 def _sort(tree: Tree[Any]) -> nodes.Transform:
     keys = tree.children[2:]
     by = [_name(key.children[0]).text for key in keys]
     ascending = [key.children[1] is None or key.children[1].type == "ASC" for key in keys]
-    fields: list[tuple[str, Any, Span]] = [("by", by, _span(tree))]
+    fields: list[tuple[str, Any, Span]] = [("by", by, span_of(tree))]
     if not all(ascending):
-        fields.append(("ascending", ascending, _span(tree)))
-    return nodes.Transform("sort", tuple(fields), _span(tree))
+        fields.append(("ascending", ascending, span_of(tree)))
+    return nodes.Transform("sort", tuple(fields), span_of(tree))
 
 
 def _limit(tree: Tree[Any]) -> nodes.Transform:
     token = tree.children[1]
-    return nodes.Transform("limit", (("n", _number(token), _span(token)),), _span(tree))
+    return nodes.Transform("limit", (("n", number_of(token), span_of(token)),), span_of(tree))
 
 
 def _dedupe(tree: Tree[Any]) -> nodes.Transform:
     names = tree.children[2]
     if names is None:
-        return nodes.Transform("dedupe", (), _span(tree))
+        return nodes.Transform("dedupe", (), span_of(tree))
     columns = [name.text for name in _names(names)]
-    return nodes.Transform("dedupe", (("columns", columns, _span(names)),), _span(tree))
+    return nodes.Transform("dedupe", (("columns", columns, span_of(names)),), span_of(tree))
 
 
 def _drop(tree: Tree[Any]) -> nodes.Transform:
     names = tree.children[1]
     columns = [name.text for name in _names(names)]
-    return nodes.Transform("drop_column", (("columns", columns, _span(names)),), _span(tree))
+    return nodes.Transform("drop_column", (("columns", columns, span_of(names)),), span_of(tree))
 
 
 _TRANSFORMS = {
@@ -275,7 +235,7 @@ def _link(tree: Tree[Any]) -> nodes.Link:
         parent_columns,
         _name(namespace.children[1]) if namespace is not None else None,
         _name(orphans.children[1]) if orphans is not None else None,
-        _span(tree),
+        span_of(tree),
     )
 
 
@@ -290,100 +250,26 @@ def _table(tree: Tree[Any]) -> nodes.Table:
         elif statement.data == "group":
             names, treatment = statement.children
             built.append(
-                nodes.Mask(_names(names), _treatment(treatment), _span(statement), coherent=True)
+                nodes.Mask(_names(names), _treatment(treatment), span_of(statement), coherent=True)
             )
         elif statement.data == "mask":
             built.append(
                 nodes.Mask(
                     _names(statement.children[0]),
                     _treatment(statement.children[1]),
-                    _span(statement),
+                    span_of(statement),
                 )
             )
         else:
-            built.append(nodes.Keep(_names(statement.children[1]), _span(statement)))
-    return nodes.Table(_name(name), _call(source), _call(target), tuple(built), _span(tree))
-
-
-def _single(tree: Tree[Any], kind: str) -> Tree[Any] | Token | None:
-    """The one child of an `expression` or `operand` that is nothing but that child."""
-    parts = [child for child in tree.children if child is not None]
-    return parts[0] if tree.data == kind and len(parts) == 1 else None
-
-
-def _plain_value(tree: Tree[Any]) -> nodes.Value:
-    """A generator argument as a value: a number, text, a bare word, a list or a map.
-
-    Generator calls are read by the expression grammar, since `name = ...` may hold either, so
-    their arguments arrive as expression trees and anything computed is refused here."""
-    span = _span(tree)
-    operand = _single(tree, "expression")
-    parts = [c for c in operand.children if c is not None] if isinstance(operand, Tree) else []
-    negative = (
-        len(parts) == 2 and isinstance(parts[0], Tree) and parts[0].children[0].type == "MINUS"
-    )
-    primary = parts[-1] if parts and (len(parts) == 1 or negative) else None
-    if isinstance(primary, Token):
-        if primary.type == "NUMBER":
-            return nodes.Value(-_number(primary) if negative else _number(primary), span)
-        if not negative and primary.type == "NAME":
-            word = str(primary)
-            return nodes.Value(word == "true" if word in ("true", "false") else word, span)
-        if not negative:
-            return nodes.Value(python_ast.literal_eval(str(primary)), span, quoted=True)
-    elif isinstance(primary, Tree) and not negative and primary.data == "e_list":
-        return nodes.Value(tuple(_plain_value(c) for c in primary.children if c is not None), span)
-    elif isinstance(primary, Tree) and not negative and primary.data == "e_map":
-        pairs: dict[str, nodes.Value] = {}
-        for pair in (c for c in primary.children if c is not None):
-            token, value = pair.children
-            key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
-            if key in pairs:
-                raise fail("lang.option_repeated", f"key `{key}` is given twice", _span(token))
-            pairs[key] = _plain_value(value)
-        return nodes.Value(pairs, span)
-    raise fail(
-        "lang.generator_argument",
-        "a generator takes plain values: numbers, text, words, lists and maps",
-        span,
-        "for a computed column write the expression on its own: `total = price * quantity`",
-    )
-
-
-def _generator_call(expression: Tree[Any]) -> nodes.Call | None:
-    """The call `name(...)` when the whole right-hand side is one call, else None."""
-    operand = _single(expression, "expression")
-    call = _single(operand, "operand") if isinstance(operand, Tree) else None
-    if not isinstance(call, Tree) or call.data != "e_call":
-        return None
-    head = call.children[0]
-    positional: list[nodes.Value] = []
-    options: list[nodes.Option] = []
-    for argument in (c for c in call.children[1:] if isinstance(c, Tree)):
-        if argument.data == "e_option":
-            token, value = argument.children
-            key = nodes.Name(str(token), _span(token))
-            if any(o.key.text == key.text for o in options):
-                raise fail("lang.option_repeated", f"option `{key.text}` is given twice", key.span)
-            options.append(nodes.Option(key, _plain_value(value)))
-        elif options:
-            raise fail(
-                "lang.positional_after_option",
-                "a plain value cannot follow a `key: value` option",
-                _span(argument),
-                "put plain values first",
-            )
-        else:
-            positional.append(_plain_value(argument))
-    name = nodes.Name(str(head), _span(head))
-    return nodes.Call(name, tuple(positional), tuple(options), True, _span(call))
+            built.append(nodes.Keep(_names(statement.children[1]), span_of(statement)))
+    return nodes.Table(_name(name), _call(source), _call(target), tuple(built), span_of(tree))
 
 
 def _generate(tree: Tree[Any]) -> nodes.Generate:
     _, name, _, rows, _, target, *statements = tree.children
     built: list[nodes.GenColumn | nodes.GenLink | nodes.Unique] = []
     for statement in statements:
-        span = _span(statement)
+        span = span_of(statement)
         if statement.data == "gen_link":
             column, _, table, parent = statement.children
             built.append(nodes.GenLink(_name(column), _name(table), _name(parent), span))
@@ -391,7 +277,9 @@ def _generate(tree: Tree[Any]) -> nodes.Generate:
             built.append(nodes.Unique(_names(statement.children[1]), span))
         else:
             built.append(_gen_column(statement))
-    return nodes.Generate(_name(name), _token_value(rows), _call(target), tuple(built), _span(tree))
+    return nodes.Generate(
+        _name(name), _token_value(rows), _call(target), tuple(built), span_of(tree)
+    )
 
 
 def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
@@ -404,7 +292,7 @@ def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
     only_a_call = any(True for _ in body.find_pred(lambda t: t.data in ("e_option", "e_map")))
     call = None
     try:
-        call = _generator_call(body)
+        call = generator_call(body)
     except LangError:
         if only_a_call:
             raise
@@ -412,11 +300,11 @@ def _gen_column(statement: Tree[Any]) -> nodes.GenColumn:
         raise fail(
             "lang.generator_argument",
             "`key: value` options and `{...}` maps belong to a generator call",
-            _span(body),
+            span_of(body),
             "write one call: `id = sequence(start: 1)`",
         )
-    expression = None if only_a_call else nodes.Expression(_expression_text(body), _span(body))
-    return nodes.GenColumn(_name(statement.children[0]), call, expression, _span(statement))
+    expression = None if only_a_call else nodes.Expression(expression_text(body), span_of(body))
+    return nodes.GenColumn(_name(statement.children[0]), call, expression, span_of(statement))
 
 
 def _pairs(pairs: list[Tree[Any]]) -> list[nodes.Option]:
@@ -424,18 +312,18 @@ def _pairs(pairs: list[Tree[Any]]) -> list[nodes.Option]:
     for pair in pairs:
         token, value = pair.children
         key = str(token) if token.type == "NAME" else python_ast.literal_eval(str(token))
-        built.append(nodes.Option(nodes.Name(key, _span(token)), _value(value)))
+        built.append(nodes.Option(nodes.Name(key, span_of(token)), _value(value)))
     return built
 
 
 def _program(tree: Tree[Any]) -> nodes.Program:
     _, version_token, pipeline = tree.children
-    version = _number(version_token)
+    version = number_of(version_token)
     if version not in SUPPORTED_VERSIONS:
         raise fail(
             "lang.version",
             f"language version {version_token} is not supported",
-            _span(version_token),
+            span_of(version_token),
             "this compiler reads `decoy 1`",
         )
     _, name, *items = pipeline.children
@@ -445,7 +333,7 @@ def _program(tree: Tree[Any]) -> nodes.Program:
     extra: list[nodes.Option] = []
     options: list[nodes.Option] = []
     for item in items:
-        span = _span(item)
+        span = span_of(item)
         if item.data == "seed":
             settings.append(nodes.Setting("seed", _token_value(item.children[1]), span))
         elif item.data == "secret":
@@ -462,12 +350,11 @@ def _program(tree: Tree[Any]) -> nodes.Program:
         else:
             tables.append(_table(item))
     return nodes.Program(
-        int(version),
         _name(name) if name is not None else None,
         tuple(settings),
         tuple(lets),
         tuple(tables),
-        _span(pipeline),
+        span_of(pipeline),
         tuple(extra),
         tuple(options),
     )
@@ -475,5 +362,5 @@ def _program(tree: Tree[Any]) -> nodes.Program:
 
 def _token_value(token: Token) -> nodes.Value:
     if token.type in ("DQ_STRING", "SQ_STRING"):
-        return nodes.Value(python_ast.literal_eval(str(token)), _span(token), quoted=True)
-    return nodes.Value(_number(token), _span(token))
+        return nodes.Value(python_ast.literal_eval(str(token)), span_of(token))
+    return nodes.Value(number_of(token), span_of(token))

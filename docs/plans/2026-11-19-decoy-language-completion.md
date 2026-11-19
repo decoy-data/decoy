@@ -2,19 +2,108 @@ Status: current
 
 # DECOY-LANG: plan to completion
 
+Rules consulted: `dev-rules/README.md`, `00-universal.md`, `risk-and-exceptions.md`,
+`development-loop.md`, `feature-dev.md`, `architecture.md`, `proportionality.md`,
+`cross-cutting-concerns.md`, `api-and-compatibility.md`, `testing.md`, `reuse-first.md`,
+`documentation.md`, `config-secrets-and-supply-chain.md`, `catalogs/recurring-defects.md`.
+
+Risk: R2 (a new component with a compatibility surface). Gates not yet met: this plan has had no
+independent plan review, and the code no independent review. Both are required before any merge
+to the main branch. All work is on the branch `claude/sweet-einstein-u3104u`.
+
 Date: 2026-11-19. Design and syntax: [2026-11-19-decoy-language.md](2026-11-19-decoy-language.md).
 This page is the one place that tracks what is built and what is left.
 
 ## Where this is going
 
-After 1.0, pipelines are code first: a project writes and commits a `.decoy` file, and `decoy init`
-is the quick route for simple pipelines. YAML stays as the compiled form the engine reads and as a
-supported input.
+Owner decision, 2026-11-19: the Decoy language is a 1.0 focus. A `.decoy` file is the native way
+to define a pipeline. A project writes and commits it, the `decoy` commands read it directly, and
+`decoy init` writes it. YAML stays supported, as an input and as the compiled form the engine reads.
 
-The aim for the 1.0 launch is to have as much of that finished as possible **without changing
-anything 1.0 has frozen**. Everything up to milestone 6 lives inside `src/decoy/lang/` and its
-tests, so it can be built now and ship in the 1.0 wheel as an experimental feature. Milestone 7
-onward changes `decoy` commands, and waits for the owner decisions at the end of this page.
+That makes the syntax part of what 1.0 promises, so the freeze (milestone 11) is 1.0 work too, and
+the agent trial has to come before it. Roadmap row: DECOY-LANG in
+[roadmap/groups/config.md](../roadmap/groups/config.md).
+
+## Guarantee and non-goals
+
+The change promises exactly this:
+
+1. `compile_text(text)` returns the pipeline config for a `.decoy` program, or raises `LangError`
+   with every problem found, each with a code and a source position.
+2. The config has passed the engine's own validation (`parse_pipeline_config`). The compiler
+   validates nothing the engine validates.
+3. The same text always gives the same config, key for key and in the same key order.
+4. No message quotes a value from the program: it names words of the language, strategies,
+   generators, tables and columns only.
+5. Each bundled template has a `.decoy` twin that compiles to the config its YAML loads to.
+
+Non-goals: running a pipeline; checks the engine makes only at plan compile (expressions in
+`where` and `name = expression`, provider names, namespace rules); any change to a `decoy`
+command; any change to engine behavior; loops, functions or file access in the language.
+
+## Design notes
+
+| Principle | The change pain it answers | How |
+|---|---|---|
+| Deep module | Callers should not learn compile stages | One entry, `compile_text`; stages are private modules |
+| Open/closed | The engine keeps adding strategies, generators, options and settings | Names are read from `strategy_catalog()`, `generate_option_catalog()` and the config JSON schema; the grammar has no strategy or generator names |
+| One place per fact | Syntax tables drifting from tests and docs | `COLUMN_SYNTAX`, `SETTING_SYNTAX`, `BLOCK_SYNTAX` in `_lower.py` are the one list of what has syntax; the coverage test imports them |
+| Single responsibility | A parser file edited for every new statement and every expression rule | Expression handling is `_expressions.py`; each statement family lowers in its own module |
+
+Established pattern and source: a readable front-end over an existing data model with the
+compiled form always available (PRQL, HCL); a language that always terminates (CUE, Dhall,
+Starlark); errors mapped to the source through a source map (Elm, Rust). Section 3 of the design
+page has the survey. Parsing uses Lark, which the engine already uses.
+
+## Choke points and guards
+
+| Rule | Enforced by construction | Guard test | Mutation shown red (head `0ba97d8` plus this change) |
+|---|---|---|---|
+| A compiled config is always validated by the engine, on the value-free route | `compile_text` is the only public way to a config and calls `validate` | `tests/sentry/defects/test_config_error_routes.py` (existing) flags any raw validation in `src/decoy` | Not rerun here; it flagged the first version of `_validate.py` |
+| Every config field can be written | `settings { }` and `options { }` pass any field through | `tests/unit/lang/test_coverage.py` | Removing `relationships` from `BLOCK_SYNTAX` fails `test_the_options_only_list_has_not_grown` |
+| The package stays self-contained | `.importlinter` places `lang` below `cli`, `ci`, `api` | `tests/unit/lang/test_package_boundary.py` | Adding `from decoy.ui import theme` to `_links.py` fails it |
+
+## Placement
+
+One row of the CODEMAP layout map covers the package ("Decoy language compiler").
+
+| File | Directory | Sits beside | Present consumer |
+|---|---|---|---|
+| `_grammar.py`, `_parse.py`, `_expressions.py`, `_ast.py`, `_errors.py` | `src/decoy/lang/` | each other | `compile_text` |
+| `_lower.py`, `_connectors.py`, `_links.py`, `_generate.py` | `src/decoy/lang/` | each other | `compile_text` |
+| `_validate.py` | `src/decoy/lang/` | `_lower.py` | `compile_text` |
+| `__main__.py` | `src/decoy/lang/` | `__init__.py` | `python -m decoy.lang`, the interim compile step until milestone 8 |
+| `Compiled.source_map` | `src/decoy/lang/__init__.py` | | Milestone 8: commands map findings to `.decoy` lines |
+| Tests | `tests/unit/lang/test_<area>.py` | | |
+| Twins | `tests/unit/lang/twins/<template>.decoy` | | `test_twins.py`; they move to `src/decoy/templates/` at milestone 9, when the wizard needs them as template bodies |
+
+Files the later milestones add, placed now so nothing moves later:
+
+| Milestone | File | Holds |
+|---|---|---|
+| 3 | `src/decoy/lang/_safety.py` | Lowering of scans, `expect`, quarantine, delivery, baseline, namespaces |
+| 4 | `src/decoy/lang/_subset.py` | Lowering of `subset { }` |
+| 5 | `src/decoy/lang/_convert.py`, `src/decoy/lang/_print.py` | Config to syntax tree; syntax tree to text (shared with the formatter) |
+| 7 | `src/decoy/lang/_format.py` | Comment-keeping formatter over `_print.py` |
+| 8, 9 | `src/decoy/cli/lang/_<noun>.py` | The `decoy` command surface; `src/decoy/lang/__main__.py` is deleted then |
+
+Expected size per milestone: 3 adds about 250 source lines and one module; 4 about 150 and one
+module; 5 about 400 and two modules. `_parse.py` (about 366 lines) and `_grammar.py` grow with each
+statement and stay under the 800-line cap; if `_parse.py` passes 600 it is split by statement
+family (masking, generation, checks), not by line count.
+
+## Test evidence, stated plainly
+
+- 167 tests in `tests/unit/lang/`, all enumerated cases. None is a property test yet.
+- Line and branch coverage of `src/decoy/lang/`: 98% (923 statements, 14 missed; 324 branches, 17
+  partial), measured with `pytest --cov=decoy.lang --cov-branch`.
+- No mutation score has been measured. The two guard mutations above are the only mutations run.
+- One test runs a compiled foreign key through the engine and checks the join.
+- The round-trip property test arrives with milestone 5 and needs Hypothesis, which is not in the
+  dev lock (decision E6).
+- The full repository suite has not been run on this head. The last full `tests/sentry` run was
+  before the cleanup in this change; since then only the language tests and the layout, config
+  route, engine boundary, source hygiene and config-load guards were rerun.
 
 ## Built
 
@@ -28,7 +117,7 @@ onward changes `decoy` commands, and waits for the owner decisions at the end of
 | Generation: `generate` blocks, generator calls, expressions, `<-`, `unique` | Built |
 | Errors on source lines, never quoting a config value | Built |
 | All 11 bundled templates have a `.decoy` twin that compiles to the same config | Built |
-| `python -m decoy.lang file.decoy` prints the pipeline YAML | Built, experimental |
+| `python -m decoy.lang file.decoy` prints the pipeline YAML | Built; interim until the commands read `.decoy` |
 | `settings { }` for any pipeline setting; `options { }` escape hatch for any config block | Built |
 | Coverage test against the engine's config schema (`tests/unit/lang/test_coverage.py`); nine blocks are `options`-only | Built |
 
@@ -62,20 +151,24 @@ Notes on the order:
   read it yet (it is not a `PipelineConfig` field; it is expanded before validation). Language
   syntax follows the CLI roadmap rows that add it (F16).
 
-## What can be finished by the 1.0 launch
+## Order for 1.0
 
-| Group | Milestones | Needs |
+| Step | Milestones | Why here |
 |---|---|---|
-| Can be complete at launch, shipped experimental | 1 to 6, and 10 as draft pages | Decision E1 |
-| Can be built before launch, but changes a command | 7, 8, 9 | Decisions E2 and E3 |
-| After launch | 11 (needs the trial result and real use), 12 (needs CLI policy support) | |
+| 1 | 3, 4 | Finish the syntax inside the package; no command changes |
+| 2 | 5 | The converter gives existing pipelines a way in and supplies the trial's task pairs |
+| 3 | 6 | Evidence on the syntax before anything public depends on it |
+| 4 | 8 | The commands read `.decoy`. This changes frozen 1.0 code, so it gets its own plan and review before building |
+| 5 | 7, 9 | The formatter and the wizard output build on the commands |
+| 6 | 10, 11 | Docs, then the freeze |
+| After 1.0 | 12 | Needs the CLI to read the `policy` block first |
 
 ## Working rules
 
 1. No change to engine behavior. If the compiler needs an engine fact that is private, that is a
    small read-only accessor in the engine, as its own change.
-2. No change to a `decoy` command, its output, exit codes or stored formats until the decision
-   that covers it is made.
+2. A change to a `decoy` command, its output, exit codes or stored formats (milestones 7 to 9)
+   starts from its own reviewed plan.
 3. The compiler holds no list of strategies, generators, options or config fields. It reads the
    engine's catalogs and schema.
 4. Every construct has a test that compiles it and, where the engine can run it cheaply, a test
@@ -87,17 +180,16 @@ Notes on the order:
 
 | # | Decision | Needed for | Recommendation |
 |---|---|---|---|
-| E1 | List the Decoy language in the experimental tier for 1.0 (roadmap row EXPERIMENTAL-TIER): it ships and works, and its syntax may change in a 1.x minor | Shipping milestones 1 to 6 in the 1.0 wheel | Yes |
-| E2 | How an experimental command is offered: a normal command with an "experimental" label, or behind an environment switch | Milestones 7 and 8 before launch | Label, no switch: one fewer thing to explain |
-| E3 | Whether `decoy validate` and `decoy run` accept `.decoy` in 1.0, or the separate compile step is the 1.0 form | Milestone 8 before launch | Compile step for 1.0; direct reading in the first 1.x minor |
-| E4 | Review marker: an inferred line ends with `?` and `decoy run` refuses until it is cleared | Milestone 9 | Yes |
-| E5 | Whether the `lark` dependency, now declared directly, needs the lock files regenerated before release | Any release that includes `decoy.lang` | Regenerate with the next lock update |
+| E1 | Is the language experimental in 1.0 | | **Decided 2026-11-19:** no. It is a 1.0 focus and the native pipeline definition |
+| E2 | How an experimental command is offered | | Not needed after E1 |
+| E3 | Do `decoy validate` and `decoy run` read `.decoy` in 1.0 | Milestone 8 | **Decided 2026-11-19:** yes |
+| E4 | Review marker: an inferred line ends with `?` and `decoy run` refuses until it is cleared | Milestone 9 | **Decided 2026-11-19:** yes |
+| E5 | The `lark` dependency and the lock | Any merge | **Approved 2026-11-19 and done:** `scripts/dev/lock.sh` rewrote `requirements-dev.lock` (the only change is that `lark` is now also listed as required by the CLI) and `lock.sh --check` passes |
+| E6 | Add Hypothesis to the dev dependencies for the round-trip property test | Milestone 5 | Yes; the testing rules ask for property tests on round-trip claims |
+| E7 | Where the compiler lives long term. It is self-contained in the CLI package today. If the platform or another tool must read `.decoy`, it should not depend on the CLI | Before milestone 8 | Keep it in the CLI for 1.0; the boundary test keeps a later move to its own package a file move |
 
 ## Open items
 
-- `tests/sentry/allowlist-before.json` and the engine-reason-code allowlist each gained one entry
-  for the config key `row_count` in `lang/_generate.py`. The allowlist is meant to shrink; a
-  maintainer should confirm the entry or ask for the key to be avoided.
 - The reason-code scan also flags `_resources.py` and `ci/rule_codes.py` when run against the local
   engine checkout (0.28.0). Those files are not part of this work; cause not investigated.
 - Mistakes inside `where` and `name = expression` are found by the engine only at plan compile,

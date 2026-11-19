@@ -42,14 +42,6 @@ Carried from the old open-questions list:
 - The SBOM lock-mode refusal prints lock package names.
 - The engine `vault_key_mismatch` message still says "the config's seed does not decrypt this vault".
 
-- 2026-11-19, owner idea: DECOY-LANG, a small pipeline language (`.decoy` files) that compiles to
-  the existing pipeline YAML, as an easier hand-written and agent-written form than YAML next to
-  `decoy init`. CLI only, no engine behavior change. Draft plan:
-  [plans/2026-11-19-decoy-language.md](../plans/2026-11-19-decoy-language.md); milestones and owner
-  decisions E1 to E5 in
-  [plans/2026-11-19-decoy-language-completion.md](../plans/2026-11-19-decoy-language-completion.md).
-  Likely Later, shipped experimental in 1.0 if E1 is yes.
-
 - 2026-11-19, DECOY-LANG foreign-key experiment (engine 0.28.0 checkout, three-row tables, one run,
   not investigated further): with a parent key masked by `faker` (`person_email`, namespace set,
   `deterministic` off) and a relationship with `orphan_policy: remap`, the orphan child key was

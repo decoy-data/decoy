@@ -1,7 +1,7 @@
 """Compiler diagnostics for the Decoy language.
 
-A diagnostic carries a public code, a message and a source position. Rendering is separate, so a
-caller that must not echo config text can print the position alone.
+A diagnostic carries a public code, a message and a source position. Messages name words of the
+language, strategies, tables and columns, never a value the config holds.
 """
 
 from __future__ import annotations
@@ -39,20 +39,14 @@ def fail(code: str, message: str, span: Span | None = None, hint: str | None = N
     return LangError([Diagnostic(code, message, span, hint)])
 
 
-def render(diagnostic: Diagnostic, source: str | None = None, filename: str = "<input>") -> str:
-    """One diagnostic as text. With `source`, the offending line is shown with a caret under it."""
+def render(diagnostic: Diagnostic, filename: str = "<input>") -> str:
+    """One diagnostic as text: `file:line:column: error[code]: message`, then its hint.
+
+    The source line is never shown: the CLI's rule is that an error does not quote the config."""
     where = filename
     if diagnostic.span is not None:
         where = f"{filename}:{diagnostic.span.line}:{diagnostic.span.column}"
     lines = [f"{where}: error[{diagnostic.code}]: {diagnostic.message}"]
-    if source is not None and diagnostic.span is not None:
-        text = source.splitlines()
-        if 0 < diagnostic.span.line <= len(text):
-            span = diagnostic.span
-            shown = text[span.line - 1]
-            end = span.end_column if span.end_line == span.line else len(shown) + 1
-            width = max(1, end - span.column)
-            lines += [f"  {shown}", "  " + " " * (span.column - 1) + "^" * width]
     if diagnostic.hint:
         lines.append(f"  hint: {diagnostic.hint}")
     return "\n".join(lines)

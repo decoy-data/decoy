@@ -23,6 +23,7 @@ HEADER = ("Kind", "Goes in", "File naming", "Tests", "Sentries and registries")
 KINDS = frozenset(
     {
         "Command module",
+        "Decoy language compiler (one module per compile stage; statement kinds lower in their own module)",
         "Command-private helpers",
         "Local record library (LIB): root rule, store, and later refs, index, scratch and logs; commands import the facade, never its `_` modules",
         "Generation CLI helpers (the exact fit shared by `fit` and `init`, the `run --rows` preview, the CSV generate scaffold; the flat `cli/` is frozen)",

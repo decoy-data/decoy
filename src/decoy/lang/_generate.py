@@ -66,12 +66,7 @@ def lower_generate(table: nodes.Generate, config: dict[str, Any], spans: SourceM
         raise LangError(problems)
     spans[("tables", index)] = table.span
     spans[("tables", index, "name")] = table.name.span
-    spans[("tables", index, "row_count")] = table.rows.span
-    entry: dict[str, Any] = {
-        "name": name,
-        "row_count": plain(table.rows),
-        "generate_columns": columns,
-    }
+    entry: dict[str, Any] = dict(name=name, row_count=plain(table.rows), generate_columns=columns)
     if unique_together:
         entry["unique_together"] = unique_together
     config["tables"].append(entry)

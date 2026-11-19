@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from decoy.lang import LangError, compile_text, locate, render
+from decoy.lang import LangError, compile_text, render
+from decoy.lang._lower import lower
+from decoy.lang._parse import parse
+from decoy.lang._validate import locate
 
 _BASE = """decoy 1
 
@@ -18,8 +21,13 @@ pipeline demo {
 """
 
 
-def _config(text: str, *, check: bool = True) -> dict:
-    return compile_text(text, check=check).config
+def _config(text: str) -> dict:
+    return compile_text(text).config
+
+
+def _lowered(text: str) -> dict:
+    """The config before the engine validates it, for options the engine would refuse."""
+    return lower(parse(text))[0]
 
 
 def _errors(text: str) -> list:
@@ -66,7 +74,7 @@ def test_csv_source_has_a_header_by_default_and_targets_do_not_carry_it() -> Non
 
 def test_source_options_are_renamed_and_passed_through() -> None:
     text = _BASE.replace('csv("in.csv")', 'csv("in.csv", header: false, delimiter: "|")')
-    source = _config(text, check=False)["sources"]["people"]
+    source = _lowered(text)["sources"]["people"]
     assert source["has_header"] is False
     assert source["delimiter"] == "|"
 
@@ -103,7 +111,7 @@ def test_strategy_options_split_between_the_column_and_provider_config() -> None
 
 def test_values_numbers_strings_lists_and_booleans() -> None:
     rule = "ssn : fpe(a: -3, b: 1.5, c: 'x y', d: [one, \"two\", 3], e: true, f: false) in n"
-    [column] = _config(_with_rule(rule), check=False)["tables"][0]["columns"]
+    [column] = _lowered(_with_rule(rule))["tables"][0]["columns"]
     assert column["provider_config"] == {
         "a": -3,
         "b": 1.5,
@@ -208,16 +216,12 @@ def test_locate_falls_back_to_the_nearest_enclosing_construct() -> None:
     assert locate(("nothing",), compiled.source_map).line == 3
 
 
-def test_render_shows_the_line_a_caret_and_the_hint() -> None:
-    text = _with_rule("ssn : redcat")
-    shown = render(_errors(text)[0], text, "p.decoy")
+def test_render_shows_the_position_the_code_and_the_hint() -> None:
+    shown = render(_errors(_with_rule("ssn : redcat"))[0], "p.decoy")
     assert shown.splitlines() == [
         "p.decoy:7:11: error[lang.unknown_strategy]: `redcat` is not a strategy or a `let` name",
-        "      ssn : redcat",
-        "            ^^^^^^",
         "  hint: did you mean `redact`?",
     ]
-    assert render(_errors(text)[0]).count("\n") == 1  # no source: position and hint only
 
 
 def test_layout_is_free_spaces_and_line_breaks_only_separate_words() -> None:
@@ -236,8 +240,8 @@ def test_reserved_words_in_a_table_need_quotes_as_column_names() -> None:
     )
 
 
-def _columns(rule: str, *, check: bool = True) -> list[dict]:
-    return _config(_with_rule(rule), check=check)["tables"][0]["columns"]
+def _columns(rule: str) -> list[dict]:
+    return _config(_with_rule(rule))["tables"][0]["columns"]
 
 
 def test_when_condition_becomes_one_line_of_canonical_text() -> None:
