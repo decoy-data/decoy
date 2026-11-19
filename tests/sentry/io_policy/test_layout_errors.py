@@ -1,7 +1,8 @@
-"""G-ONE-LAYOUT-CODE: every `layout.*` code lives in the registry `cli/io/_layout_errors.py`.
+"""G-ONE-LAYOUT-CODE: every `layout.*` and `report.*` code lives in the registry
+`cli/io/_layout_errors.py`.
 
-- no string literal in `src/` outside the registry carries a `layout.<code>` token (docstrings
-  aside), so gate findings, command errors and tests of those read one source;
+- no string literal in `src/` outside the registry carries a `layout.<code>` or `report.<code>`
+  token (docstrings aside), so gate findings, command errors and tests of those read one source;
 - the registry is well formed: unique codes, each `layout.` plus lower-case words, every gate
   descriptor reachable through `decoy.cli.io` and its code in the CI rule-code set;
 - code outside `cli/io` imports the layout services from the public `decoy.cli.io` package,
@@ -25,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 REGISTRY_FILE = "cli/io/_layout_errors.py"
 PRIVATE_MODULES = ("_layout", "_project", "_pipelines", "_layout_errors")
-_TOKEN = re.compile(r"(?<![\w.])layout\.[a-z]+(?:_[a-z]+)+")
+_TOKEN = re.compile(r"(?<![\w.])(?:layout|report)\.[a-z]+(?:_[a-z]+)+")
 _CODE = re.compile(r"(?:layout|report)\.[a-z]+(?:_[a-z]+)+")
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
 
@@ -41,7 +42,7 @@ def _docstrings(tree: ast.AST) -> set[int]:
 
 
 def literal_findings(source: str, rel: str) -> list[str]:
-    """`file:line` of each string literal that carries a `layout.<code>` token."""
+    """`file:line` of each string literal that carries a `layout.<code>` or `report.<code>` token."""
     if rel == REGISTRY_FILE:
         return []
     tree = ast.parse(source)
@@ -140,6 +141,7 @@ def test_a_layout_error_text_is_the_fixed_message_and_nothing_more() -> None:
         'CODE = "layout.project_not_found"\n',
         'def f():\n    return {"rule": "layout.pipeline_unknown"}\n',
         'x = f"bad layout.output_path_escapes {y}"\n',
+        'CODE = "report.source_ambiguous"\n',
     ],
 )
 def test_a_layout_code_literal_outside_the_registry_is_caught(source: str) -> None:
