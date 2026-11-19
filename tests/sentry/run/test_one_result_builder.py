@@ -23,26 +23,43 @@ MODEL_NAMES = {"RunResult", "RunResultRead"}
 COPY_METHODS = {"model_construct", "model_validate", "model_copy"}
 
 
-def _name(node: ast.AST) -> str | None:
+def _aliases(tree: ast.Module) -> dict[str, str]:
+    """Local name to canonical symbol, for `from m import x as y` and `y = x` bindings.
+
+    `import m as n` needs no entry: `n.x` already names the canonical `x` by attribute.
+    """
+    table: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for item in node.names:
+                table[item.asname or item.name] = item.name
+        elif isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+            source = table.get(node.value.id, node.value.id)
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    table[target.id] = source
+    return table
+
+
+def _name(node: ast.AST, table: dict[str, str]) -> str | None:
+    """The canonical symbol an expression names: aliases resolved, attributes by their name."""
     if isinstance(node, ast.Name):
-        return node.id
+        return table.get(node.id, node.id)
     if isinstance(node, ast.Attribute):
         return node.attr
     return None
 
 
-def _receiver(node: ast.Attribute) -> str | None:
-    return _name(node.value)
-
-
 def builder_violations(source: str, rel: str) -> list[str]:
     found: list[str] = []
     calls = 0
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    table = _aliases(tree)
+    for node in ast.walk(tree):
         if isinstance(node, ast.alias) and "build_run_result" in node.name and rel != OWNER:
             found.append(f"{rel}: build_run_result imported outside _result.py")
         if isinstance(node, ast.Call):
-            callee = _name(node.func)
+            callee = _name(node.func, table)
             if callee == "build_run_result":
                 calls += 1
                 if rel != OWNER:
@@ -52,7 +69,7 @@ def builder_violations(source: str, rel: str) -> list[str]:
             if (
                 isinstance(node.func, ast.Attribute)
                 and node.func.attr in COPY_METHODS
-                and _receiver(node.func) in MODEL_NAMES
+                and _name(node.func.value, table) in MODEL_NAMES
             ):
                 found.append(f"{rel}:{node.lineno}: {node.func.attr} on a run result model")
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and SCHEMA in node.value:
@@ -63,8 +80,11 @@ def builder_violations(source: str, rel: str) -> list[str]:
 
 
 def delivery_violations(source: str, rel: str) -> list[str]:
-    """Every `DeliveryFacts(` and `DeliveryFacts.not_applicable(` outside `delivery_facts`."""
+    """Every `DeliveryFacts(` and `DeliveryFacts.not_applicable(` outside `delivery_facts`,
+    by canonical name, so an aliased import or a rebinding is counted the same."""
     found: list[str] = []
+    tree = ast.parse(source)
+    table = _aliases(tree)
 
     def walk(node: ast.AST, scope: str) -> None:
         for child in ast.iter_child_nodes(node):
@@ -75,17 +95,17 @@ def delivery_violations(source: str, rel: str) -> list[str]:
                 found.append(f"{rel}: DeliveryFacts imported outside _result.py")
             if isinstance(child, ast.Call):
                 func = child.func
-                direct = _name(func) == "DeliveryFacts"
+                direct = _name(func, table) == "DeliveryFacts"
                 named = (
                     isinstance(func, ast.Attribute)
                     and func.attr == "not_applicable"
-                    and _name(func.value) == "DeliveryFacts"
+                    and _name(func.value, table) == "DeliveryFacts"
                 )
                 if (direct or named) and (rel, scope) != (OWNER, PROVIDER):
                     found.append(f"{rel}:{child.lineno}: DeliveryFacts built outside {PROVIDER}")
             walk(child, inner)
 
-    walk(ast.parse(source), "")
+    walk(tree, "")
     return found
 
 
@@ -136,6 +156,29 @@ def test_seeded_import_alias_is_caught() -> None:
     assert delivery_violations(
         "from decoy_engine.run_result import DeliveryFacts as D\n", "cli/run/_render.py"
     )
+
+
+def test_seeded_aliased_calls_are_counted_by_canonical_name() -> None:
+    owner_twice = (
+        "from decoy_engine.run_result import build_run_result as b\n"
+        "def f():\n    b(a=1)\n    b(a=2)\n"
+    )
+    assert any("called 2 times" in v for v in builder_violations(owner_twice, OWNER))
+    other = "from decoy_engine.run_result import build_run_result as b\nb(a=1)\n"
+    assert any("outside" in v for v in builder_violations(other, "cli/run/_render.py"))
+    rebound = "b = build_run_result\nb(a=1)\nb(a=2)\n"
+    assert any("called 2 times" in v for v in builder_violations(rebound, OWNER))
+
+
+def test_seeded_aliased_models_and_facts_are_caught() -> None:
+    model = "from decoy_engine.run_result import RunResult as R\nR(a=1)\n"
+    assert any("built by hand" in v for v in builder_violations(model, "cli/x.py"))
+    read = "from m import RunResultRead as R\nR.model_validate(d)\n"
+    assert any("model_validate" in v for v in builder_violations(read, "cli/x.py"))
+    facts = "from m import DeliveryFacts as D\nD('in_place', 'not_used', {})\nD.not_applicable()\n"
+    assert len([v for v in delivery_violations(facts, "cli/run/_render.py") if "built" in v]) == 2
+    module_attr = "import decoy_engine.run_result as rr\nrr.build_run_result(a=1)\n"
+    assert builder_violations(module_attr, "cli/run/_render.py")
 
 
 def test_unrelated_validate_is_not_flagged() -> None:
