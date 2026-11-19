@@ -399,23 +399,8 @@ Someone should be able to read for ten minutes and start writing.
 
 ## 8. Build order
 
-Each step ends with something runnable. Each group gets a short design pass first: write the
-programs, agree the syntax, then build.
-
-| Step | Content | Ends with |
-|---|---|---|
-| 0 | Syntax trial. Hand-translate five real configs into two candidate styles (section 12, D1). Pick one. Write the agent card. | Agreed syntax for groups A to F |
-| 1 | Compiler skeleton: parse, AST, lower, validate, source-mapped errors. Groups A, B and the simple part of D. **Built** in `src/decoy/lang/`: the four mask templates compile to identical config. Not wired to a command; `when` waits for group G. | Recipe (a) compiles |
-| 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. **Built:** `when` conditions, nested `{key: value}` option values, fixed-width sources. An expression is only delimited by the compiler and sent to the engine as one line of text; the engine's grammars decide what is valid. Strategy options that hold an expression (`derived(expression: "age * 12")`) are still quoted strings. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
-| 3 | Group C transforms. **Built:** `where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`; a generator in a masked table is refused. The engine checks `where` and `=` expressions at plan compile, so the compiler does not report mistakes inside them yet. Group E: **built:** `<-` foreign keys with composite keys and `orphans`, `{a, b} : rule` coherent groups; a test runs a compiled link through the engine and checks the join. The top-level `namespaces:` block has no syntax yet. | A multi-table foreign-key pipeline compiles |
-| 4 | Group F generation. **Built:** `generate` blocks with generator calls, expressions, `<-` references and `unique`. | All seven `generate-*` templates compile to identical YAML (done) |
-| 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. **Built, experimental:** `python -m decoy.lang pipeline.decoy > pipeline.yaml`, then the usual `decoy validate` and `decoy run` on the YAML. No `decoy` command reads `.decoy` yet: `validate` and `run` read the config text in more than one place and report findings by YAML line, so reading `.decoy` directly needs those to use the compiler's source map. The escape hatch is not built. | **v0.1: usable for real pipelines** |
-| 6 | Group J checks. Group H policy and `use`. Group I subset. | Full coverage of `PipelineConfig` |
-| 7 | Formatter, YAML converter, round-trip test, coverage test. | Safe to hand to others |
-| 8 | Wizard writes `.decoy`; review marker (section 11). Docs set. | Ready to ship |
-| 9 | Editor support: syntax highlighting, then hover and completion. | Optional |
-
-Rough size: steps 0 to 5 are three to five weeks of focused work; steps 6 to 8 add four to six.
+The milestones, what is built and what is left are tracked in one place:
+[2026-11-19-decoy-language-completion.md](2026-11-19-decoy-language-completion.md).
 
 ## 9. Testing
 
@@ -487,17 +472,5 @@ test says by how much. It can never be ahead of it or disagree with it.
 ## 14. Before pipelines become code first
 
 Direction (owner, 2026-11-19): after 1.0, a `.decoy` file is the main way to write a pipeline, and
-`decoy init` is the quick route for simple ones. That flips the default for every user, so it waits
-for all of these:
-
-| # | Bar | State |
-|---|---|---|
-| 1 | Everything `PipelineConfig` accepts can be written: checks, policy and disguises, subsetting, the `namespaces` block, the escape hatch | Not built |
-| 2 | `decoy validate`, `decoy run` and the other pipeline commands read `.decoy` directly, with findings on `.decoy` lines | Not built; today it is a separate compile step |
-| 3 | A converter turns any existing pipeline YAML into `.decoy`, and the round-trip test holds | Not built |
-| 4 | The coverage test fails when the engine adds a config field the language cannot write | Not built |
-| 5 | A formatter, so every file has one layout | Not built |
-| 6 | The docs set in section 7, including the one-page agent card | Not built |
-| 7 | The agent trial in section 9: agents get a valid pipeline first time more often in `.decoy` than in YAML | Not run |
-| 8 | `decoy init` writes `.decoy` | Not built |
-| 9 | The syntax is frozen under the compatibility rules, with `decoy 1` as its version | Syntax still changing |
+`decoy init` is the quick route for simple ones. What that waits for is the milestone table in
+[2026-11-19-decoy-language-completion.md](2026-11-19-decoy-language-completion.md).
