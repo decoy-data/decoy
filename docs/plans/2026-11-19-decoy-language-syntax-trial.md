@@ -42,7 +42,7 @@ decoy 1
 pipeline {
   seed 42
 
-  table people from csv("input.csv") to csv("output.csv") {
+  mask people from csv("input.csv") to csv("output.csv") {
     first_name     : faker(person_first_name)
     last_name      : faker(person_last_name)
     email          : faker(person_email)
@@ -60,7 +60,7 @@ decoy 1
 pipeline {
   seed 42
 
-  table people from csv("input.csv") to csv("output.csv") {
+  mask people from csv("input.csv") to csv("output.csv") {
     mask first_name with faker(person_first_name)
     mask last_name  with faker(person_last_name)
     mask email      with faker(person_email)
@@ -82,7 +82,7 @@ pipeline {
 
   let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
 
-  table patients from csv("patients.csv") to csv("patients_masked.csv") {
+  mask patients from csv("patients.csv") to csv("patients_masked.csv") {
     first_name : faker(person_first_name)
     last_name  : faker(person_last_name)
     street     : faker(address_street)
@@ -114,7 +114,7 @@ pipeline {
 
   let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
 
-  table patients from csv("patients.csv") to csv("patients_masked.csv") {
+  mask patients from csv("patients.csv") to csv("patients_masked.csv") {
     mask first_name with faker(person_first_name)
     mask last_name  with faker(person_last_name)
     mask street     with faker(address_street)
@@ -146,7 +146,7 @@ decoy 1
 pipeline {
   seed 42
 
-  table transactions from csv("transactions.csv") to csv("transactions_masked.csv") {
+  mask transactions from csv("transactions.csv") to csv("transactions_masked.csv") {
     cardholder_name  : faker(person_name)
     card_number      : fpe(charset: digits, validate_luhn: true) in pan_identity
     card_expiry, cvv : redact
@@ -166,7 +166,7 @@ decoy 1
 pipeline {
   seed 42
 
-  table transactions from csv("transactions.csv") to csv("transactions_masked.csv") {
+  mask transactions from csv("transactions.csv") to csv("transactions_masked.csv") {
     mask cardholder_name  with faker(person_name)
     mask card_number      with fpe(charset: digits, validate_luhn: true) in pan_identity
     mask card_expiry, cvv with redact
@@ -193,7 +193,7 @@ pipeline member_export {
   secret ref("mask-key")
   unconfigured columns error
 
-  table members
+  mask members
     from s3("acme-landing", "members/2026-06.csv", credentials: "phi-readonly", delimiter: "|")
     to   parquet("out/members.parquet")
   {
@@ -216,7 +216,7 @@ pipeline member_export {
   secret ref("mask-key")
   unconfigured columns error
 
-  table members
+  mask members
     from s3("acme-landing", "members/2026-06.csv", credentials: "phi-readonly", delimiter: "|")
     to   parquet("out/members.parquet")
   {

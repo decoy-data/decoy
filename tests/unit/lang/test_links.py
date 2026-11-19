@@ -16,24 +16,24 @@ _PIPELINE = """decoy 1
 pipeline shop {
   seed 7
 
-  table customers from csv("customers.csv") to csv("out/customers.csv") {
+  mask customers from csv("customers.csv") to csv("out/customers.csv") {
     customer_id : hash in customer_identity
     {first_name, last_name, email} : faker(composite_name_email)
   }
 
-  table orders from csv("orders.csv") to csv("out/orders.csv") {
+  mask orders from csv("orders.csv") to csv("out/orders.csv") {
     order_id : hash in order_identity
     customer_id <- customers.customer_id orphans preserve
     keep total
   }
 
-  table lines from csv("lines.csv") to csv("out/lines.csv") {
+  mask lines from csv("lines.csv") to csv("out/lines.csv") {
     order_id <- orders.order_id orphans fail
     customer_id <- orders.customer_id orphans preserve
     keep sku
   }
 
-  table refunds from csv("refunds.csv") to csv("out/refunds.csv") {
+  mask refunds from csv("refunds.csv") to csv("out/refunds.csv") {
     customer_id <- customers.customer_id orphans preserve
     keep amount
   }
@@ -184,11 +184,11 @@ def test_compiled_links_keep_the_join_when_the_engine_runs_them(
 pipeline {{
   seed 7
   secret ref("env:DECOY_LANG_TEST_KEY")
-  table parent from parquet("{tmp_path}/parent.parquet") to parquet("{tmp_path}/parent.out.parquet") {{
+  mask parent from parquet("{tmp_path}/parent.parquet") to parquet("{tmp_path}/parent.out.parquet") {{
     id : hash in ids
     keep region
   }}
-  table child from parquet("{tmp_path}/child.parquet") to parquet("{tmp_path}/child.out.parquet") {{
+  mask child from parquet("{tmp_path}/child.parquet") to parquet("{tmp_path}/child.out.parquet") {{
     parent_id <- parent.id orphans preserve
     keep amount
   }}

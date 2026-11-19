@@ -108,12 +108,12 @@ dialect options, fixed-width layouts and an opaque `credentials_ref`. The CLI ad
 `sources:` and `targets:` blocks keyed by table name.
 
 ```
-table patients
+mask patients
   from csv("in/patients.csv", delimiter: "|")
   to   parquet("out/patients.parquet")
 { ... }
 
-table claims from s3("acme-landing", "claims/2026-06.parquet", credentials: "phi-readonly") { ... }
+mask claims from s3("acme-landing", "claims/2026-06.parquet", credentials: "phi-readonly") { ... }
 ```
 
 ### Group C: Table shaping
@@ -336,7 +336,7 @@ decoy 1
 pipeline people {
   seed 42
 
-  table people from csv("people.csv") to csv("people_masked.csv") {
+  mask people from csv("people.csv") to csv("people_masked.csv") {
     email : faker(person_email)
     ssn   : redact
   }
@@ -465,6 +465,7 @@ test says by how much. It can never be ahead of it or disagree with it.
 |---|---|---|
 | D1 | Column style | **Decided: symbols.** `ssn : fpe(...)` masks, `id = sequence(...)` defines, `keep status` leaves unchanged. Verbs were built first, then reverted |
 | D2 | Name and file extension | `.decoy` |
+| D10 | Block words | **Decided:** `mask <table> from ... to ...` for a masked table, beside `generate <table> rows N to ...`; both name what happens to the table |
 | D7 | Comments | **Decided: `#`.** `//` is integer division in the engine's expression grammar |
 | D8 | CSV header | **Decided:** a CSV source has a header row unless `header: false` |
 | D9 | Generators in a masked table | **Decided:** compile error until the engine supports mixed tables |

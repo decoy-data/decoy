@@ -3,7 +3,7 @@ decoy 1
 pipeline {
   seed 42
 
-  table transactions from csv("./transactions.csv") to csv("./transactions_masked.csv") {
+  mask transactions from csv("./transactions.csv") to csv("./transactions_masked.csv") {
     cardholder_name  : faker(person_name)
     card_number      : fpe(charset: digits, validate_luhn: true) in pan_identity
     card_expiry, cvv : redact

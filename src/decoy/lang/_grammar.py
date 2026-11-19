@@ -1,7 +1,7 @@
 """The grammar of the Decoy language, version 1 (pipeline settings, sources, targets, masking).
 
 Block structure follows HCL (named blocks in braces); calls take `key: value` options as in Swift
-and Kotlin. Keywords are contextual: a column may be called `seed` or `table`, because the lexer
+and Kotlin. Keywords are contextual: a column may be called `seed` or `mask`, because the lexer
 only offers a keyword where the parser can accept one. Inside a table that leaves a few reserved
 words (the statement words `keep`, `where`, `sort`, `limit`, `dedupe`, `drop`, the rule words `in`,
 `deterministic`, `vaulted`, `when`, and inside an expression `and`, `or`, `not`, `if`, `else`); a
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 # A keyword must not match the front of a longer word (`in` inside `input`).
 _KEYWORDS = (
-    "decoy pipeline seed secret ref unconfigured columns let table from to keep in "
+    "decoy pipeline seed secret ref unconfigured columns let mask from to keep in "
     "deterministic vaulted when and or not if else true false "
     "where sort by asc desc limit dedupe on drop orphans generate rows unique"
 ).split()
@@ -32,7 +32,7 @@ secret: SECRET REF "(" (DQ_STRING | SQ_STRING) ")"
 unconfigured: UNCONFIGURED COLUMNS name
 let: LET name "=" treatment
 
-table: TABLE name FROM call TO call "{" statement* "}"
+table: MASK name FROM call TO call "{" statement* "}"
 
 // A generated table: every column is defined with `=`, by a generator call or an expression.
 generate: GENERATE name ROWS NUMBER TO call "{" gen_statement* "}"

@@ -11,7 +11,7 @@ _BASE = """decoy 1
 pipeline demo {
   seed 42
 
-  table people from csv("in.csv") to parquet("out.parquet") {
+  mask people from csv("in.csv") to parquet("out.parquet") {
     ssn : redact
   }
 }
@@ -128,9 +128,9 @@ def test_keep_several_columns_and_let_reuse() -> None:
 
 
 def test_keywords_and_spaced_names_work_as_column_names() -> None:
-    rule = "seed, table, 'First Name', 'keep' : redact\n    keep from, 'in'"
+    rule = "seed, mask, 'First Name', 'keep' : redact\n    keep from, 'in'"
     names = [c["name"] for c in _config(_with_rule(rule))["tables"][0]["columns"]]
-    assert names == ["seed", "table", "First Name", "keep", "from", "in"]
+    assert names == ["seed", "mask", "First Name", "keep", "from", "in"]
 
 
 def test_comments_are_ignored() -> None:
@@ -167,8 +167,8 @@ def test_comments_are_ignored() -> None:
         (_BASE.replace('csv("in.csv")', 'csv("in.csv", path: "x")'), "lang.option_not_allowed", 6),
         (
             _BASE.replace(
-                "table people",
-                "table people from csv('a.csv') to csv('b.csv') { keep x }\n  table people",
+                "mask people",
+                "mask people from csv('a.csv') to csv('b.csv') { keep x }\n  mask people",
             ),
             "lang.table_repeated",
             7,

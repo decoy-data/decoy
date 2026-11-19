@@ -5,7 +5,7 @@ pipeline {
 
   let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
 
-  table patients from csv("./patients.csv") to csv("./patients_masked.csv") {
+  mask patients from csv("./patients.csv") to csv("./patients_masked.csv") {
     first_name : faker(person_first_name)
     last_name  : faker(person_last_name)
     street     : faker(address_street)
