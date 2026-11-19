@@ -10,6 +10,7 @@ import importlib.util
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -367,3 +368,118 @@ def test_a_trust_state_with_an_unknown_oid_main_key_is_the_fixed_refusal(tmp_pat
     )
     with pytest.raises(errors.InstallError, match="trust state unreadable"):
         trust_state.read_trust_state(tmp_path)
+
+
+# ------------------------------------------- one loader behind both pins (Codex, class 8)
+MAIN_MARK = release_key.PLACEHOLDER_MARKER
+_KEYS = {
+    "main": SimpleNamespace(
+        attr="_KEY_FILE",
+        mark=MAIN_MARK,
+        env="DECOY_RELEASE_PUBKEY_FILE",
+        load=release_key.pinned_public_pem,
+        label="release",
+    ),
+    "backup": SimpleNamespace(
+        attr="_BACKUP_KEY_FILE",
+        mark=BACKUP_MARK,
+        env="DECOY_RELEASE_BACKUP_PUBKEY_FILE",
+        load=release_key.pinned_backup_pem,
+        label="backup",
+    ),
+}
+
+
+@pytest.fixture(params=sorted(_KEYS))
+def pin(request, tmp_path, monkeypatch):
+    """A key under test, with both pins starting as dev placeholders and no override set."""
+    spec = _KEYS[request.param]
+    monkeypatch.setattr(release_key, "_KEY_FILE", _placeholder(tmp_path / "m.pem", MAIN_MARK))
+    monkeypatch.setattr(
+        release_key, "_BACKUP_KEY_FILE", _placeholder(tmp_path / "b.pem", BACKUP_MARK)
+    )
+    for k in _KEYS.values():
+        monkeypatch.delenv(k.env, raising=False)
+    spec.dir = tmp_path
+    spec.file = lambda: getattr(release_key, spec.attr)
+    return spec
+
+
+def _commit_real(pin, monkeypatch) -> str:
+    real = public_pem(Ed25519PrivateKey.generate())
+    path = pin.dir / f"real-{pin.label}.pem"
+    path.write_text(real, encoding="utf-8")
+    monkeypatch.setattr(release_key, pin.attr, path)
+    return real
+
+
+def test_core_a_missing_pin_file_is_an_error_not_a_silent_accept(pin, monkeypatch):
+    monkeypatch.setattr(release_key, pin.attr, pin.dir / "absent.pem")
+    with pytest.raises(OSError):
+        pin.load()
+
+
+def test_core_a_placeholder_with_no_override_refuses_with_a_fixed_line(pin):
+    with pytest.raises(release_key.NoPinnedKeyError) as info:
+        pin.load()
+    assert str(info.value) == (
+        f"this decoy build has no pinned {pin.label} key (placeholder present); "
+        f"a release build commits it. Dev/test builds may set {pin.env}."
+    )
+
+
+def test_core_a_dev_override_is_honored_with_a_fixed_warning_that_names_no_path(
+    pin, monkeypatch, capsys
+):
+    override = pin.dir / "secret-dir-name.pem"
+    override.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    monkeypatch.setenv(pin.env, str(override))
+    assert pin.load() == override.read_text(encoding="utf-8")
+    err = capsys.readouterr().err
+    assert pin.env in err and "WARNING" in err and "dev/test build" in err
+    assert str(pin.dir) not in err and "secret-dir-name" not in err
+
+
+def test_core_an_override_in_a_release_build_is_ignored_with_a_fixed_warning(
+    pin, monkeypatch, capsys
+):
+    real = _commit_real(pin, monkeypatch)
+    if pin.label == "backup":  # the main pin must stay a placeholder-free release pin too
+        _commit_main = public_pem(Ed25519PrivateKey.generate())
+        (pin.dir / "main-real.pem").write_text(_commit_main, encoding="utf-8")
+        monkeypatch.setattr(release_key, "_KEY_FILE", pin.dir / "main-real.pem")
+    override = pin.dir / "evil-dir-name.pem"
+    override.write_text(public_pem(Ed25519PrivateKey.generate()), encoding="utf-8")
+    monkeypatch.setenv(pin.env, str(override))
+    assert pin.load() == real
+    err = capsys.readouterr().err
+    assert "IGNORED" in err and pin.env in err
+    assert str(pin.dir) not in err and "evil-dir-name" not in err
+
+
+def test_core_a_set_but_empty_override_counts_as_unset(pin, monkeypatch, capsys):
+    monkeypatch.setenv(pin.env, "")
+    with pytest.raises(release_key.NoPinnedKeyError):
+        pin.load()
+    assert capsys.readouterr().err == ""
+
+
+def test_both_entry_points_load_through_the_one_private_core():
+    src = (DIST / "release_key.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    for name in ("pinned_public_pem", "pinned_backup_pem"):
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == name)
+        called = {
+            c.func.id
+            for c in ast.walk(fn)
+            if isinstance(c, ast.Call) and isinstance(c.func, ast.Name)
+        }
+        assert "_load_pin" in called, name
+        assert not any(
+            isinstance(n, ast.Attribute) and n.attr == "read_text" for n in ast.walk(fn)
+        ), name
+
+
+def test_verify_detached_returns_false_for_a_non_string_expected_key():
+    for bad in (None, 5, b"-----BEGIN PUBLIC KEY-----", ["x"]):
+        assert signing.verify_detached(b"x", "AAAA", expected_public_pem=bad) is False  # type: ignore[arg-type]

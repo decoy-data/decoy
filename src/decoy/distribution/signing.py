@@ -82,7 +82,7 @@ def verify_detached(payload_bytes: bytes, signature_b64: str, *, expected_public
         signature = base64.b64decode(signature_b64, validate=True)
         pub.verify(signature, payload_bytes)
         return True
-    except (ValueError, InvalidSignature, TypeError):
+    except (ValueError, InvalidSignature, TypeError, AttributeError):
         return False
 
 
