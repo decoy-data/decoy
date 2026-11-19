@@ -80,6 +80,7 @@ class Mask:
     treatment: Treatment
     span: Span
     coherent: bool = False  # written `{a, b} : rule`: one consistent group per row
+    unreviewed: bool = False  # ends with `?`: inferred by a tool and not yet checked
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ class Link:
 class Keep:
     columns: tuple[Name, ...]
     span: Span
+    unreviewed: bool = False
 
 
 @dataclass(frozen=True)

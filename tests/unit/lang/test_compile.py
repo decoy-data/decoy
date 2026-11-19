@@ -403,3 +403,13 @@ def test_a_let_with_an_unknown_strategy_is_reported_where_it_is_defined() -> Non
 )
 def test_a_connector_option_is_said_once(call: str, code: str) -> None:
     assert _errors(_BASE.replace('csv("in.csv")', call))[0].code == code
+
+
+def test_a_rule_ending_in_a_question_mark_is_reported_as_unreviewed() -> None:
+    rule = (
+        "ssn : redact when a == 1 ?\n    {x, y} : hash in ids ?\n    keep id ?\n    email : redact"
+    )
+    compiled = compile_text(_with_rule(rule))
+    assert [span.line for span in compiled.unreviewed] == [7, 8, 9]
+    assert compiled.config == compile_text(_with_rule(rule.replace(" ?", ""))).config
+    assert compile_text(_BASE).unreviewed == ()

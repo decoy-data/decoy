@@ -100,6 +100,8 @@ pipeline {
 ```
 
 - `let name = rule` names a rule for reuse; use it bare (`dob : shift`).
+- A rule or `keep` that ends with `?` (`email : faker(person_email) ?`) was inferred by a tool and
+  has not been checked. The pipeline will not run until the `?` is removed.
 - Shaping runs before masking, in the order written: `where <condition>`, `name = <expression>`
   (a new column), `sort by a desc, b`, `limit N`, `dedupe` or `dedupe on a, b`, `drop a, b`.
 - Expressions: `+ - * / //`, comparisons, `and or not`, `in [...]`, `concat(a, b)`, `slice(s, 0, 3)`,

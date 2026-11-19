@@ -20,6 +20,7 @@ from typing import Any
 
 import yaml
 
+from decoy.lang._ast import Table
 from decoy.lang._convert import ConvertError, convert_config
 from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span, render
 from decoy.lang._format import format_text
@@ -45,6 +46,9 @@ __all__ = [
 class Compiled:
     config: dict[str, Any]
     source_map: SourceMap
+    # Where a rule still ends with `?`. The config is complete either way; a caller that is
+    # about to run it refuses while this is not empty.
+    unreviewed: tuple[Span, ...] = ()
 
 
 def compile_text(text: str) -> Compiled:
@@ -52,12 +56,20 @@ def compile_text(text: str) -> Compiled:
 
     Raises `LangError` with every problem found."""
     try:
-        config, spans = lower(parse(text))
+        program = parse(text)
+        config, spans = lower(program)
     except RecursionError:
         too_deep = LangError([Diagnostic("lang.nesting", "the program is nested too deeply")])
     else:
         validate(config, spans)
-        return Compiled(config, spans)
+        unreviewed = tuple(
+            statement.span
+            for table in program.tables
+            if isinstance(table, Table)
+            for statement in table.statements
+            if getattr(statement, "unreviewed", False)
+        )
+        return Compiled(config, spans, unreviewed)
     raise too_deep
 
 

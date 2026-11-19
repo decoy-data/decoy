@@ -81,11 +81,12 @@ gen_link: name ARROW name "." name
 unique: UNIQUE "(" names ")"
 
 ?statement: mask | group | link | keep | where | define | sort | limit | dedupe | drop
-mask: names ":" treatment
-keep: KEEP names
+// A trailing `?` marks a rule a tool inferred and nobody has checked yet.
+mask: names ":" treatment [REVIEW_MARK]
+keep: KEEP names [REVIEW_MARK]
 
 // `{a, b} : rule` keeps the columns consistent with each other within a row.
-group: "{" names "}" ":" treatment
+group: "{" names "}" ":" treatment [REVIEW_MARK]
 
 // `child <- parent_table.key`: the child columns take the parent key's masked values.
 link: names ARROW name "." link_key [namespace] [orphans]
@@ -148,6 +149,7 @@ OPERATOR: "==" | "!=" | "<=" | ">=" | "<" | ">" | "+" | "*" | "//" | "/"
 MINUS: "-"
 ARROW: "<-"
 ARROW_RIGHT: "->"
+REVIEW_MARK: "?"
 PERCENT_SIGN: "%"
 COMMENT: /#[^\n]*/
 
@@ -180,6 +182,7 @@ DISPLAY = {
     "MINUS": "`-`",
     "ARROW": "`<-`",
     "ARROW_RIGHT": "`->`",
+    "REVIEW_MARK": "`?`",
     "PERCENT_SIGN": "`%`",
     "DOT": "`.`",
     "$END": "the end of the file",

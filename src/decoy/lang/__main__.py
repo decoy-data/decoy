@@ -17,6 +17,7 @@ from pathlib import Path
 from decoy._config_file import ConfigFileError, load_config_mapping, read_config_text
 from decoy.lang import (
     ConvertError,
+    Diagnostic,
     LangError,
     compile_text,
     convert_config,
@@ -28,6 +29,7 @@ from decoy.lang import (
 USAGE = """usage: python -m decoy.lang <pipeline.decoy>
        python -m decoy.lang --to-decoy <pipeline.yaml>
        python -m decoy.lang --format <pipeline.decoy>"""
+UNREVIEWED = "this rule was inferred and has not been reviewed"
 TO_DECOY = "--to-decoy"
 FORMAT = "--format"
 EXIT_INVALID = 2
@@ -53,6 +55,12 @@ def _compile(path: Path) -> int:
         compiled = compile_text(read_config_text(path))
     except LangError as error:
         return _report(error, path)
+    if compiled.unreviewed:
+        marks = [
+            Diagnostic("lang.unreviewed", UNREVIEWED, span, "check the rule, then remove the `?`")
+            for span in compiled.unreviewed
+        ]
+        return _report(LangError(marks), path)
     sys.stdout.write(emit_yaml(compiled.config))
     return 0
 

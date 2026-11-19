@@ -150,7 +150,7 @@ agent trial) before the expensive tooling, so the code-first decision rests on e
 | 6 | **Agent card and agent trial** (done; the trial did not show a validity gap) | One page holding the whole language, sized for a prompt. Twenty pipeline tasks attempted by an agent in YAML and in `.decoy`; the share that validate first time | The trial has a result; the syntax is revised where agents stumble | No |
 | 7 | **Formatter** (library and interim entry built; the `decoy` command is hand-off H8) | One canonical layout, comments kept | Formatting twice changes nothing; no comment is lost | Adds a command |
 | 8 | **Commands read `.decoy`** | `decoy validate`, `decoy run` and the other pipeline commands take a `.decoy` file; findings point at `.decoy` lines | The command tests pass for `.decoy` input on every pipeline command | Yes |
-| 9 | **Wizard writes `.decoy`** | `decoy init` output in the language, with the review marker | Init tests pass for both outputs | Yes |
+| 9 | **Wizard writes `.decoy`** (the `?` review mark is built in the language; the wizard change is hand-off H8) | `decoy init` output in the language, with the review marker | Init tests pass for both outputs | Yes |
 | 10 | **Docs** | Quickstart, tour, reference generated from the engine catalogs, cookbook, YAML side by side, error index | Published with the docs site | Docs only |
 | 11 | **Freeze** | Syntax review, reserved-word list final, compatibility rule for `decoy 1`, editor highlighting | The language joins the compatibility contract | Contract |
 | 12 | **Policy and disguises** | `use <disguise>`, `match ... =>`, `forbid` | Compiles to the engine's `policy` block | Waits on the CLI |

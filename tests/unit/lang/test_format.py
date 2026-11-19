@@ -117,3 +117,10 @@ def test_comments_anywhere_are_all_kept_and_the_program_is_unchanged(data: st.Da
     assert all(formatted.count(comment) == 1 for comment in comments)
     assert lower(parse(formatted))[0] == lower(parse(text))[0]
     assert format_text(formatted) == formatted
+
+
+def test_the_review_mark_is_kept() -> None:
+    text = 'decoy 1\npipeline { seed 1 mask t from csv("a.csv") to csv("b.csv") { x : redact?  keep y ? } }\n'
+    formatted = format_text(text)
+    assert "    x : redact ?\n    keep y ?\n" in formatted
+    assert format_text(formatted) == formatted

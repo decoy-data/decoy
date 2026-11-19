@@ -205,8 +205,9 @@ class Notes:
 def _table_row(statement: nodes.Mask | nodes.Keep | nodes.Link | nodes.Shaping) -> Row:
     if isinstance(statement, nodes.Shaping):
         return _shaping(statement)
+    mark = " ?" if getattr(statement, "unreviewed", False) else ""
     if isinstance(statement, nodes.Keep):
-        return f"keep {_names(statement.columns)}"
+        return f"keep {_names(statement.columns)}{mark}"
     if isinstance(statement, nodes.Link):
         line = (
             f"{_names(statement.columns)} <- {name(statement.parent_table.text)}."
@@ -218,8 +219,8 @@ def _table_row(statement: nodes.Mask | nodes.Keep | nodes.Link | nodes.Shaping) 
             line += f" orphans {name(statement.orphans.text)}"
         return line
     if statement.coherent:
-        return f"{{{_names(statement.columns)}}} : {_treatment(statement.treatment)}"
-    return (_names(statement.columns), ":", _treatment(statement.treatment))
+        return f"{{{_names(statement.columns)}}} : {_treatment(statement.treatment)}{mark}"
+    return (_names(statement.columns), ":", _treatment(statement.treatment) + mark)
 
 
 def _table(table: nodes.Table, notes: Notes) -> list[str]:

@@ -262,9 +262,15 @@ def _table(tree: Tree[Any]) -> nodes.Table:
         elif statement.data == "link":
             built.append(_link(statement))
         elif statement.data == "group":
-            names, treatment = statement.children
+            names, treatment, mark = statement.children
             built.append(
-                nodes.Mask(_names(names), _treatment(treatment), span_of(statement), coherent=True)
+                nodes.Mask(
+                    _names(names),
+                    _treatment(treatment),
+                    span_of(statement),
+                    coherent=True,
+                    unreviewed=mark is not None,
+                )
             )
         elif statement.data == "mask":
             built.append(
@@ -272,10 +278,12 @@ def _table(tree: Tree[Any]) -> nodes.Table:
                     _names(statement.children[0]),
                     _treatment(statement.children[1]),
                     span_of(statement),
+                    unreviewed=statement.children[2] is not None,
                 )
             )
         else:
-            built.append(nodes.Keep(_names(statement.children[1]), span_of(statement)))
+            marked = statement.children[2] is not None
+            built.append(nodes.Keep(_names(statement.children[1]), span_of(statement), marked))
     return nodes.Table(_name(name), _call(source), _call(target), tuple(built), span_of(tree))
 
 

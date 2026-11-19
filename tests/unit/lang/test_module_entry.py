@@ -94,3 +94,19 @@ def test_to_decoy_converts_a_pipeline_yaml(
     pipeline.write_text("version: 2\n", encoding="utf-8")
     assert main(["--to-decoy", str(pipeline)]) == 2
     assert "error[lang.convert]" in capsys.readouterr().err
+
+
+def test_a_program_with_unreviewed_rules_is_not_compiled_to_yaml(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    program = tmp_path / "p.decoy"
+    program.write_text(
+        'decoy 1\npipeline { seed 1\n mask t from csv("a.csv") to csv("b.csv") {\n'
+        "  x : redact ?\n  keep y\n } }\n",
+        encoding="utf-8",
+    )
+    assert main([str(program)]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "p.decoy:4:3: error[lang.unreviewed]" in captured.err
+    assert "remove the `?`" in captured.err
