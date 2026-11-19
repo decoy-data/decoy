@@ -185,6 +185,12 @@ def report_warning_records(report_warnings: Iterable[Any]) -> list[dict[str, Any
                     f"{d.get('output_kind')} in the output"
                 )
                 records.append(warning_record(code_, column=str(d.get("column")), message=text))
+        elif code_ == "gof_unavailable" and detail.get("column") is not None:
+            text = (
+                f"column {detail.get('column')}: {detail.get('metric')} goodness-of-fit "
+                f"unavailable ({detail.get('reason')})"
+            )
+            records.append(warning_record(code_, column=str(detail.get("column")), message=text))
         else:
             keys = ", ".join(sorted(str(k) for k in detail))
             text = f"{code_} ({keys})" if keys else code_
