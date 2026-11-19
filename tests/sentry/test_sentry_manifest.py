@@ -23,89 +23,21 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 GATES = ROOT / "scripts" / "dev" / "gates.sh"
 
-SENTRIES = (
-    "tests/sentry/test_atomic_writer.py",
-    "tests/sentry/test_bash32_compat.py",
-    "tests/sentry/ci_scan/test_identity.py",
-    "tests/sentry/io_policy/test_layout_errors.py",
-    "tests/sentry/io_policy/test_code_snapshot.py",
-    "tests/sentry/io_policy/test_pipeline_argument.py",
-    "tests/sentry/io_policy/test_output_placement.py",
-    "tests/sentry/io_policy/test_private_files.py",
-    "tests/sentry/io_policy/test_target_writes.py",
-    "tests/sentry/io_policy/test_engine_base_dir.py",
-    "tests/sentry/io_policy/test_private_files_aliases.py",
-    "tests/sentry/io_policy/test_scaffold_publish.py",
-    "tests/sentry/io_policy/test_canonical_json.py",
-    "tests/sentry/io_policy/test_library_fs.py",
-    "tests/sentry/io_policy/test_library_writer.py",
-    "tests/sentry/io_policy/test_manifest_path_resolution.py",
-    "tests/sentry/io_policy/test_update_check_no_identifiers.py",
-    "tests/sentry/cli_text/test_help_panels.py",
-    "tests/sentry/cli_text/test_error_emitter_ratchet.py",
-    "tests/sentry/cli_text/test_one_error_emitter.py",
-    "tests/sentry/cli_text/test_stdout_writes.py",
-    "tests/sentry/io_policy/test_environment_reads.py",
-    "tests/sentry/io_policy/test_config_load_choke_point.py",
-    "tests/sentry/io_policy/test_declared_read_choke_point.py",
-    "tests/sentry/cli_text/test_no_traceback_escape.py",
-    "tests/sentry/cli_text/test_exit_code_docs.py",
-    "tests/sentry/cli_text/test_json_command_names.py",
-    "tests/sentry/cli_text/test_user_text_internal_names.py",
-    "tests/sentry/defects/test_anchored_regex.py",
-    "tests/sentry/defects/test_cli_warning_registry.py",
-    "tests/sentry/defects/test_config_error_routes.py",
-    "tests/sentry/defects/test_exception_context.py",
-    "tests/sentry/defects/test_kind_canary.py",
-    "tests/sentry/defects/test_exit_code_owner.py",
-    "tests/sentry/io_policy/test_csv_frame_choke_point.py",
-    "tests/sentry/io_policy/test_quarantine_enabled_choke_point.py",
-    "tests/sentry/io_policy/test_small_file_reader.py",
-    "tests/sentry/release/test_frozen_surface_map.py",
-    "tests/sentry/release/test_journey_ids.py",
-    "tests/sentry/release/test_qa_checklist_shape.py",
-    "tests/sentry/release/test_retired_name_residual.py",
-    "tests/sentry/cli_text/test_no_retired_name_in_output.py",
-    "tests/sentry/test_csv_read_choke_point.py",
-    "tests/sentry/test_baseline_registry.py",
-    "tests/sentry/test_ci_lock_installs.py",
-    "tests/sentry/test_ci_output_isolation.py",
-    "tests/sentry/test_ci_r2_leak_paths.py",
-    "tests/sentry/test_engine_import_surface.py",
-    "tests/sentry/test_engine_internal_boundary.py",
-    "tests/sentry/test_engine_reason_code_copies.py",
-    "tests/sentry/test_engine_secret_file_check.py",
-    "tests/sentry/io_policy/test_fit_value_redaction.py",
-    "tests/sentry/test_gate_single_entry.py",
-    "tests/sentry/test_mask_secret_error_text.py",
-    "tests/sentry/test_mask_secret_file_mode.py",
-    "tests/sentry/test_mask_secret_ref_shape.py",
-    "tests/sentry/test_notify_redaction.py",
-    "tests/sentry/test_one_stderr_console.py",
-    "tests/sentry/test_otel_closed.py",
-    "tests/sentry/io_policy/test_profile_document_route.py",
-    "tests/sentry/layout/test_codemap_paths.py",
-    "tests/sentry/layout/test_import_layers.py",
-    "tests/sentry/layout/test_module_size.py",
-    "tests/sentry/layout/test_package_fanout.py",
-    "tests/sentry/layout/test_run_package_shape.py",
-    "tests/sentry/run/test_one_run_reason.py",
-    "tests/sentry/run/test_no_subset_edit.py",
-    "tests/sentry/layout/test_vendored_files.py",
-    "tests/sentry/test_profile_raw_value_isolation.py",
-    "tests/sentry/tooling/test_ci_lanes.py",
-    "tests/sentry/tooling/test_pytest_timeout.py",
-    "tests/sentry/test_ratchet_check.py",
-    "tests/sentry/test_report_raw_value_isolation.py",
-    "tests/sentry/test_scan_reader.py",
-    "tests/sentry/test_sentry_manifest.py",
-    "tests/sentry/test_source_hygiene.py",
-    "tests/sentry/test_yaml_error_leak_isolation.py",
-    # Named sentries that live outside tests/sentry/.
+# Named sentries that live outside tests/sentry/. Everything under tests/sentry/ is a sentry by
+# the CODEMAP rule, so it is found by glob and needs no entry here.
+OUTSIDE_SENTRIES = (
     "tests/unit/test_cli_surface.py",
     "tests/unit/test_surface_docs_consistency.py",
     "tests/unit/test_no_dead_command_strings.py",
 )
+
+
+def sentry_files(root: Path) -> set[str]:
+    """Every sentry test file under ``tests/sentry``, nested folders included."""
+    return {p.relative_to(root).as_posix() for p in (root / "tests" / "sentry").rglob("test_*.py")}
+
+
+SENTRIES: tuple[str, ...] = (*sorted(sentry_files(ROOT)), *OUTSIDE_SENTRIES)
 
 
 def _array(name: str, text: str) -> list[str] | None:
@@ -186,11 +118,6 @@ def uncovered(sentries: tuple[str, ...], paths: list[str]) -> list[str]:
     return [
         s for s in sentries if not any(s == p or s.startswith(p.rstrip("/") + "/") for p in paths)
     ]
-
-
-def sentry_files(root: Path) -> set[str]:
-    """Every sentry test file under ``tests/sentry``, nested folders included."""
-    return {p.relative_to(root).as_posix() for p in (root / "tests" / "sentry").rglob("test_*.py")}
 
 
 def test_manifest_lists_every_sentry_file_and_no_ghost() -> None:

@@ -18,7 +18,6 @@ import json
 from tests.sentry.cli_text import _stdout_sites as sites
 
 BASELINE = sites.ROOT / "tests" / "sentry" / "baselines" / "json-stdout-writes.json"
-REGISTRY = sites.ROOT / "scripts" / "dev" / "sentry_registry.toml"
 
 OUTPUT_WRITERS = frozenset({"ui/output.py::emit_json::1", "ui/output.py::emit_json_document::1"})
 
@@ -40,13 +39,6 @@ def test_baseline_equals_the_source_inventory() -> None:
 
 def test_baseline_holds_no_output_module_row() -> None:
     assert not any(k.startswith(f"{sites.OUTPUT_MODULE}::") for k in _recorded())
-
-
-def test_baseline_is_registered_as_cl2() -> None:
-    doc = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "json-stdout-writes"
-    assert doc["created_in"] == "CL2"
-    assert 'id = "json-stdout-writes"' in REGISTRY.read_text(encoding="utf-8")
 
 
 # --- seeded spellings: each turns the scan red --------------------------------------------

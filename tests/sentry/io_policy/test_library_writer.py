@@ -30,16 +30,15 @@ an alias by assignment (`d = DECOY_DIR` is seen once, at the assignment), `from 
 from __future__ import annotations
 
 import ast
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "library-writer-allow.json"
 PACKAGE = "cli/library/"
 LIBRARY_MODULE = "decoy.cli.library"
 RECORDS_MODULE = "decoy_engine.records"
@@ -53,19 +52,9 @@ class AllowedLiteral:
     reason: str
 
 
-LITERAL_ALLOWLIST: tuple[AllowedLiteral, ...] = (
-    AllowedLiteral(
-        "distribution/layout.py",
-        1,
-        "The managed runtime home ~/.decoy (versions, current, cache); swapped on upgrade and "
-        "never a record library (plan 4.1).",
-    ),
-    AllowedLiteral(
-        "cli/io/_project.py",
-        1,
-        "DECOY_DIR, the one home of the project folder name; the library imports it from "
-        "decoy.cli.io (re-FRAME placement map).",
-    ),
+LITERAL_ALLOWLIST: tuple[AllowedLiteral, ...] = tuple(
+    AllowedLiteral(file, e["sites"], e["reason"])
+    for file, e in load_allowlist("library-writer-allow").items()
 )
 
 
@@ -264,15 +253,8 @@ def test_the_library_package_exists_and_is_scanned() -> None:
 
 
 def test_allowlist_is_two_with_reasons() -> None:
-    assert [e.file for e in LITERAL_ALLOWLIST] == ["distribution/layout.py", "cli/io/_project.py"]
+    assert {e.file for e in LITERAL_ALLOWLIST} == {"distribution/layout.py", "cli/io/_project.py"}
     assert all(len(e.reason.strip()) >= 15 and e.sites > 0 for e in LITERAL_ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_sites_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    assert {k: (v["sites"], v["reason"]) for k, v in entries.items()} == {
-        e.file: (e.sites, e.reason) for e in LITERAL_ALLOWLIST
-    }
 
 
 # -- seeded bypasses: each must go red ---------------------------------------------------------

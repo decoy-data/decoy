@@ -33,18 +33,17 @@ handed to a helper, an entry inside a dict or comprehension, and `getattr` are n
 from __future__ import annotations
 
 import ast
-import json
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.io_policy._calls import bindings, qualified
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "manifest-path-forward-allow.json"
 
 RESOLVER = "resolve_manifest_path"
 
@@ -58,13 +57,9 @@ class AllowedForward:
 
 
 # A whole entry or group may go only to a callee that cannot build a path from it.
-ALLOWLIST: tuple[AllowedForward, ...] = (
-    AllowedForward(
-        "src/decoy/cli/report.py",
-        "compare_manifests",
-        "_fp_changes",
-        "Compares recorded fingerprints by table name; it reads no `path` and opens nothing.",
-    ),
+ALLOWLIST: tuple[AllowedForward, ...] = tuple(
+    AllowedForward(*key.split("::"), e["reason"])
+    for key, e in load_allowlist("manifest-path-forward-allow").items()
 )
 RESOLVER_CALLERS = {
     ("src/decoy/cli/evidence.py", "read_manifest"),
@@ -345,12 +340,6 @@ def test_allowlist_entries_are_live_and_have_reasons() -> None:
     for a in ALLOWLIST:
         building, _ = scan(SRC, ROOT, tuple(x for x in ALLOWLIST if x is not a))
         assert any((f, q) == (a.file, a.function) for f, q, _l in building), a
-
-
-def test_baseline_json_records_the_same_entries_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    expected = {f"{a.file}::{a.function}::{a.callee}": {"reason": a.reason} for a in ALLOWLIST}
-    assert entries == expected
 
 
 # --- self-tests: every realistic spelling turns the scan red --------------------------------
