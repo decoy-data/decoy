@@ -334,7 +334,7 @@ def gate_report_source(
                 return None  # no config at all: nothing declared, nothing to check
             from decoy.cli.io import REPORT_SOURCE_AMBIGUOUS
 
-            raise ReportSourceError(REPORT_SOURCE_AMBIGUOUS.message, REPORT_SOURCE_AMBIGUOUS.code)
+            raise ReportSourceError(REPORT_SOURCE_AMBIGUOUS.message(), REPORT_SOURCE_AMBIGUOUS.code)
     descriptor = sources.get(table)
     if descriptor is None or descriptor.get("type", "file") != "file":
         return None  # no file source for the selected table: nothing to check

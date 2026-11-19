@@ -4,6 +4,12 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-19 (physical seam and Faker).**
+  - Physical seam: option C. The physical-plan compiler stays and becomes a "what would run and why"
+    explainer for every route; execution stays in today's routes. The shadow-only execution branches
+    and audit C4 and C5 may be deleted. Work: SEAM-REASONS, then SEAM-EXPLAIN (run group, 1.x).
+    Handoff: `handoffs/2026-11-19-engine-physical-seam.md`.
+  - FAKER-REPRO owner questions: recommended on Q1 and Q3 to Q6. Q2: no upstream Faker pull requests.
 - **2026-11-18 (owner calls on the bucket list).**
   - Opt-in defaults: F11 output ordering, F38 dataset metadata and F08 free-text identity binding stay
     opt-in for 1.0 (option A). The docs tell users to turn F08 on for free-text columns.
