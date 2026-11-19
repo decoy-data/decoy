@@ -26,7 +26,7 @@ SRC = ROOT / "src" / "decoy"
 REGISTRY_FILE = "cli/io/_layout_errors.py"
 PRIVATE_MODULES = ("_layout", "_project", "_pipelines", "_layout_errors")
 _TOKEN = re.compile(r"(?<![\w.])layout\.[a-z]+(?:_[a-z]+)+")
-_CODE = re.compile(r"layout\.[a-z]+(?:_[a-z]+)+")
+_CODE = re.compile(r"(?:layout|report)\.[a-z]+(?:_[a-z]+)+")
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
 
 

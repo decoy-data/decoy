@@ -227,7 +227,29 @@ def test_ambiguous_report_source_carries_a_registered_code(tmp_path: Path) -> No
     )
     result = runner.invoke(app, ["report", "fidelity", str(other), str(out), "--config", str(cfg)])
     assert result.exit_code == 1
-    assert "layout.report_source_ambiguous" in result.output
+    assert "report.source_ambiguous" in result.output
+
+
+def test_ambiguous_report_source_json_error_code_is_report_namespaced(tmp_path: Path) -> None:
+    """AT-S4a: the frozen `--json` error `code` is `report.source_ambiguous`."""
+    import json
+
+    _src, out = _pair(tmp_path)
+    other = tmp_path / "elsewhere.csv"
+    _FRAME.to_csv(other, index=False)
+    (tmp_path / "pets.csv").write_text("id\n1\n", encoding="utf-8")
+    cfg = _config(
+        tmp_path,
+        _ALL,
+        sources={"pets": csv_source(tmp_path / "pets.csv")},
+        tables=[{"name": "pets", "columns": [{"name": "id", "strategy": "passthrough"}]}],
+    )
+    args = ["report", "fidelity", str(other), str(out), "--config", str(cfg), "--json"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1, result.output
+    payload = json.loads(result.output.strip().splitlines()[-1])
+    assert payload["code"] == "report.source_ambiguous"
+    assert "layout.report_source_ambiguous" not in result.output
 
 
 def test_several_generate_tables_with_no_sources_still_refuse_an_ambiguous_source(
@@ -263,4 +285,4 @@ def test_several_generate_tables_with_no_sources_still_refuse_an_ambiguous_sourc
     )
     result = runner.invoke(app, ["report", "fidelity", str(other), str(out), "--config", str(cfg)])
     assert result.exit_code == 1, result.output
-    assert "layout.report_source_ambiguous" in result.output
+    assert "report.source_ambiguous" in result.output
