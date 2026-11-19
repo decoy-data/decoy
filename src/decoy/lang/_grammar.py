@@ -2,14 +2,18 @@
 
 Block structure follows HCL (named blocks in braces); calls take `key: value` options as in Swift
 and Kotlin. Keywords are contextual: a column may be called `seed` or `table`, because the lexer
-only offers a keyword where the parser can accept one. Any other name can be written in backticks.
+only offers a keyword where the parser can accept one. Inside a table that leaves four reserved
+words (`keep`, `in`, `deterministic`, `vaulted`); a column with one of those names, or with a
+space in it, is written in backticks.
+
+Layout is free: spaces and line breaks only separate words, as in JSON or C.
 """
 
 from __future__ import annotations
 
 # A keyword must not match the front of a longer word (`in` inside `input`).
 _KEYWORDS = (
-    "decoy pipeline seed secret ref unconfigured columns let table from to mask with keep in "
+    "decoy pipeline seed secret ref unconfigured columns let table from to keep in "
     "deterministic vaulted true false"
 ).split()
 
@@ -28,7 +32,7 @@ let: LET name "=" treatment
 table: TABLE name FROM call TO call "{" statement* "}"
 
 ?statement: mask | keep
-mask: MASK names WITH treatment
+mask: names ":" treatment
 keep: KEEP names
 names: name ("," name)*
 

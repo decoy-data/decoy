@@ -264,7 +264,7 @@ column names where the eye lands. The one thing to learn (`:` masks, `=` defines
 
 | Question | Decision |
 |---|---|
-| Style | **Style 2, verbs**: `mask <columns> with <strategy>` and `keep <columns>` |
+| Style | **Style 1, symbols**: `<columns> : <strategy>`, with `keep <columns>` from Style 2. Style 2 was built first and then reverted |
 | Q1 | `keep a, b`; it compiles to `passthrough` |
 | Q2 | Pipeline name is optional |
 | Q3 | A CSV source has a header row unless `header: false` |
@@ -274,8 +274,8 @@ column names where the eye lands. The one thing to learn (`:` masks, `=` defines
 | Q7 | After the call: `in <namespace>`, then `deterministic`, then `vaulted` |
 | Q8 | Paths are kept as written |
 | Comments | `#`, not `//`: `//` is integer division in the engine's expression grammar |
-| New column in a masked table | `derive name = expression`; a generator there is a compile error |
-| Layout | Spaces and line breaks carry no meaning; statements start with their own word |
+| New column in a masked table | `name = expression`; a generator there is a compile error |
+| Layout | Spaces and line breaks only separate words. Inside a table `keep`, `in`, `deterministic` and `vaulted` are reserved; such a column name goes in backticks |
 
-The Style 1 examples above are kept as the record of what was compared. The built form is in
+The Style 2 examples above are kept as the record of what was compared. The built form is in
 `src/decoy/lang/` and the `.decoy` twins of the templates in `tests/unit/lang/twins/`.

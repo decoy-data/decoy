@@ -6,24 +6,24 @@ pipeline {
   let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
 
   table patients from csv("./patients.csv") to csv("./patients_masked.csv") {
-    mask first_name with faker(person_first_name)
-    mask last_name  with faker(person_last_name)
-    mask street     with faker(address_street)
-    mask city       with faker(address_city)
-    mask zip        with geo_generalize(type: zip, cascade: [zip5, zip3, state, suppress], k_threshold: 20000)
+    first_name : faker(person_first_name)
+    last_name  : faker(person_last_name)
+    street     : faker(address_street)
+    city       : faker(address_city)
+    zip        : geo_generalize(type: zip, cascade: [zip5, zip3, state, suppress], k_threshold: 20000)
 
-    mask dob, admission_date, discharge_date with shift
+    dob, admission_date, discharge_date : shift
 
-    mask phone, fax with faker(person_phone)
-    mask email      with faker(person_email)
+    phone, fax : faker(person_phone)
+    email      : faker(person_email)
 
-    mask ssn            with fpe(charset: digits)   in ssn_identity
-    mask mrn            with fpe(charset: ALPHANUM) in mrn_identity
-    mask health_plan_id with redact
-    mask account_number with fpe(charset: ALPHANUM) in account_identity
-    mask license_number with redact
-    mask vehicle_id     with fpe(charset: ALPHANUM) in vehicle_identity
+    ssn            : fpe(charset: digits)   in ssn_identity
+    mrn            : fpe(charset: ALPHANUM) in mrn_identity
+    health_plan_id : redact
+    account_number : fpe(charset: ALPHANUM) in account_identity
+    license_number : redact
+    vehicle_id     : fpe(charset: ALPHANUM) in vehicle_identity
 
-    mask device_id, url, ip_address, biometric_id with redact
+    device_id, url, ip_address, biometric_id : redact
   }
 }

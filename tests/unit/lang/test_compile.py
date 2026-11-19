@@ -12,7 +12,7 @@ pipeline demo {
   seed 42
 
   table people from csv("in.csv") to parquet("out.parquet") {
-    mask ssn with redact
+    ssn : redact
   }
 }
 """
@@ -29,7 +29,7 @@ def _errors(text: str) -> list:
 
 
 def _with_rule(rule: str) -> str:
-    return _BASE.replace("mask ssn with redact", rule)
+    return _BASE.replace("ssn : redact", rule)
 
 
 def test_pipeline_name_and_settings() -> None:
@@ -87,7 +87,7 @@ def test_cloud_sources_read_the_format_from_the_name() -> None:
 
 
 def test_strategy_options_split_between_the_column_and_provider_config() -> None:
-    rule = "mask ssn with faker(person_name, cardinality_mode: unique, locale: en_GB) in ids deterministic vaulted"
+    rule = "ssn : faker(person_name, cardinality_mode: unique, locale: en_GB) in ids deterministic vaulted"
     [column] = _config(_with_rule(rule))["tables"][0]["columns"]
     assert column == {
         "name": "ssn",
@@ -102,9 +102,7 @@ def test_strategy_options_split_between_the_column_and_provider_config() -> None
 
 
 def test_values_numbers_strings_lists_and_booleans() -> None:
-    rule = (
-        "mask ssn with fpe(a: -3, b: 1.5, c: 'x y', d: [one, \"two\", 3], e: true, f: false) in n"
-    )
+    rule = "ssn : fpe(a: -3, b: 1.5, c: 'x y', d: [one, \"two\", 3], e: true, f: false) in n"
     [column] = _config(_with_rule(rule), check=False)["tables"][0]["columns"]
     assert column["provider_config"] == {
         "a": -3,
@@ -118,7 +116,7 @@ def test_values_numbers_strings_lists_and_booleans() -> None:
 
 def test_keep_several_columns_and_let_reuse() -> None:
     text = _BASE.replace("seed 42", "seed 42\n  let ids = hash in id_space").replace(
-        "mask ssn with redact", "mask a, b with ids\n    keep c, d"
+        "ssn : redact", "a, b : ids\n    keep c, d"
     )
     columns = _config(text)["tables"][0]["columns"]
     assert columns == [
@@ -130,9 +128,9 @@ def test_keep_several_columns_and_let_reuse() -> None:
 
 
 def test_keywords_and_spaced_names_work_as_column_names() -> None:
-    rule = "mask seed, table, `First Name` with redact\n    keep keep, mask"
+    rule = "seed, table, `First Name`, `keep` : redact\n    keep from, `in`"
     names = [c["name"] for c in _config(_with_rule(rule))["tables"][0]["columns"]]
-    assert names == ["seed", "table", "First Name", "keep", "mask"]
+    assert names == ["seed", "table", "First Name", "keep", "from", "in"]
 
 
 def test_comments_are_ignored() -> None:
@@ -143,15 +141,15 @@ def test_comments_are_ignored() -> None:
     ("text", "code", "line"),
     [
         (_BASE.replace("decoy 1", "decoy 2"), "lang.version", 1),
-        (_BASE.replace("with redact", "wth redact"), "lang.syntax", 7),
+        (_BASE.replace("ssn : redact", "ssn = redact"), "lang.syntax", 7),
         (_BASE.replace("  seed 42\n", ""), "lang.seed_missing", 3),
         (_BASE.replace("seed 42", "seed 42\n  seed 43"), "lang.setting_repeated", 5),
-        (_with_rule("mask ssn with redcat"), "lang.unknown_strategy", 7),
-        (_with_rule("mask ssn with redact\n    keep ssn"), "lang.column_repeated", 8),
-        (_with_rule("mask ssn with faker(a, b)"), "lang.strategy_arguments", 7),
-        (_with_rule("mask ssn with fpe(namespace: x)"), "lang.option_not_allowed", 7),
-        (_with_rule("mask ssn with fpe(a: 1, a: 2)"), "lang.option_repeated", 7),
-        (_with_rule("mask ssn with fpe(a: 1, digits)"), "lang.positional_after_option", 7),
+        (_with_rule("ssn : redcat"), "lang.unknown_strategy", 7),
+        (_with_rule("ssn : redact\n    keep ssn"), "lang.column_repeated", 8),
+        (_with_rule("ssn : faker(a, b)"), "lang.strategy_arguments", 7),
+        (_with_rule("ssn : fpe(namespace: x)"), "lang.option_not_allowed", 7),
+        (_with_rule("ssn : fpe(a: 1, a: 2)"), "lang.option_repeated", 7),
+        (_with_rule("ssn : fpe(a: 1, digits)"), "lang.positional_after_option", 7),
         (_BASE.replace("seed 42", "seed 42\n  let redact = hash"), "lang.let_shadows_strategy", 5),
         (
             _BASE.replace("seed 42", "seed 42\n  let x = hash\n  let x = hash"),
@@ -159,9 +157,7 @@ def test_comments_are_ignored() -> None:
             6,
         ),
         (
-            _BASE.replace("seed 42", "seed 42\n  let x = hash").replace(
-                "with redact", "with x in y"
-            ),
+            _BASE.replace("seed 42", "seed 42\n  let x = hash").replace(": redact", ": x in y"),
             "lang.let_modified",
             8,
         ),
@@ -185,11 +181,11 @@ def test_compile_errors_carry_a_code_and_a_line(text: str, code: str, line: int)
 
 
 def test_unknown_strategy_suggests_the_nearest_name() -> None:
-    assert _errors(_with_rule("mask ssn with redcat"))[0].hint == "did you mean `redact`?"
+    assert _errors(_with_rule("ssn : redcat"))[0].hint == "did you mean `redact`?"
 
 
 def test_every_problem_in_a_table_is_reported_together() -> None:
-    codes = [d.code for d in _errors(_with_rule("mask a with nope\n    mask b with nah"))]
+    codes = [d.code for d in _errors(_with_rule("a : nope\n    b : nah"))]
     assert codes == ["lang.unknown_strategy", "lang.unknown_strategy"]
 
 
@@ -199,7 +195,7 @@ def test_engine_refusals_point_at_the_source_line() -> None:
     assert problem.code == "lang.config"
     assert (problem.span.line, problem.span.column) == (6, text.splitlines()[5].index("1)") + 1)
 
-    [problem] = _errors(_with_rule("mask ssn with faker(person_name, cardinality_mode: sometimes)"))
+    [problem] = _errors(_with_rule("ssn : faker(person_name, cardinality_mode: sometimes)"))
     assert problem.span.line == 7
 
 
@@ -213,12 +209,26 @@ def test_locate_falls_back_to_the_nearest_enclosing_construct() -> None:
 
 
 def test_render_shows_the_line_a_caret_and_the_hint() -> None:
-    text = _with_rule("mask ssn with redcat")
+    text = _with_rule("ssn : redcat")
     shown = render(_errors(text)[0], text, "p.decoy")
     assert shown.splitlines() == [
-        "p.decoy:7:19: error[lang.unknown_strategy]: `redcat` is not a strategy or a `let` name",
-        "      mask ssn with redcat",
-        "                    ^^^^^^",
+        "p.decoy:7:11: error[lang.unknown_strategy]: `redcat` is not a strategy or a `let` name",
+        "      ssn : redcat",
+        "            ^^^^^^",
         "  hint: did you mean `redact`?",
     ]
     assert render(_errors(text)[0]).count("\n") == 1  # no source: position and hint only
+
+
+def test_layout_is_free_spaces_and_line_breaks_only_separate_words() -> None:
+    one_line = " ".join(_BASE.split())
+    spread = _BASE.replace("ssn : redact", "ssn\n:\n\n      redact")
+    assert _config(one_line) == _config(spread) == _config(_BASE)
+
+
+def test_reserved_words_in_a_table_need_backticks_as_column_names() -> None:
+    assert _errors(_with_rule("keep : redact"))[0].code == "lang.syntax"
+    assert (
+        _config(_with_rule("`keep`, `vaulted` : redact"))["tables"][0]["columns"][1]["name"]
+        == "vaulted"
+    )

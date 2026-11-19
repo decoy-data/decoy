@@ -145,8 +145,8 @@ def _table(tree: Tree[Any]) -> nodes.Table:
         if statement.data == "mask":
             built.append(
                 nodes.Mask(
-                    _names(statement.children[1]),
-                    _treatment(statement.children[3]),
+                    _names(statement.children[0]),
+                    _treatment(statement.children[1]),
                     _span(statement),
                 )
             )

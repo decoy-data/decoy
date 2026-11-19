@@ -28,7 +28,7 @@ CONFIG_VERSION = 2
 KEEP_STRATEGY = "passthrough"
 # Column fields the language writes with its own syntax, never as a call option.
 _OWN_SYNTAX = {
-    "name": "the column name before `with`",
+    "name": "the column name before `:`",
     "strategy": "the name of the call",
     "namespace": "`in <namespace>` after the call",
     "deterministic": "the word `deterministic` after the call",
@@ -169,7 +169,7 @@ def _table(
 
 
 def _resolve(used: nodes.Treatment, lets: dict[str, nodes.Treatment]) -> nodes.Treatment:
-    """The treatment a `mask … with` names: itself, or the `let` it refers to."""
+    """The treatment a column rule names: itself, or the `let` it refers to."""
     name = used.call.name
     if name.text in _strategies():
         return used

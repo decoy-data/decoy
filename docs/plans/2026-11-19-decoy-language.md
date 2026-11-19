@@ -125,7 +125,7 @@ table claims from s3("acme-landing", "claims/2026-06.parquet", credentials: "phi
 
 ```
 where  status != 'TEST' and age >= 18
-derive full_name = first_name + ' ' + last_name
+full_name = first_name + ' ' + last_name
 sort by signup_date desc
 limit 5_000_000
 dedupe on (member_id)
@@ -141,16 +141,16 @@ drop internal_notes
 per-column settings: `namespace`, `deterministic`, `vault`, `when`, `cardinality_mode`,
 `allow_collisions`, declared casting.
 
-**Language:** one statement per rule: `mask <columns> with <strategy>`. Settings that today sit
-beside the strategy become short trailing words. `keep` leaves columns unchanged.
+**Language:** one line per rule: the column names, a colon, then the strategy as a call. Settings
+that today sit beside the strategy become short trailing words. `keep` leaves columns unchanged.
 
 ```
-mask email with faker(person_email)
-mask ssn   with fpe(charset: digits) in ssn_space
-mask zip   with geo_generalize(type: zip, k_threshold: 20000)
-mask dob, admitted with date_shift(min_days: -30, max_days: 30) in patient_dates
-mask account   with faker(synthetic_account_number) vaulted
-mask diagnosis with code_set(icd10, chapter_preserve: true) when region == 'US'
+email     : faker(person_email)
+ssn       : fpe(charset: digits) in ssn_space
+zip       : geo_generalize(type: zip, k_threshold: 20000)
+dob, admitted : date_shift(min_days: -30, max_days: 30) in patient_dates
+account   : faker(synthetic_account_number) vaulted
+diagnosis : code_set(icd10, chapter_preserve: true) when region == 'US'
 keep visit_count, status
 ```
 
@@ -201,8 +201,9 @@ generate orders rows 3000 {
 }
 ```
 
-The rule to remember: **`mask` changes a column that exists, `=` defines a new one.** In a masked
-table, `derive name = expression` adds a column from an expression. A generator inside a masked
+The rule to remember: **`:` masks a column that exists, `=` defines a new one.** In a masked
+table, `name = expression` adds a column from an expression (the `derive` transform), so there is
+no separate `derive` word. A generator inside a masked
 table is a compile error, because the engine keeps mask tables and generate tables separate; if
 the engine later allows mixed tables, the same syntax starts working.
 
@@ -301,13 +302,15 @@ The words come from languages people already know.
 Writing rules:
 
 1. **One way to say each thing.** No aliases, no optional punctuation.
-2. **Braces, not indentation.** Spaces and line breaks carry no meaning: every statement starts
-   with its own word (`mask`, `keep`, `seed`, `table`), so nothing depends on layout. Indentation
-   mistakes are the most common YAML failure for people and agents alike.
+2. **Braces, not indentation.** Spaces and line breaks only separate words, as in JSON or C, so
+   nothing depends on layout; one rule per line is the convention the formatter applies.
+   Indentation mistakes are the most common YAML failure for people and agents alike. Inside a
+   table four words are reserved (`keep`, `in`, `deterministic`, `vaulted`); a column with one of
+   those names, or with a space in it, is written in backticks.
 3. **Things live where they apply.** A table's source sits on the table. A foreign key sits on the
    child column.
 4. **Defaults are silent, overrides are visible.** A minimal pipeline is a few lines.
-5. **Reads aloud.** "mask ssn with fpe, charset digits, in ssn_space."
+5. **Reads aloud.** "ssn: fpe with charset digits, in ssn_space."
 6. **Every error names the line, says what is wrong and suggests the fix.**
 7. **Order in the file does not matter** between blocks. Inside a table, transforms and generated
    columns run in the order written, as they do today.
@@ -321,8 +324,8 @@ pipeline people {
   seed 42
 
   table people from csv("people.csv") to csv("people_masked.csv") {
-    mask email with faker(person_email)
-    mask ssn   with redact
+    email : faker(person_email)
+    ssn   : redact
   }
 }
 ```
@@ -437,7 +440,7 @@ test says by how much. It can never be ahead of it or disagree with it.
   language an inferred line ends with `?`:
 
   ```
-  mask email with faker(person_email) ?
+  email : faker(person_email) ?
   ```
 
   `decoy run` refuses while any `?` remains. Review becomes something the tool enforces. This needs
@@ -447,7 +450,7 @@ test says by how much. It can never be ahead of it or disagree with it.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | Column style | **Decided: verbs.** `mask ssn with fpe(...)`, `keep status` |
+| D1 | Column style | **Decided: symbols.** `ssn : fpe(...)` masks, `id = sequence(...)` defines, `keep status` leaves unchanged. Verbs were built first, then reverted |
 | D2 | Name and file extension | `.decoy` |
 | D7 | Comments | **Decided: `#`.** `//` is integer division in the engine's expression grammar |
 | D8 | CSV header | **Decided:** a CSV source has a header row unless `header: false` |

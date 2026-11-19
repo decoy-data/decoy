@@ -4,15 +4,15 @@ pipeline {
   seed 42
 
   table users from csv("./users.csv") to csv("./users_masked.csv") {
-    mask full_name with faker(person_name)
-    mask email     with faker(person_email)
-    mask phone     with faker(person_phone)
-    mask ip_address, user_agent with redact
-    mask device_id with hash in device_identity
+    full_name : faker(person_name)
+    email     : faker(person_email)
+    phone     : faker(person_phone)
+    ip_address, user_agent : redact
+    device_id : hash in device_identity
     keep country
-    mask city        with faker(address_city)
-    mask postal_code with truncate(length: 3)
-    mask national_id, passport_number, ethnicity, religion, health_condition with redact
-    mask salary with shuffle
+    city        : faker(address_city)
+    postal_code : truncate(length: 3)
+    national_id, passport_number, ethnicity, religion, health_condition : redact
+    salary : shuffle
   }
 }
