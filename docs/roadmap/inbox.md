@@ -25,6 +25,14 @@ Triage empties this page. Each item gets exactly one outcome:
   its order follows the string hash. en_US is stable. Likely blocks 1.0 (broken today: same-seed
   masking must be reproducible). Separately, unseeded module-level `random` makes `passport_*` and
   some es_ES, es_MX, uk_UA, sv_SE, th and el_GR providers non-reproducible in generation.
+- 2026-11-19, engine physical-seam handoff
+  ([handoffs/2026-11-19-engine-physical-seam.md](../handoffs/2026-11-19-engine-physical-seam.md)): the
+  physical plan and coordinator own only the unified-slice lane; every other route is proven in
+  shadow but never activated. Owner decision needed: finish the seam (Task 4.6 activation, then
+  delete the superseded routing), keep it as an explainer, or freeze it and delete the scaffolding
+  (audit C4, C5, E3). Hold the C4 and C5 deletions until decided. Separately, the unified slice
+  declines with no reason code, so `route_summary` and the CLI cannot say why a job fell back to
+  pandas (handoff step 1).
 
 Carried from the track on 2026-11-18 (the "V2-LOG" list found at the 2026-11-17 merges):
 
