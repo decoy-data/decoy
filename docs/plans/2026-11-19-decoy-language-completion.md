@@ -165,6 +165,51 @@ Notes on the order:
 | 6 | 10, 11 | Docs, then the freeze |
 | After 1.0 | 12 | Needs the CLI to read the `policy` block first |
 
+## Milestone 5 plan: converter and printer
+
+Behavior. `convert_config(config)` returns `.decoy` text for a pipeline config. `print_program`
+writes a syntax tree as text in the one canonical layout; the converter builds a tree and prints
+it, and the formatter (milestone 7) will print the tree it parsed, so there is one layout.
+
+Guarantee. The text the converter returns compiles to the same pipeline: the engine's model of the
+compiled config equals the engine's model of the input (`parse_pipeline_config(...).model_dump()`),
+with expression strings compared after canonical spacing. The converter checks this itself before
+returning and refuses with `ConvertError` otherwise. It never returns text that means something
+else.
+
+Failure modes, all refused with `ConvertError` naming the config path, never a value:
+
+| Case | Why it cannot be written |
+|---|---|
+| The input does not validate | Nothing to preserve |
+| A table with no target, or a source or target for a table that is not declared | `mask` and `generate` carry both |
+| A `null` or non-finite number where a value is written | The language has no spelling for it |
+| `coherent_with` that is not one symmetric group with one shared rule | `{a, b} : rule` states exactly that |
+| A relationship whose order cannot be reproduced from the table order | Links are written in the child table |
+| `quarantine` with `enabled: false`, a namespace with no columns | The statement form implies the other case |
+
+Acceptance tests. (1) All 11 template twins are the converter's output, byte for byte. (2) Each
+language construct round-trips from a config written by hand. (3) A Hypothesis property test:
+generated valid configs convert and compile back to an equal model. (4) Every `ConvertError` case
+above. (5) A corpus run over every pipeline YAML in both repositories reports how many convert.
+
+Placement: `src/decoy/lang/_print.py` (tree to text), `src/decoy/lang/_convert.py` (config to
+tree, and the faithfulness check); tests `tests/unit/lang/test_print.py`, `test_convert.py`,
+`test_roundtrip.py`. Expected size: about 500 source lines in the two modules, two public names
+(`convert_config`, `ConvertError`).
+
+## Choices made without asking
+
+The owner asked (2026-11-19) for recommended choices to be taken and recorded here for review.
+
+| # | Choice | Alternative | Why |
+|---|---|---|---|
+| C1 | Hypothesis is added to the dev dependencies and the lock regenerated (decision E6) | Enumerated round-trip cases only | The testing rules ask for property tests on round-trip claims |
+| C2 | A child key column may have both a link and a rule (`id <- t.id ...` and `id : hash in ns`) | Refuse it, as before | Existing YAML declares the child's own rule beside the relationship (engine recipe (b)); without this it cannot be written |
+| C3 | The converter refuses rather than approximates | Emit the nearest program with a warning | A converted pipeline that masks differently is a data-safety defect |
+| C4 | The printer aligns `:` and `=` within a run of single-line rules | No alignment | It is how the hand-written twins read; one layout rule, applied by the tool |
+| C5 | An independent review is run by a separate agent at milestone boundaries | Wait for the repository's named reviewers | They are not available in this session; findings and verdicts are recorded below |
+
 ## Working rules
 
 1. No change to engine behavior. If the compiler needs an engine fact that is private, that is a

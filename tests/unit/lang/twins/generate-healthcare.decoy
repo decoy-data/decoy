@@ -22,7 +22,7 @@ pipeline {
 
   generate claims rows 3000 to csv("./claims.csv") {
     claim_id      = sequence(1, step: 1)
-    visit_id <- visits.visit_id
+    visit_id      <- visits.visit_id
     amount_billed = faker(random_int, faker_kwargs: {min: 50, max: 5000})
     claim_status  = categorical({Approved: 0.7, Pending: 0.2, Denied: 0.1})
   }

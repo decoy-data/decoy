@@ -73,7 +73,7 @@ def _strategies() -> frozenset[str]:
 
 
 @lru_cache(maxsize=1)
-def _column_fields() -> frozenset[str]:
+def column_fields() -> frozenset[str]:
     schema = PipelineConfig.model_json_schema()
     return frozenset(schema["$defs"]["ColumnConfig"]["properties"])
 
@@ -206,6 +206,8 @@ def _table(
     target = lower_connector(table.target, is_source=False, path=("targets", name), spans=spans)
     columns: list[dict[str, Any]] = []
     seen: dict[str, nodes.Name] = {}
+    linked: dict[str, nodes.Name] = {}
+    position: dict[str, int] = {}  # where a linked column's entry sits, until its rule arrives
     problems: list[Diagnostic] = []
     transforms: list[dict[str, Any]] = []
     for statement in table.statements:
@@ -228,33 +230,46 @@ def _table(
                         )
                     )
             continue
+        is_link = isinstance(statement, nodes.Link)
         for column in statement.columns:
-            if column.text in seen:
-                first = seen[column.text].span
+            # A key column may have a link and a rule of its own; anything else is said once.
+            earlier = linked if is_link else seen
+            if column.text in earlier:
+                first = earlier[column.text].span
                 problems.append(
                     Diagnostic(
                         "lang.column_repeated",
-                        f"column `{column.text}` already has a rule on line {first.line}",
+                        f"column `{column.text}` already has a "
+                        f"{'link' if is_link else 'rule'} on line {first.line}",
                         column.span,
                     )
                 )
                 continue
-            seen[column.text] = column
-            path = ("tables", index, "columns", len(columns))
+            earlier[column.text] = column
+            if is_link and column.text in seen:
+                continue  # its own rule is the column entry; the link adds the relationship
+            place = position.get(column.text, len(columns)) if not is_link else len(columns)
+            path = ("tables", index, "columns", place)
             spans[path] = statement.span
             spans[(*path, "name")] = column.span
             try:
                 if isinstance(statement, nodes.Keep):
-                    columns.append({"name": column.text, "strategy": KEEP_STRATEGY})
+                    entry = {"name": column.text, "strategy": KEEP_STRATEGY}
                 elif isinstance(statement, nodes.Link):
-                    columns.append({"name": column.text, "strategy": CHILD_STRATEGY})
+                    entry = {"name": column.text, "strategy": CHILD_STRATEGY}
+                    position[column.text] = place
                 else:
-                    columns.append(_column(column, statement.treatment, lets, path, spans))
+                    entry = _column(column, statement.treatment, lets, path, spans)
                     if statement.coherent:
                         others = [c.text for c in statement.columns if c.text != column.text]
-                        columns[-1]["coherent_with"] = others
+                        entry["coherent_with"] = others
             except LangError as error:
                 problems.extend(error.diagnostics)
+                continue
+            if place < len(columns):
+                columns[place] = entry  # the rule takes the place its link held
+            else:
+                columns.append(entry)
         if isinstance(statement, nodes.Link):
             links.append((name, statement))
         elif isinstance(statement, nodes.Mask) and statement.coherent:
@@ -348,7 +363,7 @@ def _column(
             )
         if key in out:
             raise fail("lang.option_repeated", f"`{key}` is given twice", option.key.span)
-        if key in _column_fields():
+        if key in column_fields():
             out[key] = plain(option.value)
             spans[(*path, key)] = option.value.span
         else:

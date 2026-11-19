@@ -9,12 +9,15 @@ arguments of a generator call, plain values.
 from __future__ import annotations
 
 import ast as python_ast
+from functools import lru_cache
 from typing import Any
 
-from lark import Token, Tree
+from lark import Lark, Token, Tree
+from lark.exceptions import UnexpectedInput
 
 from decoy.lang import _ast as nodes
 from decoy.lang._errors import Span, fail
+from decoy.lang._grammar import GRAMMAR
 
 
 def span_of(node: Tree[Any] | Token) -> Span:
@@ -130,3 +133,21 @@ def generator_call(expression: Tree[Any]) -> nodes.Call | None:
             positional.append(plain_value(argument))
     name = nodes.Name(str(head), span_of(head))
     return nodes.Call(name, tuple(positional), tuple(options), True, span_of(call))
+
+
+@lru_cache(maxsize=1)
+def _expression_parser() -> Lark:
+    return Lark(GRAMMAR, parser="lalr", start="expression", maybe_placeholders=True)
+
+
+def canonical_expression(text: str) -> str:
+    """An expression from a config as the compiler would write it: one space between tokens.
+
+    Raises `LangError` when the text is not something the language can hold as an expression."""
+    try:
+        tree = _expression_parser().parse(text)
+    except UnexpectedInput:
+        failure = fail("lang.expression", "this expression cannot be written in the language")
+    else:
+        return expression_text(tree)
+    raise failure

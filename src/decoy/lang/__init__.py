@@ -3,6 +3,7 @@
     compiled = compile_text(source)   # parse, lower, validate with the engine
     compiled.config                   # the dict `yaml.safe_load` gives for the same pipeline
     emit_yaml(compiled.config)        # that config as YAML text
+    convert_config(config)            # the other way: a config as `.decoy` text, checked
 
 Built so far: pipeline settings, sources and targets, masking with `when` conditions, table
 shaping (`where`, `name = expression`, `sort by`, `limit`, `dedupe`, `drop`), foreign keys (`<-`),
@@ -19,6 +20,7 @@ from typing import Any
 import yaml
 
 from decoy.lang._connectors import SourceMap
+from decoy.lang._convert import ConvertError, convert_config
 from decoy.lang._errors import Diagnostic, LangError, Span, render
 from decoy.lang._lower import lower
 from decoy.lang._parse import parse
@@ -26,10 +28,12 @@ from decoy.lang._validate import validate
 
 __all__ = [
     "Compiled",
+    "ConvertError",
     "Diagnostic",
     "LangError",
     "Span",
     "compile_text",
+    "convert_config",
     "emit_yaml",
     "render",
 ]

@@ -21,7 +21,7 @@ pipeline {
 
   generate claims rows 600 to csv("./claims.csv") {
     claim_id     = sequence(1, step: 1)
-    policy_id <- policies.policy_id
+    policy_id    <- policies.policy_id
     filed_on     = faker(date_this_year)
     claim_amount = faker(random_int, faker_kwargs: {min: 100, max: 25000})
     claim_status = categorical({Open: 0.25, Paid: 0.55, Denied: 0.15, Withdrawn: 0.05})

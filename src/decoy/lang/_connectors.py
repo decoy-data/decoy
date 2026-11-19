@@ -36,7 +36,7 @@ CONNECTORS: dict[str, Connector] = {
 
 # Shorter words in the language for engine field names.
 RENAMES = {"header": "has_header", "credentials": "credentials_ref"}
-_FORMATS = {".csv": "csv", ".parquet": "parquet"}
+FORMATS = {".csv": "csv", ".parquet": "parquet"}
 
 
 def plain(value: nodes.Value) -> Any:
@@ -88,7 +88,7 @@ def lower_connector(
         spans[(*path, key)] = option.value.span
     if "format" not in out:
         located = str(out[connector.positional[-1]])
-        suffix = next((s for s in _FORMATS if located.lower().endswith(s)), None)
+        suffix = next((s for s in FORMATS if located.lower().endswith(s)), None)
         if suffix is None:
             raise fail(
                 "lang.format_unknown",
@@ -96,5 +96,5 @@ def lower_connector(
                 call.span,
                 "add `format: csv` or `format: parquet`",
             )
-        out["format"] = _FORMATS[suffix]
+        out["format"] = FORMATS[suffix]
     return out

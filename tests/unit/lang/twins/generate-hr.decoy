@@ -5,7 +5,7 @@ pipeline {
 
   generate departments rows 12 to csv("./departments.csv") {
     department_id   = sequence(1, step: 1)
-    department_name = categorical(categories: [Engineering, Marketing, Sales, HR, Finance, Support])
+    department_name = categorical([Engineering, Marketing, Sales, HR, Finance, Support])
     cost_center     = faker(bothify, faker_kwargs: {text: "CC-####"})
   }
 

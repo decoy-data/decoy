@@ -144,7 +144,12 @@ def test_a_coherent_group_names_the_other_columns_on_each_member() -> None:
         ),
         ("hash in order_identity", "redact", "lang.link_needs_namespace", 18),
         ("orders.order_id orphans fail", "orders.order_id orphans sometimes", "lang.config", 18),
-        ("keep sku", "keep sku, order_id", "lang.column_repeated", 20),
+        (
+            "keep sku",
+            "keep sku\n    order_id <- orders.order_id orphans fail",
+            "lang.column_repeated",
+            21,
+        ),
         (
             "{first_name, last_name, email} : faker(composite_name_email)",
             "{email} : faker(composite_name_email)\n    keep first_name, last_name",
@@ -201,3 +206,24 @@ pipeline {{
     assert set(masked_parent).isdisjoint({"a", "b", "c"})
     assert masked_child[:3] == [masked_parent[0], masked_parent[1], masked_parent[1]]
     assert masked_child[3] == "q"  # an orphan under `orphans preserve` keeps its value
+
+
+def test_a_key_column_may_have_a_link_and_a_rule_of_its_own() -> None:
+    rule_first = _PIPELINE.replace(
+        "customer_id <- customers.customer_id orphans preserve\n    keep total",
+        "customer_id : hash in customer_identity\n"
+        "    customer_id <- customers.customer_id orphans preserve\n    keep total",
+    )
+    link_first = _PIPELINE.replace(
+        "customer_id <- customers.customer_id orphans preserve\n    keep total",
+        "customer_id <- customers.customer_id orphans preserve\n    keep total\n"
+        "    customer_id : hash in customer_identity",
+    )
+    for text in (rule_first, link_first):
+        config = compile_text(text).config
+        assert config["tables"][1]["columns"][1] == {
+            "name": "customer_id",
+            "strategy": "hash",
+            "namespace": "customer_identity",
+        }
+        assert config["relationships"] == compile_text(_PIPELINE).config["relationships"]
