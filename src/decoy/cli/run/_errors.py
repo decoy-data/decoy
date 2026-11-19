@@ -12,7 +12,6 @@ from decoy.cli import gen
 from decoy.cli.exit_codes import (
     EXIT_CAPACITY,
     EXIT_USAGE,
-    run_exit_code,
 )
 from decoy.cli.extras import (
     MissingExtraError,
@@ -21,6 +20,7 @@ from decoy.cli.extras import (
 )
 from decoy.cli.gate import PreRunCheckError, cap_error_text, capacity_codes
 from decoy.cli.io import OUTPUT_DIR_UNUSABLE, LayoutError
+from decoy.cli.run import _result
 from decoy.cli.run._context import RunContext
 from decoy.cli.run._notify import _dispatch_run_notifications
 from decoy.cli.run._vault import VAULT_COMMIT_FAILED_HINT, _VaultWriteError
@@ -78,8 +78,8 @@ def _cli_refusal_types() -> tuple[type, ...]:
     return (*owned, _VaultWriteError, PreRunCheckError)
 
 
-def _failure_reason(exc: Exception, engine_exc: Exception) -> dict | None:
-    """The engine's reason payload for the failure, or None when the CLI owns the refusal.
+def _failure_reason(exc: Exception, engine_exc: Exception) -> Any:
+    """The engine's `ReasonRecord` for the failure, or None when the CLI owns the refusal.
 
     `engine_exc` is the exception as the engine raised it, before the missing-extra and NER
     rewrites, so a rewrite keeps the engine's record. The answer is computed here only; any
@@ -90,7 +90,7 @@ def _failure_reason(exc: Exception, engine_exc: Exception) -> dict | None:
 
         if not _engine_family(type(engine_exc)) and isinstance(exc, _cli_refusal_types()):
             return None
-        return reason_adapter.reason_from_exception(engine_exc).to_payload()
+        return reason_adapter.reason_from_exception(engine_exc)
     except Exception:
         return None
 
@@ -196,6 +196,16 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
         _category = "usage"
     else:
         _category = "usage" if isinstance(exc, _exit_codes.usage_error_types()) else "runtime"
+    # One document and one exit integer for the run, from the one builder.
+    record = _failure_reason(exc, engine_exc)
+    document = _result.build(
+        ctx,
+        category=_category,
+        reason=record,
+        error_class=type(exc).__name__,
+        blocking_failed=isinstance(exc, PostScanBlockedError),
+        vault_failed=isinstance(exc, _VaultWriteError),
+    )
     # CLI QA fix (2026-06-02, F8): cap the error message at 500
     # chars before emitting through --json. Engine exceptions can
     # quote source-row content verbatim (pandas / pyarrow); without
@@ -279,9 +289,9 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
             # `[missing_extra]`-prefixed message text.
             payload["error_kind"] = "missing_extra"
             payload["extra"] = exc.extra
-        reason = _failure_reason(exc, engine_exc)
-        if reason is not None:
-            payload["reason"] = reason
+        if record is not None:
+            payload["reason"] = record.to_payload()
+        payload.update(_result.members(document))
         if ctx.notify_channels:
             payload["notify"] = ctx.notify_results
         emit_json(ctx.state, payload)
@@ -319,6 +329,4 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
             )
     if ctx.state.verbose:
         print_traceback(ctx.state)
-    raise typer.Exit(
-        code=run_exit_code(_category, blocking_failed=isinstance(exc, PostScanBlockedError))
-    )
+    raise typer.Exit(code=document.exit_code)

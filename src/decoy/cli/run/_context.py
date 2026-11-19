@@ -25,7 +25,9 @@ DEFAULT_CHUNK_SIZE = 100_000
 
 # The machine-readable `code` of each warning the CLI raises itself. Closed: a new code is
 # added here, so the `--json` `warnings` vocabulary has one list.
-CLI_WARNING_CODES: frozenset[str] = frozenset({"chunked_key_check_not_run"})
+CLI_WARNING_CODES: frozenset[str] = frozenset(
+    {"chunked_key_check_not_run", "run_result_build_failed"}
+)
 
 
 class Mode(str, Enum):
@@ -104,6 +106,10 @@ class RunContext:
     layout: RunLayout | None = field(init=False, default=None)
     # The one engine progress sink (`_progress.ProgressFanout`), built by `_flow`.
     progress: Any = field(init=False, default=None)
+    # The run-result collector riding on that sink, and the engine's `ExecutionResult` of the plain
+    # branch; the one result builder (`_result`) reads both.
+    _collector: Any = field(init=False, default=None)
+    _execution: Any = field(init=False, default=None)
 
     # Temp dir holding Parquet snapshots acquired from --duckdb-source inputs;
     # created only when the flag is used, torn down in the run's finally.
