@@ -47,6 +47,13 @@ Carried from the old open-questions list:
   `decoy init`. CLI only, no engine behavior change. Draft plan:
   [plans/2026-11-19-decoy-language.md](../plans/2026-11-19-decoy-language.md). Likely Later.
 
+- 2026-11-19, DECOY-LANG foreign-key experiment (engine 0.28.0 checkout, three-row tables, one run,
+  not investigated further): with a parent key masked by `faker` (`person_email`, namespace set,
+  `deterministic` off) and a relationship with `orphan_policy: remap`, the orphan child key was
+  remapped to the same fake value as an existing parent row, so the orphan joins to a parent it never
+  had. With `deterministic: true`, or with `hash`, the orphan got a distinct value. Possible safety
+  item (a wrong join reported as success); needs a repro on the pinned engine before triage.
+
 ## Freeze candidates (decide before REL-GATE)
 
 Triaged 2026-11-18. The freeze-list items with no row became the 1.0 rows FREEZE-SURFACE (health),
