@@ -66,3 +66,19 @@ def render(diagnostic: Diagnostic, filename: str = "<input>") -> str:
     if diagnostic.hint:
         lines.append(f"  hint: {diagnostic.hint}")
     return "\n".join(lines)
+
+
+class ConvertError(Exception):
+    """A config that cannot be written as a `.decoy` program, with the registry `Code` that says
+    why. `path` names the config location and `message` holds no value from the config."""
+
+    def __init__(self, code: Code, path: str = "", **fields: object) -> None:
+        self.code = code
+        self.path = path
+        self.message = code.message.format(**fields)
+        super().__init__(f"{path}: {self.message}" if path else self.message)
+
+    @property
+    def diagnostic(self) -> Diagnostic:
+        """The error as a diagnostic, so it is shown by the one `render` path."""
+        return Diagnostic(self.code.code, str(self))

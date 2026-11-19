@@ -4,7 +4,7 @@
 (a code may have more than one message). Every diagnostic is built from a `Code` through
 `_errors.fail` or `_errors.diagnostic`, so a message is written once, holds only words of the
 language and the names the caller passes in, and never a config value. No module writes a `lang.`
-string or builds a `Diagnostic` itself; `tests/sentry/lang/test_codes_registry.py` fails when one does.
+string or builds a `Diagnostic` itself; `tests/unit/lang/test_codes.py` fails when one does.
 
 This module imports nothing.
 """
@@ -170,7 +170,41 @@ CONFIG = Code("lang.config", "{text}")
 EXPRESSION = Code("lang.expression", "this expression cannot be written in the language")
 UNREVIEWED = Code("lang.unreviewed", "this rule was inferred and has not been reviewed")
 FORMAT = Code("lang.format", "formatting would change this program; the file is left as it is")
-CONVERT = Code("lang.convert", "{reason}")
+CONVERT_MAP_KEY = Code("lang.convert", "a map key that is not text cannot be written")
+CONVERT_VALUE_NULL = Code("lang.convert", "a null or non-finite value cannot be written")
+CONVERT_VALUE_KIND = Code("lang.convert", "this kind of value cannot be written")
+CONVERT_EXPRESSION_TEXT = Code("lang.convert", "an expression must be text")
+CONVERT_EXPRESSION = Code("lang.convert", "this expression cannot be written in the language")
+CONVERT_EXPRESSION_CHANGED = Code(
+    "lang.convert",
+    "this expression holds a comment or a number spelling the language does not keep",
+)
+CONVERT_NO_CONNECTOR = Code(
+    "lang.convert", "this kind of source or target has no connector in the language"
+)
+CONVERT_PROVIDER_CLASH = Code(
+    "lang.convert", "a provider option with the name of a column setting cannot be written"
+)
+CONVERT_SORT_DIRECTIONS = Code("lang.convert", "a sort needs one direction for each key")
+CONVERT_NEEDS_SOURCE_TARGET = Code(
+    "lang.convert", "a masked table needs both a source and a target"
+)
+CONVERT_GENERATED_TABLE = Code(
+    "lang.convert", "a generated table needs a target and takes no transforms"
+)
+CONVERT_SETTING_ONE_VALUE = Code("lang.convert", "this setting has one value in the language")
+CONVERT_NAMESPACE = Code("lang.convert", "a namespace is declared for `table.column` names")
+CONVERT_SEED_KIND = Code("lang.convert", "a subset seed of this kind cannot be written")
+CONVERT_TEST_KIND = Code("lang.convert", "a test of this kind cannot be written")
+CONVERT_TEST_SHAPE = Code("lang.convert", "this test cannot be written")
+CONVERT_EDGE = Code("lang.convert", "an edge is `parent.key -> child.key`")
+CONVERT_VERSION = Code("lang.convert", "only config version {version} can be converted")
+CONVERT_STRAY = Code("lang.convert", "this entry is for a table that is not declared")
+CONVERT_INVALID = Code("lang.convert", "the config does not validate")
+CONVERT_LANGUAGE = Code("lang.convert", "the language cannot write this config: {reason}")
+CONVERT_NESTING = Code("lang.convert", "the config is nested too deeply to write")
+CONVERT_SHAPE = Code("lang.convert", "the config has a shape this writer cannot read")
+CONVERT_DIFFERS = Code("lang.convert", "the program for this would not compile back to it")
 UNPRINTABLE_NAME_EMPTY = Code("lang.unprintable_name", "a name cannot be empty")
 UNPRINTABLE_NAME_CHARS = Code(
     "lang.unprintable_name", "a name with a quote or a line break cannot be written"
@@ -237,7 +271,30 @@ DESCRIPTORS: tuple[Code, ...] = (
     EXPRESSION,
     UNREVIEWED,
     FORMAT,
-    CONVERT,
+    CONVERT_MAP_KEY,
+    CONVERT_VALUE_NULL,
+    CONVERT_VALUE_KIND,
+    CONVERT_EXPRESSION_TEXT,
+    CONVERT_EXPRESSION,
+    CONVERT_EXPRESSION_CHANGED,
+    CONVERT_NO_CONNECTOR,
+    CONVERT_PROVIDER_CLASH,
+    CONVERT_SORT_DIRECTIONS,
+    CONVERT_NEEDS_SOURCE_TARGET,
+    CONVERT_GENERATED_TABLE,
+    CONVERT_SETTING_ONE_VALUE,
+    CONVERT_NAMESPACE,
+    CONVERT_SEED_KIND,
+    CONVERT_TEST_KIND,
+    CONVERT_TEST_SHAPE,
+    CONVERT_EDGE,
+    CONVERT_VERSION,
+    CONVERT_STRAY,
+    CONVERT_INVALID,
+    CONVERT_LANGUAGE,
+    CONVERT_NESTING,
+    CONVERT_SHAPE,
+    CONVERT_DIFFERS,
     UNPRINTABLE_NAME_EMPTY,
     UNPRINTABLE_NAME_CHARS,
     UNPRINTABLE_NUMBER,

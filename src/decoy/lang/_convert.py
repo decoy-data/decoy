@@ -23,8 +23,34 @@ from decoy_engine import parse_pipeline_config
 from decoy_engine.config import PipelineConfigError
 
 from decoy.lang import _ast as nodes
+from decoy.lang._codes import (
+    CONVERT_DIFFERS,
+    CONVERT_EDGE,
+    CONVERT_EXPRESSION,
+    CONVERT_EXPRESSION_CHANGED,
+    CONVERT_EXPRESSION_TEXT,
+    CONVERT_GENERATED_TABLE,
+    CONVERT_INVALID,
+    CONVERT_LANGUAGE,
+    CONVERT_MAP_KEY,
+    CONVERT_NAMESPACE,
+    CONVERT_NEEDS_SOURCE_TARGET,
+    CONVERT_NESTING,
+    CONVERT_NO_CONNECTOR,
+    CONVERT_PROVIDER_CLASH,
+    CONVERT_SEED_KIND,
+    CONVERT_SETTING_ONE_VALUE,
+    CONVERT_SHAPE,
+    CONVERT_SORT_DIRECTIONS,
+    CONVERT_STRAY,
+    CONVERT_TEST_KIND,
+    CONVERT_TEST_SHAPE,
+    CONVERT_VALUE_KIND,
+    CONVERT_VALUE_NULL,
+    CONVERT_VERSION,
+)
 from decoy.lang._connectors import CONNECTORS, FORMATS, RENAMES
-from decoy.lang._errors import LangError, Span
+from decoy.lang._errors import ConvertError, LangError, Span
 from decoy.lang._expressions import canonical_expression
 from decoy.lang._generate import generators
 from decoy.lang._links import CHILD_STRATEGY
@@ -50,16 +76,6 @@ _OPTION_NAME = {engine: written for written, engine in RENAMES.items()}
 _STATEMENT = {field: word for word, (field, _) in SETTING_STATEMENTS.items()}
 
 
-class ConvertError(Exception):
-    """A config that cannot be written as a `.decoy` program. `path` names the config location
-    and `message` holds no value from the config."""
-
-    def __init__(self, path: str, message: str) -> None:
-        super().__init__(f"{path}: {message}" if path else message)
-        self.path = path
-        self.message = message
-
-
 def _name(text: str) -> nodes.Name:
     return nodes.Name(str(text), NOWHERE)
 
@@ -73,14 +89,14 @@ def _value(item: Any, path: str) -> nodes.Value:
     and is never put in an error."""
     if isinstance(item, dict):
         if not all(isinstance(key, str) for key in item):
-            raise ConvertError(path, "a map key that is not text cannot be written")
+            raise ConvertError(CONVERT_MAP_KEY, path)
         return nodes.Value({k: _value(v, path) for k, v in item.items()}, NOWHERE)
     if isinstance(item, (list, tuple)):
         return nodes.Value(tuple(_value(v, path) for v in item), NOWHERE)
     if item is None or (isinstance(item, float) and not math.isfinite(item)):
-        raise ConvertError(path, "a null or non-finite value cannot be written")
+        raise ConvertError(CONVERT_VALUE_NULL, path)
     if not isinstance(item, (str, int, float, bool)):
-        raise ConvertError(path, "this kind of value cannot be written")
+        raise ConvertError(CONVERT_VALUE_KIND, path)
     return nodes.Value(item, NOWHERE)
 
 
@@ -110,20 +126,18 @@ def _call(word: str, positional: list[Any], options: dict[str, Any], path: str) 
 
 def _expression(text: Any, path: str) -> nodes.Expression:
     if not isinstance(text, str):
-        raise ConvertError(path, "an expression must be text")
+        raise ConvertError(CONVERT_EXPRESSION_TEXT, path)
     try:
         written = canonical_expression(text)
     except LangError:
-        failure = ConvertError(path, "this expression cannot be written in the language")
+        failure = ConvertError(CONVERT_EXPRESSION, path)
     else:
         # The writer may only move whitespace. A `#` comment or a `1_000` the writer would drop
         # changes the text, and a proof that compares both sides through the same writer cannot
         # see it.
         if _bare(written) == _bare(text):
             return nodes.Expression(written, NOWHERE)
-        failure = ConvertError(
-            path, "this expression holds a comment or a number spelling the language does not keep"
-        )
+        failure = ConvertError(CONVERT_EXPRESSION_CHANGED, path)
     raise failure
 
 
@@ -157,7 +171,7 @@ def _connector(entry: dict[str, Any], *, is_source: bool, path: str) -> nodes.Ca
         if connector.format is None and FORMATS.get(located[located.rfind(".") :]) != declared:
             options["format"] = declared
         return _call(word, positional, options, path)
-    raise ConvertError(path, "this kind of source or target has no connector in the language")
+    raise ConvertError(CONVERT_NO_CONNECTOR, path)
 
 
 def _treatment(column: dict[str, Any], path: str) -> nodes.Treatment:
@@ -170,10 +184,7 @@ def _treatment(column: dict[str, Any], path: str) -> nodes.Treatment:
     provider_config = rest.pop("provider_config", {})
     clash = sorted(set(provider_config) & (column_fields() | set(COLUMN_SYNTAX)))
     if clash:
-        raise ConvertError(
-            f"{path}.provider_config.{clash[0]}",
-            "a provider option with the name of a column setting cannot be written",
-        )
+        raise ConvertError(CONVERT_PROVIDER_CLASH, f"{path}.provider_config.{clash[0]}")
     call = _call(
         strategy, [] if provider is None else [provider], {**rest, **provider_config}, path
     )
@@ -204,7 +215,7 @@ def _shaping(op: dict[str, Any], path: str) -> nodes.Shaping:
     if isinstance(ascending, bool):
         ascending = [ascending] * len(op["by"])
     if len(ascending) != len(op["by"]):
-        raise ConvertError(f"{path}.ascending", "a sort needs one direction for each key")
+        raise ConvertError(CONVERT_SORT_DIRECTIONS, f"{path}.ascending")
     keys = zip(op["by"], ascending, strict=True)
     return nodes.Sort(tuple(nodes.SortKey(_name(c), bool(up)) for c, up in keys), NOWHERE)
 
@@ -212,7 +223,7 @@ def _shaping(op: dict[str, Any], path: str) -> nodes.Shaping:
 def _mask_table(table: dict[str, Any], index: int, config: dict[str, Any]) -> nodes.Table:
     name, path = table["name"], f"tables[{index}]"
     if name not in config.get("sources", {}) or name not in config.get("targets", {}):
-        raise ConvertError(path, "a masked table needs both a source and a target")
+        raise ConvertError(CONVERT_NEEDS_SOURCE_TARGET, path)
     statements: list[Any] = [
         _shaping(op, f"{path}.transforms[{i}]") for i, op in enumerate(table.get("transforms", []))
     ]
@@ -294,7 +305,7 @@ def _row_count(*, row_count: Any, **_rest: Any) -> Any:
 def _generate_table(table: dict[str, Any], index: int, config: dict[str, Any]) -> nodes.Generate:
     name, path = table["name"], f"tables[{index}]"
     if name not in config.get("targets", {}) or table.get("transforms"):
-        raise ConvertError(path, "a generated table needs a target and takes no transforms")
+        raise ConvertError(CONVERT_GENERATED_TABLE, path)
     statements: list[Any] = []
     for position, column in enumerate(table["generate_columns"]):
         column_path = f"{path}.generate_columns[{position}]"
@@ -354,9 +365,7 @@ def _blocks(config: dict[str, Any]) -> tuple[nodes.Block, ...]:
         rest = dict(config[shape.key])
         for key, fixed in shape.fixed.items():
             if rest.pop(key, None) != fixed:
-                raise ConvertError(
-                    f"{shape.key}.{key}", "this setting has one value in the language"
-                )
+                raise ConvertError(CONVERT_SETTING_ONE_VALUE, f"{shape.key}.{key}")
         positional: list[Any] = []
         if shape.variadic is not None:
             positional = list(rest.pop(shape.variadic, []))
@@ -378,9 +387,7 @@ def _blocks(config: dict[str, Any]) -> tuple[nodes.Block, ...]:
     for name, entry in config.get("namespaces", {}).items():
         declared = [item.split(".", 1) for item in entry.get("declared_by", [])]
         if not declared or any(len(parts) != 2 for parts in declared):
-            raise ConvertError(
-                f"namespaces.{name}", "a namespace is declared for `table.column` names"
-            )
+            raise ConvertError(CONVERT_NAMESPACE, f"namespaces.{name}")
         refs = tuple(nodes.Ref(_name(table), _name(column), NOWHERE) for table, column in declared)
         blocks.append(nodes.Block("namespace", _name(name), (), refs, (), NOWHERE))
     return tuple(blocks)
@@ -397,7 +404,7 @@ def _subset(subset: dict[str, Any]) -> nodes.Subset:
         path = f"subset.seeds[{index}]"
         keys, conditions, amount, unit = None, [], None, None
         if seed["mode"] not in SEED_MODES:
-            raise ConvertError(f"{path}.mode", "a subset seed of this kind cannot be written")
+            raise ConvertError(CONVERT_SEED_KIND, f"{path}.mode")
         if seed["mode"] == "sample" and seed.get("fraction") is not None:
             percent = Decimal(repr(float(seed["fraction"]))) * 100
             whole = percent == percent.to_integral_value()
@@ -411,12 +418,10 @@ def _subset(subset: dict[str, Any]) -> nodes.Subset:
         for position, predicate in enumerate(seed.get("predicates", [])):
             operand = predicate.get("value")
             if predicate["op"] not in _SPELLING:
-                raise ConvertError(
-                    f"{path}.predicates[{position}]", "a test of this kind cannot be written"
-                )
+                raise ConvertError(CONVERT_TEST_KIND, f"{path}.predicates[{position}]")
             takes_value = not predicate["op"].startswith("is_")
             if takes_value == (operand is None):
-                raise ConvertError(f"{path}.predicates[{position}]", "this test cannot be written")
+                raise ConvertError(CONVERT_TEST_SHAPE, f"{path}.predicates[{position}]")
             conditions.append(
                 nodes.Condition(
                     _name(predicate["column"]),
@@ -441,7 +446,7 @@ def _subset(subset: dict[str, Any]) -> nodes.Subset:
     for edge, direction in subset.get("edge_directions", {}).items():
         parent, arrow, child = edge.partition(" -> ")
         if not arrow or "." not in parent or "." not in child:
-            raise ConvertError("subset.edge_directions", "an edge is `parent.key -> child.key`")
+            raise ConvertError(CONVERT_EDGE, "subset.edge_directions")
         follows.append(
             nodes.Follow(*_edge_end(parent), *_edge_end(child), _name(direction), NOWHERE)
         )
@@ -456,7 +461,7 @@ def _subset(subset: dict[str, Any]) -> nodes.Subset:
 
 def _program(config: dict[str, Any]) -> nodes.Program:
     if config.get("version") != CONFIG_VERSION:
-        raise ConvertError("version", f"only config version {CONFIG_VERSION} can be converted")
+        raise ConvertError(CONVERT_VERSION, "version", version=CONFIG_VERSION)
     settings = dict(config["global_settings"])
     statements = tuple(
         nodes.Setting(_STATEMENT[key], _value(settings.pop(key), f"global_settings.{key}"), NOWHERE)
@@ -473,9 +478,7 @@ def _program(config: dict[str, Any]) -> nodes.Program:
     for block in ("sources", "targets"):
         stray = sorted(set(config.get(block, {})) - known)
         if stray:
-            raise ConvertError(
-                f"{block}.{stray[0]}", "this entry is for a table that is not declared"
-            )
+            raise ConvertError(CONVERT_STRAY, f"{block}.{stray[0]}")
     leftover = {key: item for key, item in config.items() if key not in BLOCK_SYNTAX}
     return nodes.Program(
         _name(config["name"]) if config.get("name") else None,
@@ -517,7 +520,7 @@ def _validated(config: dict[str, Any]) -> Any:
     try:
         return parse_pipeline_config(copy.deepcopy(config))
     except PipelineConfigError:
-        failure = ConvertError("", "the config does not validate")
+        failure = ConvertError(CONVERT_INVALID, "")
     raise failure
 
 
@@ -545,16 +548,16 @@ def convert_config(config: dict[str, Any]) -> str:
     except LangError as error:
         # A diagnostic names words, strategies, tables and columns, never a value.
         reason = error.diagnostics[0].message
-        failure = ConvertError("", f"the language cannot write this config: {reason}")
+        failure = ConvertError(CONVERT_LANGUAGE, "", reason=reason)
     except ConvertError:
         raise
     except RecursionError:
-        failure = ConvertError("", "the config is nested too deeply to write")
+        failure = ConvertError(CONVERT_NESTING, "")
     except Exception:
-        failure = ConvertError("", "the config has a shape this writer cannot read")
+        failure = ConvertError(CONVERT_SHAPE, "")
     else:
         if same:
             return text
         differing = _first_difference(compiled, config)
-        failure = ConvertError(differing, "the program for this would not compile back to it")
+        failure = ConvertError(CONVERT_DIFFERS, differing)
     raise failure
