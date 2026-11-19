@@ -35,6 +35,7 @@ Installable Typer/Rich CLI that wraps `decoy-engine` for local validation, runs,
 | `packaging_tools/` | Build-host release pipeline (bundle assembler, signing, install scripts, version-document generator, smoke) -- NOT shipped in the wheel |
 | `src/decoy/ui/` | Theme, output state, progress, tables, cards |
 | `src/decoy/templates/` | Packaged YAML templates |
+| `src/decoy/lang/` | The Decoy language compiler (`.decoy` text to the pipeline config): `_grammar.py`, `_parse.py` (text to syntax tree), `_lower.py` + `_connectors.py` (tree to config, with a source map), `_check.py` (engine validation reported on source lines); plan `docs/plans/2026-11-19-decoy-language.md`. Not wired to a command yet |
 | `examples/` | Example YAML configs |
 | `tests/` | CLI tests |
 | `docs/` | CLI docs, plus the one Decoy roadmap (`docs/ROADMAP.md`, `docs/roadmap/`) and the shipped log (`docs/RECENTLY-SHIPPED.md`) |
@@ -97,6 +98,7 @@ One row per kind of module. Path cells are checked by `tests/sentry/layout/test_
 | Plan command | `src/decoy/cli/plan.py` |
 | Output formatting | `src/decoy/ui/` |
 | Templates | `src/decoy/templates/` |
+| Decoy language | `src/decoy/lang/`, tests `tests/unit/lang/` |
 | CLI examples | `examples/` |
 
 ## Conventions

@@ -1,0 +1,29 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  let shift = date_shift(min_days: -30, max_days: 30) in patient_dates
+
+  table patients from csv("./patients.csv") to csv("./patients_masked.csv") {
+    mask first_name with faker(person_first_name)
+    mask last_name  with faker(person_last_name)
+    mask street     with faker(address_street)
+    mask city       with faker(address_city)
+    mask zip        with geo_generalize(type: zip, cascade: [zip5, zip3, state, suppress], k_threshold: 20000)
+
+    mask dob, admission_date, discharge_date with shift
+
+    mask phone, fax with faker(person_phone)
+    mask email      with faker(person_email)
+
+    mask ssn            with fpe(charset: digits)   in ssn_identity
+    mask mrn            with fpe(charset: ALPHANUM) in mrn_identity
+    mask health_plan_id with redact
+    mask account_number with fpe(charset: ALPHANUM) in account_identity
+    mask license_number with redact
+    mask vehicle_id     with fpe(charset: ALPHANUM) in vehicle_identity
+
+    mask device_id, url, ip_address, biometric_id with redact
+  }
+}

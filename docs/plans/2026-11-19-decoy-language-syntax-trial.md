@@ -1,4 +1,4 @@
-Status: draft
+Status: record
 
 # DECOY-LANG step 0: syntax trial for groups A, B and D
 
@@ -259,3 +259,23 @@ column names where the eye lands. The one thing to learn (`:` masks, `=` defines
 | Q6 | Bare words as option values (`digits`, `zip5`) or quoted strings? | Bare words where the engine has a fixed list of choices; quotes for free text such as paths. |
 | Q7 | Where do `in`, `deterministic`, `vaulted`, `when` go? | After the call, in that order. The formatter enforces the order. |
 | Q8 | Relative paths: `"input.csv"` or `"./input.csv"`? | Both accepted; compiled YAML keeps what was written. |
+
+## Outcome (2026-11-19)
+
+| Question | Decision |
+|---|---|
+| Style | **Style 2, verbs**: `mask <columns> with <strategy>` and `keep <columns>` |
+| Q1 | `keep a, b`; it compiles to `passthrough` |
+| Q2 | Pipeline name is optional |
+| Q3 | A CSV source has a header row unless `header: false` |
+| Q4 | No provider shorthand; a bare name is a strategy or a `let` name |
+| Q5 | Options are `key: value` |
+| Q6 | Bare words and quoted strings both give a string; quotes are needed for anything that is not a plain word |
+| Q7 | After the call: `in <namespace>`, then `deterministic`, then `vaulted` |
+| Q8 | Paths are kept as written |
+| Comments | `#`, not `//`: `//` is integer division in the engine's expression grammar |
+| New column in a masked table | `derive name = expression`; a generator there is a compile error |
+| Layout | Spaces and line breaks carry no meaning; statements start with their own word |
+
+The Style 1 examples above are kept as the record of what was compared. The built form is in
+`src/decoy/lang/` and the `.decoy` twins of the templates in `tests/unit/lang/twins/`.

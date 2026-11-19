@@ -1,0 +1,18 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  table users from csv("./users.csv") to csv("./users_masked.csv") {
+    mask full_name with faker(person_name)
+    mask email     with faker(person_email)
+    mask phone     with faker(person_phone)
+    mask ip_address, user_agent with redact
+    mask device_id with hash in device_identity
+    keep country
+    mask city        with faker(address_city)
+    mask postal_code with truncate(length: 3)
+    mask national_id, passport_number, ethnicity, religion, health_condition with redact
+    mask salary with shuffle
+  }
+}

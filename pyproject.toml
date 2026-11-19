@@ -165,6 +165,9 @@ dependencies = [
     # (and `decoy validate` already imports pydantic), so it must not ride in only as an
     # engine transitive. Floor matches the engine's own.
     "pydantic>=2,<3",
+    # Declared directly: `decoy.lang` parses `.decoy` programs with Lark, the parser the engine
+    # uses for its expression grammar. Floor matches the engine's own.
+    "lark>=1.1",
 ]
 
 [project.optional-dependencies]

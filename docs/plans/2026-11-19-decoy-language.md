@@ -6,7 +6,9 @@ Date: 2026-11-19. Scope: CLI repo only. No engine behavior changes. Not a 1.0 bl
 
 This is the broad plan. It says what the language covers, how it should read, how the compiler
 works, and the order to build it in. Each group in section 4 gets its own short design pass before
-it is built. Syntax shown here is the leading candidate, not a final decision (see section 12).
+it is built. Groups A, B and D are decided and built (section 12 and the
+[syntax trial](2026-11-19-decoy-language-syntax-trial.md)); syntax shown for the other groups is the
+leading candidate until that group's design pass.
 
 Working name: Decoy language. Working file extension: `.decoy`.
 
@@ -139,17 +141,17 @@ drop internal_notes
 per-column settings: `namespace`, `deterministic`, `vault`, `when`, `cardinality_mode`,
 `allow_collisions`, declared casting.
 
-**Language:** one line per column. The column name, a colon, then the strategy as a call. Settings
-that today sit beside the strategy become short trailing words.
+**Language:** one statement per rule: `mask <columns> with <strategy>`. Settings that today sit
+beside the strategy become short trailing words. `keep` leaves columns unchanged.
 
 ```
-email      : faker(person_email)
-ssn        : fpe(charset: digits) in ssn_space
-zip        : geo_generalize(type: zip, k_threshold: 20000)
-dob        : date_shift(min_days: -30, max_days: 30) in patient_dates
-account    : faker(synthetic_account_number) vaulted
-diagnosis  : code_set(icd10, chapter_preserve: true) when region == 'US'
-visit_count: keep
+mask email with faker(person_email)
+mask ssn   with fpe(charset: digits) in ssn_space
+mask zip   with geo_generalize(type: zip, k_threshold: 20000)
+mask dob, admitted with date_shift(min_days: -30, max_days: 30) in patient_dates
+mask account   with faker(synthetic_account_number) vaulted
+mask diagnosis with code_set(icd10, chapter_preserve: true) when region == 'US'
+keep visit_count, status
 ```
 
 Strategy names are not keywords. The compiler checks each name and its options against the engine's
@@ -166,12 +168,12 @@ This is where YAML is hardest to write, because one idea is spread across three 
 **Language:** the idea is written once, where it applies.
 
 ```
-member_id <- members.member_id                       // foreign key: child takes the parent's masked value
-(member_id, plan_id) <- enrollments.(member_id, plan_id) orphans fail
-{first_name, last_name, email} : faker(composite_name_email)   // stays consistent within a row
+link member_id to members.member_id                 # foreign key: child takes the parent's masked value
+link (member_id, plan_id) to enrollments.(member_id, plan_id) orphans fail
+mask {first_name, last_name, email} with faker(composite_name_email)   # stays consistent within a row
 ```
 
-- `<-` creates the relationship entry and the `from_parent` column together.
+- `link` creates the relationship entry and the `from_parent` column together.
 - Braces mark a coherent group; the compiler writes `coherent_with` on each member.
 - A namespace exists once any column says `in <name>`. No separate declaration block.
 
@@ -182,7 +184,7 @@ member_id <- members.member_id                       // foreign key: child takes
 `grouped_series`, `windowed_date`, `group_key`, `constant`, `distribution`, `lookup`,
 `statistical`). Options are checked per type by the engine's registry.
 
-**Language:** a `generate` block. Columns use `=`, because they are being defined, not masked.
+**Language:** a `generate` block. Columns are defined with `name = generator(...)`.
 
 ```
 generate customers rows 1000 to csv("out/customers.csv") {
@@ -194,12 +196,15 @@ generate customers rows 1000 to csv("out/customers.csv") {
 generate orders rows 3000 {
   order_id    = sequence(start: 1)
   customer_id = ref customers.customer_id
-  label       = concat(status, ':', order_id)      // an expression, not a quoted string
+  label       = concat(status, ':', order_id)      # an expression, not a quoted string
   unique (customer_id, ordered_on)
 }
 ```
 
-The rule to remember: **`:` masks a column that exists, `=` defines a new one.**
+The rule to remember: **`mask` changes a column that exists, `=` defines a new one.** In a masked
+table, `derive name = expression` adds a column from an expression. A generator inside a masked
+table is a compile error, because the engine keeps mask tables and generate tables separate; if
+the engine later allows mixed tables, the same syntax starts working.
 
 ### Group G: Expressions
 
@@ -289,19 +294,20 @@ The words come from languages people already know.
 | Condition | `when`, `if` | SQL, Ruby |
 | Rule matching | `match … =>` | Rust, Scala |
 | Assertion | `expect` | Jest, RSpec |
-| Comment | `// …` | C family |
+| Comment | `# …` | Python, shell, YAML |
 | Lists and maps | `[a, b]`, `{k: v}` | JSON, Python |
 | Big numbers | `5_000_000` | Python, Rust |
 
 Writing rules:
 
 1. **One way to say each thing.** No aliases, no optional punctuation.
-2. **Braces, not indentation.** Indentation mistakes are the most common YAML failure for people
-   and agents alike.
+2. **Braces, not indentation.** Spaces and line breaks carry no meaning: every statement starts
+   with its own word (`mask`, `keep`, `seed`, `table`), so nothing depends on layout. Indentation
+   mistakes are the most common YAML failure for people and agents alike.
 3. **Things live where they apply.** A table's source sits on the table. A foreign key sits on the
    child column.
 4. **Defaults are silent, overrides are visible.** A minimal pipeline is a few lines.
-5. **Reads aloud.** "ssn: fpe with charset digits, in ssn_space."
+5. **Reads aloud.** "mask ssn with fpe, charset digits, in ssn_space."
 6. **Every error names the line, says what is wrong and suggests the fix.**
 7. **Order in the file does not matter** between blocks. Inside a table, transforms and generated
    columns run in the order written, as they do today.
@@ -315,8 +321,8 @@ pipeline people {
   seed 42
 
   table people from csv("people.csv") to csv("people_masked.csv") {
-    email : faker(person_email)
-    ssn   : redact
+    mask email with faker(person_email)
+    mask ssn   with redact
   }
 }
 ```
@@ -328,7 +334,7 @@ pipeline people {
   1. parse        Lark grammar → syntax tree; every node keeps its line and column
   2. build        syntax tree → typed AST (frozen dataclasses)
   3. resolve      let names, `use` imports, table and column references
-  4. desugar      groups → coherent_with; `<-` → relationships; `in x` → namespaces;
+  4. desugar      groups → coherent_with; `link` → relationships; `in x` → namespaces;
                   from/to → sources/targets; expect → validators and post_scan
   5. lower        AST → plain dict in the PipelineConfig shape, plus a source map
                   (dict path → source span)
@@ -383,9 +389,9 @@ programs, agree the syntax, then build.
 | Step | Content | Ends with |
 |---|---|---|
 | 0 | Syntax trial. Hand-translate five real configs into two candidate styles (section 12, D1). Pick one. Write the agent card. | Agreed syntax for groups A to F |
-| 1 | Compiler skeleton: parse, AST, lower, validate, source-mapped errors. Groups A, B and the simple part of D. | Recipe (a) compiles and runs |
+| 1 | Compiler skeleton: parse, AST, lower, validate, source-mapped errors. Groups A, B and the simple part of D. **Built** in `src/decoy/lang/`: the four mask templates compile to identical config. Not wired to a command; `when` waits for group G. | Recipe (a) compiles |
 | 2 | Group D in full: all strategies through the catalog, trailing settings, `when`. Group G expressions. | `hipaa`, `gdpr`, `pci` templates compile to identical YAML |
-| 3 | Group C transforms. Group E: `<-`, composite keys, coherent groups, namespaces, vault. | A multi-table foreign-key pipeline compiles |
+| 3 | Group C transforms. Group E: `link`, composite keys, coherent groups, namespaces, vault. | A multi-table foreign-key pipeline compiles |
 | 4 | Group F generation. | All seven `generate-*` templates compile to identical YAML |
 | 5 | `let`, escape hatch, `--emit yaml`, `decoy run` and `decoy validate` wiring. | **v0.1: usable for real pipelines** |
 | 6 | Group J checks. Group H policy and `use`. Group I subset. | Full coverage of `PipelineConfig` |
@@ -431,7 +437,7 @@ test says by how much. It can never be ahead of it or disagree with it.
   language an inferred line ends with `?`:
 
   ```
-  email : faker(person_email) ?
+  mask email with faker(person_email) ?
   ```
 
   `decoy run` refuses while any `?` remains. Review becomes something the tool enforces. This needs
@@ -441,8 +447,11 @@ test says by how much. It can never be ahead of it or disagree with it.
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | Column style: `ssn : fpe(...)` and `id = sequence(...)`, or verbs: `mask ssn with fpe(...)`, `make id from sequence(...)` | Trial both in step 0; the symbol form is shorter, the verb form reads more plainly |
+| D1 | Column style | **Decided: verbs.** `mask ssn with fpe(...)`, `keep status` |
 | D2 | Name and file extension | `.decoy` |
+| D7 | Comments | **Decided: `#`.** `//` is integer division in the engine's expression grammar |
+| D8 | CSV header | **Decided:** a CSV source has a header row unless `header: false` |
+| D9 | Generators in a masked table | **Decided:** compile error until the engine supports mixed tables |
 | D3 | Which file is committed to a project | The `.decoy` file; compiled YAML goes with run outputs |
 | D4 | Release bucket | After 1.0 (it adds, breaks nothing); can ship earlier behind an experimental flag |
 | D5 | Review marker `?` | Yes, timed with the wizard work |
