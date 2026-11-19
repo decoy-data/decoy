@@ -32,7 +32,7 @@ Shared rules used below:
 - `let` names a strategy with its options and namespace so it can be reused.
 - A comma list on the left applies one strategy to several columns.
 
-## 1. `minimal` (29 lines of YAML)
+## 1. `minimal` (30 lines of YAML)
 
 Style 1:
 
@@ -70,7 +70,7 @@ pipeline {
 }
 ```
 
-## 2. `hipaa` (88 lines of YAML)
+## 2. `hipaa` (94 lines of YAML)
 
 Style 1:
 
@@ -136,7 +136,7 @@ pipeline {
 }
 ```
 
-## 3. `pci` (42 lines of YAML)
+## 3. `pci` (46 lines of YAML)
 
 Style 1:
 
@@ -233,7 +233,7 @@ pipeline member_export {
 
 | | Style 1: symbols | Style 2: verbs |
 |---|---|---|
-| Length | Shortest. `hipaa` is 25 lines against 88 of YAML. | Same line count, about 10 characters more per line |
+| Length | Shortest. `hipaa` is 25 lines against 94 of YAML. | Same line count, about 10 characters more per line |
 | Scanning a wide table | Column names line up on the left edge, like a schema | Every line starts with `mask`, so names start further in |
 | First read with no docs | Needs one sentence: "`:` means mask with" | Reads as English |
 | Looks like | A typed field list (TypeScript, Python annotations) | SQL or a shell script |
