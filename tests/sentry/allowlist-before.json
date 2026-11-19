@@ -113,8 +113,7 @@
   "decoy/cli/setup/__init__.py::setup_command::1": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
   "decoy/cli/setup/__init__.py::setup_command::2": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
   "decoy/distribution/installer.py::check_document_freshness::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
-  "decoy/distribution/lock.py::exclusive::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
-  "decoy/telemetry.py::validate_endpoint::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"}
+  "decoy/distribution/lock.py::exclusive::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"}
  },
  "exit-code-owner": {
   "cli/demo.py::_demo": {"reason": "demo's three-type map (usage versus runtime); CL4 calls exit_code_for instead"},

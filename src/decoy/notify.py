@@ -50,13 +50,14 @@ import logging
 import smtplib
 import time
 import urllib.error
-import urllib.request
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from typing import Any, Callable, Literal
 from urllib.parse import urlsplit
+
+from decoy import _outbound
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +77,16 @@ _WEBHOOK_MAX_BACKOFF_SECS: float = 16.0
 class NotifySpecError(ValueError):
     """A `--notify` spec string did not parse.
 
-    Raised for an unknown channel kind or a missing target. The caller
-    (`decoy run`) catches this BEFORE the pipeline runs and exits
-    EXIT_USAGE (D3): a bad spec is a usage error, never a run failure.
+    Raised for an unknown channel kind, a missing target or a URL scheme the channel does
+    not allow. The text is fixed: a spec can hold a webhook token, so it is never echoed.
+    `code` is the `--json` error code. The caller (`decoy run`) catches this BEFORE the
+    pipeline runs and exits EXIT_USAGE (D3): a bad spec is a usage error, never a run
+    failure.
     """
+
+    def __init__(self, message: str, code: str = "notify_spec_invalid") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -126,17 +133,28 @@ def parse_notify_spec(spec: str) -> NotifyChannel:
     """
     if ":" not in spec:
         raise NotifySpecError(
-            f"--notify expects 'kind:target' (kind in webhook, slack, email); got {spec!r}."
+            "--notify expects 'kind:target' (kind in webhook, slack, email)."
         )
     kind, target = spec.split(":", 1)
     kind = kind.strip().lower()
     target = target.strip()
     if kind not in _VALID_CHANNEL_KINDS:
-        raise NotifySpecError(
-            f"--notify kind must be one of webhook, slack, email; got {kind!r}."
-        )
+        raise NotifySpecError("--notify kind must be one of webhook, slack, email.")
     if not target:
         raise NotifySpecError(f"--notify {kind}: target is empty.")
+    if kind != "email":
+        purpose: _outbound.Purpose = "notify_webhook" if kind == "webhook" else "notify_slack"
+        try:
+            _outbound.check_scheme(target, purpose)
+            refused = False
+        except _outbound.OutboundRefused:
+            refused = True
+        if refused:
+            allowed = " or ".join(_outbound.allowed_schemes(purpose))
+            raise NotifySpecError(
+                f"--notify {kind}: the URL scheme is not allowed (use {allowed}).",
+                code="notify_url_scheme_refused",
+            )
     return NotifyChannel(kind=kind, target=target)  # type: ignore[arg-type]
 
 
@@ -247,11 +265,12 @@ def send_webhook(
     if signed:
         signature = hmac.new(secret_key.encode("utf-8"), raw, hashlib.sha256).hexdigest()
         headers["X-Decoy-Signature"] = f"sha256={signature}"
-    req = urllib.request.Request(url, data=raw, method="POST", headers=headers)
 
     for attempt in range(_max_retries):
         try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
+            with _outbound.open_url(
+                url, purpose="notify_webhook", data=raw, method="POST", headers=headers, timeout=8
+            ) as resp:
                 status_code = resp.status
                 if 200 <= status_code < 300:
                     return True, (
@@ -273,6 +292,9 @@ def send_webhook(
                     attempt + 1,
                     _max_retries,
                 )
+        except _outbound.OutboundRefused as exc:
+            logger.warning("webhook %s refused: %s", _host_only(url), exc.code)
+            return False, exc.code
         except urllib.error.URLError as exc:
             logger.warning(
                 "webhook %s unreachable (attempt %d/%d): %s",
@@ -312,13 +334,20 @@ def send_slack(url: str, event: dict[str, Any]) -> tuple[bool, str | None]:
             {"type": "section", "fields": fields},
         ]
     raw = json.dumps(body).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=raw, method="POST", headers={"Content-Type": "application/json"}
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with _outbound.open_url(
+            url,
+            purpose="notify_slack",
+            data=raw,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+            timeout=10,
+        ) as resp:
             delivered = 200 <= resp.status < 300
             return delivered, None if delivered else f"http {resp.status}"
+    except _outbound.OutboundRefused as exc:
+        logger.warning("slack webhook %s refused: %s", _host_only(url), exc.code)
+        return False, exc.code
     except urllib.error.URLError as exc:
         logger.warning("slack webhook %s unreachable: %s", _host_only(url), exc)
         return False, "unreachable"

@@ -103,9 +103,6 @@
   },
   "decoy/distribution/lock.py::exclusive::0": {
    "reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"
-  },
-  "decoy/telemetry.py::validate_endpoint::0": {
-   "reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"
   }
  }
 }

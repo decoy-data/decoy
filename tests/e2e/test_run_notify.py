@@ -115,13 +115,24 @@ def test_run_bad_notify_spec_exits_usage_before_running(tmp_path: Path):
 _LONG = "x" * 120
 
 
-def test_a_long_bad_notify_spec_is_printed_whole_and_verbatim(tmp_path: Path):
-    """The NotifySpecError print quotes the spec."""
+def test_a_bad_notify_spec_is_refused_without_quoting_it(tmp_path: Path):
+    """AT-S6c: the refusal holds fixed text and a code, never the spec (a webhook token)."""
     cfg = _write_mask_config(tmp_path)
     spec = _LONG + "[bold]tail[/bold]"
     result = runner.invoke(app, ["run", str(cfg), "--notify", spec])
     assert result.exit_code == EXIT_USAGE
-    assert repr(spec) in result.stderr, result.stderr
+    assert "tail" not in result.stderr and _LONG not in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("spec", ["webhook:file:///x", "slack:http://hooks.example.com/SECRETTOKEN"])
+def test_a_refused_notify_scheme_exits_usage_with_a_code(tmp_path: Path, spec: str):
+    cfg = _write_mask_config(tmp_path)
+    result = runner.invoke(app, ["run", str(cfg), "--notify", spec, "--json"])
+    assert result.exit_code == EXIT_USAGE
+    payload = _json.loads(result.stdout)
+    assert payload["code"] == "notify_url_scheme_refused"
+    assert "SECRETTOKEN" not in result.stdout + result.stderr
+    assert not (tmp_path / "out.csv").exists()
 
 
 def test_a_long_undelivered_detail_is_printed_whole_and_verbatim(tmp_path: Path):

@@ -41,6 +41,7 @@ KINDS = frozenset(
         "Build-host release tools (not shipped in the wheel)",
         "Packaged templates",
         "Private shared filesystem or process primitives used by more than one package",
+        "Shared first-party outbound policy",
         "Notifications, telemetry",
         "First-user QA item tests, grouped by behavior",
         "Sentry test",

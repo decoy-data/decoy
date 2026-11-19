@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from tests import loopback_tls
 from typer.testing import CliRunner
 
 from decoy import _update_check
@@ -70,7 +71,7 @@ def key_pair():
 
 
 @pytest.fixture
-def served(request, key_pair):
+def served(request, key_pair, monkeypatch, tmp_path):
     key, _ = key_pair
     target = targets.detect_target() or "linux-x86_64"
     doc = vd.canonical_document_bytes(
@@ -89,6 +90,9 @@ def served(request, key_pair):
     )
     sig = base64.b64encode(key.sign(doc)).decode().encode()
     server = _Server({"/doc/version.json": doc, "/doc/version.json.sig": sig})
+    # `upgrade` opens only https and file, so the loopback server speaks https.
+    loopback_tls.secure(server._httpd, tmp_path, monkeypatch)
+    server.base = server.base.replace("http://", "https://", 1)
     request.addfinalizer(server.close)
     server.target = target
     return server
@@ -108,6 +112,8 @@ def test_at_c6_upgrade_pin_requests_the_release_asset_path(monkeypatch, tmp_path
     monkeypatch.setattr(upg, "_managed_home", lambda: tmp_path / "home")
     monkeypatch.setattr(upg.release_key, "pinned_public_pem", lambda: pub)
     bundles = _Server({})
+    loopback_tls.secure(bundles._httpd, tmp_path, monkeypatch)
+    bundles.base = bundles.base.replace("http://", "https://", 1)
     monkeypatch.setenv("DECOY_BUNDLE_BASE", bundles.base)
     CliRunner().invoke(
         app,

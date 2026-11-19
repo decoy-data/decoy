@@ -46,23 +46,6 @@ _MAX_BODY_BYTES = 64 * 1024  # a version document is under 2 KiB
 _USER_AGENT = "decoy-update-check"
 
 
-def _opener():
-    # urllib is imported here, not at module load, so a start that skips the check never
-    # pays for it. build_opener keeps ProxyHandler (the check still works behind a proxy).
-    import urllib.request
-
-    class RefuseRedirects(urllib.request.HTTPRedirectHandler):
-        # Returning None makes urllib raise HTTPError for the 3xx instead of following it,
-        # so a redirect can never send the request (and the user's IP) to a second host.
-        def redirect_request(self, req, fp, code, msg, headers, newurl):
-            return None
-
-    opener = urllib.request.build_opener(RefuseRedirects)
-    # The default User-Agent names the Python version, so it is replaced, not added to.
-    opener.addheaders = [("User-Agent", _USER_AGENT)]
-    return opener
-
-
 def _canonical(value: object) -> str | None:
     """The canonical PEP 440 form of ``value``, or None. Server text is never shown raw."""
     if not isinstance(value, str):
@@ -119,7 +102,13 @@ def _fetch_latest(url: str) -> str | None:
     prints a wrong number, and the actual upgrade re-verifies against the pinned key.
     Returns None on any failure."""
     try:
-        with _opener().open(url, timeout=_FETCH_TIMEOUT) as resp:
+        # Imported here, not at module load, so a start that skips the check never pays for
+        # urllib. The purpose refuses every redirect, so the request cannot reach a second host.
+        from decoy import _outbound
+
+        with _outbound.open_url(
+            url, purpose="update_check", timeout=_FETCH_TIMEOUT, user_agent=_USER_AGENT
+        ) as resp:
             data = resp.read(_MAX_BODY_BYTES + 1)
         if len(data) > _MAX_BODY_BYTES:
             return None
