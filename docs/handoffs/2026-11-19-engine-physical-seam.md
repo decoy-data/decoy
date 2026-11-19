@@ -24,7 +24,7 @@ Path shorthand as in the roadmap: `E:` is `decoy-engine/src/decoy_engine/`, `ET:
 - **No roadmap row covers it.** It is not a 1.0 blocker under the roadmap's three tests, because the
   intended outcome changes no output. It is v1+ (1.x patch, or 1.x minor where it adds evidence).
 - **An open conflict needs an owner decision first.** The 2026-11-15 proportionality audit recommends
-  deleting parts of the seam that exist only for a later compiler (items C4, C5 and E3). Finishing the
+  deleting parts of the seam that exist only for a later compiler (items C4 and C5). Finishing the
   seam needs those parts. Both cannot happen. See "Decision needed".
 - **Users usually cannot see the lane today.** It declines silently, with no reason code. The CLI does
   not ship the native companion yet, and a table with a Faker or hash column needs it. Packaging is
@@ -143,17 +143,17 @@ The proportionality audit (`docs/records/2026-11-15-proportionality-audit/REMEDI
 |---|---|---|---|
 | C4 | `E:execution/physical/_protocols.py:58-137` | Five operator Protocols, kept "so a later compiler has a named shape". Delete. | Maintenance candidate (health) |
 | C5 | `E:execution/physical/drivers/_chunked.py`, `_sequential.py` | Pass-through adapters instantiated only in tests. Delete. | Maintenance candidate |
-| E3 | `ET:sentry/test_physical_seam_disconnection.py:290` | A byte-identical diff gate on `execution/` with about 720 lines of allowlist. Keep the import-direction tests, delete the diff gate. | Maintenance candidate |
+| E3 | `ET:sentry/test_physical_seam_disconnection.py:290` | A byte-identical diff gate on `execution/` with about 720 lines of allowlist. Keep the import-direction tests, delete the diff gate. | Owner-decided 2026-11-15 in row 24zl (PROP-GUARDS, maintenance). Not a conflict: the import-direction tests stay, and they are the guard route activation changes. |
 | A5, A6 | `E:execution/_unified_slice.py:359`, `E:execution/physical/_compiler.py:444` | Broad `except` that reruns on pandas, or returns `None`. Catch the coded errors only. | Maintenance candidate |
 
-C4 and C5 are the parts route migration would use. Deleting them is right if the seam stays at one
+C4 and C5 are the parts route migration would use. E3 goes ahead under row 24zl under every option. Deleting them is right if the seam stays at one
 slice, and wasted work if it is finished. A builder who picks up the health candidates should not
 delete them before this is decided.
 
 | Option | What it means | Cost | Result |
 |---|---|---|---|
 | A. Finish the seam | Activate the shadow-proven routes one by one, then delete the duplicate routing (the original Phase 4 end state) | Large: about six activation slices plus deletion, each with the parity, failure, publication, performance and review gates the program set | One decision path and one evidence shape for every route |
-| B. Freeze at one slice | Keep the unified-slice lane. Delete the dormant shadow branches, C4, C5 and the E3 diff gate. Record the decision. | Small, and removes a large share of the 28,000 test lines | Simpler code. Two styles of routing stay for good. |
+| B. Freeze at one slice | Keep the unified-slice lane. Delete the dormant shadow branches, C4 and C5. Record the decision. | Small, and removes a large share of the 28,000 test lines | Simpler code. Two styles of routing stay for good. |
 | C. Keep it as an explainer | Keep the compiler as a pure "what would run and why" tool for every route, with evidence and coded declines everywhere. Keep execution where it is. Delete the dormant execution branches. | Medium | One explanation path without moving execution |
 
 **Recommendation: decide A or C before 1.0 freeze, and do the evidence work (step 1 below) either
