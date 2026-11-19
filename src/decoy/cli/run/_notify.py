@@ -7,8 +7,8 @@ import typer
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.extras import MissingExtraError, translate_missing_extra
 from decoy.cli.run._context import RunContext
-from decoy.ui.output import OutputMode, emit_json
-from decoy.ui.theme import error, warn
+from decoy.ui.output import OutputMode, emit_error
+from decoy.ui.theme import warn
 
 
 class _OtelSettingsUsageError(Exception):
@@ -107,22 +107,10 @@ def parse_channels(ctx: RunContext) -> None:
         try:
             ctx.notify_channels = [parse_notify_spec(spec) for spec in ctx.notify]
         except NotifySpecError as exc:
-            msg = str(exc)
-            if ctx.state.mode is OutputMode.json:
-                emit_json(
-                    ctx.state,
-                    {
-                        "command": "run",
-                        "status": "error",
-                        "config": ctx.config_str,
-                        "error": msg,
-                        "code": exc.code,
-                    },
-                )
-            elif ctx.state.mode is not OutputMode.quiet:
-                # Fixed text, never the spec: print it verbatim (no markup) and unfolded, like
-                # the run error prints below.
-                ctx.state.err_console.print(error("error:"), msg, markup=False)
+            # Fixed text, never the spec; `config` rides in the error object as before.
+            emit_error(
+                ctx.state, "run", str(exc), code=exc.code, context={"config": ctx.config_str}
+            )
             raise typer.Exit(code=EXIT_USAGE)
 
 

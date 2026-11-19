@@ -14,6 +14,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.io_policy._calls import sites
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -27,18 +28,10 @@ BANNED = (
     "socket",
     "smtplib",
 )
-ALLOWLIST = frozenset(
-    {
-        ("src/decoy/_outbound.py", "RefuseRedirects"),
-        ("src/decoy/_outbound.py", "_PurposeRedirects"),
-        ("src/decoy/_outbound.py", "_scheme_of"),
-        ("src/decoy/_outbound.py", "_open"),
-        ("src/decoy/_outbound.py", "redirect_handler"),
-        ("src/decoy/_outbound.py", "open_url"),
-        ("src/decoy/telemetry.py", "_DecoySpanExporter.__init__"),
-        ("src/decoy/telemetry.py", "_DecoySpanExporter.export"),
-        ("src/decoy/notify.py", "send_email"),
-    }
+# The exact (path, function) owners are the baseline `outbound-network-owners`; it may shrink
+# and never grow.
+OWNERS = frozenset(
+    (key.split("::")[0], key.split("::")[1]) for key in load_allowlist("outbound-network-owners")
 )
 
 
@@ -97,8 +90,8 @@ def test_the_walk_sees_the_known_owners() -> None:
 
 def test_only_the_allowlist_owns_a_network_call() -> None:
     found, _ = scan()
-    assert found - ALLOWLIST == set()
-    assert ALLOWLIST - found == set(), "a stale allowlist entry"
+    assert found - OWNERS == set()
+    assert OWNERS - found == set(), "a stale allowlist entry"
 
 
 def test_the_update_check_is_a_caller_not_an_owner() -> None:

@@ -68,6 +68,7 @@ CREATED_IN = {
     "config-load-allow": "CL3",
     "retired-name-pending": "NAME-REMOVAL-C1",
     "banned-text-allow": "PROP-C-G1",
+    "outbound-network-owners": "FREEZE-S6",
 }
 SNAPSHOT = json.loads(
     (bs.SENTRY / "allowlist-before.json").read_text(encoding="utf-8")
