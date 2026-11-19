@@ -146,9 +146,9 @@ The proportionality audit (`docs/records/2026-11-15-proportionality-audit/REMEDI
 | E3 | `ET:sentry/test_physical_seam_disconnection.py:290` | A byte-identical diff gate on `execution/` with about 720 lines of allowlist. Keep the import-direction tests, delete the diff gate. | Owner-decided 2026-11-15 in row 24zl (PROP-GUARDS, maintenance). Not a conflict: the import-direction tests stay, and they are the guard route activation changes. |
 | A5, A6 | `E:execution/_unified_slice.py:359`, `E:execution/physical/_compiler.py:444` | Broad `except` that reruns on pandas, or returns `None`. Catch the coded errors only. | Maintenance candidate |
 
-C4 and C5 are the parts route migration would use. E3 goes ahead under row 24zl under every option. Deleting them is right if the seam stays at one
+C4 and C5 are the parts route migration would use. Deleting them is right if the seam stays at one
 slice, and wasted work if it is finished. A builder who picks up the health candidates should not
-delete them before this is decided.
+delete them before this is decided. E3 goes ahead under row 24zl under every option.
 
 | Option | What it means | Cost | Result |
 |---|---|---|---|
