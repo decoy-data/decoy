@@ -16,17 +16,19 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 import typer
 
-from decoy import _outbound
 from decoy._version import __version__
 from decoy.cli.exit_codes import EXIT_OK, EXIT_RUNTIME, EXIT_USAGE
 from decoy.distribution import installer, layout, release_key
 from decoy.distribution import version_document as vd
 from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.theme import hint, success
+
+if TYPE_CHECKING:
+    from decoy import _outbound
 
 UPGRADE_EPILOG = """\
 Examples:
@@ -50,7 +52,10 @@ def _managed_home() -> Path | None:
     return layout.managed_home()
 
 
-def _fetch(url: str, purpose: str = "upgrade_artifact") -> bytes:
+def _fetch(url: str, purpose: "_outbound.Purpose" = "upgrade_artifact") -> bytes:
+    # Imported here, not at module load, so a start that never upgrades does not load urllib.
+    from decoy import _outbound
+
     with _outbound.open_url(url, purpose=purpose, timeout=30) as resp:
         return resp.read()
 
@@ -58,6 +63,8 @@ def _fetch(url: str, purpose: str = "upgrade_artifact") -> bytes:
 def _refuse_scheme(state, url: str) -> None:
     """Exit 1 before any socket when the version-document URL has a scheme the purpose refuses.
     The refusal is raised outside the `except` so the URL cannot ride in the exception context."""
+    from decoy import _outbound
+
     try:
         _outbound.check_scheme(url, "upgrade_document")
         refused = None
@@ -87,6 +94,8 @@ def upgrade(
 ) -> None:
     """Upgrade (or pin) the managed Decoy runtime from the Decoy-hosted channel."""
     state = setup_output(json_, quiet, verbose)
+    from decoy import _outbound
+
     if url is not None:
         _refuse_scheme(state, url)
 
@@ -128,7 +137,7 @@ def upgrade(
         doc_bytes = _fetch(doc_url, "upgrade_document")
         doc_sig = _fetch(doc_url + ".sig", "upgrade_document").decode("ascii").strip()
     except _outbound.OutboundRefused as exc:
-        _refuse(state, "the version endpoint redirected somewhere not allowed", exc.code, exc)
+        _refuse(state, _outbound_text(exc, "the version endpoint"), exc.code, exc)
     except Exception as exc:
         _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", exc)
 
@@ -194,12 +203,19 @@ def upgrade(
             post_swap_validate=_post_swap,
         )
     except _outbound.OutboundRefused as exc:
-        _refuse(state, "a download was redirected somewhere not allowed", exc.code, exc)
+        _refuse(state, _outbound_text(exc, "a download"), exc.code, exc)
     except installer.InstallError as exc:
         _refuse(state, "the upgrade failed and the installed runtime is unchanged", "upgrade_install_failed", exc)
 
     _report_outcome(state, outcome, "upgraded")
     raise typer.Exit(code=EXIT_OK)
+
+
+def _outbound_text(exc, what: str) -> str:
+    """Fixed text for an outbound refusal, chosen by its code."""
+    if exc.code == "url_redirect_refused":
+        return f"{what} redirected somewhere not allowed"
+    return f"{what} uses a URL scheme that is not allowed"
 
 
 def _refuse(state, message: str, code: str, exc: BaseException) -> NoReturn:

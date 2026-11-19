@@ -58,14 +58,14 @@ _URL_CHARS = re.compile(r"[\x21-\x7e]+")
 class OutboundRefused(Exception):
     """A purpose refused a scheme or a redirect hop. `code` is the `--json` error code."""
 
-    def __init__(self, code: str, purpose: str, scheme: str | None) -> None:
+    def __init__(self, code: str, purpose: Purpose, scheme: str | None) -> None:
         shown = scheme if scheme in _NAMEABLE else "other"
         super().__init__(f"{purpose}: {code.removesuffix('_refused').replace('_', ' ')} ({shown})")
         self.code = code
         self.purpose = purpose
 
 
-def allowed_schemes(purpose: str) -> tuple[str, ...]:
+def allowed_schemes(purpose: Purpose) -> tuple[str, ...]:
     return tuple(sorted(_RULES[purpose].schemes))
 
 
@@ -78,7 +78,7 @@ def _scheme_of(url: str) -> str | None:
         return None
 
 
-def check_scheme(url: str, purpose: str) -> None:
+def check_scheme(url: str, purpose: Purpose) -> None:
     """Raise `OutboundRefused` unless `purpose` may open `url`'s scheme."""
     rule = _RULES[purpose]
     scheme = _scheme_of(url)
@@ -95,7 +95,7 @@ class RefuseRedirects(urllib.request.HTTPRedirectHandler):
 
 
 class _PurposeRedirects(urllib.request.HTTPRedirectHandler):
-    def __init__(self, purpose: str) -> None:
+    def __init__(self, purpose: Purpose) -> None:
         self._purpose = purpose
 
     def http_error_302(self, req, fp, code, msg, headers):  # type: ignore[no-untyped-def]
@@ -117,7 +117,7 @@ class _PurposeRedirects(urllib.request.HTTPRedirectHandler):
     http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
-def redirect_handler(purpose: str) -> urllib.request.HTTPRedirectHandler:
+def redirect_handler(purpose: Purpose) -> urllib.request.HTTPRedirectHandler:
     if _RULES[purpose].redirects == "none":
         return RefuseRedirects()
     return _PurposeRedirects(purpose)
@@ -131,7 +131,7 @@ def _open(
 
 def open_url(
     url: str,
-    purpose: str,
+    purpose: Purpose,
     *,
     timeout: float | None = None,
     data: bytes | None = None,

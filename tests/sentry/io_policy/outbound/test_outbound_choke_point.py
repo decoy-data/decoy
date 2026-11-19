@@ -21,6 +21,9 @@ ROOT = Path(__file__).resolve().parents[4]
 SRC = ROOT / "src"
 BANNED = (
     "urllib.request",
+    "ftplib",
+    "xmlrpc.client",
+    "asyncio.open_connection",
     "http.client",
     "requests",
     "urllib3",
@@ -35,8 +38,28 @@ OWNERS = frozenset(
 )
 
 
+# Private names of `decoy._outbound`; only that module may name them.
+OUTBOUND_PRIVATE = frozenset(
+    {"_open", "_scheme_of", "redirect_handler", "RefuseRedirects", "_PurposeRedirects"}
+)
+
+
 def _is_banned(name: str | None) -> bool:
-    return name is not None and any(name == b or name.startswith(b + ".") for b in BANNED)
+    """A banned module at any segment, so `decoy._outbound.urllib.request.urlopen` is caught."""
+    if name is None:
+        return False
+    parts = name.split(".")
+    tails = (".".join(parts[i:]) for i in range(len(parts)))
+    return any(t == b or t.startswith(b + ".") for t in tails for b in BANNED)
+
+
+def _is_private_outbound(name: str | None) -> bool:
+    prefix = "decoy._outbound."
+    return (
+        bool(name)
+        and name.startswith(prefix)
+        and name[len(prefix) :].split(".")[0] in OUTBOUND_PRIVATE
+    )  # type: ignore[union-attr]
 
 
 def _constants(tree: ast.Module) -> dict[str, str]:
@@ -48,13 +71,16 @@ def _constants(tree: ast.Module) -> dict[str, str]:
     return found
 
 
-def network_sites(source: str) -> set[str]:
-    """The enclosing scope of every network reference in `source`."""
+def network_sites(source: str, rel: str = "src/decoy/x.py") -> set[str]:
+    """The enclosing scope of every network reference in `source` (a file at `rel`)."""
     tree = ast.parse(source)
     consts = _constants(tree)
     hits: set[str] = set()
     for site in sites(tree):
-        if isinstance(site.node, (ast.Name, ast.Attribute)) and _is_banned(site.name):
+        named = isinstance(site.node, (ast.Name, ast.Attribute))
+        if named and _is_banned(site.name):
+            hits.add(site.scope)
+        if named and rel != "src/decoy/_outbound.py" and _is_private_outbound(site.name):
             hits.add(site.scope)
         if not isinstance(site.node, ast.Call) or not site.node.args:
             continue
@@ -77,7 +103,7 @@ def scan() -> tuple[set[tuple[str, str]], int]:
     files = sorted(SRC.rglob("*.py"))
     for path in files:
         rel = path.relative_to(ROOT).as_posix()
-        found |= {(rel, scope) for scope in network_sites(path.read_text(encoding="utf-8"))}
+        found |= {(rel, scope) for scope in network_sites(path.read_text(encoding="utf-8"), rel)}
     return found, len(files)
 
 
@@ -119,6 +145,16 @@ def test_the_allowlisted_owners_apply_their_rule() -> None:
 
 def test_each_import_spelling_is_caught() -> None:
     planted = [
+        "import ftplib\nftplib.FTP('h')",
+        "import xmlrpc.client\nxmlrpc.client.ServerProxy('h')",
+        "import asyncio\nasyncio.open_connection('h', 1)",
+        "from asyncio import open_connection as oc\noc('h', 1)",
+        # Dennis r1 M1: the two survivors, reaching urllib through `_outbound` itself.
+        "from decoy import _outbound\n_outbound.urllib.request.urlopen('u')",
+        "from decoy import _outbound\n_outbound._open(_outbound.urllib.request.build_opener(),"
+        " _outbound.urllib.request.Request('u'), None)",
+        "from decoy import _outbound\n_outbound._scheme_of('u')",
+        "from decoy._outbound import RefuseRedirects\nRefuseRedirects()",
         "import urllib\nurllib.request.urlopen('x')",
         "import urllib.request\nurllib.request.urlopen('x')",
         "import urllib.request as r\nr.urlopen('x')",
@@ -139,6 +175,43 @@ def test_each_import_spelling_is_caught() -> None:
     ]
     for source in planted:
         assert network_sites(source), source
+
+
+def test_the_outbound_public_surface_is_not_flagged() -> None:
+    source = (
+        "from decoy import _outbound\n"
+        "_outbound.open_url('u', 'notify_slack')\n_outbound.check_scheme('u', 'notify_slack')\n"
+        "_outbound.allowed_schemes('notify_slack')\n_outbound.OutboundRefused"
+    )
+    assert network_sites(source) == set()
+    assert (
+        network_sites("from decoy import _outbound\n_outbound._open", "src/decoy/_outbound.py")
+        == set()
+    )
+
+
+def _scopes_naming(name: str) -> dict[str, set[str]]:
+    found: dict[str, set[str]] = {}
+    for path in sorted(SRC.rglob("*.py")):
+        rel = path.relative_to(ROOT).as_posix()
+        for site in sites(ast.parse(path.read_text(encoding="utf-8"))):
+            node = site.node
+            ident = node.id if isinstance(node, ast.Name) else getattr(node, "attr", None)
+            if ident == name:
+                found.setdefault(rel, set()).add(site.scope)
+    return found
+
+
+def test_the_span_exporter_is_built_only_by_configure() -> None:
+    telemetry = "src/decoy/telemetry.py"
+    exporter = _scopes_naming("_DecoySpanExporter")
+    assert set(exporter) == {telemetry}
+    assert {s for s in exporter[telemetry] if not s.startswith("_DecoySpanExporter")} == {
+        "build_provider"
+    }
+    provider = _scopes_naming("build_provider")
+    assert set(provider) == {telemetry}
+    assert provider[telemetry] == {"configure"}
 
 
 def test_non_network_spellings_are_not_flagged() -> None:

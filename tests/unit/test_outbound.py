@@ -7,6 +7,8 @@ throwaway self-signed certificate that `SSL_CERT_FILE` makes the default context
 from __future__ import annotations
 
 import http.server
+import subprocess
+import sys
 import threading
 import urllib.error
 from collections.abc import Iterator
@@ -72,6 +74,21 @@ def test_the_opened_value_is_the_checked_value() -> None:
     for url in ("\nfile:///etc/hostname", " file:///etc/hostname"):
         with pytest.raises(_outbound.OutboundRefused):
             _outbound.open_url(url, purpose="notify_webhook")
+
+
+def test_a_plain_start_loads_no_network_module() -> None:
+    """Dennis r1 M2: `decoy --version` must not import urllib.request, ssl or `_outbound`."""
+    code = (
+        "import sys\n"
+        "from typer.testing import CliRunner\n"
+        "from decoy.__main__ import app\n"
+        "r = CliRunner().invoke(app, ['--version'])\n"
+        "assert r.exit_code == 0, r.output\n"
+        "bad = [m for m in ('urllib.request', 'decoy._outbound') if m in sys.modules]\n"
+        "assert not bad, bad\n"
+    )
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-600:]
 
 
 def test_the_checked_url_is_the_opened_url(monkeypatch: pytest.MonkeyPatch) -> None:

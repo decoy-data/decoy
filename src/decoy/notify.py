@@ -143,7 +143,7 @@ def parse_notify_spec(spec: str) -> NotifyChannel:
     if not target:
         raise NotifySpecError(f"--notify {kind}: target is empty.")
     if kind != "email":
-        purpose = f"notify_{kind}"
+        purpose: _outbound.Purpose = "notify_webhook" if kind == "webhook" else "notify_slack"
         try:
             _outbound.check_scheme(target, purpose)
             refused = False
