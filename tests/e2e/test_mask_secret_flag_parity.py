@@ -191,4 +191,7 @@ def test_report_vault_help_never_calls_the_seed_a_key() -> None:
     assert "derived from the config's seed" not in text
     assert "global_settings.seed" not in text
     assert "mask secret" in text
-    assert "seed is not key material" in text
+    assert "derive" not in text
+    # The epilog (capital T) and the docstring (lowercase) must both say it.
+    assert "The seed is not key material." in text
+    assert "the seed is not key material" in text
