@@ -57,6 +57,8 @@ Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above
 | Secondary: nested and arbitrary-N relationships on the out-of-core route (deferred at OOC-B) | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a decline into a success. |
 | Phase F deferral: mixed-job composite FK keys | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Turns a typed decline into a success. |
 | Phase F deferral: mixed-job out-of-core mask driver | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Same. |
+| SEAM-REASONS: the unified-slice lane says why it declined. Both admission stages return a registered reason instead of `None`; `quality_metrics` and `route_summary` carry it; the CLI prints it and deletes its 90-line admission copy (audit J3); fixes audit A5 and A6 in the same code. Handoff step 1 | [Physical-seam handoff](../handoffs/2026-11-19-engine-physical-seam.md) (2026-11-19) | New reason codes and new evidence fields; output and exit codes unchanged. 1.x minor. |
+| SEAM-EXPLAIN (owner decision 2026-11-19: option C): compile a `PhysicalPlan` for every job as a pure explainer, with no execution change, and record its driver, column operators and coded rejected alternatives in the run evidence (handoff step 3). Delete the coordinator's shadow-only execution branches and audit C4 and C5. Execution stays in today's routes | [Physical-seam handoff](../handoffs/2026-11-19-engine-physical-seam.md) (2026-11-19) | Evidence gains fields; output bytes, exit codes and reasons unchanged. 1.x minor. After SEAM-REASONS. |
 
 ## Maintenance
 
