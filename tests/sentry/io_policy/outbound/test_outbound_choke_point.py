@@ -206,9 +206,9 @@ def test_the_span_exporter_is_built_only_by_configure() -> None:
     telemetry = "src/decoy/telemetry.py"
     exporter = _scopes_naming("_DecoySpanExporter")
     assert set(exporter) == {telemetry}
-    assert {s for s in exporter[telemetry] if not s.startswith("_DecoySpanExporter")} == {
-        "build_provider"
-    }
+    # `CliTelemetry` only annotates its exporter field; `build_provider` constructs it.
+    outside = {s for s in exporter[telemetry] if not s.startswith("_DecoySpanExporter")}
+    assert outside == {"build_provider", "CliTelemetry"}
     provider = _scopes_naming("build_provider")
     assert set(provider) == {telemetry}
     assert provider[telemetry] == {"configure"}
