@@ -281,7 +281,7 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher 
 
 Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus` and `invariants` concerns use named subpackages.
 
-Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines. S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again.
+Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines (owner approved 2026-11-20). S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again.
 
 ## 10. Design notes
 
@@ -304,7 +304,7 @@ Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS us
 
 The checkout and other testers do not exist inside the container. A rerun starts from the same clean image, so there is no rerun state.
 
-**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (needs owner OK, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
+**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (owner approved 2026-11-20, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
 
 **What remains ours.**
 - `scripts/qa/launch.py` builds the podman or tart argv from one table. The table is the only place that lists mounts and limits.
@@ -319,8 +319,8 @@ No setup script runs as root on a schedule. No tester OS users exist. `setup-tes
 
 ## 11. Owner questions
 
-- Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Recommended: yes.
-- Q4 (added 2026-11-20, rev 3): a separate low-limit model API key for QA testers, used only inside the sandbox. Recommended: yes.
+- Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Answered: yes, owner 2026-11-20. Tart 2.42.0 installed on the Mac from the checksummed release (FSL-1.1, internal use allowed).
+- Q4 (added 2026-11-20, rev 3): a separate low-limit model API key for QA testers, used only inside the sandbox. Answered: yes, owner 2026-11-20. The owner creates the key and sets its spend cap.
 
 | Id | Question | Recommendation |
 |---|---|---|
