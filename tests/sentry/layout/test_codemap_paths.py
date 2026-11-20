@@ -49,6 +49,7 @@ KINDS = frozenset(
         "Shared cross-suite test helpers (constants and lookups used by more than one test folder)",
         "Developer environment scripts",
         "Release scripts",
+        "QA tooling (not shipped)",
         "Release runbooks, logs and maps",
         "CI install, vendor and lane policy",
         "Composite CI actions",
@@ -58,9 +59,17 @@ KINDS = frozenset(
         "QA checklists and run templates",
     }
 )
-# Paths the map marks `(target)`. A new or misspelled target is red. None is open since C3
-# created the layer files.
-TARGETS: frozenset[str] = frozenset()
+# Paths the map marks `(target)`. A new or misspelled target is red. The QA-BETA slices S1a, S1b
+# and S2 (docs/plans/2026-11-20-qa-beta-program.md) create these and drop them from this set.
+TARGETS: frozenset[str] = frozenset(
+    {
+        "docs/qa/briefs/",
+        "docs/qa/corpus/",
+        "docs/qa/matrix.toml",
+        "scripts/qa/",
+        "tests/unit/qa/",
+    }
+)
 _TARGET = re.compile(r"`([^`]+)` \(target\)")
 
 
