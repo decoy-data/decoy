@@ -77,8 +77,15 @@ def test_several_tables_carry_one_detector_list(people: Path, tmp_path: Path) ->
 
     result = runner.invoke(
         app,
-        ["scan", str(people), str(other), "--has-header", "--detectors", "regex,classifier"]
-        + ["--json"],
+        [
+            "scan",
+            str(people),
+            str(other),
+            "--has-header",
+            "--detectors",
+            "regex,classifier",
+            "--json",
+        ],
     )
 
     assert result.exit_code == 0, result.output
