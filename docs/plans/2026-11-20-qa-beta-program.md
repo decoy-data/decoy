@@ -10,7 +10,7 @@ Anchors: a path with no prefix is in this repository (decoy CLI); `E:` is decoy-
 
 Rules consulted: dev-rules `README.md` (routing), `00-universal.md`, `development-loop.md` (PLAN: guarantee, failure modes, acceptance tests first, placement, slices), `risk-and-exceptions.md`, `workspace-and-vcs.md`, `reuse-first.md`, `exploration.md`, `scope-discipline.md`, `proportionality.md`, `verification.md`, `code-review.md`, `testing.md` (test depth, oracles, property tests), `architecture.md`, `cross-cutting-concerns.md`, `api-and-compatibility.md`, `data-and-migrations.md`, `observability-and-resilience.md`, `security.md`, `config-secrets-and-supply-chain.md`, `documentation.md`, `delegation.md`, `pre-release-audit.md`, `autonomous-operation.md` and `catalogs/recurring-defects.md`.
 
-Review history: Dennis r1 reviewed revision 1 at `775efe04`. Codex r1 gave NO-GO on revision 2 at `048021bb`. Codex reviewed rev 3.1 at `70874c98` and gave NO-GO on the tester isolation design; rev 3.4 (Codex plan review of rev 3.1) fixes it. Sections 17, 18 and 19 map the fixes.
+Review history: Dennis r1 reviewed revision 1 at `775efe04`. Codex r1 gave NO-GO on revision 2 at `048021bb`. Codex reviewed rev 3.1 at `70874c98` and gave NO-GO on the tester isolation design; rev 3.4 (Codex plan review of rev 3.1) fixes it. Rev 3.4 also applies the owner decision of 2026-11-20 evening (section 11): QA covers the whole product, testers explore like human testers, and there is no program line ceiling. Sections 17, 18 and 19 map the fixes.
 
 ## 1. Current state
 
@@ -22,12 +22,14 @@ The V1 QA pass is planned as a scripted checklist run, one feature group at a ti
 
 ## 2. Guarantee and non-goals
 
-Guarantee. When QA is slotted to begin, a tester can be started on any V1-complete feature group within one hour (timed in the S3 dry run), and every finding that reaches the roadmap:
+Guarantee. When QA is slotted to begin, a tester can be started on any V1-complete feature group within one hour (timed in the S3 dry run). Every V1 feature group is covered by at least one layer (section 5.9). Every `bug` finding that reaches the roadmap:
 
 - names the command, the config with values removed, the corpus item, the platform and the versions;
 - cites the public doc line that set the expectation, or names the invariant that failed;
 - was reproduced from its repro script on a clean node by someone other than the tester;
 - holds no cell value, no marker text and no secret. It uses opaque coordinate ids that contain no data-derived text.
+
+Feedback findings (`usability`, `docs` and `performance`, section 5.6) name the command, the size tier and the platform, and hold no value. They do not need a repro script.
 
 Non-goals:
 
@@ -74,7 +76,7 @@ One shared sweep. The checklist and the journey each have a leak sweep today. S1
 |---|---|---|---|---|
 | L1 Checklist pass | one Sonnet agent per checklist group | the group's checks, the corpus | the check's expected exit and output, plus invariants | as each group becomes V1 complete |
 | L2 Doc walk | one Sonnet agent per public docs page set | every example in the public docs, run as written; the `.decoy` language guide is one page set, and each example `.decoy` file in it is written out and run as given | the doc text, plus invariants | as each group becomes V1 complete, for that group's pages |
-| L3 Persona beta testers | five Sonnet agents, one per persona | a charter, the public docs, the corpus | the docs and the invariants; the agent's judgement only for "confusing" findings | after the V1 build is complete (personas cross groups) |
+| L3 Persona beta testers | five Sonnet agents, one per persona | a charter, the public docs, the corpus | the docs and the invariants for `bug` findings; the agent's own judgement for `usability`, `docs` and `performance` feedback | after the V1 build is complete (personas cross groups) |
 | L4 Matrix runs | the harness, no agent | the pairwise settings matrices over the corpus | invariants only | after the V1 build is complete; a smoke subset runs in S3 to test the harness |
 
 Gating for `.decoy` (rev 3.4). Coverage of the `.decoy` language in every layer (the L2 guide walk, the `.decoy` personas and the matrix pipeline-source value) runs only once the DECOY-LANG group is V1 complete. This is the standing rule that QA runs only on complete groups. Until then, testers use YAML configs.
@@ -95,6 +97,7 @@ Command coverage. L4 covers `decoy run` only, so every other command has a named
 | `ci check` | yes | yes | P3 |
 | `init`, `demo`, `explain`, `info`, `doctor`, `setup` | yes | yes | P1, P5 |
 | `library path`, `schema`, `list`, `show`, `project` | yes | yes | P1 |
+| `library fsck`, `library prune`, `clean` | yes | yes | P4 |
 | `upgrade` | yes | yes | P1 |
 
 Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs, a read-only copy of the tester's corpus items and its own inbox. Repository checkouts, other testers, the host home, the pass needles file and the refusal set do not exist inside it. Its only network path is the Squid egress proxy, which allows `CONNECT api.anthropic.com:443` and nothing else. "The public docs" means the built public docs set, mounted read-only. It includes the `.decoy` language guide (`docs/guides/decoy-language/`) and the `decoy` CLI reference. The tester also has `decoy --help` and any built-in language help command that DECOY-LANG ships. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
@@ -117,12 +120,14 @@ Licenses. An item enters the manifest only with a license that allows internal t
 
 Each charter states the persona, the mission, the time box (2 hours of agent time), the corpus items in scope, the node, and the debrief questions. Charters live in `docs/qa/briefs/`.
 
+Testers explore like human testers (owner 2026-11-20 evening). An L3 charter has no step list: only a persona, a mission, data and time. The missions below name areas to explore, not steps or an order. The tester decides what to try, follows what looks odd, and goes back to what was slow or confusing. Besides bugs, the tester reports how the product felt to use: speed on each size tier it ran, confusing messages or flags, and places where the docs did not get it to its goal. These are `usability`, `docs` and `performance` findings (5.6). L1 and L2 stay scripted, because they walk the checklist and the docs.
+
 | Persona | Mission | Node |
 |---|---|---|
 | P1 Solo developer | install from the download page steps, run the demo, mask a mix of local files, change settings between runs, re-run, `fit` a table then generate from it and grade it with `report fidelity`, upgrade | Mac (macOS arm64), then Dell (Linux) |
 | P2 Data engineer | DuckDB sources, subsetting a three-level FK chain, chunked and native runs on M and L items, scans of a new source; connector sources and targets once their group closes | Dell |
 | P3 CI engineer | set Decoy up the way a company would in CI: pinned install, secrets from the environment, `decoy ci check`, exit codes as gates, evidence and result files kept as artifacts; write down every step a company would need | GitHub-hosted runner in a private sandbox repo (Q2) |
-| P4 Compliance reviewer | evidence records, `decoy report verify`, the vault and `decoy unmask` with and without the vault file and mask secret, post-scan reports, what an auditor can and cannot see | Dell |
+| P4 Compliance reviewer | evidence records, `decoy report verify`, the vault and `decoy unmask` with and without the vault file and mask secret, post-scan reports, the local record library (`list`, `show`, `library fsck`, `prune`, `clean`), what an auditor can and cannot see | Dell |
 | P5 Careless user | wrong flags, wrong file types, missing secret, interrupted runs (Ctrl-C mid-write), full disk, read-only output folder, re-running into an existing output | Dell, Mac |
 
 Pipeline source (rev 3.4, DECOY-LANG). The `.decoy` pipeline language (CLI PR #359) replaced the init wizard as the way users write pipelines (owner 2026-11-19). P1 and P5 write their pipelines as `.decoy` files from the language guide alone. P2 and P3 start from a YAML config. P4 uses whatever the pipeline it audits was written in. Each charter names its pipeline source.
@@ -188,13 +193,20 @@ Constraints have three kinds, each citing its doc line in `docs/qa/matrix.toml`:
 | I6 | The exit code means what the registry says (section 15.2.1) | registry check, the `internal error` form always classified as a crash, stderr classification for other exit 1 cases, `--json` parsed against `docs/schemas/` |
 | I7 | Every refusal and error text holds no value | the needles sweep and the same-row check over stdout, stderr and logs |
 
-Peak RSS and wall time are recorded per run (`/usr/bin/time -v` on Linux, `-l` on macOS) as metrics for the job-time estimate. They are not an invariant: `--max-memory` is a route budget, not an RSS ceiling (`docs/cli-reference.md:111`).
+Peak RSS and wall time are recorded per run (`/usr/bin/time -v` on Linux, `-l` on macOS) as metrics for the job-time estimate and as the timings in `performance` findings. They are notes, not pass or fail, and not an invariant: `--max-memory` is a route budget, not an RSS ceiling (`docs/cli-reference.md:111`).
 
 Leak findings cite the surface and an opaque coordinate id. The id is independent from marker text and data-derived suffixes. Findings never carry the matched text.
 
 ### 5.6 Finding record
 
 One file exists per finding at `findings/<pass>/<id>.toml`. The launcher issues tester-scoped ids before it starts a tester. An id can be used once. The record has `schema_version = 1` and the fields in section 15.2.4.
+
+Each finding has one `kind` (rev 3.4, owner 2026-11-20 evening; it replaces the `confusing` flag):
+
+- `bug`: the product broke a doc promise or an invariant. It needs a repro (5.7 step 4).
+- `usability`: a message, flag, default or step confused the tester or made a task harder than it should be. It names the command and quotes no value.
+- `docs`: the docs did not get the tester to its goal, or said something the product does not do.
+- `performance`: a timing note. It records the command, route, size tier, platform, wall time and peak RSS, and the tester's view of whether that felt slow. It is a note, never pass or fail.
 
 `scripts/qa/findings.py write` is the only tester submission path. It refuses text that contains a needle or any canonical scalar from the refusal set. It also refuses a coordinate id that contains marker text. Testers return only counts and finding ids to the coordinator.
 
@@ -205,8 +217,8 @@ All QA writers use `scripts/qa/io.py:publish_private_once`. This helper creates 
 1. **Collect.** The triager reads finding records through `findings.py`. The coordinator hand-back has counts and finding ids only.
 2. **Check our own text.** The sweep and refusal-set check run over the node-local pass folder before publication. A hit stops publication and creates a process finding.
 3. **Dedupe.** Group findings with the same root cause; keep the clearest repro.
-4. **Reproduce.** Run each repro script on a clean node, not the tester's. No repro: closed as not reproduced, kept in the record.
-5. **Classify** by the V1 bar (only a function break, data loss, a non-admin leak, or a copy of a central mechanism blocks V1; everything else V2-LOG). Doc-only mismatches go to REL-DOCS row 92 or the docs-truth row.
+4. **Reproduce.** Run each `bug` repro script on a clean node, not the tester's. No repro: closed as not reproduced, kept in the record. Feedback findings skip this step.
+5. **Classify** by the V1 bar (only a function break, data loss, a non-admin leak, or a copy of a central mechanism blocks V1; everything else V2-LOG). Doc-only mismatches and `docs` findings go to REL-DOCS row 92 or the docs-truth row. `usability` findings go to the owning group as rows or V2-LOG. `performance` notes go to the pass record's timing table, which feeds the job-time estimate and the speed rows; a note blocks V1 only if it shows a function break, such as a run that never ends.
 6. **Class check.** If two or more findings share a class, propose a sentry or choke point, not one patch per finding (owner rule: best practice becomes a sentry).
 7. **File.** Each V1 finding becomes a roadmap row in its group file. V2-LOG items go to the V2 log.
 8. **Publish.** `findings.py publish` writes the pass record and sends the Slack text. The pass record lists each finding and its triage result.
@@ -220,6 +232,29 @@ Remediation follows the owner rule: after the group's QA pass, through the norma
 Testers count against the builder cap (6 builders and 2 reviewers). Tester capacity is `min(4, free worker slots, 2 Tart guests, configured subscription concurrency)` (rev 3.4). The Tart term applies to the Mac only: Apple's licence allows two macOS guests at once. The orchestrator passes free worker slots to the launcher from the capacity tool. Subscription concurrency is one constant in the launcher's capacity module, set to 2; the owner can raise it. The cap of 4 leaves 2 builder slots for remediation.
 
 Usage limits. Tester sessions share the owner's subscription limits with the builders. When `claude -p` ends with a recognized usage-limit response (a fixed pattern list in the capacity module, matched on the node-local capture only), the launcher marks the tester `paused`. It does not write a finding and triage never sees it as a product finding. Teardown runs as normal and keeps the safe artifacts: the findings already in the inbox are published, and the capture stays node-local. The launcher retries after the reset time in the response, or after 60 minutes when none is given, at most 6 times. The retry starts a fresh sandbox with the remaining time box and the ids of findings already filed. Any other nonzero `claude` exit marks the tester `failed`, which is a harness count, not a product finding. The pass record lists `paused` and `failed` counts. Tester agents are Sonnet; the triager is Opus. L runs use the Dell first, then the GCP test nodes (local first). macOS runs use the Mac. Windows cells wait for rows 89 and 6, as in the checklist.
+
+### 5.9 Whole-product coverage
+
+Every V1 feature group in `docs/ROADMAP.md` section 4 (the group table; section 5 lists the linked documents) maps to at least one layer. Engine behaviour is covered where the CLI reaches it: routes, strategies, generation and FK handling run through `decoy`. Engine features with no CLI path are covered by the engine QA sections, not here. Each group's coverage runs only once that group is V1 complete (owner rule 2026-11-11).
+
+| Group | L1 checklist | L2 doc walk | L3 persona | L4 matrix |
+|---|---|---|---|---|
+| Scan and detection | scan group | scan pages | P2, P4 | post-scan cells in the mask matrix |
+| Config, validation and the `.decoy` language | config group | CLI reference (validate, compile, preflight); the `.decoy` guide | P1 and P5 (`.decoy`), P3 (`validate`, `ci check`) | pipeline-source cell |
+| Masking, policy, vault and secrets | mask group | masking and vault pages | P1, P2, P4, P5 | strategy mix, `--mask-secret`, vault cells |
+| Fit and generate | generate group | fit, generate and fidelity pages | P1 | the generate matrix |
+| Run, publication and results | run group | run pages and CLI reference | all five | routes, chunked, native, threads, memory, output and `--json` cells in both matrices |
+| Local record library | library group | library pages | P1 (`list`, `show`, `project`), P4 (`fsck`, `prune`, `clean`) | none |
+| Sources and targets | connect group | source pages | P2 (DuckDB now; connectors when built) | source cell (CSV, TSV, Parquet, fixed width, DuckDB) |
+| Quality and evidence | trust group | report and evidence pages | P4, P1 (`report fidelity`) | evidence cell |
+| Install, packaging and release | release group | install, download and upgrade pages | P1 (install, demo, upgrade), P3 (pinned CI install), P5 | none |
+| Codebase health and CI | none | none | none | none |
+
+Gaps today:
+
+- Codebase health and CI has no user-facing surface. It is covered by CI and the sentries, not by QA testers. This is by design.
+- Windows. The release group puts Windows in 1.0, but no Windows node or charter exists. Windows cells wait for rows 89 and 6, as in the checklist. When they close, P1 and P5 rerun on Windows and the checklist's Windows cells run. Until then, Windows has no QA coverage.
+- Connector sources and targets (Postgres, S3, GCS, SFTP). Their remaining rows are Later (1.x), and the checklist marks DLV-08 to DLV-11 as not built. P2 and L1 cover them when they are built. The shipped local file sources and DuckDB are covered now.
 
 ## 6. Failure modes
 
@@ -256,7 +291,7 @@ Unit tests live in `tests/unit/qa/` and run in the normal suite. The Squid allow
 | AT-7 | `findings.py write` refuses needles and canonical scalars from any field or attached artifact. Cases include non-PII, numeric, multi-token and output-only values. It refuses marker text in an opaque coordinate id. Reader cases cover strict primitive types, missing and next-major versions, and allowed minor fields. Each safe error has empty `__cause__` and `__context__` | no writer |
 | AT-8 | `fetch.py` refuses an item whose SHA-256 differs, an item with no license, and an item whose license is not on the allowed list; a good item lands only after its hash checks | no fetcher |
 | AT-9 | A repro command writes a launcher nonce witness in a fresh `DECOY_HOME`. The recorded failure signature must recur. A replayed exit without the witness fails | no repro tooling |
-| AT-10 | Each brief has the required fields. Unit tests, with a fake command runner, cover: every row of the argv table (10a) for Podman, Tart, Squid and the token copy, including read-only mounts, the internal network only, no published ports, the security flags and no secret in any argv; the token-file checks (mode 0600, directory 0700, owner, regular file, symlink refused at the file and the directory, a mode change between check and open refused); the Linux and Tart lifecycles, where a failure injected at each step still runs that step's cleanup and the inbox is published before it is deleted; recovery of a stale inbox and a stale clone; capacity and usage-limit pause; tester-scoped id allocation, local output capture and counts-and-ids hand-back. The node probes P-1 to P-10 (10a) cover proxy bypass, direct sockets, the token path, refusal-set and needles-file absence, inbox persistence and cleanup on real nodes in S3 | no briefs or launcher |
+| AT-10 | Each brief has the required fields, and no L3 charter has a numbered or ordered step list. Unit tests, with a fake command runner, cover: every row of the argv table (10a) for Podman, Tart, Squid and the token copy, including read-only mounts, the internal network only, no published ports, the security flags and no secret in any argv; the token-file checks (mode 0600, directory 0700, owner, regular file, symlink refused at the file and the directory, a mode change between check and open refused); the Linux and Tart lifecycles, where a failure injected at each step still runs that step's cleanup and the inbox is published before it is deleted; recovery of a stale inbox and a stale clone; capacity and usage-limit pause; tester-scoped id allocation, local output capture and counts-and-ids hand-back. The node probes P-1 to P-10 (10a) cover proxy bypass, direct sockets, the token path, refusal-set and needles-file absence, inbox persistence and cleanup on real nodes in S3 | no briefs or launcher |
 | AT-11 | The checklist's sweep step and the journey test call `scripts/qa/sweep.py`; no second sweep implementation remains | the sweeps are separate today |
 | AT-12 | Planted defects cover I4 row loss and wrong quarantine counts, I5 column names, order and types, and I7 non-marker input and output scalars | no complete oracle |
 | AT-14 | `scripts/qa/proxy/squid.conf` shape test: the source ACL lists only the two QA subnets, the one `allow` line names CONNECT, `api.anthropic.com` and port 443, no `ssl_bump` or second port exists, and the last `http_access` line is `deny all`. Dell allow and deny tests run the stock Squid image with this file: CONNECT to `api.anthropic.com:443` is allowed; CONNECT to another domain, to port 80, to an IP literal, a plain GET, and a client outside the source ACL are each refused | no proxy config |
@@ -299,7 +334,7 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher,
 
 Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus`, `invariants` and `sandbox` concerns use named subpackages.
 
-Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines (owner approved 2026-11-20). S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again. Rev 3.4 sets S2 at 2,800 lines (section 13), so S1a, S1b and S2 together reach the 8,000-line ceiling with no margin. S2 therefore stops at 2,800 lines, not at 20 percent over.
+Original estimate: 30 to 36 new or changed files and about 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. Size estimates are for review planning, not caps (owner 2026-11-20 evening: "I don't care how long it is"). There is no program line ceiling. Each slice keeps its own estimate in section 13. A slice that runs well past its estimate (more than 20 percent) gets a scope check by the orchestrator, who confirms the extra lines are in scope and not a copied mechanism. It is not an owner stop. Re-baseline 2026-11-20: S1a came in near 3,500 lines; S1b is estimated at 1,700; S2 at 2,800 (rev 3.4).
 
 ## 10. Design notes
 
@@ -446,6 +481,7 @@ S3 runs these probes for real, on the Dell in a container and on the Mac in a gu
 ## 11. Owner questions
 
 - Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Answered: yes, owner 2026-11-20. Tart 2.42.0 installed on the Mac from the checksummed release (FSL-1.1, internal use allowed).
+- Owner decision, 2026-11-20 evening, in the owner's words: "I don't care how long it is, I want QA on the whole product and I want them to be able to interact like a human QA/tester would so that we get actual good feedback on how it performs before we expose V1." Applied in rev 3.4: the 8,000-line program ceiling is removed (section 9), section 5.9 maps every V1 feature group to a layer, L3 charters carry no step lists (5.3), and findings have `usability`, `docs` and `performance` kinds next to `bug` (5.6).
 - Q4 (added 2026-11-20, rev 3): model access for testers. Answered by the owner 2026-11-20: use the Claude subscription, not the API. Testers run Claude Code in local containers and Tart guests. Owner step: run `claude setup-token` once and give the token to the orchestrator as a file on the devbox, at the path and modes in 10a.4.
 
 | Id | Question | Recommendation |
@@ -466,13 +502,13 @@ None. No product surface changes. The tooling reads the exit registry and schema
 | S0 | 2026-11-21, 1 day, 5 files, 300 lines | merge this plan; add the roadmap row, current method, checklist pointer and CODEMAP rows | R1 docs | Codex |
 | S1a | 2026-11-22 to 2026-11-25, 4 days, 11 files, 1,200 lines (actual about 27 files, 3,500 lines; re-baselined 2026-11-20) | add `io.py`, corpus manifest and tools, matrices, `allpairspy`, surface registry and AT-1, AT-6 and AT-8; run M3 on the final head | R2 data and atomic writes | Dennis then Codex |
 | S1b | 2026-11-26 to 2026-12-01, 6 days, 15 files, 1,700 lines | add the shared sweep, I1 to I7, `findings.py`, `repro.py`, AT-2 to AT-5, AT-7, AT-9 and AT-11 to AT-13; run M1, M2 and M4 on the final head | R2 oracle and publication controls | Dennis then Codex |
-| S2 | 2026-11-22 to 2026-11-28, 7 days, 38 files, at most 2,800 lines (rev 3.4; file list below) | add five charters, checklist, doc-walk and triager briefs, finding template, the launcher and `sandbox/` package, the Squid and pf configs, the tester image and entrypoint, `nodes.md`, the CODEMAP row, AT-10 and AT-14; delete the setup script and its test; run M5 on the final head | R2 credentials, isolation and egress | Dennis then Codex |
+| S2 | 2026-11-22 to 2026-11-28, 7 days, 38 files, about 2,800 lines (rev 3.4; file list below; an estimate, not a cap) | add five charters, checklist, doc-walk and triager briefs, finding template, the launcher and `sandbox/` package, the Squid and pf configs, the tester image and entrypoint, `nodes.md`, the CODEMAP row, AT-10 and AT-14; delete the setup script and its test; run M5 on the final head | R2 credentials, isolation and egress | Dennis then Codex |
 | S3 | 2026-12-02 to 2026-12-03, 2 days, 1 record | run the dry run on Linux and macOS; run the sandbox probes P-1 to P-10 (10a.6) on the Dell and the Mac; build S and M on both systems and L on Linux; run a 10-cell matrix smoke and one 30-minute charter; triage one finding | R2 operational proof | Codex reads the record |
 | Reserve | 2026-12-04, 1 day | correct dry-run failures only; defer new scope | same as the failed slice | required review for the changed slice |
 
 S2 file list (rev 3.4). Line counts are estimates of added or changed lines:
 
-- Kept from the S2 branch, about 650 lines: the eight briefs in `docs/qa/briefs/`, `docs/qa/beta-program.md`, `docs/qa/finding-template.toml`, `tests/unit/qa/__init__.py`, `tests/unit/qa/_paths.py`, `tests/unit/qa/test_briefs.py` and `tests/sentry/layout/test_codemap_paths.py`.
+- Kept from the S2 branch, about 650 lines, with rev 3.4 edits: the eight briefs in `docs/qa/briefs/` (L3 charters lose their step lists and name their pipeline source), `docs/qa/beta-program.md`, `docs/qa/finding-template.toml` (`kind` replaces `confusing`), `tests/unit/qa/__init__.py`, `tests/unit/qa/_paths.py`, `tests/unit/qa/test_briefs.py` and `tests/sentry/layout/test_codemap_paths.py`.
 - Changed, about 100 lines: `CODEMAP.md` (the QA tooling row, section 9) and this plan.
 - Rewritten, about 250 lines: `scripts/qa/launch.py` (command line only, at most 150 lines) and `tests/unit/qa/test_launcher.py`.
 - New code, about 850 lines: `scripts/qa/sandbox/__init__.py`, `argv.py`, `podman.py`, `tart.py`, `token.py` and `capacity.py`.
@@ -553,7 +589,8 @@ Finding record fields (section 5.6):
 - `platform`, `cli_version`, `engine_version`, `bundle_digest`
 - `corpus_item`, `command`, `config` (values removed)
 - `expected` (doc path and line, or invariant id), `actual`, `exit`
-- `repro`, `proposed_tier`, `confusing`
+- `kind` (`bug`, `usability`, `docs` or `performance`), `repro` (required for `bug`), `proposed_tier`
+- for `performance`: `tier`, `route`, `wall_seconds`, `peak_rss_mib`
 
 Corpus manifest fields: `schema_version`, `id`, `origin`, `license`, `sha256`, `tier`, `format`, `shapes`, `marker_columns`.
 
