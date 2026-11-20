@@ -131,8 +131,36 @@ def test_exit_1_documented_refusals() -> None:
 def test_exit_0_and_2() -> None:
     assert not i6_exit.classify(exit_codes.EXIT_OK, "", "").finding
     assert i6_exit.classify(0, "", "", expect="refusal").finding
-    assert not i6_exit.classify(exit_codes.EXIT_WARNINGS, "", "", expect="warnings").finding
-    assert i6_exit.classify(2, "", "", expect="success").finding
+    warned = "warning: output target exists\n"
+    assert not i6_exit.classify(exit_codes.EXIT_WARNINGS, warned, "", expect="warnings").finding
+    assert i6_exit.classify(2, warned, "", expect="success").finding
+
+
+@pytest.mark.parametrize(
+    ("out", "err"),
+    [("", ""), ("done", ""), ("", "error: bad flag"), ("0 warnings", ""), ("no warnings", ""),
+     ("", "error: warning: x"), ("", "Traceback (most recent call last):\nwarning: x"),
+     ("the warning light is on", "")],
+)  # fmt: skip
+def test_exit_2_needs_a_documented_warning_form(out: str, err: str) -> None:
+    verdict = i6_exit.classify(2, out, err, expect="warnings")
+    assert verdict.finding and verdict.reason == "no-warning-form"
+
+
+@pytest.mark.parametrize(
+    ("out", "err"),
+    [("warning: output target exists", ""), ("", "WARN  slow disk"), ("2 warnings", ""),
+     ("", '{"severity": "warning"}'), ("check output_exists: warn", "")],
+)  # fmt: skip
+def test_each_documented_warning_form_passes(out: str, err: str) -> None:
+    assert not i6_exit.classify(2, out, err, expect="warnings").finding
+
+
+def test_exit_2_as_a_usage_error_needs_the_usage_form() -> None:
+    assert not i6_exit.classify(
+        2, "", "Usage: decoy run [OPTIONS]\nError: no", expect="usage"
+    ).finding
+    assert i6_exit.classify(2, "", "", expect="usage").reason == "no-usage-form"
 
 
 @pytest.mark.parametrize("cell", ["readonly", "disk", "quota"])
@@ -165,9 +193,15 @@ def test_exit_4_needs_findings_named_in_the_output() -> None:
         "done, 12 rows written", "warning: slow disk", "all checks passed",
         "no findings", "0 findings", "No finding. 3 checks fail-safe ok",
         "Traceback (most recent call last):\n  KeyError: 'fail'",
+        "changed", "failed", "error: failed to open configuration", "1 changed file name",
+        "fingerprint ok, failed nothing",
     ):  # fmt: skip
         assert i6_exit.classify(4, text, "", expect="findings").finding, text
-    for text in ("check fk_preservation: fail", "1 finding", "fingerprint changed: out.csv"):
+    for text in (
+        "check fk_preservation: fail", "1 finding", "fingerprint changed: out.csv",
+        "INTEGRITY CHECK FAILED: fingerprint mismatch", "fail=2  warn=0", '{"fail_count": 3}',
+        "4 records checked: 2 findings, 0 warnings", "1 left behind",
+    ):  # fmt: skip
         assert not i6_exit.classify(4, text, "", expect="findings").finding, text
     assert i6_exit.classify(4, "x", "", expect="success").finding
 

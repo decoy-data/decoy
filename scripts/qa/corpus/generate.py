@@ -18,7 +18,7 @@ from pathlib import Path
 
 from scripts.qa.corpus import formats, shapes
 from scripts.qa.corpus.manifest import Item, load_manifest
-from scripts.qa.io import AlreadyPublished, publish_private_once
+from scripts.qa.io import AlreadyPublished, publish_or_same
 
 DEFAULT_SEED = 20261120
 DEFAULT_OUT = Path.home() / "decoy-qa-corpus"
@@ -51,12 +51,13 @@ def render_item(item: Item, seed: int) -> dict[str, bytes]:
 
 
 def _publish(path: Path, data: bytes) -> None:
+    """Publish once, or accept identical bytes already there (`io.publish_or_same`)."""
+    different = False
     try:
-        publish_private_once(path, data)
-        return
+        publish_or_same(path, data)
     except AlreadyPublished:
-        pass
-    if path.read_bytes() != data:
+        different = True
+    if different:  # raised outside the handler so the error carries no context
         raise RegenerationDiffers(f"{path.name} exists with different bytes")
 
 

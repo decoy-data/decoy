@@ -21,22 +21,51 @@ REFUSAL = sweep.RefusalSet.build(["Zelda Quinn", 90210, datetime.date(2020, 1, 2
 SURFACES = sorted(REGISTRY.surfaces)
 
 
+NEEDLE_PLANTS = ["row qamark0042 here", "token=S3cretValueXYZ"]
+SCALAR_PLANTS = ["who: Zelda Quinn.", "on 2020-01-02"]
+NUMERIC_PLANTS = ["zip 90210", "ratio 3.5 here"]
+
+
+def _text_surfaces() -> list[str]:
+    return [s for s in SURFACES if REGISTRY.surfaces[s].check == "needles"]
+
+
 @pytest.mark.parametrize("surface", SURFACES)
-@pytest.mark.parametrize(
-    "planted",
-    [
-        "row qamark0042 here",
-        "token=S3cretValueXYZ",
-        "who: Zelda Quinn.",
-        "zip 90210",
-        "on 2020-01-02",
-    ],
-)
-def test_each_surface_catches_each_planted_value(surface: str, planted: str) -> None:
-    blob = planted.encode()
-    leaks = sweep.sweep({"cap": (surface, blob)}, NEEDLES, REGISTRY, REFUSAL)
+@pytest.mark.parametrize("planted", NEEDLE_PLANTS)
+def test_each_surface_catches_each_planted_needle(surface: str, planted: str) -> None:
+    leaks = sweep.sweep({"cap": (surface, planted.encode())}, NEEDLES, REGISTRY, REFUSAL)
     assert [lk.surface for lk in leaks] == [surface]
     assert planted.split()[-1] not in repr(leaks[0])  # a leak never carries the matched text
+
+
+@pytest.mark.parametrize("surface", _text_surfaces())
+@pytest.mark.parametrize("planted", [*SCALAR_PLANTS, *NUMERIC_PLANTS])
+def test_text_surfaces_catch_indexed_scalars(surface: str, planted: str) -> None:
+    leaks = sweep.sweep({"cap": (surface, planted.encode())}, NEEDLES, REGISTRY, REFUSAL)
+    numeric_only = planted in NUMERIC_PLANTS
+    if numeric_only and not REGISTRY.surfaces[surface].numeric_matches:
+        assert leaks == []  # the run summary prints its own counts
+    else:
+        assert [lk.surface for lk in leaks] == [surface]
+
+
+@pytest.mark.parametrize("planted", [*SCALAR_PLANTS, *NUMERIC_PLANTS])
+def test_cells_and_encrypted_surfaces_do_not_read_the_refusal_set(planted: str) -> None:
+    # Cell values are the point of an output file (I1 owns them); ciphertext is noise.
+    for surface in (s for s in SURFACES if REGISTRY.surfaces[s].check != "needles"):
+        captures = {"cap": (surface, planted.encode())}
+        assert sweep.sweep(captures, NEEDLES, REGISTRY, REFUSAL) == []
+
+
+def test_only_the_run_summary_skips_numeric_only_matches() -> None:
+    skipped = {s for s, v in REGISTRY.surfaces.items() if not v.numeric_matches}
+    assert skipped == {"stdout"}
+    both = sweep.RefusalSet.build([90210, "Main 90210"])
+    # a number next to words is not numeric-only, so it still counts on stdout
+    text = b"lives at Main 90210"
+    assert sweep.sweep({"c": ("stdout", text)}, NEEDLES, REGISTRY, both)
+    assert sweep.sweep({"c": ("stderr", b"zip 90210")}, NEEDLES, REGISTRY, both)
+    assert not sweep.sweep({"c": ("stdout", b"zip 90210")}, NEEDLES, REGISTRY, both)
 
 
 @pytest.mark.parametrize("surface", SURFACES)
@@ -49,6 +78,7 @@ def test_registry_dispatch_params_and_exceptions_share_entries() -> None:
     assert set(i1_leaks.EXCEPTION_RULES) == set(REGISTRY.exceptions)
     assert set(EXCEPTION_PASS_CASES) == set(REGISTRY.exceptions)
     assert {s.check for s in REGISTRY.surfaces.values()} <= set(sweep.CHECKS)
+    assert set(sweep.CHECK_RULES) == set(sweep.CHECKS)  # every registry check has its own rule
     with pytest.raises(sweep.RegistryError):
         sweep.sweep({"cap": ("not-a-surface", b"x")}, NEEDLES, REGISTRY)
 
@@ -295,9 +325,8 @@ def test_short_scalars_of_three_characters_are_indexed_as_whole_tokens(
     assert sweep.sweep({"c": ("stderr", nfd.encode())}, NEEDLES, REGISTRY, refusal)
 
 
-def test_one_and_two_character_scalars_are_exempt_and_tokens_are_whole() -> None:
-    refusal = sweep.RefusalSet.build(["Bob", 7, "ab"])
-    assert not refusal.found_in("exit 7 and ab")
+def test_tokens_are_whole() -> None:
+    refusal = sweep.RefusalSet.build(["Bob"])
     assert not refusal.found_in("Bobby and Bobcat")  # a longer token is not a match
 
 
@@ -354,7 +383,8 @@ def test_these_two_need_their_allowed_values(strategy: str) -> None:
 
 def test_an_empty_refusal_set_reports_empty() -> None:
     assert sweep.RefusalSet.build([]).is_empty()
-    assert sweep.RefusalSet.build(["1", "ab"]).is_empty()  # nothing long enough was indexed
+    assert sweep.RefusalSet.build(["", "...", None]).is_empty()  # no token to index
+    assert not sweep.RefusalSet.build(["1", "ab"]).is_empty()  # short values are indexed
     assert not REFUSAL.is_empty()
 
 
@@ -401,3 +431,173 @@ def test_an_unpooled_faker_gets_no_swap_check_but_keeps_marker_exact_cell() -> N
     assert {v.kind for v in found} == {"exact-cell"}
     plain = [{"c": f"Person{i}"} for i in range(30)]
     assert check_cells("t", {"c": Rule("faker")}, plain, plain[1:] + plain[:1]) == []
+
+
+# V1-1: short scalars. A number is one token with its sign and decimal point.
+@pytest.mark.parametrize(
+    ("scalar", "text"),
+    [
+        (3.5, "ratio 3.5 here"),
+        (-7.25, "delta -7.25 here"),
+        ("3.5", "ratio 3.5 here"),
+        ("O'Neil", "customer O'Neil refused"),
+        ("Zoë", "name Zoe\u0308 refused"),
+        ("日本語", "客 日本語 です"),
+        (123, "id 123 refused"),
+    ],
+)
+def test_decimals_signed_numbers_and_unicode_are_indexed_and_found(
+    scalar: object, text: str
+) -> None:
+    refusal = sweep.RefusalSet.build([scalar])
+    assert not refusal.is_empty()
+    assert refusal.found_in(text), text
+    assert refusal.contains(scalar)
+    assert sweep.sweep({"c": ("stderr", text.encode())}, NEEDLES, REGISTRY, refusal)
+
+
+@pytest.mark.parametrize(
+    ("scalar", "text"),
+    [("F", "sex F here"), ("CA", "state: CA."), (0, "count 0 rows"), (-1, "delta -1 now"),
+     ("é", "lettre é ici"), ("日本", "a 日本 b")],
+)  # fmt: skip
+def test_one_and_two_character_values_are_refused_as_whole_tokens(
+    scalar: object, text: str
+) -> None:
+    refusal = sweep.RefusalSet.build([scalar])
+    assert not refusal.is_empty()
+    assert refusal.found_in(text), text
+    assert sweep.sweep({"c": ("stderr", text.encode())}, NEEDLES, REGISTRY, refusal)
+
+
+@pytest.mark.parametrize(
+    ("scalar", "text"),
+    [("F", "Fred left"), ("CA", "the CAT sat"), (0, "10 and 100 and 0.5"), ("CA", "ABCA CAB"),
+     (-1, "item-1 and 1")],
+)  # fmt: skip
+def test_the_same_characters_inside_a_longer_word_or_number_are_not_refused(
+    scalar: object, text: str
+) -> None:
+    assert not sweep.RefusalSet.build([scalar]).found_in(text), text
+
+
+def test_indexing_and_lookup_share_one_tokenizer() -> None:
+    assert sweep.words("-7.25 and 3.5, O'Neil 123-4567") == [
+        "-7.25", "and", "3.5", "o", "neil", "123", "4567"
+    ]  # fmt: skip
+    for scalar in (3.5, -7.25, "O'Neil", "(555) 123-4567"):
+        refusal = sweep.RefusalSet.build([scalar])
+        assert refusal.found_in(sweep.canonical(scalar)), scalar
+
+
+def test_numeric_only_windows_are_skipped_only_when_asked() -> None:
+    refusal = sweep.RefusalSet.build([90210, "Main 90210"])
+    assert refusal.found_in("zip 90210") and not refusal.found_in("zip 90210", numeric=False)
+    assert refusal.found_in("at Main 90210", numeric=False)
+
+
+# V1-3: the stored refusal set is versioned and strictly read.
+def _stored(**changes: object) -> str:
+    import json
+
+    doc = json.loads(REFUSAL.dumps())
+    for key, value in changes.items():
+        if value is None:
+            doc.pop(key, None)
+        else:
+            doc[key] = value
+    return json.dumps(doc)
+
+
+def test_the_stored_set_is_versioned_and_round_trips() -> None:
+    import json
+
+    assert json.loads(REFUSAL.dumps())["schema_version"] == sweep.REFUSAL_VERSION
+    again = sweep.RefusalSet.loads(REFUSAL.dumps())
+    assert again.dumps() == REFUSAL.dumps()
+    assert sweep.RefusalSet.loads(sweep.RefusalSet.build([]).dumps()).is_empty()
+
+
+GOOD = "ab" * 32
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "not json",
+        "[]",
+        '{"salt": "00", "digests": ["x"], "lengths": []}',  # the old unversioned form
+        _stored(schema_version=None),
+        _stored(schema_version=2),
+        _stored(schema_version=True),
+        _stored(schema_version="1"),
+        _stored(salt="zz" * 16),
+        _stored(salt="ab" * 8),
+        _stored(salt=7),
+        _stored(groups=[GOOD]),
+        _stored(groups={"2": []}),  # a group with no digests: lengths and digests disagree
+        _stored(groups={"0": [GOOD]}),
+        _stored(groups={"-1": [GOOD]}),
+        _stored(groups={"x": [GOOD]}),
+        _stored(groups={"2": "oops"}),
+        _stored(groups={"2": [GOOD, GOOD]}),
+        _stored(groups={"2": ["short"]}),
+        _stored(groups={"2": [GOOD.upper()]}),
+        _stored(groups={"2": [5]}),
+        _stored(extra=1),
+    ],
+)
+def test_a_malformed_stored_set_is_refused_never_read_as_clean(text: str) -> None:
+    with pytest.raises(sweep.RefusalSetError) as err:
+        sweep.RefusalSet.loads(text)
+    assert err.value.__cause__ is None and err.value.__context__ is None
+    assert "ab" * 8 not in str(err.value)
+
+
+def test_the_cli_refuses_a_malformed_stored_set(tmp_path: Path) -> None:
+    from scripts.qa import findings
+
+    needles, refusal = tmp_path / "n.txt", tmp_path / "r.json"
+    needles.write_text("qamark0042\n")
+    refusal.write_text(_stored(groups={"2": []}))
+    code = findings.main(
+        ["publish", "--root", str(tmp_path), "--pass", "p1", "--needles", str(needles),
+         "--refusal", str(refusal), "--no-slack"]
+    )  # fmt: skip
+    assert code == 1
+
+
+# V1-9: the output domain is checked even when the source cell is null -------------------------
+def _with_null(strategy: str, **kw: object) -> tuple[Rule, list[dict], list[dict]]:
+    before = [{"c": "alpha"}, {"c": None}, {"c": "gamma"}]
+    return Rule(strategy, **kw), before, [{"c": "x1"}, {"c": "SECRET"}, {"c": "x3"}]  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("strategy", ["categorical", "bucketize"])
+def test_a_closed_domain_strategy_refuses_a_value_outside_it_in_a_null_row(strategy: str) -> None:
+    rule, before, after = _with_null(strategy, allowed=("x1", "x3", "x9"))
+    got = check_cells("t", {"c": rule}, before, after)
+    assert [(v.coordinate, v.kind) for v in got] == [("t/c/1", "not-allowed")]
+    after[1] = {"c": "x9"}
+    assert check_cells("t", {"c": rule}, before, after) == []
+    after[1] = {"c": None}  # a null stays null: fine
+    assert check_cells("t", {"c": rule}, before, after) == []
+
+
+def test_hash_refuses_another_rows_original_in_a_null_row_but_accepts_a_fresh_value() -> None:
+    rule = Rule("hash")
+    before = [{"c": "alpha"}, {"c": None}, {"c": "gamma"}]
+    leak = [{"c": "h1"}, {"c": "gamma"}, {"c": "h3"}]
+    got = check_cells("t", {"c": rule}, before, leak)
+    assert [(v.coordinate, v.kind) for v in got] == [("t/c/1", "exact-cell")]
+    assert check_cells("t", {"c": rule}, before, [{"c": "h1"}, {"c": "h2"}, {"c": "h3"}]) == []
+    assert check_cells("t", {"c": rule}, before, [{"c": "h1"}, {"c": None}, {"c": "h3"}]) == []
+
+
+def test_truncate_and_text_redact_null_rows_are_checked_too() -> None:
+    got = check_cells("t", {"c": Rule("truncate", prefix=2)}, [{"c": None}], [{"c": "SECRET"}])
+    assert [v.kind for v in got] == ["truncate-extra"]
+    rule = Rule("text_redact", entities=(("Zelda",),))
+    assert [v.kind for v in check_cells("t", {"c": rule}, [{"c": None}], [{"c": "hi zelda"}])] == [
+        "entity"
+    ]

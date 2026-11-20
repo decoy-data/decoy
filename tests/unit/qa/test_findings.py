@@ -70,7 +70,7 @@ def test_every_text_field_refuses_each_kind_of_value(
     assert not (tmp_path / "pass-1").exists()  # nothing was written
 
 
-SHORT_REFUSAL = sweep.RefusalSet.build(["Bob", "Ann", "O'Neil", "Zoë", 123])
+SHORT_REFUSAL = sweep.RefusalSet.build(["Bob", "Ann", "O'Neil", "Zoë", 123, "F", "CA", 0, -1, 3.5])
 
 
 @pytest.mark.parametrize("value", ["met Bob today", "Ann", "o'neil", "Zoe\u0308", "row 123"])
@@ -189,18 +189,21 @@ def test_an_interrupted_write_leaves_no_target_and_allows_one_retry(
 def test_publish_writes_the_pass_record_and_notifies_with_counts_and_ids(tmp_path: Path) -> None:
     put(tmp_path, record())
     put(tmp_path, record(id="t1-002", group="GEN"))
+    for ident in ("t1-001", "t1-002"):
+        findings.write_triage(tmp_path, "pass-1", ident, "v1")
     sent: list[str] = []
     out = findings.publish(
         tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec",
         notify=sent.append, today=datetime.date(2026, 12, 1),
     )  # fmt: skip
     assert out.name == "2026-12-01-qa-beta-pass-1.md"
-    assert "| t1-002 | GEN | V1 | untriaged |" in out.read_text()
+    assert "| t1-002 | GEN | V1 | v1 |" in out.read_text()
     assert sent == ["QA-BETA pass pass-1: 2 findings. Ids: t1-001, t1-002"]
 
 
 def test_publish_stops_on_a_value_in_a_stored_record(tmp_path: Path) -> None:
     put(tmp_path, record())
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
     # A needle that joined the set after the record was written: the publish sweep catches it.
     late = sweep.read_needles("t1-001\n")
     sent: list[str] = []
@@ -237,6 +240,7 @@ def test_an_artifact_cannot_pose_as_a_record_or_a_verdict(tmp_path: Path) -> Non
         with pytest.raises(findings.Refused):
             put(tmp_path, record(), artifacts={name: b"clean"})
     put(tmp_path, record(), artifacts={"out.txt": b"clean"})
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
     out = findings.publish(tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec")
     assert "Findings: 1" in out.read_text()
 
@@ -395,6 +399,7 @@ def test_publish_without_a_slack_script_fails_unless_no_slack_is_explicit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     put(tmp_path, record())
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
     monkeypatch.delenv("QA_SLACK_SCRIPT", raising=False)
     assert _cli(tmp_path) == 1
     assert not (tmp_path / "rec").exists()  # refused before any record was written
@@ -405,6 +410,7 @@ def test_a_failed_post_exits_nonzero_and_a_rerun_posts_again_without_rewriting(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     put(tmp_path, record())
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
     monkeypatch.setenv("QA_SLACK_SCRIPT", str(_script(tmp_path, 1)))
     assert _cli(tmp_path) == 1
     [record_file] = (tmp_path / "rec").iterdir()
@@ -471,3 +477,184 @@ def test_a_latin1_and_a_utf32_artifact_are_checked_too(tmp_path: Path) -> None:
                 tmp_path, "pass-1", record(), needles, refusal, artifacts={"o.txt": blob}
             )
     assert not (tmp_path / "pass-1").exists()
+
+
+def _rc(**over: object) -> dict[str, object]:
+    """A record whose version strings hold no `0` token, so only the field under test can match."""
+    return record(cli_version="rc", engine_version="rc", **over)
+
+
+# Short values (coordinator ruling): every scalar is indexed; one and two characters match whole.
+@pytest.mark.parametrize("value", ["sex F", "state CA.", "count 0", "delta -1", "ratio 3.5", "-1"])
+@pytest.mark.parametrize("field", ["actual", "command", "config", "expected", "repro"])
+def test_short_whole_tokens_are_refused_in_every_string_field(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    with pytest.raises(findings.Refused):
+        findings.write(tmp_path, "pass-1", _rc(**{field: value}), NEEDLES, SHORT_REFUSAL)
+
+
+@pytest.mark.parametrize("value", ["F", "CA", "0", "-1"])
+def test_short_whole_tokens_are_refused_in_artifacts(tmp_path: Path, value: str) -> None:
+    for blob in (f"x {value} y".encode(), f"x {value} y".encode("utf-16")):
+        with pytest.raises(findings.Refused):
+            findings.write(
+                tmp_path, "pass-1", _rc(), NEEDLES, SHORT_REFUSAL, artifacts={"a.txt": blob}
+            )
+
+
+@pytest.mark.parametrize("value", ["the CAT sat", "Fred left", "10 and 100", "item-1", "1.50"])
+def test_the_same_characters_inside_a_longer_word_are_accepted(tmp_path: Path, value: str) -> None:
+    findings.write(tmp_path, "pass-1", _rc(actual=value), NEEDLES, SHORT_REFUSAL)
+
+
+# V1-5: valid TOML for any text ---------------------------------------------------------------
+@pytest.mark.parametrize(
+    "text",
+    ["UI showed \U0001f600", 'quote " and \\ slash', "tab\there\nnew\x7f del\x01", "\u2028 é 日本"],
+)
+def test_a_record_with_non_bmp_and_special_text_round_trips(tmp_path: Path, text: str) -> None:
+    path = put(tmp_path, record(actual=text))
+    assert findings.read_record(path.read_text(encoding="utf-8"))["actual"] == text
+
+
+def test_a_lone_surrogate_is_refused_not_written(tmp_path: Path) -> None:
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(actual="bad \ud800 text"))
+    assert not (tmp_path / "pass-1").exists() or not list((tmp_path / "pass-1").glob("*.toml"))
+
+
+# V1-6: bundle atomic per id ------------------------------------------------------------------
+def test_two_writers_of_one_id_with_different_artifact_names_leave_one_bundle(
+    tmp_path: Path,
+) -> None:
+    gate = threading.Barrier(2)
+    outcomes: dict[str, str] = {}
+
+    def go(name: str) -> None:
+        gate.wait()
+        try:
+            put(tmp_path, record(), artifacts={name: name.encode()})
+            outcomes[name] = "won"
+        except (FileExistsError, findings.Refused):
+            outcomes[name] = "lost"
+
+    threads = [threading.Thread(target=go, args=(n,)) for n in ("a.txt", "b.txt")]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sorted(outcomes.values()) == ["lost", "won"]
+    winner = next(n for n, v in outcomes.items() if v == "won")
+    assert sorted(p.name for p in (tmp_path / "pass-1").iterdir()) == sorted(
+        ["t1-001.toml", f"t1-001.{winner}"]
+    )
+
+
+def test_a_retry_that_names_other_artifacts_than_a_killed_writer_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = io.publish_private_once
+
+    def die_on_record(target: Path, data: bytes) -> None:
+        if target.suffix == ".toml":
+            raise KeyboardInterrupt
+        real(target, data)
+
+    with monkeypatch.context() as m:
+        m.setattr(findings, "publish_private_once", die_on_record)
+        with pytest.raises(KeyboardInterrupt):
+            put(tmp_path, record(), artifacts={"a.txt": b"one"})
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(), artifacts={"b.txt": b"two"})
+    assert not (tmp_path / "pass-1" / "t1-001.toml").exists()
+    put(tmp_path, record(), artifacts={"a.txt": b"one"})  # the same names finish it
+
+
+def test_duplicate_or_malformed_artifact_arguments_are_refused_by_the_cli(tmp_path: Path) -> None:
+    needles, refusal = tmp_path / "n.txt", tmp_path / "r.json"
+    needles.write_text("qamark0042\n")
+    refusal.write_text(REFUSAL.dumps())
+    rec = tmp_path / "rec.toml"
+    rec.write_bytes(findings._render(record()))
+    (tmp_path / "x").write_text("one")
+    base = ["write", "--root", str(tmp_path / "root"), "--pass", "pass-1", "--needles", str(needles),
+            "--refusal", str(refusal), "--record", str(rec), "--tester", "t1"]  # fmt: skip
+    x = str(tmp_path / "x")
+    assert findings.main([*base, "--artifact", f"a.txt={x}", "--artifact", f"a.txt={x}"]) == 1
+    assert findings.main([*base, "--artifact", "nameonly"]) == 1
+    assert not (tmp_path / "root").exists()
+    assert findings.main([*base, "--artifact", f"a.txt={x}"]) == 0
+
+
+# V1-7: triage integrity ----------------------------------------------------------------------
+def test_an_orphan_verdict_is_refused_on_write_and_on_publish(tmp_path: Path) -> None:
+    with pytest.raises(findings.Refused):
+        findings.write_triage(tmp_path, "pass-1", "t1-009", "v1")
+    put(tmp_path, record())
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
+    io.publish_private_once(
+        tmp_path / "pass-1" / "t1-009.triage.toml",
+        findings._render({"id": "t1-009", "triage": "v1"}),
+    )
+    with pytest.raises(findings.Refused):
+        findings.publish(tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec")
+
+
+def test_publish_before_triage_is_refused_and_republishing_after_triage_works(
+    tmp_path: Path,
+) -> None:
+    put(tmp_path, record())
+    sent: list[str] = []
+    with pytest.raises(findings.Refused):
+        findings.publish(
+            tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec", notify=sent.append
+        )
+    assert sent == [] and not (tmp_path / "rec").exists()  # nothing was committed
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "confirmed")
+    day = datetime.date(2026, 12, 1)
+    out = findings.publish(
+        tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec", today=day
+    )
+    again = findings.publish(
+        tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec", today=day
+    )
+    assert out == again and "| t1-001 | RUN | V1 | confirmed |" in out.read_text()
+
+
+def test_verdict_writer_and_reader_share_one_descriptor() -> None:
+    good = findings._render({"id": "t1-001", "triage": "v1"}).decode()
+    assert findings.read_triage(good) == {"schema_version": 1, "id": "t1-001", "triage": "v1"}
+    for bad in (
+        good.replace("schema_version = 1", "schema_version = 2"),
+        good.replace('triage = "v1"', 'triage = "maybe"'),
+        good.replace('triage = "v1"', "triage = 1"),
+        good.replace('id = "t1-001"', 'id = "T1 001"'),
+        'schema_version = 1\nid = "t1-001"\n',
+        "not toml [",
+    ):
+        with pytest.raises(findings.ReaderError):
+            findings.read_triage(bad)
+    for verdict in ("maybe", "", "V1"):
+        with pytest.raises(findings.Refused):
+            findings.write_triage(Path("/nonexistent"), "pass-1", "t1-001", verdict)
+
+
+def test_publish_refuses_a_malformed_stored_verdict(tmp_path: Path) -> None:
+    put(tmp_path, record())
+    io.publish_private_once(tmp_path / "pass-1" / "t1-001.triage.toml", b'id = "t1-001"\n')
+    with pytest.raises(findings.ReaderError):
+        findings.publish(tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec")
+
+
+# V1-8: tester is required at the submission entry point -------------------------------------
+def test_the_cli_write_requires_a_tester(tmp_path: Path) -> None:
+    needles, refusal, rec = tmp_path / "n.txt", tmp_path / "r.json", tmp_path / "rec.toml"
+    needles.write_text("qamark0042\n")
+    refusal.write_text(REFUSAL.dumps())
+    rec.write_bytes(findings._render(record()))
+    base = ["write", "--root", str(tmp_path / "root"), "--pass", "pass-1", "--needles", str(needles),
+            "--refusal", str(refusal), "--record", str(rec)]  # fmt: skip
+    assert findings.main(base) == 1
+    assert findings.main([*base, "--tester", ""]) == 1
+    assert findings.main([*base, "--tester", "t2"]) == 1  # another tester's id
+    assert not (tmp_path / "root").exists()
+    assert findings.main([*base, "--tester", "t1"]) == 0

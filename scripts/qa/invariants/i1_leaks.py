@@ -152,6 +152,25 @@ def _day(value: object) -> datetime.date | None:
         return None
 
 
+def _null_source(rule: Rule, after: object, domain: set[str], allowed: set[str], row: int) -> str:
+    """A null has no original to keep, but its output must still be in the strategy's domain.
+
+    Without this a mapping that writes a secret, or another row's original, into a null row would
+    pass. A null output is fine; only a value that breaks the strategy's own rule is a finding.
+    """
+    if after is None:
+        return ""
+    if rule.strategy in CLOSED:
+        return "" if canonical(after) in allowed else "not-allowed"
+    if rule.strategy == "truncate":
+        return "truncate-extra"  # a prefix of nothing is nothing
+    if rule.strategy == "text_redact":
+        return "entity" if any(has_fragment(str(after), e) for e in rule.entities[row]) else ""
+    if rule.strategy in EXACT | MARKER_ONLY and not rule.pool and canonical(after) in domain:
+        return "exact-cell"
+    return ""
+
+
 def _violation(
     rule: Rule,
     before: object,
@@ -162,7 +181,7 @@ def _violation(
     row: int,
 ) -> str:
     if before is None:
-        return ""  # a null has no original value to leak
+        return _null_source(rule, after, domain, allowed, row)
     if rule.strategy == "truncate":
         keep = str(before)[: rule.prefix]
         return "" if after is not None and str(after) == keep else "truncate-extra"

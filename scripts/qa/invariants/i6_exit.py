@@ -30,12 +30,34 @@ INTERRUPTED = 130
 # The product's crash form, with and without `--verbose` (src/decoy/__main__.py:154 and :187).
 _CRASH = re.compile(r"error: internal error \(\w+\)")
 _REFUSAL = re.compile(r"error: \S")
-# The CLI has no one printed form for exit 4 (a table, a `--json` status, a changed-file line), so
-# the documented minimum is a line that names a finding: a fail or error severity, the word
-# finding, or a changed or mismatched item. Output with none of those is not a findings report.
-_FINDING_LINE = re.compile(r"\b(fail(ed)?|errors?|findings?|changed|mismatch(ed)?)\b", re.I)
+# The CLI has no one printed form for exit 4 or for a blocking warning, so the documented forms are
+# listed here, each from a command's real output (`report verify`, `report integrity`,
+# `library fsck` and `prune`, `validate`). A bare word such as `changed`, `failed` or `error` is not
+# a form: it appears in refusals and crash text too. Lines that start `error:` are refusals and are
+# never read as a finding or a warning.
+_FINDING_FORMS = tuple(
+    re.compile(p, re.I)
+    for p in (
+        r"\bINTEGRITY CHECK FAILED\b",
+        r"\b[1-9]\d*\s+(fail(ed|ures?)?|errors?|findings?|left behind)\b",
+        r"\b(fail|error|issue)(_count)?\W{0,3}[:=]\s*[1-9]",
+        r"^\W*check \S+:\s*(fail|error)\b",
+        r"\bfingerprints?\s+(changed|mismatch(ed)?)\b|\bfingerprint_mismatch\b",
+        r'"drift"\s*:\s*true',
+    )
+)
+_WARNING_FORMS = tuple(
+    re.compile(p, re.I)
+    for p in (
+        r"^\W*warn(ing)?\b",
+        r'"severity"\s*:\s*"warning"',
+        r"\b[1-9]\d*\s+warnings?\b",
+        r"^\W*check \S+:\s*warn(ing)?\b",
+    )
+)
 # A report that says there is nothing, or a crash dump that happens to contain the word `fail`.
 _NO_FINDINGS = re.compile(r"\b(no|0)\s+findings?\b", re.I)
+_USAGE_FORM = re.compile(r"^Usage:", re.M)
 FAULT_CELLS = {"readonly", "disk", "quota"}
 
 
@@ -44,6 +66,12 @@ class Verdict:
     kind: str  # ok, refusal, crash, warning, findings, runtime, capacity, partial, interrupted, unknown
     finding: bool
     reason: str
+
+
+def _has_form(text: str, forms: tuple[re.Pattern[str], ...]) -> bool:
+    """True when a line that is not an `error:` refusal matches one of the documented forms."""
+    lines = [ln for ln in text.splitlines() if not ln.lstrip().lower().startswith("error:")]
+    return any(form.search(ln) for ln in lines for form in forms)
 
 
 def _is_crash(stderr: str) -> bool:
@@ -84,7 +112,14 @@ def classify(
             "refusal", expect != "refusal", "" if expect == "refusal" else "unexpected-refusal"
         )
     if code == EXIT_WARNINGS:
-        return Verdict("warning", expect not in {"warnings", "usage"}, "")
+        both = stdout + "\n" + stderr
+        if expect == "usage":  # Click's own usage error also exits 2
+            ok = _USAGE_FORM.search(stderr) is not None
+            return Verdict("warning", not ok, "" if ok else "no-usage-form")
+        if expect != "warnings":
+            return Verdict("warning", True, "unexpected-warning")
+        ok = _has_form(both, _WARNING_FORMS) and "Traceback (most recent call last)" not in both
+        return Verdict("warning", not ok, "" if ok else "no-warning-form")
     if code == EXIT_RUNTIME:
         ok = cell in FAULT_CELLS and atomic_ok
         return Verdict("runtime", not ok, "" if ok else "runtime-outside-fault-cell")
@@ -92,7 +127,7 @@ def classify(
         both = stdout + "\n" + stderr
         ok = (
             expect == "findings"
-            and _FINDING_LINE.search(both) is not None
+            and _has_form(both, _FINDING_FORMS)
             and _NO_FINDINGS.search(both) is None
             and "Traceback (most recent call last)" not in both
         )

@@ -4,12 +4,18 @@
     python -m scripts.qa.findings publish --root DIR --pass ID --needles F --refusal F
 
 `write` refuses a record that holds a needle or any scalar from the pass's refusal set, in any
-field or attached artifact, and an id that holds marker text. Nothing is written on a refusal. The
-record goes through `scripts/qa/io.py`, so the id is create-once: a second writer of the same id
-loses, and a killed writer leaves no partial record.
+field or attached artifact, and an id that holds marker text. `--tester` is required: an id must
+start with its tester's name, so two testers cannot collide. Nothing is written on a refusal. A
+bundle (the artifacts and the record) is published under one exclusive per-id claim
+(`io.exclusive_claim`), artifacts first and the record last as the commit marker. Two writers of
+one id take turns: the second finds the record and loses. A killed writer's leftover artifacts
+are finished by a retry with the same artifact names; a retry that names others is refused, so a
+record is never published beside another writer's files.
 
 `publish` is the only QA code that writes under `docs/records` or posts to Slack. It sweeps the
-pass record and the Slack text first. A hit stops publication.
+pass record and the Slack text first. A hit stops publication. It also refuses a pass whose
+findings are not all triaged, and a triage record with no finding, so it can be run again after
+triage and a pass record never commits an `untriaged` row.
 
 Every refusal is a `Refused` with a fixed message that names the field and never the value. It is
 raised outside any handler, so it has no `__cause__` and no `__context__` that could carry text.
@@ -19,12 +25,12 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import json
 import os
 import re
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 try:
@@ -32,8 +38,15 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
-from scripts.qa.io import publish_or_same, publish_private_once
-from scripts.qa.sweep import NothingRead, RefusalSet, hits, read_needles, require_input
+from scripts.qa.io import AlreadyPublished, exclusive_claim, publish_or_same, publish_private_once
+from scripts.qa.sweep import (
+    NothingRead,
+    RefusalSet,
+    RefusalSetError,
+    hits,
+    read_needles,
+    require_input,
+)
 
 SCHEMA_VERSION = 1
 # The one descriptor of a record. The writer and the reader both validate through it, so they
@@ -54,6 +67,8 @@ FIELDS: dict[str, type] = {
 OPTIONAL = {"coordinate"}
 # The triager's vocabulary. A tester never writes a verdict on their own finding.
 TRIAGE = ("confirmed", "not-reproduced", "duplicate", "v1", "v2-log", "docs-only")
+# The verdict file's descriptor. A verdict is written and read through it, as a record is.
+VERDICT_FIELDS: dict[str, type] = {"id": str, "triage": str}
 ID = re.compile(r"[a-z0-9][a-z0-9-]{2,63}")
 COORDINATE = re.compile(r"[a-z0-9][a-z0-9/-]{0,63}")
 PASS_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
@@ -90,36 +105,68 @@ def _decodings(blob: bytes) -> list[str]:
 
 
 def _guard(text: str, where: str, needles: Sequence[bytes], refusal: RefusalSet | None) -> None:
+    if _unencodable(text):
+        raise Refused(f"{where} is not valid text")
     if hits(text.encode("utf-8"), needles) or (refusal is not None and refusal.found_in(text)):
         raise Refused(f"{where} holds a needle or a scalar from the input")
+
+
+def _unencodable(text: str) -> bool:
+    """True for text that cannot be stored as UTF-8 (a lone surrogate)."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return True
+    return False
 
 
 class _Invalid(ValueError):
     """Internal: the descriptor check failed. Wrapped as `Refused` or `ReaderError`."""
 
 
+@dataclass(frozen=True)
+class Schema:
+    """One descriptor for a stored file: the writer and the reader both check through it."""
+
+    fields: Mapping[str, type]
+    optional: frozenset[str] = frozenset()
+
+    def check(self, doc: Mapping[str, object], *, reading: bool) -> None:
+        version = doc.get("schema_version")
+        if version is None and not reading:
+            pass  # the writer stamps the version itself
+        elif type(version) is not int or version != SCHEMA_VERSION:
+            raise _Invalid("schema_version must be the integer 1")
+        for name, kind in self.fields.items():
+            if name not in doc:
+                if name not in self.optional:
+                    raise _Invalid(f"{name} is missing")
+            elif type(doc[name]) is not kind:
+                raise _Invalid(f"{name} has the wrong type")
+        if not reading and set(doc) - set(self.fields) - {"schema_version"}:
+            raise _Invalid("the record has a field the template does not define")
+
+
+RECORD = Schema(FIELDS, frozenset(OPTIONAL))
+VERDICT = Schema(VERDICT_FIELDS)
+
+
 def _validate(doc: Mapping[str, object], *, reading: bool, tester: str | None = None) -> None:
-    version = doc.get("schema_version")
-    if version is None and not reading:
-        pass  # the writer stamps the version itself
-    elif type(version) is not int or version != SCHEMA_VERSION:
-        raise _Invalid("schema_version must be the integer 1")
-    for name, kind in FIELDS.items():
-        if name not in doc:
-            if name not in OPTIONAL:
-                raise _Invalid(f"{name} is missing")
-        elif type(doc[name]) is not kind:
-            raise _Invalid(f"{name} has the wrong type")
-    if not reading and set(doc) - set(FIELDS) - {"schema_version"}:
-        raise _Invalid("the record has a field the template does not define")
+    RECORD.check(doc, reading=reading)
     ident = str(doc["id"])
-    if ID.fullmatch(ident) is None or (tester and not ident.startswith(f"{tester}-")):
+    if ID.fullmatch(ident) is None or (tester is not None and not ident.startswith(f"{tester}-")):
         raise _Invalid("id is not a tester-scoped id")
     for name in ("id", "coordinate"):
         if MARKER_PREFIX in str(doc.get(name, "")).lower():
             raise _Invalid(f"{name} holds marker text")
     if "coordinate" in doc and COORDINATE.fullmatch(str(doc["coordinate"])) is None:
         raise _Invalid("coordinate is not an opaque id")
+
+
+def _validate_verdict(doc: Mapping[str, object], *, reading: bool) -> None:
+    VERDICT.check(doc, reading=reading)
+    if ID.fullmatch(str(doc["id"])) is None or doc["triage"] not in TRIAGE:
+        raise _Invalid("a verdict needs a finding id and a word from the triage vocabulary")
 
 
 def _check_record(record: Mapping[str, object], tester: str | None) -> None:
@@ -143,13 +190,40 @@ def _strings(value: object) -> list[str]:
     return []
 
 
-def _render(record: Mapping[str, object]) -> bytes:
+_ESCAPES = {
+    '"': '\\"',
+    "\\": "\\\\",
+    "\b": "\\b",
+    "\t": "\\t",
+    "\n": "\\n",
+    "\f": "\\f",
+    "\r": "\\r",
+}
+
+
+def _toml_value(value: object) -> str:
+    """A TOML basic string, integer or boolean. Non-BMP text is written as it is (UTF-8), never
+    as a JSON surrogate pair, which TOML cannot read."""
+    if type(value) is bool:
+        return "true" if value else "false"
+    if type(value) is int:
+        return str(value)
+    if type(value) is not str:
+        raise Refused("a value has a type the record cannot hold")
+    out = []
+    for ch in value:
+        if ch in _ESCAPES:
+            out.append(_ESCAPES[ch])
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04x}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def _render(doc: Mapping[str, object]) -> bytes:
     lines = [f"schema_version = {SCHEMA_VERSION}"]
-    for name, value in record.items():
-        if name == "schema_version":
-            continue
-        text = json.dumps(value).replace("\x7f", "\\u007f")
-        lines.append(f"{name} = {text}")
+    lines += [f"{name} = {_toml_value(v)}" for name, v in doc.items() if name != "schema_version"]
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
@@ -183,28 +257,46 @@ def write(
         if hits(blob, needles):
             raise Refused(f"artifact {name} holds a needle or a scalar from the input")
     target = Path(root) / pass_id / f"{record['id']}.toml"
-    for name, blob in artifacts.items():
-        publish_or_same(target.with_name(f"{record['id']}.{name}"), blob)
-    # The record goes last: it is the commit marker. A retry after a kill finds identical
-    # artifacts already there and finishes; an id that has a record is used for good.
-    publish_private_once(target, _render(record))
+    prefix = f"{record['id']}."
+    with exclusive_claim(target):
+        # The record is the commit marker: an id that has one is used for good, whoever wrote it.
+        if os.path.lexists(target):
+            raise AlreadyPublished(f"already exists: {target}")
+        # Files left by a killed writer are finished by a retry with the same names. Any other
+        # name beside this id is another bundle's, and the record must not join the two.
+        stray = (
+            {p.name for p in target.parent.glob(f"{prefix}*") if p.name.startswith(prefix)}
+            - {f"{prefix}{n}" for n in artifacts}
+            - {target.name}
+        )
+        if stray:
+            raise Refused("the pass folder holds artifacts of an unfinished write of this id")
+        for name, blob in artifacts.items():
+            publish_or_same(target.with_name(f"{prefix}{name}"), blob)
+        publish_private_once(target, _render(record))
     return target
 
 
 def write_triage(root: Path, pass_id: str, finding_id: str, verdict: str) -> Path:
-    """The triager's verdict as `<id>.triage.toml`: one fixed word, create-once."""
-    if PASS_ID.fullmatch(pass_id) is None or ID.fullmatch(finding_id) is None:
-        raise Refused("the pass id or finding id is not valid")
-    if verdict not in TRIAGE:
-        raise Refused("the verdict is not in the triage vocabulary")
-    target = Path(root) / pass_id / f"{finding_id}.triage.toml"
-    text = f'schema_version = {SCHEMA_VERSION}\nid = "{finding_id}"\ntriage = "{verdict}"\n'
-    publish_private_once(target, text.encode("utf-8"))
+    """The triager's verdict as `<id>.triage.toml`: one fixed word, create-once, for a finding
+    that exists. A verdict with no finding is an orphan and is refused."""
+    doc = {"id": finding_id, "triage": verdict}
+    bad = None
+    try:
+        _validate_verdict(doc, reading=False)
+    except _Invalid as exc:
+        bad = str(exc)
+    if bad is not None or PASS_ID.fullmatch(pass_id) is None:
+        raise Refused(bad or "the pass id is not valid")
+    folder = Path(root) / pass_id
+    if not os.path.isfile(folder / f"{finding_id}.toml"):
+        raise Refused("there is no finding record for this verdict")
+    target = folder / f"{finding_id}.triage.toml"
+    publish_private_once(target, _render(doc))
     return target
 
 
-def read_record(text: str) -> dict[str, object]:
-    """Strict reader: version 1 only, exact primitive types, unknown extra members allowed."""
+def _read(text: str, check: Callable[[dict[str, object]], None]) -> dict[str, object]:
     try:
         doc = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
@@ -213,12 +305,22 @@ def read_record(text: str) -> dict[str, object]:
         raise ReaderError("not valid TOML")
     bad = None
     try:
-        _validate(doc, reading=True)
+        check(doc)
     except _Invalid as exc:
         bad = str(exc)
     if bad is not None:
         raise ReaderError(bad)
     return doc
+
+
+def read_triage(text: str) -> dict[str, object]:
+    """Strict reader for a verdict: version 1, exact types, a word from the vocabulary."""
+    return _read(text, lambda d: _validate_verdict(d, reading=True))
+
+
+def read_record(text: str) -> dict[str, object]:
+    """Strict reader: version 1 only, exact primitive types, unknown extra members allowed."""
+    return _read(text, lambda d: _validate(d, reading=True))
 
 
 def publish(
@@ -237,18 +339,26 @@ def publish(
     require_input(needles, refusal)
     folder = Path(root) / pass_id
     # Only `<id>.toml` is a record: an artifact or a verdict has a dot in its stem.
-    found = [
-        read_record(p.read_text(encoding="utf-8"))
-        for p in sorted(folder.glob("*.toml"))
-        if ID.fullmatch(p.stem)
-    ]
+    found = []
+    for p in sorted(folder.glob("*.toml")):
+        if ID.fullmatch(p.stem):
+            record = read_record(p.read_text(encoding="utf-8"))
+            if record["id"] != p.stem:
+                raise ReaderError("a record's id does not match its file name")
+            found.append(record)
     verdicts = {}
     for p in sorted(folder.glob("*.triage.toml")):
-        doc = tomllib.loads(p.read_text(encoding="utf-8"))
-        if doc.get("triage") in TRIAGE and doc.get("id") == p.name.removesuffix(".triage.toml"):
-            verdicts[doc["id"]] = doc["triage"]
+        doc = read_triage(p.read_text(encoding="utf-8"))
+        if doc["id"] != p.name.removesuffix(".triage.toml"):
+            raise ReaderError("a verdict's id does not match its file name")
+        verdicts[str(doc["id"])] = str(doc["triage"])
+    ids = {str(r["id"]) for r in found}
+    if set(verdicts) - ids:
+        raise Refused("a verdict has no finding record")
+    if ids - set(verdicts):
+        raise Refused("some findings are not triaged yet; publish after triage")
     rows = [
-        f"| {r['id']} | {r['group']} | {r['proposed_tier']} | {verdicts.get(str(r['id']), 'untriaged')} |"
+        f"| {r['id']} | {r['group']} | {r['proposed_tier']} | {verdicts[str(r['id'])]} |"
         for r in found
     ]
     body = [f"# QA-BETA pass {pass_id}", "", f"Findings: {len(found)}", ""]
@@ -293,46 +403,53 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--records-dir", type=Path, default=RECORDS)
     ap.add_argument("--no-slack", action="store_true", help="publish without posting to Slack")
     args = ap.parse_args(argv)
-    needles = read_needles(args.needles.read_text(encoding="utf-8"))
-    refusal = RefusalSet.loads(args.refusal.read_text(encoding="utf-8"))
     try:
+        needles = read_needles(args.needles.read_text(encoding="utf-8"))
+        refusal = RefusalSet.loads(args.refusal.read_text(encoding="utf-8"))
         if args.action == "publish":
-            # Fail closed: a pass nobody was told about is a pass that did not happen.
-            if not args.no_slack and not os.environ.get("QA_SLACK_SCRIPT"):
-                sys.stderr.write("refused: QA_SLACK_SCRIPT is not set (use --no-slack)\n")
-                return 1
-            status: list[str] = []
-            notify = None if args.no_slack else lambda t: status.append(_slack(t))
-            publish(
-                args.root,
-                args.pass_id,
-                needles,
-                refusal,
-                records_dir=args.records_dir,
-                notify=notify,
-            )
-            sys.stdout.write(f"slack: {'not sent' if args.no_slack else status[0]}\n")
-            if not args.no_slack and status[0] != "posted":
-                return 1
-        else:
-            record = read_record(args.record.read_text(encoding="utf-8"))
-            files = dict(a.split("=", 1) for a in args.artifact)
-            arts = {n: Path(p).read_bytes() for n, p in files.items()}
-            write(
-                args.root,
-                args.pass_id,
-                record,
-                needles,
-                refusal,
-                tester=args.tester,
-                artifacts=arts,
-            )
+            return _publish_cli(args, needles, refusal)
+        return _write_cli(args, needles, refusal)
     except NothingRead as exc:
         sys.stderr.write(f"not run: {exc}\n")
         return 2
-    except (Refused, ReaderError, FileExistsError) as exc:
+    except OSError as exc:
+        if isinstance(exc, FileExistsError):
+            sys.stderr.write(f"refused: {exc}\n")
+            return 1
+        sys.stderr.write("not run: an input file could not be read\n")
+        return 2
+    except (Refused, ReaderError, RefusalSetError) as exc:
         sys.stderr.write(f"refused: {exc}\n")
         return 1
+
+
+def _publish_cli(args: argparse.Namespace, needles: Sequence[bytes], refusal: RefusalSet) -> int:
+    # Fail closed: a pass nobody was told about is a pass that did not happen.
+    if not args.no_slack and not os.environ.get("QA_SLACK_SCRIPT"):
+        sys.stderr.write("refused: QA_SLACK_SCRIPT is not set (use --no-slack)\n")
+        return 1
+    status: list[str] = []
+    notify = None if args.no_slack else lambda t: status.append(_slack(t))
+    publish(args.root, args.pass_id, needles, refusal, records_dir=args.records_dir, notify=notify)
+    sys.stdout.write(f"slack: {'not sent' if args.no_slack else status[0]}\n")
+    return 1 if not args.no_slack and status[0] != "posted" else 0
+
+
+def _write_cli(args: argparse.Namespace, needles: Sequence[bytes], refusal: RefusalSet) -> int:
+    """The submission entry point. The tester is required: it scopes every id to its owner."""
+    if not args.tester or PASS_ID.fullmatch(args.tester) is None:
+        sys.stderr.write("refused: write needs --tester, the issued tester name\n")
+        return 1
+    if args.record is None:
+        sys.stderr.write("refused: write needs --record\n")
+        return 1
+    names = [a.partition("=")[0] for a in args.artifact]
+    if any("=" not in a for a in args.artifact) or len(set(names)) != len(names):
+        sys.stderr.write("refused: each --artifact is NAME=PATH and each name appears once\n")
+        return 1
+    record = read_record(args.record.read_text(encoding="utf-8"))
+    arts = {n: Path(p).read_bytes() for n, _, p in (a.partition("=") for a in args.artifact)}
+    write(args.root, args.pass_id, record, needles, refusal, tester=args.tester, artifacts=arts)
     return 0
 
 

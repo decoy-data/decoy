@@ -160,3 +160,62 @@ def test_cli_exit_2_means_needs_manual_repro(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(repro, "_real_decoy", lambda: REAL)
     args = ["--recorded-exit", "3", "--signature", "disk full", "--", "sh", "-c", "exit 3"]
     assert repro.main(args) == 2
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        ["decoy", "run", "/tmp/decoy"],
+        ["decoy", "run", "-m", "decoy"],
+        ["decoy", "run", "--out", "../out/decoy", "uv", "run"],
+        ["sh", "-c", "decoy run /tmp/decoy"],
+        ["sh", "-c", "decoy run -m decoy"],
+        ["sh", "-c", "decoy run; echo python -m decoy"],
+    ],
+)
+def test_a_decoy_path_or_module_flag_used_as_an_argument_is_not_a_bypass(cmd: list[str]) -> None:
+    assert go(cmd) == repro.Result(True, "reproduced")
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        ["env", "FOO=1", "/usr/bin/decoy", "run"],
+        ["FOO=1", "/usr/bin/decoy", "run"],
+        ["python3", "-m", "decoy", "run"],
+        ["python3", "-I", "-m", "decoy.cli"],
+        ["sh", "-c", "FOO=1 /usr/bin/decoy run"],
+        ["bash", "-lc", "cd x && /opt/decoy run"],
+    ],
+)
+def test_the_program_position_is_still_caught_through_wrappers_and_shells(cmd: list[str]) -> None:
+    assert go(cmd) == repro.Result(False, "bypass")
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        ["echo", "/tmp/decoy"],
+        ["cat", "-m", "decoy"],
+        ["python3", "tool.py", "-m", "decoy"],
+        ["sh", "script.sh", "-c", "/opt/decoy run"],
+    ],
+)
+def test_another_program_that_names_decoy_as_an_argument_is_not_a_bypass(cmd: list[str]) -> None:
+    assert not repro._bypasses(cmd)
+
+
+def test_the_shim_has_no_file_writer_of_its_own() -> None:
+    """The witness goes through `io.append_private_line`; the shim itself never opens or writes."""
+    import ast
+
+    source = repro._SHIM.format(
+        python="/usr/bin/python3", root="/r", real=["/x/decoy"], nonce="n", witness="/w"
+    )
+    calls = {
+        ast.unparse(node.func) for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+    }
+    assert "append_private_line" in calls
+    banned = {"open", "os.open", "os.write", "os.fdopen", "io.open", "Path.write_text"}
+    assert not calls & banned, calls & banned
+    assert not any(c.startswith("os.") for c in calls), calls

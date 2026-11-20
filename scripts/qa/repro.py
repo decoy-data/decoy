@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import secrets
 import shlex
 import signal
@@ -42,25 +43,26 @@ TIMEOUT = 120
 # A short signature such as "error" recurs by luck, so it proves nothing.
 MIN_SIGNATURE = 8
 
-# The shim runs under the tester's PATH, so it uses only the standard library. Everything it needs
-# is baked in at launch time; nothing is read from the environment.
+# The shim runs under the tester's PATH. It writes its witness through `scripts.qa.io`, the one QA
+# writer, so it has no file writer of its own. A test parses it and fails on any open or write call.
+# Everything it needs is baked in at launch time; nothing is read from the environment.
 _SHIM = """#!{python}
-import json, os, subprocess, sys
+import json, subprocess, sys
+sys.path.insert(0, {root!r})
+from scripts.qa.io import append_private_line
 real = {real!r}
 done = subprocess.run(real + sys.argv[1:], capture_output=True)
 sys.stdout.buffer.write(done.stdout)
 sys.stderr.buffer.write(done.stderr)
-line = json.dumps({{
+append_private_line({witness!r}, json.dumps({{
     "nonce": {nonce!r},
     "argv": sys.argv[1:],
     "exit": done.returncode,
     "output": (done.stdout + done.stderr).decode("utf-8", "replace"),
-}})
-fd = os.open({witness!r}, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-os.write(fd, (line + "\\n").encode())
-os.close(fd)
+}}))
 sys.exit(done.returncode)
 """
+ROOT = str(Path(__file__).resolve().parents[2])
 
 
 @dataclass(frozen=True)
@@ -99,20 +101,64 @@ def _commands(text: str) -> list[list[str]]:
     return [c for c in commands if c]
 
 
+_SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+_WRAPPERS = {"exec", "command", "nohup", "time", "env"}
+_PYTHON = re.compile(r"python[0-9.]*")
+_ASSIGNMENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _program(words: Sequence[str]) -> list[str]:
+    """The command with leading `NAME=value` words and wrapper words (`env`, `exec`) removed."""
+    rest = list(words)
+    while rest and (_ASSIGNMENT.match(rest[0]) or rest[0] in _WRAPPERS):
+        rest = [w for w in rest[1:] if not w.startswith("-")] if rest[0] == "env" else rest[1:]
+    return rest
+
+
+def _starts_decoy_around_the_shim(words: Sequence[str]) -> bool:
+    """True when `words` itself, at the program position, runs decoy by another route."""
+    words = _program(words)
+    if not words:
+        return False
+    name = words[0].rstrip("/").rsplit("/", 1)[-1]
+    if words[:2] == ["uv", "run"]:
+        return True
+    if "/" in words[0]:
+        if name == "decoy":
+            return True
+    if _PYTHON.fullmatch(name):
+        i = 1
+        while i < len(words) and words[i].startswith("-"):
+            if words[i] == "-m":
+                module = words[i + 1] if i + 1 < len(words) else ""
+                return module == "decoy" or module.startswith("decoy.")
+            i += 2 if words[i] in {"-W", "-X"} else 1
+    return False
+
+
+def _shell_strings(argv: Sequence[str]) -> list[str]:
+    """The `-c` command string of a shell invocation, and nothing else: an argument of any other
+    program is data, not a command."""
+    words = _program(argv)
+    if not words or words[0].rstrip("/").rsplit("/", 1)[-1] not in _SHELLS:
+        return []
+    for i, word in enumerate(words[1:], 1):
+        if re.fullmatch(r"-[a-zA-Z]*c[a-zA-Z]*", word):  # -c, -lc
+            return words[i + 1 : i + 2]
+        if not word.startswith("-"):
+            break
+    return []
+
+
 def _bypasses(argv: Sequence[str]) -> bool:
     """True when the command starts decoy by a route that skips the PATH shim.
 
-    Only the program position counts (argv[0], and the first word of each command inside a
-    `sh -c` string): a path whose last part is `decoy`, `uv run`, or `-m decoy`. A folder or flag
-    that merely ends in `decoy` is not a bypass.
+    Only the program position counts: argv[0], and the first word of each command inside a
+    shell's `-c` string. A path or flag that merely ends in `decoy` anywhere else, such as
+    `cat /tmp/decoy` or `tool -m decoy`, is an argument and not a bypass.
     """
-    lines = [list(argv)] + [c for item in argv for c in _commands(item)]
-    for words in lines:
-        if words[:2] == ["uv", "run"] or ("-m" in words[:3] and "decoy" in words[1:4]):
-            return True
-        if "/" in words[0] and words[0].rstrip("/").rsplit("/", 1)[-1] == "decoy":
-            return True
-    return False
+    lines = [list(argv)] + [c for text in _shell_strings(argv) for c in _commands(text)]
+    return any(_starts_decoy_around_the_shim(words) for words in lines)
 
 
 def _witness_lines(path: str, nonce: str) -> list[dict[str, object]]:
@@ -155,7 +201,9 @@ def run(
     with private_scratch_dir() as home, private_scratch_dir() as control:
         witness = str(control / "witness.jsonl")
         shim_dir = control / "bin"
-        shim = _SHIM.format(python=sys.executable, real=real, nonce=nonce, witness=witness)
+        shim = _SHIM.format(
+            python=sys.executable, root=ROOT, real=real, nonce=nonce, witness=witness
+        )
         publish_private_once(shim_dir / "decoy", shim.encode(), mode=PRIVATE_EXEC)
         cwd = home
         if folder is not None:

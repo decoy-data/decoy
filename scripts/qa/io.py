@@ -17,6 +17,7 @@ widen the frozen surface, so QA keeps its own copy of the few primitives it need
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import os
 import stat
 import tempfile
@@ -168,6 +169,61 @@ def _holds(target: Path, data: bytes) -> bool:
         return False
     with os.fdopen(fd, "rb") as handle:
         return handle.read() == data
+
+
+@contextlib.contextmanager
+def exclusive_claim(key: Path) -> Iterator[None]:
+    """Hold an exclusive claim on `key` (usually a target path) while the body runs.
+
+    It is an advisory `flock` on a private `.<name>.lock` file next to `key`. The kernel drops the
+    claim when the process dies, so a killed writer leaves no stale reservation to clean up. A
+    second claimer waits, then runs after the first finishes and can see what it published. The lock
+    file is removed on release, and the claimer re-checks that the file it locked is still the one
+    on disk, so removal cannot let two holders in.
+    """
+    key = Path(key)
+    _ensure_parents(key.parent)
+    lock = key.parent / f".{key.name}.lock"
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    while True:
+        fd = os.open(lock, flags, PRIVATE_FILE)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise PermissionError(f"refused: {lock} is not our private lock file")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                current = os.stat(lock).st_ino
+            except FileNotFoundError:
+                current = None  # the last holder removed it while we waited: take the new one
+            if current == info.st_ino:
+                break
+        except BaseException:
+            os.close(fd)
+            raise
+        os.close(fd)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(lock)
+        os.close(fd)
+
+
+def append_private_line(path: Path, line: str) -> None:
+    """Append one line to a private file, creating it 0600; a symlink is refused.
+
+    The generated repro shim calls this to record its witness, so the shim has no file writer of
+    its own. `O_APPEND` keeps concurrent lines whole.
+    """
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(path, flags, PRIVATE_FILE)
+    try:
+        view = memoryview((line + "\n").encode("utf-8"))
+        while view:
+            view = view[os.write(fd, view) :]
+    finally:
+        os.close(fd)
 
 
 def copy_private_tree(source: Path, dest: Path) -> None:

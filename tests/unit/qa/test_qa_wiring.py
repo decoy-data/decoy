@@ -125,6 +125,45 @@ def _collection_names(tree: ast.AST) -> set[str]:
     return names
 
 
+REGEX_MODULES = {"re", "regex"}
+REGEX_MATCHERS = {"search", "match", "fullmatch", "findall", "finditer"}
+
+
+def _regex_names(tree: ast.AST) -> tuple[set[str], set[str]]:
+    """Local names bound to a regex module, and local names bound to one of its matchers.
+
+    `import re as regex` gives `regex` as a module name, and `from re import search as s` gives
+    `s` as a matcher name, so the spelling cannot hide a call.
+    """
+    modules: set[str] = set()
+    matchers: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules |= {a.asname or a.name for a in node.names if a.name in REGEX_MODULES}
+        elif isinstance(node, ast.ImportFrom) and node.module in REGEX_MODULES:
+            matchers |= {a.asname or a.name for a in node.names if a.name in REGEX_MATCHERS}
+    return modules, matchers
+
+
+def _is_regex_call(node: ast.Call, modules: set[str], matchers: set[str]) -> bool:
+    fn = node.func
+    if isinstance(fn, ast.Name):
+        return fn.id in matchers
+    if not isinstance(fn, ast.Attribute) or fn.attr not in REGEX_MATCHERS:
+        return False
+    owner = fn.value
+    if isinstance(owner, ast.Name):
+        return owner.id in modules
+    # `re.compile(p).search(text)`: the matcher hangs off a compile call.
+    return (
+        isinstance(owner, ast.Call)
+        and isinstance(owner.func, ast.Attribute)
+        and owner.func.attr == "compile"
+        and isinstance(owner.func.value, ast.Name)
+        and owner.func.value.id in modules
+    )
+
+
 def inline_text_matches(source: str) -> list[int]:
     """Lines where an invariant searches text for a value itself instead of calling the sweep.
 
@@ -139,6 +178,7 @@ def inline_text_matches(source: str) -> list[int]:
     """
     tree = ast.parse(source)
     known = _collection_names(tree)
+    modules, matchers = _regex_names(tree)
     found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Compare) and any(
@@ -152,15 +192,10 @@ def inline_text_matches(source: str) -> list[int]:
             as_str = isinstance(left, ast.Call) and getattr(left.func, "id", "") == "str"
             if as_text or as_name or as_str:
                 found.append(node.lineno)
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            owner = node.func.value
-            if node.func.attr in {"find", "__contains__"}:
+        elif isinstance(node, ast.Call):
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {"find", "__contains__"}:
                 found.append(node.lineno)
-            elif (
-                isinstance(owner, ast.Name)
-                and owner.id == "re"
-                and node.func.attr in {"search", "match", "fullmatch", "findall", "finditer"}
-            ):
+            elif _is_regex_call(node, modules, matchers):
                 found.append(node.lineno)
     return found
 
@@ -179,6 +214,12 @@ def inline_text_matches(source: str) -> list[int]:
         "import re\nhit = re.search(cell, text)",
         "import re\nhit = re.match(cell, text)",
         "hit = text.__contains__(cell)",
+        "import re as regex\nhit = regex.search(cell, text)",
+        "import re as r\nhit = r.findall(cell, text)",
+        "from re import search\nhit = search(cell, text)",
+        "from re import fullmatch as fm\nhit = fm(cell, text)",
+        "import re\nhit = re.compile(cell).search(text)",
+        "import regex\nhit = regex.match(cell, text)",
     ],
 )
 def test_the_inline_match_scan_sees_each_spelling(snippet: str) -> None:
@@ -195,6 +236,8 @@ def test_the_inline_match_scan_sees_each_spelling(snippet: str) -> None:
         "kinds = frozenset({'a'})\nok = kind in kinds",
         "ok = kind in {'a', 'b'}",
         "ok = kind in KNOWN | {'x'}",
+        "import re as regex\nPAT = regex.compile('x')\nok = PAT.search(msg)",
+        "from re import compile\nPAT = compile('x')",
     ],
 )
 def test_the_inline_match_scan_leaves_set_membership_alone(snippet: str) -> None:

@@ -22,7 +22,7 @@ Some tooling named here is not built yet. Each such item says which slice of the
 |---|---|---|---|---|
 | L1 Checklist pass | one Sonnet agent per checklist group | the group's checks, the corpus | the check's expected exit and output, plus the invariants | as each group becomes V1 complete |
 | L2 Doc walk | one Sonnet agent per set of public docs pages | every example in the public docs, run as written | the doc text, plus the invariants | as each group becomes V1 complete, for that group's pages |
-| L3 Persona beta testers | five Sonnet agents, one per persona | a charter, the public docs, the corpus | the docs and the invariants; the agent's judgement only for "confusing" findings | after the V1 build is complete (personas cross groups) |
+| L3 Persona beta testers | five Sonnet agents, one per persona | a charter, the public docs, the corpus | the docs and the invariants; the agent's judgement only for `usability`, `docs` and `performance` findings | after the V1 build is complete (personas cross groups) |
 | L4 Matrix runs | the harness, no agent | the pairwise settings matrices over the corpus | the invariants only | after the V1 build is complete |
 
 L4 is a script because wide coverage is cheap and mechanical. Agents (L1 to L3) do the work that
@@ -95,6 +95,12 @@ own patterns.
 
 **Markers.** Every generated text cell holds `qamark` plus a unique number. Public items keep
 their data. For public items, I1 uses a same-row comparison instead of markers.
+
+The refusal set indexes every canonical scalar, however short (`F`, `CA`, `0`, `-1`). A scalar is
+matched only as whole tokens, never inside a longer word or number, and a number is one token with
+its sign and decimal point (`3.5`, `-7.25`). Indexing and lookup use the same tokenizer. On the
+run summary on stdout, a match that is one bare number is skipped, because the run's own row
+counts collide with key values.
 
 Each pass writes two node-local files:
 
@@ -193,7 +199,7 @@ is a finding. It needs no judgement. (Built by slice S1b, one module per invaria
 
 | Id | Invariant | How it is checked |
 |---|---|---|
-| I1 | No original value survives where the column's strategy replaces it, and no needle (marker or secret) appears on any output surface, except the documented exceptions | Per column, by the config's strategy. Value-replacing strategies (hash, fpe, faker, categorical, date_shift, bucketize, tokenize, redact) get an exact-cell check and a same-row check (the output cell differs from the same row's input cell). `passthrough` is exempt. `truncate` may keep the documented prefix and nothing more. `text_redact` may keep the surrounding text but no detected entity. Non-data surfaces get the needles sweep. |
+| I1 | No original value survives where the column's strategy replaces it, and no needle (marker or secret) appears on any output surface, except the documented exceptions | Per column, by the config's strategy. Exact-cell checks run only where the output cannot overlap the input by construction. `hash`, `tokenize` and `redact` get an exact-cell and a same-row check; an unpooled `faker` gets both over marker inputs. `date_shift` gets the same-row check and a range check. `fpe` and a pooled `faker` get the same-row check and a swap check (90 percent or more of the output made of the input's own values fails, on 20 or more rows). `categorical` and `bucketize` get no same-row check, but each output must be in the rule's allowed set and equal inputs must give equal outputs. This domain check also applies to a row whose source is null. `passthrough` is exempt. `truncate` keeps exactly the documented prefix. `text_redact` may keep the surrounding text but no detected entity. Each surface in `docs/qa/surfaces.toml` gets the check its entry names. |
 | I2 | Each output FK obeys its configured orphan policy | `fail` refuses the source orphan, `remap` gives a child tuple that joins, and `preserve` keeps the documented orphan relation. The checker compares complete key tuples. |
 | I3 | Re-runs and route pairs give equal outputs exactly where the docs promise it | SHA-256 per output data file. Run ids and timestamps in result and evidence files are ignored. Pairs: a re-run with `--mask-secret`; `--chunked` against a plain run for value-keyed strategies; generate with `--master-key` across runs and machines; a flag the docs say is ignored against the run without it. |
 | I4 | Every input row is accounted for | Mask: input rows = output rows + quarantined rows, per table. Subset: output rows are no more than input rows, and I2 holds. Generate: rows per table match the config or the `--rows` ratio. |
@@ -263,14 +269,17 @@ fields are:
 - `platform`, `cli_version`, `engine_version`, `bundle_digest`
 - `corpus_item`, `command`, `config` (with values removed)
 - `expected` (a doc path and line, or an invariant id), `actual`, `exit`
-- `repro`, `proposed_tier`, `confusing`
+- `repro`, `proposed_tier`
+- `kind` and the per-kind fields (`usability`, `docs`, `performance`) arrive with slice S2
 
 Rules for writing a finding:
 
 - The launcher gives each tester its own ids before the tester starts. Each id can be used once.
 - `scripts/qa/findings.py write` is the only way a tester submits a finding. It refuses text that
   holds a needle or any canonical scalar from the refusal set. It also refuses a coordinate id
-  that holds marker text. (Built by slice S1b.)
+  that holds marker text. `--tester` is required, and an id must start with it. A finding and its
+  artifacts are published as one bundle under a per-id claim, the record last. `publish` refuses a
+  pass with an untriaged finding or a verdict with no finding. (Built by slice S1b.)
 - Every QA writer uses one private helper, `scripts/qa/io.py` (`publish_private_once`). It
   writes a 0600 temporary file, then publishes it with a hard link that fails if the target exists,
   so the target is created once and is never visible half written. (Built by slice S1a.)
