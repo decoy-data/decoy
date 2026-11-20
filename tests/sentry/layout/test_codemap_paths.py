@@ -63,11 +63,8 @@ KINDS = frozenset(
 # and S2 (docs/plans/2026-11-20-qa-beta-program.md) create these and drop them from this set.
 TARGETS: frozenset[str] = frozenset(
     {
-        "docs/qa/briefs/",
         "docs/qa/corpus/",
         "docs/qa/matrix.toml",
-        "scripts/qa/",
-        "tests/unit/qa/",
     }
 )
 _TARGET = re.compile(r"`([^`]+)` \(target\)")
