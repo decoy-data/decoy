@@ -135,9 +135,14 @@ def test_exit_0_and_2() -> None:
     assert i6_exit.classify(2, "", "", expect="success").finding
 
 
-def test_exit_3_passes_only_in_a_fault_cell_with_atomicity() -> None:
-    ok = i6_exit.classify(exit_codes.EXIT_RUNTIME, "", "", cell="disk", atomic_ok=True)
+@pytest.mark.parametrize("cell", ["readonly", "disk", "quota"])
+def test_exit_3_passes_in_each_named_fault_cell(cell: str) -> None:
+    ok = i6_exit.classify(exit_codes.EXIT_RUNTIME, "", "", cell=cell, atomic_ok=True)
     assert not ok.finding
+    assert i6_exit.classify(3, "", "", cell=cell, atomic_ok=False).finding
+
+
+def test_exit_3_passes_only_in_a_fault_cell_with_atomicity() -> None:
     assert i6_exit.classify(3, "", "", cell="disk", atomic_ok=False).finding
     assert i6_exit.classify(3, "", "", cell=None, atomic_ok=True).finding
     assert i6_exit.classify(3, "", "", cell="memory", atomic_ok=True).finding
@@ -156,6 +161,10 @@ def test_exit_4_needs_findings_named_in_the_output() -> None:
         exit_codes.EXIT_FINDINGS, "3 findings", "", expect="findings"
     ).finding
     assert i6_exit.classify(4, "", "", expect="findings").finding
+    for text in ("done, 12 rows written", "warning: slow disk", "all checks passed"):
+        assert i6_exit.classify(4, text, "", expect="findings").finding, text
+    for text in ("check fk_preservation: fail", "1 finding", "fingerprint changed: out.csv"):
+        assert not i6_exit.classify(4, text, "", expect="findings").finding, text
     assert i6_exit.classify(4, "x", "", expect="success").finding
 
 

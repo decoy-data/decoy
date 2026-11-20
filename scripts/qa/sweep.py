@@ -9,7 +9,8 @@ a silent no-op is the bug this guards against.
 Needles are markers and secrets, one per line in a node-local file. A secret given as hex also
 matches as its raw bytes, as the first-user journey does. The refusal set holds salted hashes of
 canonical scalar forms, so an arbitrary input or output value (a number, a date, a two-word name)
-can be recognised in text without keeping the value itself.
+can be recognised in text without keeping the value itself. A scalar of one or two characters
+is not indexed (see `MIN_SCALAR`); every longer one is.
 
 A leak is reported as a surface id, a name and an opaque coordinate. The coordinate is a needle
 index, so it carries no marker text and no text taken from the data.
@@ -41,8 +42,10 @@ from scripts.qa.io import publish_private_once
 
 SURFACES = Path(__file__).resolve().parents[2] / "docs/qa/surfaces.toml"
 CHECKS = ("cells", "needles", "needles-encrypted")
-# Scalars shorter than this are not in the refusal set: "1" or "ok" would match any message.
-MIN_SCALAR = 4
+# Scalars of one or two characters are the only ones left out of the refusal set: "1" or "ok"
+# would match any message. Everything of three or more (`Bob`, `123`) is indexed and matched as
+# whole tokens, so `Bobby` does not match `Bob`.
+MIN_SCALAR = 3
 # Only a line this long is read as a hex secret; a short hex-looking marker stays text.
 MIN_HEX = 32
 _WORD = re.compile(r"\w+")

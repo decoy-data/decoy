@@ -93,8 +93,17 @@ def test_planted_cell_defects_are_flagged(rule: Rule, after: list[dict], kind: s
     assert found[0].coordinate.startswith("t/c/")
 
 
-def test_a_domain_strategy_may_reuse_a_domain_value() -> None:
-    assert check_cells("t", {"c": Rule("categorical")}, SRC, SRC[::-1]) == []
+@pytest.mark.parametrize("strategy", ["hash", "fpe", "date_shift", "categorical", "bucketize"])
+def test_swapping_values_between_rows_fails_every_replacing_strategy(strategy: str) -> None:
+    found = check_cells("t", {"c": Rule(strategy)}, SRC, SRC[::-1])
+    assert [v.kind for v in found] == ["exact-cell", "exact-cell"]
+
+
+@pytest.mark.parametrize("after", ["", "Ze", "Zeld", "Omar"])
+def test_truncate_keeps_exactly_the_documented_prefix(after: str) -> None:
+    out = [{"c": after}, {"c": "Oma"}]
+    found = check_cells("t", {"c": Rule("truncate", prefix=3)}, SRC, out)
+    assert [v.coordinate for v in found] == ["t/c/0"]
 
 
 def test_an_unknown_strategy_is_refused_not_passed() -> None:
@@ -189,6 +198,34 @@ def test_domain_and_replace_compare_canonical_forms() -> None:
     found = check_cells("t", {"c": Rule("hash")}, other, [{"c": "9"}, {"c": "5678"}])
     assert [v.kind for v in found] == ["exact-cell"]
     assert check_cells("t", {"c": Rule("fpe")}, [{"c": 7.0}], [{"c": "7"}])
+
+
+SHORT = ["Bob", "Ann", "O'Neil", 123, "Zoë"]  # the last is NFC; the text below is NFD
+
+
+@pytest.mark.parametrize(
+    ("scalar", "text"),
+    [
+        ("Bob", "who is bob here"),
+        ("Ann", "Ann."),
+        ("O'Neil", "customer o'neil refused"),
+        (123, "id 123 refused"),
+        ("Zoë", "name Zoë refused"),
+    ],
+)
+def test_short_scalars_of_three_characters_are_indexed_as_whole_tokens(
+    scalar: object, text: str
+) -> None:
+    refusal = sweep.RefusalSet.build(SHORT)
+    nfd = text.replace("Zoë", "Zoe\u0308")
+    assert refusal.found_in(nfd), nfd
+    assert sweep.sweep({"c": ("stderr", nfd.encode())}, NEEDLES, REGISTRY, refusal)
+
+
+def test_one_and_two_character_scalars_are_exempt_and_tokens_are_whole() -> None:
+    refusal = sweep.RefusalSet.build(["Bob", 7, "ab"])
+    assert not refusal.found_in("exit 7 and ab")
+    assert not refusal.found_in("Bobby and Bobcat")  # a longer token is not a match
 
 
 def test_a_text_redact_rule_without_matching_entities_is_refused() -> None:

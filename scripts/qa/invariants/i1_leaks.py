@@ -6,12 +6,13 @@ Cell rules run per column by the config's strategy. Text surfaces get the needle
 fails otherwise), so a new exception cannot be added without a rule and a pass case.
 
 Strategy families (plan 5.5):
-- `replace`: the output cell differs from the same row's input cell, and equals no input cell of
-  that column (hash, faker, tokenize, redact).
-- `domain`: the output may reuse a value from the column's domain, so only the same-row check
-  applies (fpe, categorical, date_shift, bucketize).
+- Every replacing strategy (hash, fpe, faker, categorical, date_shift, bucketize, tokenize,
+  redact) gets both checks: the output cell differs from the same row's input cell, and it equals
+  no input cell of that column. The second check is what fails a run that swaps original values
+  between rows, which a same-row check alone passes.
 - `passthrough`: exempt.
-- `truncate`: the output is the documented prefix of the input and nothing more.
+- `truncate`: the output is exactly the documented prefix of the input. An empty output or a
+  different prefix fails.
 - `text_redact`: surrounding text may stay, a detected entity may not.
 """
 
@@ -23,8 +24,9 @@ from dataclasses import dataclass, field
 from scripts.qa.invariants import Rows, Violation
 from scripts.qa.sweep import canonical
 
-REPLACE = frozenset({"hash", "faker", "tokenize", "redact"})
-DOMAIN = frozenset({"fpe", "categorical", "date_shift", "bucketize"})
+REPLACE = frozenset(
+    {"hash", "fpe", "faker", "categorical", "date_shift", "bucketize", "tokenize", "redact"}
+)
 # Registry exception id -> the strategy it exempts (or limits). Keep equal to surfaces.toml.
 EXCEPTION_RULES = {
     "passthrough": "passthrough",
@@ -67,7 +69,7 @@ def check_cells(
     for column, rule in rules.items():
         if rule.strategy == "passthrough":
             continue
-        if rule.strategy not in REPLACE | DOMAIN | {"truncate", "text_redact"}:
+        if rule.strategy not in REPLACE | {"truncate", "text_redact"}:
             raise UnknownStrategy(f"{table}/{column}: no I1 rule for this strategy")
         if rule.strategy == "text_redact" and len(rule.entities) != len(source):
             # No entity list means nothing is checked, and a pass would be a lie.
@@ -85,7 +87,7 @@ def _violation(rule: Rule, before: object, after: object, domain: set[str], row:
         return ""  # a null has no original value to leak
     if rule.strategy == "truncate":
         keep = str(before)[: rule.prefix]
-        return "" if str(after) == keep or str(after) == "" else "truncate-extra"
+        return "" if after is not None and str(after) == keep else "truncate-extra"
     if rule.strategy == "text_redact":
         found = any(e and e in str(after) for e in rule.entities[row])
         return "entity" if found else ""

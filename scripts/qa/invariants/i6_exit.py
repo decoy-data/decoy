@@ -30,6 +30,10 @@ INTERRUPTED = 130
 # The product's crash form, with and without `--verbose` (src/decoy/__main__.py:154 and :187).
 _CRASH = re.compile(r"error: internal error \(\w+\)")
 _REFUSAL = re.compile(r"error: \S")
+# The CLI has no one printed form for exit 4 (a table, a `--json` status, a changed-file line), so
+# the documented minimum is a line that names a finding: a fail or error severity, the word
+# finding, or a changed or mismatched item. Output with none of those is not a findings report.
+_FINDING_LINE = re.compile(r"\b(fail(ed)?|errors?|findings?|changed|mismatch(ed)?)\b", re.I)
 FAULT_CELLS = {"readonly", "disk", "quota"}
 
 
@@ -83,7 +87,7 @@ def classify(
         ok = cell in FAULT_CELLS and atomic_ok
         return Verdict("runtime", not ok, "" if ok else "runtime-outside-fault-cell")
     if code == EXIT_FINDINGS:
-        ok = expect == "findings" and bool(stdout.strip() or stderr.strip())
+        ok = expect == "findings" and _FINDING_LINE.search(stdout + "\n" + stderr) is not None
         return Verdict("findings", not ok, "" if ok else "unexpected-findings")
     if code == EXIT_CAPACITY:
         ok = cell == "memory"

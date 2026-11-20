@@ -32,15 +32,25 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
-from scripts.qa.io import publish_private_once
+from scripts.qa.io import publish_or_same, publish_private_once
 from scripts.qa.sweep import RefusalSet, hits, read_needles
 
 SCHEMA_VERSION = 1
-STR_FIELDS = (
-    "id", "layer", "persona", "group", "platform", "cli_version", "engine_version",
-    "bundle_digest", "corpus_item", "command", "config", "expected", "actual", "repro",
-    "proposed_tier", "coordinate",
-)  # fmt: skip
+# The one descriptor of a record. The writer and the reader both validate through it, so they
+# cannot drift. Policy for members it does not list: the writer refuses them (a tester may not
+# invent fields), the reader keeps them (a later minor version may add some).
+FIELDS: dict[str, type] = {
+    **dict.fromkeys(
+        (
+            "id", "layer", "persona", "group", "platform", "cli_version", "engine_version",
+            "bundle_digest", "corpus_item", "command", "config", "expected", "actual", "repro",
+            "proposed_tier", "coordinate",
+        ),
+        str,
+    ),
+    "exit": int,
+    "confusing": bool,
+}  # fmt: skip
 OPTIONAL = {"coordinate"}
 # The triager's vocabulary. A tester never writes a verdict on their own finding.
 TRIAGE = ("confirmed", "not-reproduced", "duplicate", "v1", "v2-log", "docs-only")
@@ -65,29 +75,42 @@ def _guard(text: str, where: str, needles: Sequence[bytes], refusal: RefusalSet 
         raise Refused(f"{where} holds a needle or a scalar from the input")
 
 
-def _check_record(record: Mapping[str, object], tester: str | None) -> None:
-    unknown = set(record) - set(STR_FIELDS) - {"exit", "confusing", "schema_version"}
-    if unknown:
-        raise Refused("the record has a field the template does not define")
-    for name in STR_FIELDS:
-        if name in record and type(record[name]) is not str:
-            raise Refused(f"{name} must be a string")
-        if name not in record and name not in OPTIONAL:
-            raise Refused(f"{name} is missing")
-    if type(record.get("exit")) is not int or type(record.get("confusing")) is not bool:
-        raise Refused("exit must be an integer and confusing a boolean")
-    if "schema_version" in record and (
-        type(record["schema_version"]) is not int or record["schema_version"] != SCHEMA_VERSION
-    ):
-        raise Refused("schema_version must be the integer 1")
-    ident = str(record["id"])
+class _Invalid(ValueError):
+    """Internal: the descriptor check failed. Wrapped as `Refused` or `ReaderError`."""
+
+
+def _validate(doc: Mapping[str, object], *, reading: bool, tester: str | None = None) -> None:
+    version = doc.get("schema_version")
+    if version is None and not reading:
+        pass  # the writer stamps the version itself
+    elif type(version) is not int or version != SCHEMA_VERSION:
+        raise _Invalid("schema_version must be the integer 1")
+    for name, kind in FIELDS.items():
+        if name not in doc:
+            if name not in OPTIONAL:
+                raise _Invalid(f"{name} is missing")
+        elif type(doc[name]) is not kind:
+            raise _Invalid(f"{name} has the wrong type")
+    if not reading and set(doc) - set(FIELDS) - {"schema_version"}:
+        raise _Invalid("the record has a field the template does not define")
+    ident = str(doc["id"])
     if ID.fullmatch(ident) is None or (tester and not ident.startswith(f"{tester}-")):
-        raise Refused("id is not a tester-scoped id")
+        raise _Invalid("id is not a tester-scoped id")
     for name in ("id", "coordinate"):
-        if MARKER_PREFIX in str(record.get(name, "")).lower():
-            raise Refused(f"{name} holds marker text")
-        if name == "coordinate" and COORDINATE.fullmatch(str(record.get(name) or "n")) is None:
-            raise Refused("coordinate is not an opaque id")
+        if MARKER_PREFIX in str(doc.get(name, "")).lower():
+            raise _Invalid(f"{name} holds marker text")
+    if "coordinate" in doc and COORDINATE.fullmatch(str(doc["coordinate"])) is None:
+        raise _Invalid("coordinate is not an opaque id")
+
+
+def _check_record(record: Mapping[str, object], tester: str | None) -> None:
+    bad = None
+    try:
+        _validate(record, reading=False, tester=tester)
+    except _Invalid as exc:
+        bad = str(exc)
+    if bad is not None:  # raised outside the handler so no __context__ rides along
+        raise Refused(bad)
 
 
 def _strings(value: object) -> list[str]:
@@ -132,11 +155,16 @@ def write(
     for name, blob in artifacts.items():
         if ARTIFACT.fullmatch(name) is None or name.endswith(".toml"):  # a record or verdict name
             raise Refused("an artifact name is not valid")
-        _guard(blob.decode("utf-8", "replace"), f"artifact {name}", needles, refusal)
+        # Needles are matched on the raw bytes, so a non-UTF-8 needle is still found.
+        _guard(blob.decode("utf-8", "replace"), f"artifact {name}", (), refusal)
+        if hits(blob, needles):
+            raise Refused(f"artifact {name} holds a needle or a scalar from the input")
     target = Path(root) / pass_id / f"{record['id']}.toml"
-    publish_private_once(target, _render(record))
     for name, blob in artifacts.items():
-        publish_private_once(target.with_name(f"{record['id']}.{name}"), blob)
+        publish_or_same(target.with_name(f"{record['id']}.{name}"), blob)
+    # The record goes last: it is the commit marker. A retry after a kill finds identical
+    # artifacts already there and finishes; an id that has a record is used for good.
+    publish_private_once(target, _render(record))
     return target
 
 
@@ -160,18 +188,13 @@ def read_record(text: str) -> dict[str, object]:
         doc = None
     if doc is None:
         raise ReaderError("not valid TOML")
-    version = doc.get("schema_version")
-    if type(version) is not int:
-        raise ReaderError("schema_version is missing or not an integer")
-    if version != SCHEMA_VERSION:
-        raise ReaderError("unsupported schema_version")
-    for name in STR_FIELDS:
-        if name in doc and type(doc[name]) is not str:
-            raise ReaderError(f"{name} must be a string")
-        if name not in doc and name not in OPTIONAL:
-            raise ReaderError(f"{name} is missing")
-    if type(doc.get("exit")) is not int or type(doc.get("confusing")) is not bool:
-        raise ReaderError("exit must be an integer and confusing a boolean")
+    bad = None
+    try:
+        _validate(doc, reading=True)
+    except _Invalid as exc:
+        bad = str(exc)
+    if bad is not None:
+        raise ReaderError(bad)
     return doc
 
 
@@ -215,7 +238,7 @@ def publish(
     _guard(slack, "the Slack text", needles, refusal)
     day = (today or datetime.date.today()).isoformat()
     target = Path(records_dir) / f"{day}-qa-beta-{pass_id}.md"
-    publish_private_once(target, record_text.encode("utf-8"))
+    publish_or_same(target, record_text.encode("utf-8"))  # a rerun finds it done
     if notify is not None:
         notify(slack)
     return target
@@ -243,16 +266,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--record", type=Path)
     ap.add_argument("--tester")
     ap.add_argument("--artifact", action="append", default=[], metavar="NAME=PATH")
+    ap.add_argument("--records-dir", type=Path, default=RECORDS)
+    ap.add_argument("--no-slack", action="store_true", help="publish without posting to Slack")
     args = ap.parse_args(argv)
     needles = read_needles(args.needles.read_text(encoding="utf-8"))
     refusal = RefusalSet.loads(args.refusal.read_text(encoding="utf-8"))
     try:
         if args.action == "publish":
+            # Fail closed: a pass nobody was told about is a pass that did not happen.
+            if not args.no_slack and not os.environ.get("QA_SLACK_SCRIPT"):
+                sys.stderr.write("refused: QA_SLACK_SCRIPT is not set (use --no-slack)\n")
+                return 1
             status: list[str] = []
+            notify = None if args.no_slack else lambda t: status.append(_slack(t))
             publish(
-                args.root, args.pass_id, needles, refusal, notify=lambda t: status.append(_slack(t))
+                args.root,
+                args.pass_id,
+                needles,
+                refusal,
+                records_dir=args.records_dir,
+                notify=notify,
             )
-            sys.stdout.write(f"slack: {status[0] if status else 'not sent'}\n")
+            sys.stdout.write(f"slack: {'not sent' if args.no_slack else status[0]}\n")
+            if not args.no_slack and status[0] != "posted":
+                return 1
         else:
             record = read_record(args.record.read_text(encoding="utf-8"))
             files = dict(a.split("=", 1) for a in args.artifact)

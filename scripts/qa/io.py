@@ -25,6 +25,7 @@ from pathlib import Path
 
 PRIVATE_FILE = 0o600
 PRIVATE_DIR = 0o700
+PRIVATE_EXEC = 0o700  # a launcher-owned script, runnable by this user only
 
 
 class AlreadyPublished(FileExistsError):
@@ -110,12 +111,12 @@ def _ensure_parents(directory: Path) -> None:
 
 
 @contextlib.contextmanager
-def staged_private(target: Path) -> Iterator[StagedFile]:
+def staged_private(target: Path, mode: int = PRIVATE_FILE) -> Iterator[StagedFile]:
     """Yield a `StagedFile` for `target`; remove the temporary file unless it was published."""
     target = Path(target)
     _ensure_parents(target.parent)
     fd, name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".part", dir=target.parent)
-    os.fchmod(fd, PRIVATE_FILE)
+    os.fchmod(fd, mode)
     staged = StagedFile(target, fd, Path(name))
     try:
         yield staged
@@ -123,11 +124,39 @@ def staged_private(target: Path) -> Iterator[StagedFile]:
         staged.discard()
 
 
-def publish_private_once(target: Path, data: bytes) -> None:
-    """Write `data` to `target` as a 0600 file that did not exist before, atomically."""
-    with staged_private(target) as staged:
+def publish_private_once(target: Path, data: bytes, mode: int = PRIVATE_FILE) -> None:
+    """Write `data` to `target` as a private file that did not exist before, atomically."""
+    with staged_private(target, mode) as staged:
         staged.write(data)
         staged.publish()
+
+
+def publish_or_same(target: Path, data: bytes) -> bool:
+    """Publish once, or accept an existing target that already holds exactly `data`.
+
+    True when this call wrote the file, False when an identical file was already there. That makes
+    a retry after an interruption safe, while a different file at the target is still refused. The
+    existing file is read without following a symlink.
+    """
+    lost = False
+    try:
+        publish_private_once(target, data)
+    except AlreadyPublished:
+        lost = True
+    if not lost:
+        return True
+    if not _holds(target, data):
+        raise AlreadyPublished(f"already exists with other content: {target}")
+    return False
+
+
+def _holds(target: Path, data: bytes) -> bool:
+    try:
+        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+    except OSError:
+        return False
+    with os.fdopen(fd, "rb") as handle:
+        return handle.read() == data
 
 
 @contextlib.contextmanager
