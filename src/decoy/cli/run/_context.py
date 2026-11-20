@@ -57,6 +57,12 @@ class EvidenceWriteRefusal(RunRefusal):
     category = "runtime"
 
 
+class IntegrityWriteRefusal(RunRefusal):
+    """The post-scan report could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
+
+
 class Mode(str, Enum):
     mask = "mask"
     generate = "generate"

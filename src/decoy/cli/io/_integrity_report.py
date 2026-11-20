@@ -29,7 +29,7 @@ import typer
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._config_file import decode_config_bytes, parse_config_mapping, read_config_bytes
-from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io._layout import RunLayout, shown_path, side_file_name
 from decoy.ui.output import OutputMode, OutputState, emit_error
 from decoy.ui.theme import warn
@@ -148,15 +148,13 @@ def _write(path: Path, report: Mapping[str, Any], sha: str | None) -> str | None
 
 
 def write_run_report(
-    state: OutputState, report: Mapping[str, Any] | None, path: Path | None, sha: str | None
-) -> None:
-    """Write a finished run's report after its outputs; a failed write exits 3."""
+    report: Mapping[str, Any] | None, path: Path | None, sha: str | None
+) -> str | None:
+    """Write a finished run's report after its outputs; the failure text when it cannot be
+    written. It never ends the run: `run/_flow.py` raises the typed refusal (exit 3)."""
     if report is None or path is None:
-        return
-    failed = _write(path, report, sha)
-    if failed is not None:
-        emit_error(state, "run", failed, code=INTEGRITY_WRITE_FAILED)
-        raise typer.Exit(code=EXIT_RUNTIME)
+        return None
+    return _write(path, report, sha)
 
 
 def _detectors(report: Mapping[str, Any]) -> list[dict[str, Any]]:

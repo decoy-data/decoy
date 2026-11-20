@@ -228,7 +228,41 @@ def test_typed_refusals_carry_no_context(tmp_path: Path) -> None:
         for name in ("x3", "x4", "x8"):
             argv, patcher, _ = _case(name, tmp_path)
             _invoke(argv, patcher)
+        _integrity_failure(tmp_path / "integrity")
     assert {type(r) for r in caught} == set(_refusal_classes())
     for refusal in caught:
         assert refusal.__context__ is None
         assert refusal.__cause__ is None
+
+
+def _integrity_failure(root: Path):
+    from decoy._atomic import AtomicWriteError
+    from tests.e2e.integrity._fixtures import write_pipeline
+
+    root.mkdir(exist_ok=True)
+    cfg = write_pipeline(root, post={"integrity": True})
+    failing = mock.patch(
+        "decoy.cli.io._integrity_report.write_local_target",
+        side_effect=AtomicWriteError("zz_marker_code"),
+    )
+    return _invoke(["run", str(cfg), "--json"], failing)
+
+
+def test_integrity_write_failure_has_one_document(tmp_path: Path) -> None:
+    """x8i: the post-scan report that cannot be written ends the run through the one choke
+    point: exit 3, a built run result, failure category runtime, code in the envelope."""
+    result = _integrity_failure(tmp_path)
+
+    assert result.exit_code == 3, result.output
+    payload = json.loads(result.stdout)
+    doc = payload["result"]
+    _model(doc)
+    assert doc["exit_code"] == 3
+    assert doc["status"] == "failed"
+    assert doc["failure"]["category"] == "runtime"
+    assert payload["status"] == "error"
+    assert payload["code"] == "run.integrity_write_failed"
+    assert {"config", "mode"} <= set(payload)
+    assert payload["result_status"] == {"document": "built", "file": "not_requested", "code": None}
+    assert "error:" in result.stderr
+    assert "zz_marker_code" not in json.dumps(doc)

@@ -201,3 +201,15 @@ def test_real_model_mask_api_raises_and_writes_nothing(tmp_path: Path, ner_pytho
     assert proc.returncode == 0, proc.stdout[-2000:] + proc.stderr[-2000:]
     assert "BLOCKED ner_blocked" in proc.stdout
     assert not (tmp_path / "masked" / "customers.csv").exists()
+
+
+def test_blocked_run_stderr_carries_no_report_body(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _cfg, result, _sent = _blocked_run(tmp_path, monkeypatch)
+
+    assert result.exit_code == 4, result.output
+    assert CANARY not in result.output
+    assert "tables_checked" not in result.stderr
+    assert "schema_version" not in result.stderr
+    assert "rerun with --verbose" not in result.stderr

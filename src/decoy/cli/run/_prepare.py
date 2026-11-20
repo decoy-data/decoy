@@ -191,6 +191,7 @@ def refuse_preview(ctx: RunContext) -> None:
             ("--chunked", ctx.chunked),
             ("--chunk-size", ctx.chunk_size is not None),
             ("--evidence-out", ctx.evidence_out is not None),
+            ("--integrity-out", ctx.integrity_out is not None),
             ("--notify", bool(ctx.notify)),
             ("--vault", ctx.vault is not None),
             ("--fidelity", ctx.fidelity),

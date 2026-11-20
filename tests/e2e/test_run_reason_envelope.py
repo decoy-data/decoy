@@ -135,7 +135,11 @@ def _refusal_ids() -> list[str]:
     return [t.__name__ for t in _errors._cli_refusal_types()]
 
 
-_RUNTIME_REFUSALS = (_errors._VaultWriteError, _errors.EvidenceWriteRefusal)
+_RUNTIME_REFUSALS = (
+    _errors._VaultWriteError,
+    _errors.EvidenceWriteRefusal,
+    _errors.IntegrityWriteRefusal,
+)
 
 
 @pytest.mark.parametrize("index", range(len(_errors._cli_refusal_types()) or 1), ids=_refusal_ids())

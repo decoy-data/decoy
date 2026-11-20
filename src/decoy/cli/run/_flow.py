@@ -7,10 +7,16 @@ from typing import NoReturn
 
 import typer
 
-from decoy.cli.io import LayoutError, mint_invocation_id, open_out_dir, write_run_report
+from decoy.cli.io import (
+    INTEGRITY_WRITE_FAILED,
+    LayoutError,
+    mint_invocation_id,
+    open_out_dir,
+    write_run_report,
+)
 from decoy.cli.project import only_pipeline, run_all
 from decoy.cli.run import _errors, _evidence, _execute, _prepare, _progress, _render, _result
-from decoy.cli.run._context import RunContext, RunRefusal
+from decoy.cli.run._context import IntegrityWriteRefusal, RunContext, RunRefusal
 from decoy.cli.run._notify import (
     _begin_trace,
     _dispatch_run_notifications,
@@ -219,7 +225,9 @@ def _phases(ctx: RunContext) -> None:
         _render.finish_preview(ctx)
         return
 
-    write_run_report(ctx.state, ctx._post_scan, ctx._post_scan_file, ctx.config_sha256)
+    failed = write_run_report(ctx._post_scan, ctx._post_scan_file, ctx.config_sha256)
+    if failed is not None:
+        raise IntegrityWriteRefusal(failed, code=INTEGRITY_WRITE_FAILED)
     _evidence.write_evidence(ctx)
     _render.commit_latest(ctx)
 

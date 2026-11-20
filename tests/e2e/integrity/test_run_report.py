@@ -115,3 +115,44 @@ def test_a_report_that_cannot_be_written_exits_3_after_the_outputs(tmp_path: Pat
     assert doc["code"] == "run.integrity_write_failed"
     assert str(chosen) in doc["error"]
     assert (tmp_path / "masked" / "customers.csv").is_file()
+
+
+def test_the_report_is_written_before_the_evidence_manifest(tmp_path: Path) -> None:
+    from unittest import mock
+
+    from decoy.cli.run import _evidence, _flow
+
+    cfg = write_pipeline(tmp_path, post=REGEX_ONLY)
+    order: list[str] = []
+    real_report, real_evidence = _flow.write_run_report, _evidence.write_evidence
+
+    def report(*args, **kwargs):
+        order.append("report")
+        return real_report(*args, **kwargs)
+
+    def evidence(*args, **kwargs):
+        order.append("evidence")
+        return real_evidence(*args, **kwargs)
+
+    with (
+        mock.patch.object(_flow, "write_run_report", report),
+        mock.patch.object(_evidence, "write_evidence", evidence),
+    ):
+        result = runner.invoke(app, ["run", str(cfg), "--evidence-out", str(tmp_path / "ev.json")])
+
+    assert result.exit_code == 0, result.output
+    assert order == ["report", "evidence"]
+
+
+@pytest.mark.parametrize("clash", ["target", "evidence"])
+def test_integrity_out_joins_the_typed_collision_rule(tmp_path: Path, clash: str) -> None:
+    cfg = write_pipeline(tmp_path, post=REGEX_ONLY)
+    same = tmp_path / "masked" / "customers.csv" if clash == "target" else tmp_path / "same.json"
+    args = ["run", str(cfg), "--integrity-out", str(same)]
+    if clash == "evidence":
+        args += ["--evidence-out", str(same)]
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1, result.output
+    assert not default_report(tmp_path).exists()

@@ -2,6 +2,20 @@
  "sentry_id": "run-exit-owners",
  "created_in": "RESULT-C-DOC2",
  "entries": {
+  "cli/io/_integrity_report.py::report_detectors": {
+   "reason": "serves `decoy report integrity --config`, a command with no run result document; may only shrink",
+   "hits": [
+    "calls emit_error",
+    "raises typer.Exit"
+   ]
+  },
+  "cli/io/_pipelines.py::resolve_pipeline": {
+   "reason": "resolves the pipeline argument before any run exists, for every pipeline command; may only shrink",
+   "hits": [
+    "calls emit_json",
+    "raises typer.Exit"
+   ]
+  },
   "cli/project/_run_all.py::_fail": {
    "reason": "the `--all` fan-out refuses before any pipeline runs, so no run exists to hold a document; may only shrink",
    "hits": [
