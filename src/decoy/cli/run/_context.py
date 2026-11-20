@@ -16,7 +16,14 @@ import typer
 
 from decoy import _native_gate, _resources
 from decoy.cli.gate import GateFinding
-from decoy.cli.io import PipelineRef, RunLayout
+from decoy.cli.io import (
+    DuckDBSourceError,
+    OutputPlacement,
+    PipelineRef,
+    RunLayout,
+    parse_flags,
+    resolve_path,
+)
 from decoy.ui.output import OutputState
 
 # Rows per chunk when `--chunk-size` is not given. The option has no default of its own so a
@@ -26,7 +33,7 @@ DEFAULT_CHUNK_SIZE = 100_000
 # The machine-readable `code` of each warning the CLI raises itself. Closed: a new code is
 # added here, so the `--json` `warnings` vocabulary has one list.
 CLI_WARNING_CODES: frozenset[str] = frozenset(
-    {"chunked_key_check_not_run", "run_result_build_failed"}
+    {"chunked_key_check_not_run", "run_result_build_failed", "run_result_write_failed"}
 )
 
 
@@ -96,6 +103,7 @@ class RunContext:
     vault: Path
     key_label: str
     evidence_out: Path
+    result: Path | None
     integrity_out: Path | None
     out_dir: Path | None
     notify: list[str]
@@ -220,3 +228,30 @@ class RunContext:
         if folder is not None and any(folder in f.parents for f in files):
             members["output_dir"] = str(folder)
         return members
+
+
+def output_placement(ctx: RunContext) -> OutputPlacement:
+    """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
+    project run folder; the typed side files join the collision rule either way."""
+    typed = tuple(
+        (flag, path)
+        for flag, path in (
+            ("--evidence-out", ctx.evidence_out),
+            ("--integrity-out", ctx.integrity_out),
+            ("--vault", ctx.vault),
+            ("--result", ctx.result),
+        )
+        if path is not None
+    )
+    # Each well-formed entry is protected even when another is malformed: the refusal for the bad
+    # spelling still writes a result document, and it must not land on a good database.
+    databases: list[Path] = []
+    for value in ctx.duckdb_source:
+        try:
+            (flag,) = parse_flags([value])
+        except DuckDBSourceError:
+            continue
+        databases.append(resolve_path(flag.db_path, ctx.config.parent))
+    if ctx.out_dir is not None:
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases))
+    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=tuple(databases))

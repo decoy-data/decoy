@@ -40,6 +40,7 @@ def _classifier_exit(exc: Exception) -> int:
         yaml_mode="mask",
         rows=None,
         layout=None,
+        result=None,
         _run_started_at=datetime.now(timezone.utc),
     )
     with pytest.raises(typer.Exit) as info:

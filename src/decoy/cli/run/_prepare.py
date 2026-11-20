@@ -32,8 +32,7 @@ from decoy.cli.io import (
     preflight_detectors,
     quarantine_enabled,
 )
-from decoy.cli.io import resolve_path as _resolve_path
-from decoy.cli.run._context import RunContext, UsageRefusal
+from decoy.cli.run._context import RunContext, UsageRefusal, output_placement
 from decoy.cli.run._execute import (
     _check_chunked_tables,
     _ChunkedFixedWidthError,
@@ -239,16 +238,6 @@ def _guard_mask_secret_ref(raw: object) -> None:
         raise _MaskSecretUsageError(_problem)
 
 
-def _placement(ctx: RunContext) -> OutputPlacement:
-    """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
-    project run folder; the typed side files join the collision rule either way."""
-    sides = (("--evidence-out", ctx.evidence_out), ("--integrity-out", ctx.integrity_out))
-    typed = tuple((f, p) for f, p in (*sides, ("--vault", ctx.vault)) if p is not None)
-    if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
-    return OutputPlacement(typed=typed, chunked=ctx.chunked)
-
-
 def _refuse_layout_faults(ctx: RunContext) -> None:
     """Raise the gate's own refusal for an output layout fault, before any source is touched.
 
@@ -260,7 +249,7 @@ def _refuse_layout_faults(ctx: RunContext) -> None:
     if shared:
         raise PreRunCheckError.from_findings(shared)
     try:
-        findings = layout_findings(ctx.config, ctx.raw, _placement(ctx))
+        findings = layout_findings(ctx.config, ctx.raw, output_placement(ctx))
     except Exception:
         return
     if findings:
@@ -362,18 +351,17 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         # The source-independent gate layers (config, compile) run on the placeholder config
         # first (r13): an invalid config keeps the gate's own error, and no database is opened.
         _probe = check_static_before_acquire(
-            duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
+            duckdb_probe_raw(ctx.raw, _flags), ctx.config, output_placement(ctx)
         )
         check_declared_before_acquire(_probe, _flags, ctx.config.parent)
         preflight_detectors(_probe)  # a model that cannot load refuses before any relation is read
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
-        for _flag in _flags:
+        # The databases resolve once, in `output_placement`, so the gate and the read agree.
+        for _flag, _db in zip(_flags, output_placement(ctx).inputs, strict=True):
             _tbl = _flag.table
-            _parquet = acquire_relation(
-                _resolve_path(_flag.db_path, ctx.config.parent), _tbl, ctx._duckdb_tmpdir
-            )
+            _parquet = acquire_relation(_db, _tbl, ctx._duckdb_tmpdir)
             _raw_sources[_tbl] = {
                 "type": "file",
                 "format": "parquet",
@@ -383,7 +371,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
     if not ctx.chunked and not ctx.duckdb_source and isinstance(ctx.raw, dict):
         # The gate's preflight profiles source data, so a post-scan model that cannot load
         # refuses first, on the config the static layers accept (the DuckDB route did it above).
-        preflight_detectors(check_static_before_acquire(ctx.raw, ctx.config, _placement(ctx)))
+        preflight_detectors(check_static_before_acquire(ctx.raw, ctx.config, output_placement(ctx)))
 
     # The whole `decoy validate` gate (config, compile, preflight) before any source
     # row is read. A refusal raises into the one handler below; a pass hands back the
@@ -394,7 +382,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         ctx.config,
         GateRoute.CHUNKED if ctx.chunked else GateRoute.PLAIN,
         ctx.state,
-        _placement(ctx),
+        output_placement(ctx),
         skip_subset=ctx.no_subset,
     )
 

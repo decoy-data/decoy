@@ -60,8 +60,9 @@ class OutputPlacement:
     """Where relative outputs land for one gate call (plan 3.6.1): the one route decision.
 
     `project` is normal placement under `<root>/out/<name>/<run-id>/`; `fixed` is a typed
-    `--out-dir` (`directory`); `preview` is a `--rows` run that writes nothing. `typed` holds
-    the `(flag, path)` side files (`--evidence-out`, `--vault`) that join the collision rule.
+    `--out-dir` (`directory`); `preview` is a `--rows` run that writes nothing. `inputs` holds resolved
+    input paths no side file may replace (the `--duckdb-source` databases). `typed` holds
+    the `(flag, path)` side files (`--evidence-out`, `--vault`, `--result`) that join the collision rule.
     `chunked` is the route, which the cloud kind cannot use.
     """
 
@@ -69,12 +70,17 @@ class OutputPlacement:
     directory: Path | None = None
     typed: tuple[tuple[str, Path], ...] = ()
     chunked: bool = False
+    inputs: tuple[Path, ...] = ()
 
     @classmethod
     def fixed(
-        cls, directory: Path, typed: tuple[tuple[str, Path], ...] = (), chunked: bool = False
+        cls,
+        directory: Path,
+        typed: tuple[tuple[str, Path], ...] = (),
+        chunked: bool = False,
+        inputs: tuple[Path, ...] = (),
     ) -> OutputPlacement:
-        return cls("fixed", Path(os.path.abspath(directory)), typed, chunked)
+        return cls("fixed", Path(os.path.abspath(directory)), typed, chunked, inputs)
 
     @classmethod
     def preview(cls) -> OutputPlacement:
@@ -82,8 +88,8 @@ class OutputPlacement:
 
 
 # The one policy for a destination's final path component. A writer either follows a final
-# symlink (file targets, quarantine and `--evidence-out`, which use `write_local_target`
-# REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
+# symlink (file targets, quarantine, `--evidence-out` and `--result`, which use
+# `write_local_target` REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
 # root, the side-file check and the collision rule all read this, so none decides alone.
 _REPLACES_FINAL = frozenset({"--vault"})
 
@@ -210,8 +216,41 @@ def _side_file_in_out(out: Path, typed: tuple[tuple[str, Path], ...]) -> str | N
     return None
 
 
+def protected_inputs(
+    config: Path, config_dict: dict, inputs: tuple[Path, ...] = ()
+) -> tuple[tuple[str, Path], ...]:
+    """The pipeline file, every local file source and the `inputs` paths, as `(label, path)`,
+    that no typed side file may be written onto.
+
+    Source paths come from the CLI's one resolver (`resolved_source_config`), over the engine's
+    `FILE_SOURCE_PATH_FIELDS`, so a relative path joins the config's folder as a run reads it.
+    A remote path (`://`) is skipped. `inputs` are paths the placement already resolved, such as
+    the `--duckdb-source` databases.
+    """
+    from decoy_engine import FILE_SOURCE_PATH_FIELDS
+
+    from decoy.cli._sources import resolved_source_config
+
+    found: list[tuple[str, Path]] = [("the pipeline file", Path(config))]
+    declared = config_dict.get("sources")
+    if isinstance(declared, dict):
+        resolved = resolved_source_config(config_dict, Path(config).parent)["sources"]
+        for name, spec in declared.items():
+            if not (isinstance(spec, dict) and spec.get("type") == "file"):
+                continue
+            for field in FILE_SOURCE_PATH_FIELDS:
+                value = spec.get(field)
+                if isinstance(value, str) and value and "://" not in value and "\x00" not in value:
+                    found.append((f"sources.{name}.{field}", Path(resolved[name][field])))
+    found.extend(("--duckdb-source", path) for path in inputs)
+    return tuple(found)
+
+
 def resolved_output_collisions(
-    config_dict: dict, base: Path | None, typed: tuple[tuple[str, Path], ...] = ()
+    config_dict: dict,
+    base: Path | None,
+    typed: tuple[tuple[str, Path], ...] = (),
+    protected: tuple[tuple[str, Path], ...] = (),
 ) -> tuple[str, str] | None:
     """The first two outputs that resolve to one destination, as `(first, second)` labels.
 
@@ -244,6 +283,16 @@ def resolved_output_collisions(
             return first, label
         seen[key] = label
         entries[entry] = label
+    # A side file never lands on an input: the same key, so links and hard links are covered.
+    for label, path in protected:
+        held = {_destination_key(path), _destination_key(path, replaces_final=True)}
+        for flag, side in typed:
+            keys = {
+                _destination_key(Path(side).absolute(), replaces_final=replaces_final(flag)),
+                _destination_key(Path(side).absolute(), replaces_final=True),
+            }
+            if keys & held:
+                return label, flag
     return None
 
 
@@ -348,7 +397,12 @@ def layout_issues(
         issues.append((None, SIDE_FILE_IN_OUT.error(flag=flag, base="the project's out/ folder")))
     if not issues:
         where = folder if fixed is not None else folder and folder / "<run-id>"
-        clash = resolved_output_collisions(config_dict, where, placement.typed)
+        clash = resolved_output_collisions(
+            config_dict,
+            where,
+            placement.typed,
+            protected_inputs(config, config_dict, placement.inputs),
+        )
         if clash is not None:
             first_location = next((c for c in clash if not c.startswith("--")), None)
             issues.append(

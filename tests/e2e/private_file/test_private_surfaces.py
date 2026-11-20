@@ -198,6 +198,13 @@ def test_run_vault_and_evidence_are_private(tmp_path: Path) -> None:
     assert _mode(evidence) == 0o600
 
 
+def test_run_result_file_is_private(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, _HASH)
+    result = tmp_path / "result.json"
+    _decoy(tmp_path, "run", str(cfg), "--result", str(result))
+    assert _mode(result) == 0o600
+
+
 def test_run_post_scan_report_is_private(tmp_path: Path) -> None:
     cfg = _config(tmp_path, _HASH)
     doc = yaml.safe_load(cfg.read_text(encoding="utf-8"))

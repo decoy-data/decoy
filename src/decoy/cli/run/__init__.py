@@ -121,7 +121,7 @@ def run(
         help=(
             "Run every pipeline of the project, one process each, in name order. The exit "
             "code is the first of 5 > 3 > 1 > 6 > 4 > 2 > 0 that any child produced. Takes no "
-            "pipeline name and refuses --evidence-out, --vault and --out-dir."
+            "pipeline name and refuses --evidence-out, --vault, --result and --out-dir."
         ),
     ),
     mode: Mode = typer.Option(
@@ -239,6 +239,18 @@ def run(
             "NOT contain raw data values. Use `decoy report verify` to check "
             "the manifest against current files. "
             "See: decoy report show."
+        ),
+    ),
+    result: Path = typer.Option(
+        None,
+        "--result",
+        help=(
+            "Write the run result document (JSON, the `result` member of --json) to this "
+            "path, whatever the outcome: success, refusal, error or Ctrl-C. The path follows "
+            "the same rules as --evidence-out: it may not equal an output, the quarantine "
+            "file, --evidence-out or --vault, and may not sit under the project's out/ "
+            "folder. An existing file is replaced. A failed write is a warning and does not "
+            "change the exit code. Not accepted with --all."
         ),
     ),
     integrity_out: Path = INTEGRITY_OUT_OPTION,
@@ -416,6 +428,7 @@ def run(
             vault=vault,
             key_label=key_label,
             evidence_out=evidence_out,
+            result=result,
             integrity_out=integrity_out,
             out_dir=out_dir,
             notify=notify,
