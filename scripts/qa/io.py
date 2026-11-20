@@ -4,10 +4,10 @@ Every file the QA tooling writes goes through this module, so a tester record or
 never half written, never world readable and never silently replaced. A sentry
 (`tests/unit/qa/test_io_sentry.py`) rejects any other open-for-write in `scripts/qa`.
 
-Why a reservation file: `os.replace` alone overwrites an existing target. The target is first
-reserved with `O_CREAT | O_EXCL`, so two writers racing on one id cannot both win, then the
-finished temporary file is renamed over the empty reservation. An interruption at any point
-removes the temporary file and the reservation, so a retry with the same id works.
+Why a hard link: `os.replace` alone overwrites an existing target. The finished, fsynced
+temporary file is linked to the target instead, which is atomic and fails if the target exists,
+so two writers racing on one id cannot both win and a killed writer never leaves an empty target.
+An interruption at any point removes the temporary file, so a retry with the same id works.
 
 Standard library only. It must not import any private product module (`decoy._*`).
 """
@@ -56,22 +56,24 @@ class StagedFile:
             self._fd = None
 
     def publish(self) -> None:
-        """Reserve the target, then atomically move the finished file onto it."""
+        """Link the finished file to the target, then drop the temporary name.
+
+        `os.link` is atomic and refuses an existing target, so the target either does not exist
+        or is complete: there is no empty reservation for a killed process to leave behind. A
+        kill after the link leaves the finished target plus a stray `.part` name, which is
+        harmless.
+        """
         self.close()
         if self._published:
             raise ValueError("the staged file was already published")
         try:
-            reserve = os.open(self.target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, PRIVATE_FILE)
+            os.link(self.path, self.target)
         except FileExistsError:
             raise AlreadyPublished(f"already exists: {self.target}") from None
-        try:
-            os.close(reserve)
-            os.replace(self.path, self.target)
-        except BaseException:
-            with contextlib.suppress(OSError):
-                os.unlink(self.target)
-            raise
         self._published = True
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(self.path)
+        _fsync_dir(self.target.parent)
 
     def discard(self) -> None:
         self.close()
@@ -80,11 +82,33 @@ class StagedFile:
                 os.unlink(self.path)
 
 
+def _fsync_dir(directory: Path) -> None:
+    fd = os.open(directory, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def _ensure_parents(directory: Path) -> None:
+    """Create each missing level as a private folder; refuse a symlinked parent."""
+    missing = []
+    probe = directory
+    while not probe.exists() and not probe.is_symlink():
+        missing.append(probe)
+        probe = probe.parent
+    # `probe` is the nearest level that exists. A symlink there could point anywhere.
+    if probe.is_symlink() or not probe.is_dir():
+        raise NotADirectoryError(f"refused: {probe} is not a real folder")
+    for level in reversed(missing):
+        make_private_dir(level)
+
+
 @contextlib.contextmanager
 def staged_private(target: Path) -> Iterator[StagedFile]:
     """Yield a `StagedFile` for `target`; remove the temporary file unless it was published."""
     target = Path(target)
-    target.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_parents(target.parent)
     fd, name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".part", dir=target.parent)
     os.fchmod(fd, PRIVATE_FILE)
     staged = StagedFile(target, fd, Path(name))

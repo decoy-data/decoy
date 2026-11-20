@@ -38,7 +38,7 @@ def test_an_interruption_leaves_no_target_and_a_retry_works(
         raise KeyboardInterrupt
 
     with monkeypatch.context() as m:
-        m.setattr(os, "replace", interrupted)
+        m.setattr(os, "link", interrupted)
         with pytest.raises(KeyboardInterrupt):
             qio.publish_private_once(target, b"x")
     assert list(tmp_path.iterdir()) == []
@@ -141,3 +141,52 @@ def test_open_private_capture_refuses_a_symlink_and_can_be_inheritable(tmp_path:
         assert os.get_inheritable(fd)
     finally:
         os.close(fd)
+
+
+def test_a_crash_after_the_temp_write_and_before_the_link_leaves_no_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Crash(BaseException):  # stands in for a kill: nothing after the link call runs
+        pass
+
+    target = tmp_path / "rec.toml"
+    seen: list[bool] = []
+
+    def die(src: object, dst: object) -> None:
+        seen.append(Path(str(dst)).exists())
+        raise Crash
+
+    with monkeypatch.context() as m:
+        m.setattr(os, "link", die)
+        with pytest.raises(Crash):
+            qio.publish_private_once(target, b"complete")
+    assert seen == [False]
+    assert not target.exists()
+    qio.publish_private_once(target, b"complete")
+    assert target.read_bytes() == b"complete"
+
+
+def test_the_target_is_never_visible_empty(tmp_path: Path) -> None:
+    target = tmp_path / "rec.toml"
+    with qio.staged_private(target) as staged:
+        staged.write(b"x" * 1000)
+        assert not target.exists()
+        staged.publish()
+    assert target.read_bytes() == b"x" * 1000
+
+
+def test_missing_parents_are_made_private_one_level_at_a_time(tmp_path: Path) -> None:
+    qio.publish_private_once(tmp_path / "a" / "b" / "rec", b"x")
+    for level in (tmp_path / "a", tmp_path / "a" / "b"):
+        assert stat.S_IMODE(level.stat().st_mode) == 0o700
+
+
+def test_a_symlinked_parent_is_refused(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link").symlink_to(real)
+    with pytest.raises(NotADirectoryError):
+        qio.publish_private_once(tmp_path / "link" / "rec", b"x")
+    with pytest.raises(NotADirectoryError):
+        qio.publish_private_once(tmp_path / "link" / "sub" / "rec", b"x")
+    assert list(real.iterdir()) == []
