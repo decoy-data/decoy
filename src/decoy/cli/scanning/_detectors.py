@@ -61,12 +61,10 @@ def resolve_pre_scan(detectors: str | None, ner_model: str | None) -> Any:
     """The engine `PreScanConfig` for the options, or None when they ask for regex only."""
     if detectors is None and ner_model is None:
         return None
-    from decoy_engine import parse_pipeline_config
+    from decoy_engine import parse_pipeline_config, reasons
     from decoy_engine.config import PipelineConfigError
 
     names = [n.strip() for n in (detectors or "regex").split(",")]
-    if ner_model is not None and "ner" not in names:
-        raise DetectorsUsageError(_NEEDS_NER)
     pre_scan: dict[str, Any] = {"detectors": names}
     if ner_model is not None:
         pre_scan["ner_model"] = ner_model
@@ -76,8 +74,12 @@ def resolve_pre_scan(detectors: str | None, ner_model: str | None) -> Any:
         parsed = parse_pipeline_config({**_SHELL, "pre_scan": pre_scan}).pre_scan
     except PipelineConfigError as exc:
         # Only where the problem is read, never its text: the engine message holds no value.
+        codes = {str(p.code) for p in exc.problems}
         at_model = any(str(p.location).endswith("ner_model") for p in exc.problems)
-        problem = _BAD_MODEL if at_model else _BAD_LIST
+        if str(reasons.config.PRE_SCAN_NER_INACTIVE) in codes:
+            problem = _NEEDS_NER  # the engine's own cross-field rule, mapped to fixed text
+        else:
+            problem = _BAD_MODEL if at_model else _BAD_LIST
     if problem is not None:
         raise DetectorsUsageError(problem)
     return None if parsed.detectors == ("regex",) else parsed
