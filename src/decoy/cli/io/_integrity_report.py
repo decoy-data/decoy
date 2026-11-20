@@ -72,17 +72,24 @@ def _unavailable(exc: Any, ner_model: str) -> Any:
     return ModelStatus("ner", ner_model, False, None, None, exc.reason, exc.cause_class)
 
 
-def _load(post: Mapping[str, Any]) -> tuple[Any, Any]:
-    """`load_detectors` for a post-scan block: (detector set, None) or (None, the status of the
-    model that cannot run). The refusal is returned, not raised, so no chain reaches the caller."""
+def load_detector_set(detectors: Any, ner_model: str) -> tuple[Any, Any]:
+    """`load_detectors` for a chosen set: (detector set, None) or (None, the status of the model
+    that cannot run). The refusal is returned, not raised, so no chain reaches the caller."""
     from decoy_engine import ModelUnavailableError, load_detectors
-    from decoy_engine.detection.ner import DEFAULT_NER_MODEL
 
-    ner_model = post.get("ner_model") or DEFAULT_NER_MODEL
     try:
-        return load_detectors(tuple(post.get("detectors") or ("regex",)), ner_model=ner_model), None
+        return load_detectors(tuple(detectors), ner_model=ner_model), None
     except ModelUnavailableError as exc:
         return None, _unavailable(exc, ner_model)
+
+
+def _load(post: Mapping[str, Any]) -> tuple[Any, Any]:
+    """`load_detector_set` for a post-scan block."""
+    from decoy_engine.detection.ner import DEFAULT_NER_MODEL
+
+    return load_detector_set(
+        post.get("detectors") or ("regex",), post.get("ner_model") or DEFAULT_NER_MODEL
+    )
 
 
 def preflight_detectors(config: Mapping[str, Any]) -> None:
@@ -282,6 +289,7 @@ __all__ = [
     "bare_report_config",
     "blocked_run",
     "config_sha256",
+    "load_detector_set",
     "post_scan_line",
     "post_scan_members",
     "preflight_detectors",

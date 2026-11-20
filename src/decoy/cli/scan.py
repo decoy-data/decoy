@@ -36,6 +36,7 @@ from pathlib import Path
 import typer
 
 from decoy._row_sample import sample_frame
+from decoy.cli import scanning as _scanning
 from decoy.cli._default_group import make_default_group
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
@@ -53,11 +54,6 @@ _SCAN_GROUP_HELP = (
     "Subcommands operate on a saved scan: list fields (`fields`), per-field "
     "detail (`show`), compare two scans (`diff`)."
 )
-
-
-# PII score threshold to surface a field as a candidate. Mirrors the engine's
-# scan internal threshold (>=0.6 is a "PII candidate" / "high" bucket).
-_PII_CANDIDATE_THRESHOLD = 0.6
 
 
 class SampleStrategy(str, Enum):
@@ -545,6 +541,8 @@ def _scan(
         "--column-names",
         help="Comma-separated column names for one headerless CSV (needs --no-header).",
     ),
+    detectors: str | None = _scanning.DETECTORS_OPTION,
+    ner_model: str | None = _scanning.NER_MODEL_OPTION,
     json_: bool = typer.Option(
         False,
         "--json",
@@ -581,6 +579,8 @@ def _scan(
         layout=layout,
         has_header=has_header,
         column_names=column_names,
+        detectors=detectors,
+        ner_model=ner_model,
     )
 
 
@@ -1029,6 +1029,4 @@ scan_app.command(name="fields", epilog=_FIELDS_EPILOG)(_fields)
 scan_app.command(name="show", epilog=_SHOW_EPILOG)(_show)
 scan_app.command(name="diff", epilog=_DIFF_EPILOG)(_diff)
 
-SCAN_EPILOG = _SCAN_EPILOG
-
-__all__ = ["SCAN_EPILOG", "scan_app"]
+__all__ = ["scan_app"]
