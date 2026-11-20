@@ -503,7 +503,7 @@ def test_unreadable_entries_are_value_free(tmp_path: Path) -> None:
 # digest f392a49f, so nothing else in the scaffold changed. The scan digest moved again when the
 # scan JSON gained `basis`, `scanned_rows` and `row_count_exact` (PROFILE-SAMPLE-LABELS C1).
 _INIT_YAML_SHA256 = "e62ad0ab254fe83df4ba4d1f710e1f4b5c563000e9139af96c0789a75a758766"
-_SCAN_JSON_SHA256 = "59f6cb8c3cfa3c798dc181ee4e63447ba7185cbac001b10f8ccc3b3db7d6417d"
+_SCAN_JSON_SHA256 = "04acddad84f56a97a0c9572e174db5dc3a9a12f2f602f0b7339fcd91e9e3caea"  # + detectors member (SCAN-ML C2b)
 
 
 def test_init_and_scan_parquet_unchanged(tmp_path: Path) -> None:
