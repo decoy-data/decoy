@@ -4,6 +4,55 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-19 (init wizard stops).** The `decoy init` guided wizard (row 32b) is not developed further. Finish
+  what is open (engine #653 E1 and #654 E2) and stop; that is the 1.0 scope for this surface. If the surface
+  is incomplete as it stands, 1.0 reduces it to simple table structures only. The owner is building a different
+  way to author pipelines. E1 and E2 ship in the experimental tier, since no 1.0 command calls them. The rest of
+  `C:plan/init-wizard-v1-rest` is stopped.
+- **2026-11-19 (physical seam and Faker).**
+  - Physical seam: option C. The physical-plan compiler stays and becomes a "what would run and why"
+    explainer for every route; execution stays in today's routes. The shadow-only execution branches
+    and audit C4 and C5 may be deleted. Work: SEAM-REASONS, then SEAM-EXPLAIN (run group, 1.x).
+    Handoff: `handoffs/2026-11-19-engine-physical-seam.md`.
+  - FAKER-REPRO owner questions: recommended on Q1 and Q3 to Q6. Q2: no upstream Faker pull requests.
+  - Engine speed and route record (engine #715): recommended on Q1 to Q6. M1 blocks 1.0 (parts (a)
+    and (c); part (b) only if small). F1, F3, F4 and M3 are V1. C1 and C4 are V1 if a slot is free,
+    else 1.0.x. F2 is held to 2.0. `date_shift` requires `date_format`. GEN providers, types and
+    catalog are V1. pip installs get a warning in V1 and a `native` extra in 1.x. Work with no row
+    became named slots (1.0.x, 1.1, 1.2, 1.3); scheduled work stays where it is. Every 1.x speed
+    release keeps output byte-identical.
+- **2026-11-18 (owner calls on the bucket list).**
+  - Opt-in defaults: F11 output ordering, F38 dataset metadata and F08 free-text identity binding stay
+    opt-in for 1.0 (option A). The docs tell users to turn F08 on for free-text columns.
+  - Upgrade key: 1.0 ships a backup release key and a coded refusal of an unknown version-document
+    format (option B). Row UPGRADE-KEY. The owner creates the backup key and keeps it offline.
+  - The 2.0 holding list was checked item by item: none of the ten needs 2.0. Generation, detection
+    and profiling changes ship in 1.x behind a version setting that new configs get and old configs
+    do not. The URL scheme check moves to 1.0 (FREEZE-SURFACE).
+  - Source metadata reaches masked output on the out-of-core route. This is a leak and blocks 1.0:
+    row OUTPUT-METADATA-LEAK.
+  - Chunked and whole-file profiles do not disagree (no route merges chunks), but sampled numbers are
+    shown as if whole-file and can wrongly flag a key column. Fixed before the freeze: row
+    PROFILE-SAMPLE-LABELS.
+- **2026-11-18 (release buckets and freeze work).** Anything that does not break the contract is v1+;
+  anything that breaks it is v2 (`roadmap/2.0-holding.md`). Work that would be a breaking change after
+  1.0 is done in v1: rows FREEZE-SURFACE, FREEZE-OUTPUT and FAKER-MIGRATE. Faker moves to 40.31 before
+  the freeze, not after R1. The unreferenced platform reason codes (audit B9) stay in the registry as
+  the platform wire contract, with the platform consumer recorded beside each (row 24zj). Default-on
+  choices (F11, F38, F08) stay opt-in.
+- **2026-11-18 (Windows is 1.0).** WIN-FEAS (row 89) and WIN-RUNNER (row 6) are back in 1.0: the owner
+  must be able to download the CLI and demo it on a Windows machine. This reverses the same day's move
+  of Windows to 1.x.
+- **2026-11-18 (experimental tier).** 1.0 labels two surfaces experimental, so they may change in a 1.x
+  minor: the Python API (`decoy.mask`, `decoy.scan`) and custom providers with the connector SDK. The
+  `decoy library` commands are decided at the release gate. Row EXPERIMENTAL-TIER.
+- **2026-11-18 (1.0 scope cut and roadmap split).** 1.0 is the rows in the 1.0 tables of the group
+  files (`roadmap/groups/`), not the whole track; this replaces the 2026-11-05 "CLI 1.0 scope" entry
+  below. A row blocks 1.0 only on freeze, safety or broken-today; additive rows are Later (1.x) and
+  internal cleanup is Maintenance. INIT-WIZARD stays in 1.0: a user cannot be asked to hand build
+  complex YAML on a new product they do not yet trust. CLI-CLOUD, CLI-DB-SRC, F01, the additive GEN
+  rows and Windows move to 1.x. New work enters through `roadmap/inbox.md`. Record:
+  [2026-11-18-1.0-scope-triage.md](../records/2026-11-18-1.0-scope-triage.md).
 - **2026-11-05 (this move).** CLI V1 complete, then platform; the roadmap moves to the CLI repo and
   the platform links to it. Develop correctly: central registries for cross-cutting concerns and
   correctly sized files and directories (ROADMAP section 4). Registry slices may build in parallel with

@@ -37,9 +37,6 @@
   },
   "distribution/layout.py::launcher_bin_dir::DECOY_BIN_DIR::1": {
    "reason": "environment read of a path, URL, secret or number, recorded when the one flag reader landed; moves to decoy._env_flags or leaves this baseline, never joins it"
-  },
-  "distribution/release_key.py::pinned_public_pem::DECOY_RELEASE_PUBKEY_FILE::1": {
-   "reason": "environment read of a path, URL, secret or number, recorded when the one flag reader landed; moves to decoy._env_flags or leaves this baseline, never joins it"
   }
  }
 }

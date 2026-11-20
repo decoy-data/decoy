@@ -95,6 +95,8 @@ def emit_column_yaml(name: str, inference: Inference, indent: str = "      ") ->
         lines.append(f"{body_indent}provider_config:")
         lines.append(f"{body_indent}  min_days: -365")
         lines.append(f"{body_indent}  max_days: 365")
+        if inference.date_format:
+            lines.append(f"{body_indent}  date_format: {_json.dumps(inference.date_format)}")
     elif inference.strategy == "truncate":
         lines.append(f"{body_indent}provider_config:")
         lines.append(f"{body_indent}  length: 3")

@@ -89,7 +89,7 @@ class TestNerMissingExtraThroughRealCompile:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # spaCy present, just not the requested model: the fix is `spacy
-        # download <model>`, not an extra -- the engine's own message
+        # download <model>`, not an extra -- the engine's own message (it names the wheel URL)
         # should reach the operator unchanged (translate_ner_unavailable
         # only rewrites ner_spacy_not_installed).
         monkeypatch.setattr("decoy_engine.detection.ner.spacy_installed", lambda: True)
@@ -98,7 +98,7 @@ class TestNerMissingExtraThroughRealCompile:
         result = runner.invoke(app, ["validate", "config", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         collapsed = " ".join(result.output.split())
-        assert "install its wheel" in collapsed, result.output
+        assert "NER model 'en_core_web_sm' is not installed: install " in collapsed, result.output
         assert "decoy models install ner" not in collapsed, result.output
 
 

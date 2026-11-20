@@ -2,13 +2,10 @@
 
 import os
 
-import typer
-
-from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.extras import MissingExtraError, translate_missing_extra
-from decoy.cli.run._context import RunContext
-from decoy.ui.output import OutputMode, emit_json
-from decoy.ui.theme import error, warn
+from decoy.cli.run._context import RunContext, UsageRefusal
+from decoy.ui.output import OutputMode
+from decoy.ui.theme import warn
 
 
 class _OtelSettingsUsageError(Exception):
@@ -104,20 +101,14 @@ def parse_channels(ctx: RunContext) -> None:
     if ctx.notify:
         from decoy.notify import NotifySpecError, parse_notify_spec
 
+        refusal = None
         try:
             ctx.notify_channels = [parse_notify_spec(spec) for spec in ctx.notify]
         except NotifySpecError as exc:
-            msg = str(exc)
-            if ctx.state.mode is OutputMode.json:
-                emit_json(
-                    ctx.state,
-                    {"command": "run", "status": "error", "config": ctx.config_str, "error": msg},
-                )
-            elif ctx.state.mode is not OutputMode.quiet:
-                # The message quotes the user's spec: print it verbatim (no markup) and
-                # unfolded, like the run error prints below.
-                ctx.state.err_console.print(error("error:"), msg, markup=False)
-            raise typer.Exit(code=EXIT_USAGE)
+            # Fixed text, never the spec. Raised below, outside this block, so it has no context.
+            refusal = UsageRefusal(str(exc), code=exc.code)
+        if refusal is not None:
+            raise refusal
 
 
 def _dispatch_run_notifications(

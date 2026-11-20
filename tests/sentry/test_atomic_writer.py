@@ -22,16 +22,15 @@ tests/sentry/baselines/atomic-writer-allow.json, which also records each entry's
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "decoy"
 CHOKE_POINT = "_atomic.py"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "atomic-writer-allow.json"
 
 _MODULE_CALLS: dict[str, set[str]] = {
     "os": {"replace", "rename", "renames", "link"},
@@ -103,19 +102,9 @@ class AllowedInline:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedInline, ...] = (
-    AllowedInline(
-        "distribution/installer.py",
-        3,
-        "Moves a staged runtime directory into versions/ and writes the 0755 launcher shim "
-        "(temp file, chmod, replace); a directory move and an executable-mode write, not a "
-        "0600 data write.",
-    ),
-    AllowedInline(
-        "distribution/first_install.py",
-        1,
-        "Moves the unpacked bundle into place on first install; not a file write.",
-    ),
+ALLOWLIST: tuple[AllowedInline, ...] = tuple(
+    AllowedInline(file, e["sites"], e["reason"])
+    for file, e in load_allowlist("atomic-writer-allow").items()
 )
 
 
@@ -218,13 +207,6 @@ def test_allowlist_baseline_is_two_with_reasons() -> None:
     assert len(ALLOWLIST) == 2
     assert len({e.file for e in ALLOWLIST}) == 2
     assert all(len(e.reason.strip()) >= 15 and e.sites > 0 for e in ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_sites_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    assert {k: (v["sites"], v["reason"]) for k, v in entries.items()} == {
-        e.file: (e.sites, e.reason) for e in ALLOWLIST
-    }
 
 
 def test_choke_point_exists_and_is_excluded() -> None:

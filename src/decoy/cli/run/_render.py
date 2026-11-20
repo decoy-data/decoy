@@ -3,16 +3,15 @@
 
 from pathlib import Path
 
-import typer
 from rich.text import Text
 
 from decoy.cli import gen
-from decoy.cli.exit_codes import run_exit_code
 from decoy.cli.io import post_scan_members, print_post_scan, shown_path
+from decoy.cli.run import _result
 from decoy.cli.run._context import Mode, RunContext
 from decoy.cli.run._prepare import _has_kind
 from decoy.ui.card import render_card
-from decoy.ui.output import OutputMode, emit_json
+from decoy.ui.output import OutputMode
 from decoy.ui.summary import (
     render_execution_route,
     render_fidelity,
@@ -61,11 +60,23 @@ def _next_hint_for_run(raw_cfg: dict | None, mode: "Mode") -> str | None:
     return None
 
 
+def _blocking_failed(ctx: RunContext) -> bool:
+    """Whether `--post-validate-enforce` blocks this run: the one place the decision is made.
+
+    The engine never fails the job on a hard-failed validator check, it stamps `failed_checks`;
+    under enforce the CLI turns a non-empty list into the findings exit, after the outputs and
+    the evidence are written. Without enforce the checks only warn.
+    """
+    return bool(
+        ctx.post_validate_enforce and (ctx._report_quality_metrics or {}).get("failed_checks")
+    )
+
+
 def commit_latest(ctx: RunContext) -> None:
     """Move `LATEST` and `current` to this run when the run will exit 0, and warn if it could not."""
     if ctx.layout is None:
         return
-    if ctx.post_validate_enforce and (ctx._report_quality_metrics or {}).get("failed_checks"):
+    if _blocking_failed(ctx):
         return
     for item in ctx.layout.commit_latest():
         if ctx.state.mode is not OutputMode.quiet:
@@ -84,18 +95,14 @@ def _where_written(ctx: RunContext) -> dict:
 
 def finish(ctx: RunContext) -> None:
     """Render the success result and apply the `--post-validate-enforce` exit mapping."""
-    # S5 enforce mapping (plan P1-2): the engine never fails the job on a
-    # hard-failed validator check -- it only stamps `failed_checks`. The CLI
-    # maps a non-empty `failed_checks` under --post-validate-enforce to
-    # EXIT_FINDINGS, AFTER the requested sections render and the outputs /
-    # evidence are already written. --post-validate (without enforce) is
-    # warn-only and leaves the exit code at 0.
+    # The exit integer is the document's (`_blocking_failed` decides findings, 4); it applies
+    # AFTER the requested sections render and the outputs and evidence are already written.
+    document = _result.build(ctx, blocking_failed=_blocking_failed(ctx))
     _qm = ctx._report_quality_metrics or {}
     _warnings = warning_records(
         ctx._ev_engine_warnings,
         [*_seed_warnings(ctx.raw_cfg, key_in_effect=ctx.resolver is not None), *ctx._cli_warnings],
     )
-    _enforce_fires = bool(ctx.post_validate_enforce and _qm.get("failed_checks"))
 
     if ctx.state.mode is OutputMode.json:
         payload: dict = {
@@ -131,14 +138,11 @@ def finish(ctx: RunContext) -> None:
                 report["quality_summary"] = _qm.get("quality_summary")
                 report["post_validation_enforce"] = ctx.post_validate_enforce
             payload["report"] = report
-        emit_json(ctx.state, payload)
-        if _enforce_fires:
-            raise typer.Exit(code=run_exit_code(blocking_failed=True))
+        _result.finish(ctx, document, payload)
         return
 
     if ctx.state.mode is OutputMode.quiet:
-        if _enforce_fires:
-            raise typer.Exit(code=run_exit_code(blocking_failed=True))
+        _result.finish(ctx, document)
         return
 
     facts = [
@@ -195,8 +199,7 @@ def finish(ctx: RunContext) -> None:
     if ctx.post_validation:
         render_post_validation(ctx.state, _qm, enforce=ctx.post_validate_enforce)
 
-    if _enforce_fires:
-        raise typer.Exit(code=run_exit_code(blocking_failed=True))
+    _result.finish(ctx, document)
 
 
 def finish_preview(ctx: RunContext) -> None:
@@ -205,18 +208,17 @@ def finish_preview(ctx: RunContext) -> None:
         ctx._ev_engine_warnings,
         _seed_warnings(ctx.raw_cfg, key_in_effect=ctx.resolver is not None),
     )
+    document = _result.build(ctx)
     if ctx.state.mode is OutputMode.json:
-        emit_json(
-            ctx.state,
-            {
-                "command": "run",
-                "status": "ok",
-                "preview": True,
-                "config": ctx.config_str,
-                "tables": ctx._preview_tables,
-                "warnings": warnings,
-            },
-        )
+        payload = {
+            "command": "run",
+            "status": "ok",
+            "preview": True,
+            "config": ctx.config_str,
+            "tables": ctx._preview_tables,
+            "warnings": warnings,
+        }
+        _result.finish(ctx, document, payload)
         return
     gen.render_preview(ctx.state, ctx._preview_tables)
     if ctx.state.mode is not OutputMode.quiet:

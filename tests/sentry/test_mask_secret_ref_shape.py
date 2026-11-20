@@ -272,6 +272,9 @@ def test_vault_ref_is_refused_without_echo(tmp_path: Path, surface: str) -> None
                 # The engine raised this refusal, so the run envelope also carries its reason.
                 envelope = json.loads(result.stdout)
                 assert envelope.pop("reason")["namespace"] == "runtime"
+                # The run result document rides in every run envelope; it is value-free.
+                assert envelope.pop("result")["failure"]["category"] == "usage"
+                assert envelope.pop("result_status")["document"] == "built"
                 result_stdout = json.dumps(envelope) + "\n"
             else:
                 result_stdout = result.stdout

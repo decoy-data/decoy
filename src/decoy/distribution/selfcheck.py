@@ -35,7 +35,7 @@ class SelfCheckResult:
 def check_native_present() -> SelfCheckResult:
     """OK only when the engine reports the companion present AND usable (ABI matched).
 
-    Any other state -- probe absent (an engine too old to carry one), companion absent,
+    Any other state -- companion absent,
     or companion present-but-unusable (ABI mismatch) -- is a refusal, because a managed
     bundle is built to always contain a matched companion; its absence means a tampered
     or wrongly-assembled bundle, which must fail closed."""
@@ -44,15 +44,8 @@ def check_native_present() -> SelfCheckResult:
     except Exception as exc:
         return SelfCheckResult(False, "engine-import-failed", str(exc)[:200])
 
-    probe = getattr(decoy_engine, "native_companion_status", None)
-    if probe is None:
-        return SelfCheckResult(
-            False,
-            "probe-missing",
-            "installed decoy-engine predates native_companion_status(); bundle is malformed",
-        )
     try:
-        status = probe()
+        status = decoy_engine.native_companion_status()
     except Exception as exc:
         return SelfCheckResult(False, "probe-raised", str(exc)[:200])
 

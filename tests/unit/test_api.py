@@ -411,6 +411,19 @@ def test_scan_dataframe_returns_profile(sample_df: pd.DataFrame):
     assert ssn_field.pii_score > 0.5
 
 
+def test_scan_profile_keeps_a_rare_label_but_the_saved_document_floors_it():
+    """AT-C2 (row 24zm): the in-memory profile holds every value, as its docstring says, and
+    `profile_document` is what drops a label held by fewer than 10 rows before a save."""
+    from decoy_engine import profile_document
+
+    df = pd.DataFrame({"tier": ["gold"] * 30 + ["silver"] * 29 + ["ZQRARELABEL"]})
+    profile = decoy.scan(df, source_label="tiers")
+    assert "ZQRARELABEL" in _json.dumps(profile.to_dict())
+    saved = _json.dumps(profile_document(profile))
+    assert "ZQRARELABEL" not in saved
+    assert "gold" in saved
+
+
 def test_scan_path_csv(sample_csv: Path):
     profile = decoy.scan(sample_csv)
     assert profile.source_label == sample_csv.name

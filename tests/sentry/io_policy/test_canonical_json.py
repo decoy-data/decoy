@@ -20,15 +20,14 @@ Named limits: a call through a runtime-bound name or an assignment alias, `**kwa
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "canonical-json-allow.json"
 _CALLS = frozenset({"dumps", "dump"})
 
 
@@ -39,37 +38,9 @@ class AllowedCanonical:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedCanonical, ...] = (
-    AllowedCanonical(
-        "distribution/signing.py",
-        1,
-        "Frozen release-signature input shared with openssl and the build host; rewiring it "
-        "would tie release verification to an engine version (plan 3.1).",
-    ),
-    AllowedCanonical(
-        "notify.py",
-        1,
-        "Webhook body signed with HMAC; different bytes on the wire by design (ASCII-escaped, "
-        "platform webhook contract), not a content hash (plan 3.1).",
-    ),
-    AllowedCanonical(
-        "distribution/installer.py",
-        1,
-        "Trust-state file that install.sh reads with a shell pattern; part of the install "
-        "contract, not a content hash (plan 3.1).",
-    ),
-    AllowedCanonical(
-        "ci/manifest.py",
-        1,
-        "Pretty-printed committed JSON Schema (indent=2) drift-tested against its file; a "
-        "stable display form, never hashed.",
-    ),
-    AllowedCanonical(
-        "cli/report.py",
-        1,
-        "Set-diff key for evidence warnings in report diff; compared in memory only, never "
-        "stored or hashed. Move to records.canonical_bytes when report.py is next split.",
-    ),
+ALLOWLIST: tuple[AllowedCanonical, ...] = tuple(
+    AllowedCanonical(file, e["sites"], e["reason"])
+    for file, e in load_allowlist("canonical-json-allow").items()
 )
 
 
@@ -155,13 +126,6 @@ def test_allowlist_is_five_with_reasons() -> None:
     assert len(ALLOWLIST) == 5
     assert len({e.file for e in ALLOWLIST}) == 5
     assert all(len(e.reason.strip()) >= 15 and e.sites > 0 for e in ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_sites_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    assert {k: (v["sites"], v["reason"]) for k, v in entries.items()} == {
-        e.file: (e.sites, e.reason) for e in ALLOWLIST
-    }
 
 
 def test_seeded_copy_in_the_library_store_is_red(tmp_path: Path) -> None:

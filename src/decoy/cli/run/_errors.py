@@ -12,7 +12,6 @@ from decoy.cli import gen
 from decoy.cli.exit_codes import (
     EXIT_CAPACITY,
     EXIT_USAGE,
-    run_exit_code,
 )
 from decoy.cli.extras import (
     MissingExtraError,
@@ -21,10 +20,11 @@ from decoy.cli.extras import (
 )
 from decoy.cli.gate import PreRunCheckError, cap_error_text, capacity_codes
 from decoy.cli.io import OUTPUT_DIR_UNUSABLE, LayoutError, blocked_run
-from decoy.cli.run._context import RunContext
+from decoy.cli.run import _result
+from decoy.cli.run._context import EvidenceWriteRefusal, RunContext, RunRefusal
 from decoy.cli.run._notify import _dispatch_run_notifications
 from decoy.cli.run._vault import VAULT_COMMIT_FAILED_HINT, _VaultWriteError
-from decoy.ui.output import OutputMode, emit_json, print_traceback
+from decoy.ui.output import OutputMode, print_traceback
 from decoy.ui.theme import error, hint
 
 # The engine's capacity-refusal codes come from its registry (`capacity_codes()`); see
@@ -72,14 +72,14 @@ def _cli_refusal_types() -> tuple[type, ...]:
     """Refusals the CLI raises itself, so the engine has no reason for them.
 
     The exit-1 types that are not engine families, plus the vault write failure (exit 3) and
-    the gate refusal (exit 1 or 5).
+    the gate refusal (exit 1 or 5) and the evidence write refusal (exit 3).
     """
     owned = tuple(t for t in _exit_codes.usage_error_types() if not _engine_family(t))
-    return (*owned, _VaultWriteError, PreRunCheckError)
+    return (*owned, _VaultWriteError, PreRunCheckError, EvidenceWriteRefusal)
 
 
-def _failure_reason(exc: Exception, engine_exc: Exception) -> dict | None:
-    """The engine's reason payload for the failure, or None when the CLI owns the refusal.
+def _failure_reason(exc: Exception, engine_exc: Exception) -> Any:
+    """The engine's `ReasonRecord` for the failure, or None when the CLI owns the refusal.
 
     `engine_exc` is the exception as the engine raised it, before the missing-extra and NER
     rewrites, so a rewrite keeps the engine's record. The answer is computed here only; any
@@ -90,7 +90,7 @@ def _failure_reason(exc: Exception, engine_exc: Exception) -> dict | None:
 
         if not _engine_family(type(engine_exc)) and isinstance(exc, _cli_refusal_types()):
             return None
-        return reason_adapter.reason_from_exception(engine_exc).to_payload()
+        return reason_adapter.reason_from_exception(engine_exc)
     except Exception:
         return None
 
@@ -196,6 +196,16 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
         _category = "usage"
     else:
         _category = "usage" if isinstance(exc, _exit_codes.usage_error_types()) else "runtime"
+    # One document and one exit integer for the run, from the one builder.
+    record = _failure_reason(exc, engine_exc)
+    document = _result.build(
+        ctx,
+        category=_category,
+        reason=record,
+        error_class=type(exc).__name__,
+        blocking_failed=isinstance(exc, PostScanBlockedError),
+        vault_failed=isinstance(exc, _VaultWriteError),
+    )
     # CLI QA fix (2026-06-02, F8): cap the error message at 500
     # chars before emitting through --json. Engine exceptions can
     # quote source-row content verbatim (pandas / pyarrow); without
@@ -247,13 +257,14 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
         and engine_exc.code == reasons.runtime.VAULT_COMMIT_FAILED
     )
 
+    payload: dict[str, Any] | None = None
     if ctx.state.mode is OutputMode.json:
         # R7: the capacity branch ADDS error_kind/code to this SAME
         # envelope -- command/config/mode/error are never dropped, and
-        # this is the one emit_json call site for a run-time failure
+        # `_result.finish` below is the one place a run's envelope is written
         # (no parallel emit that would lose the 500-char cap, the
         # notify dispatch above, or quiet/verbose handling below).
-        payload: dict[str, Any] = {
+        payload = {
             "command": "run",
             "status": "error",
             "config": ctx.config_str,
@@ -283,12 +294,10 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
             # `[missing_extra]`-prefixed message text.
             payload["error_kind"] = "missing_extra"
             payload["extra"] = exc.extra
-        reason = _failure_reason(exc, engine_exc)
-        if reason is not None:
-            payload["reason"] = reason
+        if record is not None:
+            payload["reason"] = record.to_payload()
         if ctx.notify_channels:
             payload["notify"] = ctx.notify_results
-        emit_json(ctx.state, payload)
     elif ctx.state.mode is not OutputMode.quiet:
         # CLI install DX (2026-09-25): error_text is arbitrary exception
         # text, not authored UI copy -- it can legitimately contain `[`
@@ -323,6 +332,69 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
             )
     if ctx.state.verbose:
         print_traceback(ctx.state)
-    raise typer.Exit(
-        code=run_exit_code(_category, blocking_failed=isinstance(exc, PostScanBlockedError))
+    _result.finish(ctx, document, payload)
+    raise AssertionError("a failed run has a non-zero exit code")  # pragma: no cover
+
+
+def _early(ctx: RunContext) -> bool:
+    """Whether the run stopped before the engine phase began (no collector yet)."""
+    return ctx._collector is None
+
+
+def _inside_run(ctx: RunContext) -> dict[str, Any]:
+    """The legacy members of a run that ends after the engine phase began, outside the error
+    arm: the same base as `fail`, with the files the run had already published."""
+    return {"config": ctx.config_str, "mode": ctx.yaml_mode, **ctx.published_members()}
+
+
+def refused(ctx: RunContext, refusal: RunRefusal) -> NoReturn:
+    """End the run for a typed CLI refusal: print it, write the envelope and exit.
+
+    The exit is the document's: 1 for a usage refusal, 3 for the evidence write. A refusal
+    names flags and codes only, so its text goes to the terminal and the envelope as is.
+    """
+    document = _result.build(
+        ctx, category=refusal.category, error_class=type(refusal).__name__, early=_early(ctx)
     )
+    if isinstance(refusal, EvidenceWriteRefusal):
+        # The outputs are already written, so the error shows in every mode, `--quiet` included.
+        _result.finish_error(
+            ctx, document, refusal.text, context=_inside_run(ctx), stderr_line=True
+        )
+    # A refusal with no code was silent under `--quiet`; one with a code was not.
+    silent = ctx.state.mode is OutputMode.quiet and refusal.code is None
+    _result.finish_error(
+        ctx,
+        document,
+        refusal.text,
+        code=refusal.code,
+        context={"config": ctx.config_str},
+        human=not silent,
+    )
+    raise AssertionError("a refusal has a non-zero exit code")  # pragma: no cover
+
+
+def bad_parameter(ctx: RunContext, exc: typer.BadParameter) -> None:
+    """Write the envelope for a `--master-key` or `--key-label` refusal (exit 2).
+
+    Returns, and the caller re-raises the Typer error, so Typer prints its own message and
+    exits 2 as before; the document carries the same 2.
+    """
+    document = _result.build(ctx, category="parameter", error_class=type(exc).__name__, early=True)
+    _result.report_error(
+        ctx, document, exc.message, context={"config": ctx.config_str}, human=False
+    )
+
+
+def interrupted(ctx: RunContext) -> None:
+    """Write the envelope for Ctrl-C. Returns, and the caller re-raises the interrupt, so the
+    process ends as it did before; the document carries the same exit (`run_cancelled`)."""
+    record = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt())
+    early = _early(ctx)
+    document = _result.build(
+        ctx, category="cancelled", reason=record, error_class="KeyboardInterrupt", early=early
+    )
+    context: dict[str, Any] = {"config": ctx.config_str}
+    if record is not None:
+        context["reason"] = record.to_payload()
+    _result.report_error(ctx, document, "interrupted", context=context, human=False)

@@ -25,7 +25,36 @@ DEFAULT_CHUNK_SIZE = 100_000
 
 # The machine-readable `code` of each warning the CLI raises itself. Closed: a new code is
 # added here, so the `--json` `warnings` vocabulary has one list.
-CLI_WARNING_CODES: frozenset[str] = frozenset({"chunked_key_check_not_run"})
+CLI_WARNING_CODES: frozenset[str] = frozenset(
+    {"chunked_key_check_not_run", "run_result_build_failed"}
+)
+
+
+class RunRefusal(Exception):
+    """A refusal `decoy run` raises itself, before or after the engine runs.
+
+    `_errors.refused` turns it into the run result document, the one stderr line and the exit.
+    The text names flags and codes, never a value. Raise one only after any `except` block has
+    closed, so it carries no `__context__` (the document never holds the cause).
+    """
+
+    category = "usage"  # the run result's failure category; the exit integer comes from the map
+
+    def __init__(self, text: str, *, code: str | None = None) -> None:
+        super().__init__(text)
+        self.text = text
+        self.code = code
+
+
+class UsageRefusal(RunRefusal):
+    """A request the CLI refuses before the run starts (exit 1): a bad `--notify`, a `--rows`
+    preview that cannot run, `--fidelity` with no mask table."""
+
+
+class EvidenceWriteRefusal(RunRefusal):
+    """The `--evidence-out` manifest could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
 
 
 class Mode(str, Enum):
@@ -109,6 +138,10 @@ class RunContext:
     config_sha256: str | None = field(init=False, default=None)
     _post_scan: dict | None = field(init=False, default=None)
     _post_scan_file: Path | None = field(init=False, default=None)
+    # The run-result collector riding on that sink, and the engine's `ExecutionResult` of the plain
+    # branch; the one result builder (`_result`) reads both.
+    _collector: Any = field(init=False, default=None)
+    _execution: Any = field(init=False, default=None)
 
     # Temp dir holding Parquet snapshots acquired from --duckdb-source inputs;
     # created only when the flag is used, torn down in the run's finally.

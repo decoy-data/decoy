@@ -15,11 +15,12 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import TypeAlias
+from typing import Any, TypeAlias
 
 import typer
 from rich.cells import cell_len
 from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
+from rich.text import Text
 from rich.traceback import Trace, Traceback
 
 from decoy._env_flags import no_color
@@ -41,20 +42,50 @@ class OutputState:
     err_console: Console
 
 
+def _keep_lines_whole(console: Console) -> Console:
+    """Off a terminal, make a console's text-only prints soft-wrap so a path is never folded.
+
+    Rich folds a long line at 80 columns when output is not a terminal, which puts a newline
+    inside a filesystem path (`root: <path>`, `OK <path>`) and breaks greps and copy-paste. A
+    print whose arguments are all plain text or `Text` is a line, so off a terminal it
+    soft-wraps. On a terminal the console keeps its own default, so Rich still word-wraps
+    long prose at spaces. A print that passes a `Panel`, `Table` or other renderable keeps
+    Rich's layout, because soft wrap would crop its cells. An explicit `soft_wrap=` is
+    honoured. Wrapping the instance keeps `_make_console` the one place that constructs a
+    `Console`.
+    """
+    plain_print = console.print
+
+    def print_line(*objects: Any, soft_wrap: bool | None = None, **kwargs: Any) -> None:
+        if (
+            soft_wrap is None
+            and not console.is_terminal
+            and all(isinstance(o, (str, Text)) for o in objects)
+        ):
+            soft_wrap = True
+        plain_print(*objects, soft_wrap=soft_wrap, **kwargs)
+
+    console.print = print_line  # type: ignore[method-assign]
+    return console
+
+
 def _make_console(*, stderr: bool) -> Console:
     """Build a Rich console. This is the only place the CLI constructs one.
 
     The stderr console soft-wraps: each print is one line and the terminal does the
     wrapping. Off a TTY Rich otherwise folds at 80 columns and puts a newline inside a long
     path, which breaks log greps. It is for lines only: no `Panel` or `Table` goes to it,
-    because soft wrap would crop their cell text. Stdout keeps Rich's own layout.
+    because soft wrap would crop their cell text. The stdout console keeps Rich's layout for
+    renderables and, off a TTY, soft-wraps text-only lines (see `_keep_lines_whole`).
     """
-    return Console(
-        stderr=stderr,
-        soft_wrap=stderr,
-        theme=DECOY_THEME,
-        no_color=no_color(),
-        highlight=False,
+    return _keep_lines_whole(
+        Console(
+            stderr=stderr,
+            soft_wrap=stderr,
+            theme=DECOY_THEME,
+            no_color=no_color(),
+            highlight=False,
+        )
     )
 
 

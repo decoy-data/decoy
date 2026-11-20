@@ -21,18 +21,16 @@ not seen.
 from __future__ import annotations
 
 import ast
-import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.io_policy._calls import call_sites, tally
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "output-placement-allow.json"
-NAME_BASELINE = ROOT / "tests" / "sentry" / "baselines" / "output-name-allow.json"
 PLACERS = ("cli/io/_layout.py", "cli/project/_scaffold.py")
 NAME_LITERALS = (".unmasked", ".detokenized", ".snapshot.json", ".masked")
 OUT_LITERAL = "out"
@@ -51,35 +49,16 @@ class AllowedSite:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedSite, ...] = (
-    AllowedSite(
-        "cli/io/_layout.py",
-        "RunLayout.place_target",
-        1,
-        "The one placement site: a fixed layout and an absolute path resolve as the old code did.",
-    ),
-    AllowedSite(
-        "cli/io/_targets.py",
-        "_is_declared_target",
-        1,
-        "Compares a file with the declared target path; reads, writes nothing.",
-    ),
-    AllowedSite(
-        "cli/run/_execute.py",
-        "_run_chunked_mask",
-        1,
-        "Resolves the chunked source path for the empty-parquet schema; an input.",
-    ),
-    AllowedSite(
-        "cli/run/_prepare.py",
-        "prepare",
-        1,
-        "Resolves the --duckdb-source database path; an input.",
-    ),
+ALLOWLIST: tuple[AllowedSite, ...] = tuple(
+    AllowedSite(*key.split("::"), e["sites"], e["reason"])
+    for key, e in load_allowlist("output-placement-allow").items()
 )
 
 # Default names are built only in the placers; the P10 sweep emptied this list.
-NAME_ALLOWLIST: tuple[AllowedSite, ...] = ()
+NAME_ALLOWLIST: tuple[AllowedSite, ...] = tuple(
+    AllowedSite(*key.split("::"), e["sites"], e["reason"])
+    for key, e in load_allowlist("output-name-allow").items()
+)
 
 
 def _resolve_sites(source: str) -> list[tuple[int, str]]:
@@ -157,17 +136,6 @@ def test_resolve_path_allowlist_is_live_and_exact() -> None:
     found = _resolve_tally(SRC)
     stale = {k: n for k, n in _allowed(ALLOWLIST).items() if found.get(k, 0) != n}
     assert not stale, f"allowlist entries that no longer match the code: {sorted(stale)}"
-
-
-@pytest.mark.parametrize(
-    ("baseline", "allowlist"), [(BASELINE, ALLOWLIST), (NAME_BASELINE, NAME_ALLOWLIST)]
-)
-def test_baseline_json_records_the_same_entries_and_reasons(
-    baseline: Path, allowlist: tuple[AllowedSite, ...]
-) -> None:
-    entries = json.loads(baseline.read_text(encoding="utf-8"))["entries"]
-    expected = {f"{a.file}::{a.function}": {"reason": a.reason} for a in allowlist}
-    assert entries == expected
 
 
 def test_allowlist_has_reasons_and_unique_identities() -> None:

@@ -30,7 +30,7 @@
 #   DECOY_BIN_DIR         launcher dir on PATH (default: ~/.local/bin)
 #   DECOY_VERSION_URL     version document URL (default: the hosted endpoint)
 #   DECOY_BUNDLE_BASE     base for pinned (non-latest) bundles: <base>/v<version>/decoy-<version>-<target>.tar.gz
-#                         (default: the GitHub release downloads of louiskeep/decoy)
+#                         (default: the GitHub release downloads of decoy-data/decoy)
 #   DECOY_RELEASE_PUBKEY_FILE  override the pinned key (dev/test builds ONLY: honored solely
 #                         while PINNED_PUBKEY below is still the placeholder, with a loud
 #                         warning; ignored with a warning once a release injects the real key)
@@ -38,7 +38,7 @@
 set -eu
 
 DEFAULT_VERSION_URL="https://trydecoy.com/cli/version.json"
-DEFAULT_BUNDLE_BASE="https://github.com/louiskeep/decoy/releases/download"
+DEFAULT_BUNDLE_BASE="https://github.com/decoy-data/decoy/releases/download"
 DECOY_HOME="${DECOY_HOME:-$HOME/.decoy}"
 DECOY_BIN_DIR="${DECOY_BIN_DIR:-$HOME/.local/bin}"
 DECOY_VERSION_URL="${DECOY_VERSION_URL:-$DEFAULT_VERSION_URL}"

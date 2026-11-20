@@ -3,7 +3,7 @@
 Decoy masks real data and generates synthetic data for test environments. You describe a
 pipeline in YAML, and `decoy` writes a masked or generated copy that is repeatable: the same
 input, seed and keys give the same output. `decoy` is the command-line front end for the
-[`decoy-engine`](https://github.com/louiskeep/decoy-engine) library. It is for one person or one
+[`decoy-engine`](https://github.com/decoy-data/decoy-engine) library. It is for one person or one
 CI job on one machine.
 
 The CLI is source-available under the Functional Source License
@@ -63,7 +63,7 @@ upgrade steps.
 To work on the CLI itself, install from a clone. See [CONTRIBUTING.md](CONTRIBUTING.md):
 
 ```sh
-git clone https://github.com/louiskeep/decoy && cd decoy
+git clone https://github.com/decoy-data/decoy && cd decoy
 pip install -e ".[dev]"
 ```
 
@@ -203,7 +203,7 @@ Constants and the order (`PRECEDENCE`) live in `decoy.cli.exit_codes`.
 - [docs/library.md](docs/library.md) and [docs/project-layout.md](docs/project-layout.md): the record library and the project folder layout.
 - [docs/ROADMAP.md](docs/ROADMAP.md): the one roadmap for CLI 1.0.0 and the platform.
 - [CHANGELOG.md](CHANGELOG.md): release notes. [CODEMAP.md](CODEMAP.md): a map of the source.
-- [decoy-engine](https://github.com/louiskeep/decoy-engine): the library behind the CLI. Import it directly to embed masking or generation in your own Python tool.
+- [decoy-engine](https://github.com/decoy-data/decoy-engine): the library behind the CLI. Import it directly to embed masking or generation in your own Python tool.
 
 ## Contributing and security
 
@@ -215,7 +215,7 @@ vulnerability privately as described in [SECURITY.md](SECURITY.md). The trademar
 
 Functional Source License, Version 1.1, Apache 2.0 Future License
 (FSL-1.1-ALv2). `decoy-engine` moves to the same license from its first FSL
-release onward; engine 0.22.0 and earlier stay Apache-2.0; 0.23.0 and later, including the 0.27.0 this CLI pins
+release onward; engine 0.22.0 and earlier stay Apache-2.0; 0.23.0 and later, including the 0.28.1 this CLI pins
 today, are FSL-1.1-ALv2. You may use, modify and
 redistribute Decoy for any purpose except a Competing Use: offering it, or
 something substantially similar built from it, to others as a commercial

@@ -54,10 +54,6 @@
    "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart.",
    "count": 2
   },
-  "cli/io/_scan_set.py::row_count": {
-   "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart.",
-   "count": 3
-  },
   "cli/preflight.py::capacity_source_unprofilable": {
    "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",
    "count": 1
@@ -80,7 +76,7 @@
   },
   "cli/scanning/_multi.py::row_count": {
    "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart.",
-   "count": 6
+   "count": 5
   },
   "cli/scanning/_multi.py::scan_header_suspect": {
    "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",

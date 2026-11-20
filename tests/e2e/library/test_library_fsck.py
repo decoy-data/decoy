@@ -50,6 +50,15 @@ def test_path_prints_the_root_and_where_it_came_from(root: Path, tmp_path: Path)
     assert not other.exists()  # `path` creates nothing
 
 
+def test_path_prints_a_long_root_on_one_line(tmp_path: Path) -> None:
+    # Rich wraps at the terminal width (80 under CliRunner); a long root, such as a macOS
+    # temp folder, must still print whole so it can be copied or read by a script.
+    other = tmp_path / ("deep-folder-" * 8) / "library"
+    result = runner.invoke(app, ["library", "path", "--library", str(other)])
+    assert result.exit_code == EXIT_OK, result.output
+    assert f"root: {other.resolve()}\n" in result.output
+
+
 def test_path_reports_degraded_mode_and_why(root: Path) -> None:
     _fill(root, 1)
     (root / "library" / "index.sqlite").unlink()

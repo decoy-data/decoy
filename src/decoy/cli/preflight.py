@@ -360,17 +360,13 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
     "capacity: OK" here says nothing about that. See the module docstring's
     "OOM checker v1" note.
 
-    R5 capability-detect: an engine older than the one that ships
-    `estimate_job_capacity` degrades to "not checked" rather than an
-    ImportError -- the CLI's engine floor is >=0.6.0 either way.
-
     R3 (Codex P1-2): `estimate_job_capacity` returns a typed verdict
     (`UNKNOWN` for expected indeterminacy) or raises. A plan the engine
     rejects (`PlanCompileError`) becomes a `capacity.plan_uncompilable` FAIL;
     any other exception is a real defect and propagates, since folding it
-    into a WARN would report a false pass. Only the THREE guarded
-    early-returns below (capability-detect, non-file sources, a source
-    already known missing/unreadable from disk) skip the estimator. The third
+    into a WARN would report a false pass. Only the TWO guarded
+    early-returns below (non-file sources, a source already known
+    missing/unreadable from disk) skip the estimator. The second
     exists because a missing source is also one of the estimator's documented
     propagating cases: without it, a source Step 4 (`_check_source_files`)
     already flagged would crash the command before any finding is printed.
@@ -382,13 +378,6 @@ def _check_capacity(raw: dict[str, Any], config_path: Path, acc: _PreflightAccum
     a remote connection during a "local" preflight.
     """
     import decoy_engine.execution as _engine_execution
-
-    if not hasattr(_engine_execution, "estimate_job_capacity"):
-        acc.add_pass(
-            name=CAPACITY_CHECK,
-            message="not checked -- capacity check needs a newer engine.",
-        )
-        return
 
     # Preserve preflight's local, no-network posture: the engine estimate reads
     # each source, which for a non-file source means opening a DB/remote
@@ -543,40 +532,31 @@ def _check_native(raw: dict[str, Any], acc: _PreflightAccumulator) -> None:
 
     from decoy import _native_gate
 
-    probe = getattr(decoy_engine, "native_companion_status", None)
-    if probe is None:
-        # R5 capability-detect (matches `_check_capacity`'s own posture): an
-        # engine this old predates the probe entirely, not an error.
+    status = decoy_engine.native_companion_status()
+    if status.ok:
         acc.add_pass(
             name="native.companion",
-            message="not checked -- native companion health needs a newer engine.",
+            message=(
+                f"native companion present and healthy "
+                f"(v{_native_gate.sanitize_abi(status.version)})."
+            ),
+        )
+    elif status.present:
+        acc.add_warn(
+            name="native.companion",
+            message=(
+                f"native companion present but not usable ({status.reason}) -- "
+                f"expected ABI {status.abi_expected}, got "
+                f"{_native_gate.sanitize_abi(status.abi_actual)!r}. `decoy run` "
+                "fails closed on this by default; use --no-native to roll back."
+            ),
+            code=status.reason,
         )
     else:
-        status = probe()
-        if status.ok:
-            acc.add_pass(
-                name="native.companion",
-                message=(
-                    f"native companion present and healthy "
-                    f"(v{_native_gate.sanitize_abi(status.version)})."
-                ),
-            )
-        elif status.present:
-            acc.add_warn(
-                name="native.companion",
-                message=(
-                    f"native companion present but not usable ({status.reason}) -- "
-                    f"expected ABI {status.abi_expected}, got "
-                    f"{_native_gate.sanitize_abi(status.abi_actual)!r}. `decoy run` "
-                    "fails closed on this by default; use --no-native to roll back."
-                ),
-                code=status.reason,
-            )
-        else:
-            acc.add_pass(
-                name="native.companion",
-                message="native companion not installed; masking runs on the Python fallback.",
-            )
+        acc.add_pass(
+            name="native.companion",
+            message="native companion not installed; masking runs on the Python fallback.",
+        )
 
     if _native_gate.static_native_eligibility(raw):
         acc.add_pass(

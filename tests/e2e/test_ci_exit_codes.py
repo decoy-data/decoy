@@ -35,6 +35,7 @@ from tests.ci_support import (
     write_clean_pipeline,
 )
 from tests.run_outputs import latest_output
+from tests.scan_docs import scan_set_doc
 
 PATTERN = {
     "id": "pii.seeded-test-identifier",
@@ -119,16 +120,8 @@ def test_unreadable_evidence_manifest_is_refused(tmp_path: Path) -> None:
 
 def test_drift_blocking_and_non_blocking(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
-    old = {
-        "fields": [{"name": "a", "pii_score": 0.1}],
-        "quasi_identifier_groups": [],
-        "reid_risk_score": 0.1,
-    }
-    new = {
-        "fields": [{"name": "a", "pii_score": 0.9}],
-        "quasi_identifier_groups": [],
-        "reid_risk_score": 0.1,
-    }
+    old = scan_set_doc([{"name": "a", "pii_score": 0.1}], reid_risk_score=0.1)
+    new = scan_set_doc([{"name": "a", "pii_score": 0.9}], reid_risk_score=0.1)
     write(repo, "ci/base.json", json.dumps(old))
     write(repo, "build/cur.json", json.dumps(new))
     drift = "  drift:\n    - {id: discovery-baseline, baseline: ci/base.json, current: build/cur.json, blocking: %s}\n"

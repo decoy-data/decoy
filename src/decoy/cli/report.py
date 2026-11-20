@@ -891,12 +891,6 @@ def compare_data(
     EVIDENCE-SAFE: reports aggregate counts only. Raw row/cell values are
     never included in the output.
     """
-    try:
-        import pandas  # noqa: F401  (the dependency guard; the readers import it themselves)
-    except ImportError as _err:
-        raise RuntimeError(
-            "pandas is required for data-level diff. Install with: pip install pandas"
-        ) from _err
     from decoy_engine import DecoyError
 
     output_fps_a: dict[str, Any] = manifest_a.get("output_fingerprints") or {}
@@ -2144,10 +2138,10 @@ Examples:
   decoy report vault vault.bin --config pipeline.yaml --quiet
     Silent mode; exit code 0 = vault opened successfully.
 
-The vault is encrypted under a key derived from the config's seed. The
-config passed to --config must be the SAME config (or at least the same
-global_settings.seed) used by the `decoy run --vault` call that wrote
-the vault, otherwise the decrypt will fail and the command exits 1.
+The vault opens only under the mask secret that the `decoy run --vault`
+call used. Pass the same secret with --mask-secret, or name it in the
+config's global_settings.mask_secret_ref. The seed is not key material.
+A missing or wrong secret exits 1.
 
 See also: decoy run --vault, decoy unmask --vault.
 """

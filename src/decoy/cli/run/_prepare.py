@@ -11,7 +11,6 @@ from rich.text import Text
 from decoy import _mask_secret, _mask_secret_guidance, _native_gate, _resources
 from decoy._config_file import read_config_bytes
 from decoy.cli import gen
-from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.gate import (
     GateFinding,
     GateRoute,
@@ -34,7 +33,7 @@ from decoy.cli.io import (
     quarantine_enabled,
 )
 from decoy.cli.io import resolve_path as _resolve_path
-from decoy.cli.run._context import RunContext
+from decoy.cli.run._context import RunContext, UsageRefusal
 from decoy.cli.run._execute import (
     _check_chunked_tables,
     _ChunkedFixedWidthError,
@@ -52,8 +51,8 @@ from decoy.cli.run._vault import (
     _VaultUsageError,
     refuse_existing_vault,
 )
-from decoy.ui.output import OutputMode, emit_json
-from decoy.ui.theme import error, hint, warn
+from decoy.ui.output import OutputMode
+from decoy.ui.theme import hint, warn
 
 
 class _MaskSecretUsageError(Exception):
@@ -172,26 +171,14 @@ _PREVIEW_QUARANTINE = (
 )
 
 
-def _refuse_usage(state, config_str: str, text: str) -> None:
-    """Print a usage refusal in the active output mode and exit 1, before any engine call."""
-    if state.mode is OutputMode.json:
-        emit_json(
-            state,
-            {"command": "run", "status": "error", "config": config_str, "error": text},
-        )
-    elif state.mode is not OutputMode.quiet:
-        state.err_console.print(error("error:"), text, markup=False)
-    raise typer.Exit(code=EXIT_USAGE)
-
-
-def _refuse_fidelity_without_mask(state, config_str: str, raw_cfg: dict) -> None:
+def _refuse_fidelity_without_mask(raw_cfg: dict) -> None:
     """Exit 1 before any engine call when `--fidelity` is given and no table is a mask table.
 
     A config with no tables at all is left to the normal config check.
     """
     if not raw_cfg.get("tables"):
         return
-    _refuse_usage(state, config_str, _FIDELITY_NEEDS_MASK)
+    raise UsageRefusal(_FIDELITY_NEEDS_MASK)
 
 
 def refuse_preview(ctx: RunContext) -> None:
@@ -218,9 +205,9 @@ def refuse_preview(ctx: RunContext) -> None:
     ]
     text = gen.refusal(ctx.rows, flags, _has_kind(ctx.raw_cfg, "columns"))
     if text is not None:
-        _refuse_usage(ctx.state, ctx.config_str, text)
+        raise UsageRefusal(text)
     if quarantine_enabled(ctx.raw_cfg):
-        _refuse_usage(ctx.state, ctx.config_str, _PREVIEW_QUARANTINE)
+        raise UsageRefusal(_PREVIEW_QUARANTINE)
 
 
 def _guard_mask_secret_ref(raw: object) -> None:

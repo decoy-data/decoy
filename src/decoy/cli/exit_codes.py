@@ -261,6 +261,7 @@ def usage_error_types() -> tuple[type, ...]:
     from decoy import _native_gate, _resources
     from decoy.cli.extras import MissingExtraError, UnsupportedCloudEndpointError
     from decoy.cli.io import DuckDBSourceError, LayoutError, TargetFormatError
+    from decoy.cli.run._context import UsageRefusal
     from decoy.cli.run._errors import OutDirUsageError
     from decoy.cli.run._execute import (
         _ChunkedFixedWidthError,
@@ -311,6 +312,7 @@ def usage_error_types() -> tuple[type, ...]:
         *ner,
         _native_gate.NativeGateError,
         *mask_secret,
+        UsageRefusal,
     )
 
 

@@ -19,7 +19,7 @@ from decoy.cli.ci import ci_app
 from decoy.cli.cockpit import DOCTOR_EPILOG, doctor
 from decoy.cli.demo import DEMO_EPILOG
 from decoy.cli.demo import _demo as demo_command
-from decoy.cli.exit_codes import _EXIT_CRASH
+from decoy.cli.exit_codes import _EXIT_CRASH, exit_code_for
 from decoy.cli.explain import EXPLAIN_EPILOG
 from decoy.cli.explain import explain as explain_command
 from decoy.cli.fit import FIT_EPILOG
@@ -48,7 +48,7 @@ from decoy.cli.unmask import unmask as unmask_command
 from decoy.cli.upgrade import UPGRADE_EPILOG
 from decoy.cli.upgrade import upgrade as upgrade_command
 from decoy.cli.validate import validate_app
-from decoy.ui.output import print_traceback, setup_output
+from decoy.ui.output import emit_error, print_traceback, setup_output
 from decoy.ui.theme import error, hint
 
 # Quick-start hints embedded in the root help. Picked up by Typer's
@@ -132,6 +132,22 @@ def _parsed_verbose(ctx: Any) -> bool:
     return any(bool(c.params.get("verbose")) for c in seen)
 
 
+def _env_flag_report(exc: Exception) -> tuple[str, str, int] | None:
+    """`(message, code, exit)` for an engine `EnvFlagError`, else None. Never raises.
+
+    The engine text names the variable, never its value. The import is lazy so a normal run
+    never pays for it; a failed import or classification must not replace the original failure.
+    """
+    try:
+        from decoy_engine.errors import EnvFlagError
+
+        if not isinstance(exc, EnvFlagError):
+            return None
+        return str(exc), exc.code, exit_code_for(exc)
+    except Exception:
+        return None
+
+
 class _GuardedGroup(TyperGroup):
     """Root group that keeps a Python traceback from reaching the user.
 
@@ -158,21 +174,30 @@ class _GuardedGroup(TyperGroup):
                 raise
             if debug:
                 raise
-            name = type(exc).__name__
             verbose = _parsed_verbose(ctx)
             state = setup_output(json_=False, quiet=False, verbose=verbose)
-            state.err_console.print(error("error:"), f"internal error ({name})")
-            state.err_console.print(
-                " ", hint("hint:"), "rerun with --verbose for the full traceback."
-            )
-            if verbose:
+            # An engine flag with an unknown spelling is the user's to fix, not a crash: show
+            # the variable name and code. Decided before anything prints; any failure while
+            # deciding falls back to the plain crash line below.
+            flag = _env_flag_report(exc)
+            if flag is not None:
+                message, code, exit_code = flag
+                emit_error(state, ctx.invoked_subcommand or "decoy", message, code=code)
+            else:
+                exit_code = _EXIT_CRASH
+                name = type(exc).__name__
+                state.err_console.print(error("error:"), f"internal error ({name})")
                 state.err_console.print(
-                    hint("(--verbose: traceback below; diagnostic output may contain row data)")
+                    " ", hint("hint:"), "rerun with --verbose for the full traceback."
                 )
-                print_traceback(state)
+                if verbose:
+                    state.err_console.print(
+                        hint("(--verbose: traceback below; diagnostic output may contain row data)")
+                    )
+                    print_traceback(state)
         # Raised outside the `except` block so the safe exit carries neither the original
         # exception as __cause__ nor as __context__.
-        raise typer.Exit(_EXIT_CRASH)
+        raise typer.Exit(exit_code)
 
 
 # The generation path in one place: `fit` is in the Generate panel, but `run` and the fidelity

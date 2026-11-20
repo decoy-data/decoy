@@ -359,10 +359,10 @@ _CASES = pytest.mark.parametrize(
 )
 
 
-def _max_baseline(sid: str, max_value: int | None) -> str:
+def _max_baseline(sid: str, max_value: int | None, field: str = "max") -> str:
     entry: dict[str, object] = {"reason": REASON}
     if max_value is not None:
-        entry["max"] = max_value
+        entry[field] = max_value
     return json.dumps({"sentry_id": sid, "created_in": "S0", "entries": {"m::f": entry}})
 
 
@@ -395,3 +395,78 @@ def test_a_rename_may_not_raise_a_numeric_max(
     assert (res.returncode == 1) is red, res.stdout + res.stderr
     if red:
         assert "replacement or split of a raised or dropped max for key(s): m::f" in res.stderr
+
+
+@pytest.mark.parametrize("field", ["count", "sites"])
+@_CASES
+def test_count_and_sites_are_ceilings_like_max(
+    repo: Path, field: str, base_max: int | None, head_max: int | None, red: bool
+) -> None:
+    """A moved ``count`` or ``sites`` entry must not rise unseen (it was invisible to the ratchet)."""
+    _write(repo, A, _max_baseline("a", base_max, field))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _max_baseline("a", head_max, field))
+    res = _run(repo)
+    assert (res.returncode == 1) is red, res.stdout + res.stderr
+    if red:
+        assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def _entry_baseline(sid: str, entry: dict[str, object]) -> str:
+    return json.dumps(
+        {"sentry_id": sid, "created_in": "S0", "entries": {"m::f": {"reason": REASON, **entry}}}
+    )
+
+
+@pytest.mark.parametrize(
+    ("base", "head"),
+    [
+        ({"count": 3}, {"count": 99, "max": 1}),
+        ({"sites": 4}, {"sites": 9, "count": 0}),
+        ({"max": 5, "count": 3}, {"max": 1, "count": 4}),
+        ({"count": 3}, {"max": 1}),
+    ],
+    ids=["count-up-max-added", "sites-up-count-added", "second-field-up", "field-swapped"],
+)
+def test_each_ceiling_field_is_checked_on_its_own(
+    repo: Path, base: dict[str, object], head: dict[str, object]
+) -> None:
+    """Adding a lower field beside a raised one, or swapping fields, must not hide growth."""
+    _write(repo, A, _entry_baseline("a", base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", head))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+@pytest.mark.parametrize(
+    ("base", "head"),
+    [
+        ({"count": 3}, {"count": 2, "max": 99}),
+        ({"sites": 4}, {"sites": 1, "count": 50}),
+        ({"max": 5}, {"max": 4, "sites": 9}),
+    ],
+    ids=["count-lowered-max-added", "sites-lowered-count-added", "max-lowered-sites-added"],
+)
+def test_a_new_ceiling_field_beside_an_old_one_is_refused(
+    repo: Path, base: dict[str, object], head: dict[str, object]
+) -> None:
+    """Lowering the old field while adding another would move the cap to the new field."""
+    _write(repo, A, _entry_baseline("a", base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", head))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def test_an_entry_with_no_ceiling_may_gain_one(repo: Path) -> None:
+    _write(repo, A, _entry_baseline("a", {}))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", {"count": 2}))
+    assert _run(repo).returncode == 0
