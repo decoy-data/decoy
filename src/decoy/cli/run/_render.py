@@ -3,7 +3,6 @@
 
 from pathlib import Path
 
-import typer
 from rich.text import Text
 
 from decoy.cli import gen
@@ -12,7 +11,7 @@ from decoy.cli.run import _result
 from decoy.cli.run._context import Mode, RunContext
 from decoy.cli.run._prepare import _has_kind
 from decoy.ui.card import render_card
-from decoy.ui.output import OutputMode, emit_json
+from decoy.ui.output import OutputMode
 from decoy.ui.summary import (
     render_execution_route,
     render_fidelity,
@@ -104,7 +103,6 @@ def finish(ctx: RunContext) -> None:
         ctx._ev_engine_warnings,
         [*_seed_warnings(ctx.raw_cfg, key_in_effect=ctx.resolver is not None), *ctx._cli_warnings],
     )
-    _enforce_fires = _blocking_failed(ctx)
 
     if ctx.state.mode is OutputMode.json:
         payload: dict = {
@@ -139,15 +137,11 @@ def finish(ctx: RunContext) -> None:
                 report["quality_summary"] = _qm.get("quality_summary")
                 report["post_validation_enforce"] = ctx.post_validate_enforce
             payload["report"] = report
-        payload.update(_result.members(document))
-        emit_json(ctx.state, payload)
-        if _enforce_fires:
-            raise typer.Exit(code=document.exit_code)
+        _result.finish(ctx, document, payload)
         return
 
     if ctx.state.mode is OutputMode.quiet:
-        if _enforce_fires:
-            raise typer.Exit(code=document.exit_code)
+        _result.finish(ctx, document)
         return
 
     facts = [
@@ -203,8 +197,7 @@ def finish(ctx: RunContext) -> None:
     if ctx.post_validation:
         render_post_validation(ctx.state, _qm, enforce=ctx.post_validate_enforce)
 
-    if _enforce_fires:
-        raise typer.Exit(code=document.exit_code)
+    _result.finish(ctx, document)
 
 
 def finish_preview(ctx: RunContext) -> None:
@@ -215,18 +208,15 @@ def finish_preview(ctx: RunContext) -> None:
     )
     document = _result.build(ctx)
     if ctx.state.mode is OutputMode.json:
-        emit_json(
-            ctx.state,
-            {
-                "command": "run",
-                "status": "ok",
-                "preview": True,
-                "config": ctx.config_str,
-                "tables": ctx._preview_tables,
-                "warnings": warnings,
-                **_result.members(document),
-            },
-        )
+        payload = {
+            "command": "run",
+            "status": "ok",
+            "preview": True,
+            "config": ctx.config_str,
+            "tables": ctx._preview_tables,
+            "warnings": warnings,
+        }
+        _result.finish(ctx, document, payload)
         return
     gen.render_preview(ctx.state, ctx._preview_tables)
     if ctx.state.mode is not OutputMode.quiet:

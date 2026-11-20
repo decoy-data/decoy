@@ -9,7 +9,7 @@ import typer
 from decoy.cli.io import LayoutError, mint_invocation_id, open_out_dir
 from decoy.cli.project import only_pipeline, run_all
 from decoy.cli.run import _errors, _evidence, _execute, _prepare, _progress, _render, _result
-from decoy.cli.run._context import RunContext
+from decoy.cli.run._context import RunContext, RunRefusal
 from decoy.cli.run._notify import (
     _begin_trace,
     _dispatch_run_notifications,
@@ -95,7 +95,25 @@ def _bind_pipeline(ctx: RunContext) -> None:
 
 
 def execute(ctx: RunContext) -> None:
-    """Run the phases in order. Everything after the `try` runs only on success."""
+    """Run the phases in order, and give every end of the run its document.
+
+    A typed refusal (a bad `--notify`, a `--rows` that cannot run, the evidence write) and
+    Ctrl-C end here with the envelope; the errors inside the run end in `_errors.fail`.
+    """
+    # First, so a refusal before the run starts has timings.
+    ctx._run_started_at = datetime.now(timezone.utc)
+    ctx.started = time.perf_counter()
+    try:
+        _phases(ctx)
+    except RunRefusal as refusal:
+        _errors.refused(ctx, refusal)
+    except KeyboardInterrupt:
+        _errors.interrupted(ctx)
+        raise
+
+
+def _phases(ctx: RunContext) -> None:
+    """The phases in order. Everything after the `try` runs only on success."""
     _bind_pipeline(ctx)
     ctx.invocation_id = mint_invocation_id()
     ctx.config_str = str(ctx.config)
@@ -109,15 +127,18 @@ def execute(ctx: RunContext) -> None:
     if ctx.rows is not None:
         _prepare.refuse_preview(ctx)
 
-    ctx.resolver = _build_resolver(ctx.master_key, ctx.key_label, ctx.raw_cfg, ctx.state)
+    try:
+        ctx.resolver = _build_resolver(ctx.master_key, ctx.key_label, ctx.raw_cfg, ctx.state)
+    except typer.BadParameter as exc:
+        # Click prints its own message and exits 2; the envelope carries the same 2.
+        _errors.bad_parameter(ctx, exc)
+        raise
     if ctx.fidelity and ctx.raw_cfg is not None and not _has_kind(ctx.raw_cfg, "columns"):
-        _refuse_fidelity_without_mask(ctx.state, ctx.config_str, ctx.raw_cfg)
+        _refuse_fidelity_without_mask(ctx.raw_cfg)
 
     ctx.post_validation = ctx.post_validate or ctx.post_validate_enforce
     ctx._report_flags = ctx.explain_plan or ctx.fidelity or ctx.post_validation
 
-    ctx._run_started_at = datetime.now(timezone.utc)
-    ctx.started = time.perf_counter()
     finished = False
     _otel = _trace = _failed_with = None
     try:

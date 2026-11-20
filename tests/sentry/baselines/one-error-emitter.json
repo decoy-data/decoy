@@ -131,15 +131,6 @@
   "cli/run/_errors.py::fail::c06db90fca96": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/run/_evidence.py::write_evidence::da29d211e08d": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_prepare.py::_refuse_usage::6ca097a9a6f7": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_prepare.py::_refuse_usage::885fafd60222": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
   "cli/scan.py::_diff::33ac29cba33e": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
