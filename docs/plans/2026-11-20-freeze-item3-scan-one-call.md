@@ -1,4 +1,4 @@
-Status: plan (revision 2, 2026-11-20)
+Status: plan (revision 3, 2026-11-20)
 
 # FREEZE-SURFACE item 3: `decoy.scan()` and `decoy scan` make one engine call
 
@@ -10,7 +10,7 @@ Anchors: a path with no prefix is in this repository (decoy CLI); `E:` is decoy-
 
 Rules consulted: dev-rules `README.md` (routing), `00-universal.md`, `risk-and-exceptions.md` (compatibility is an R2 trigger), `development-loop.md` (PLAN: guarantee, failure modes, acceptance tests first with their mutation, size, placement, design notes, choke point, slices), `cross-cutting-concerns.md` (one choke point, a walk-based guard, its seeded mutation, a ratchet allowlist), `api-and-compatibility.md` (consumer inventory, explicit breaking change, contract tests), `architecture.md` (placement against CODEMAP), `reuse-first.md`, `proportionality.md` (size, deletion test, no forwarding wrapper), `testing.md` (T0 to T2, full-suite escalation triggers).
 
-Risk: R2. `decoy.scan` is public API (`_LAZY_API` in `src/decoy/__init__.py:20`, `docs/release/frozen-surfaces.md:22`, signature pinned in `tests/unit/release/test_api_signatures.py:26`). Slice C2 changes its return value, a default and its accepted inputs. Slice C1 changes two `decoy scan` usage refusals (section 12). Approver: Cam for the plan; Dennis then Codex for the plan gate.
+Risk: R2. `decoy.scan` is public API (`_LAZY_API` in `src/decoy/__init__.py:20`, `docs/release/frozen-surfaces.md:22`, signature pinned in `tests/unit/release/test_api_signatures.py:26`). Slice C2 changes its return value, a default and its accepted inputs. Slice C1 changes the negative `--rows` exit from 3 to 1 (section 12). Approver: Cam for the plan; Dennis then Codex for the plan gate.
 
 ## Revision 2 (review round 1)
 
@@ -29,6 +29,18 @@ Owner answers of 2026-11-20 are binding and recorded in section 13. Changes for 
 11. Error text names the caller's own spelling. `resolve_sources` takes a `spelling: ScanSpelling` parameter; the CLI passes the flag names, the API passes its keyword names (5.1, 5.4, AT-4).
 12. C2 removes the `cli/scan.py::_load_parquet_with_sampling` entry in `CALLER_NAMED` (`tests/sentry/io_policy/test_declared_read_choke_point.py:100-103`); listed in section 9.
 13. Section 15 has one "done when" line per slice.
+
+## Revision 3 (review round 2)
+
+Changes for each Dennis round 2 finding:
+
+1. MEDIUM-1. Dropped the unknown-suffix refusal. Both routes keep `_kind`'s CSV fallback. Removed M13 and the `.txt` cells from AT-13 and AT-14. C1 still has R2 risk because a negative `--rows` changes from exit 3 to exit 1. Added the shared suffix registry as a follow-up.
+2. LOW-2. Section 9 now includes `tests/sentry/allowlist-before.json`, whose `csv-read-allow` and `module-size` snapshots shrink in C2, and the `scan-call-allow` entry in `CREATED_IN` in `tests/sentry/test_baseline_registry.py` for C1.
+3. LOW-3. C2 deletes the unused suffix constants at `scan.py:91-93`, which copy `_multi.py:47-48`, after it deletes the old loaders and `_infer_format`.
+4. LOW-4. AT-1 now says only the `rows=0` cell turns red under its mutation. The default-row cell still matches the CLI.
+5. LOW-5. AT-7 compares class and `code` for the duplicate-name `TransformError`. It compares class, `table` and `cause_class` only for `ScanSourceError`.
+6. LOW-6. AT-0 expects `json.dumps(core) + "\n"` for `--output -`, matching `emit_json_document` at `src/decoy/ui/output.py:250-261`.
+7. LOW-7. `SampleStrategy` moves into `_engine_call.py`, and `scan.py` imports it through `decoy.cli.scanning`. The choke point no longer imports the Typer command module.
 
 ## 1. Current behaviour
 
@@ -76,19 +88,20 @@ Guarantees after this work:
 
 - G1. One internal function, `decoy.cli.scanning.scan_descriptors`, is the only first-party caller of `decoy_engine.scan_sources` and `decoy_engine.scan_set_to_dict`. `decoy scan`, `decoy demo` and `decoy.scan()` all call it. A sentry fails on any other call or import of `scan_sources`, `scan_set_to_dict` or `profile_columns` under `src/decoy`, except a named allowlist (`cli/init.py::init` for `profile_columns`, with its reason).
 - G2. For the same file, the same options and regex detectors, `decoy.scan()` returns the same `scan-set/v1` core that `decoy scan --output` writes. Serialized with `core_bytes`, the bytes are identical once `scanned_at` (the one wall-clock member) is set to the same value.
-- G3. `decoy.scan()` has the CLI's input rules: a CSV path states its header (`has_header`), a headerless CSV gives `column_names`, `.tsv` is tab-delimited, fixed width needs `layout`, an unknown suffix needs `format`, and the default sample is `DEFAULT_SCAN_ROWS` (10,000) rows, with `rows=None` or `rows=0` for a full read.
+- G3. `decoy.scan()` has the CLI's input rules: a CSV path states its header (`has_header`), a headerless CSV gives `column_names`, `.tsv` is tab-delimited, fixed width needs `layout`, and the default sample is `DEFAULT_SCAN_ROWS` (10,000) rows, with `rows=None` or `rows=0` for a full read. Other suffixes keep the shared `_kind` CSV fallback.
 - G4. `decoy.scan()` returns no cell value and raises no exception whose text, `__cause__` or `__context__` holds a cell value: its result is the value-free core, engine scan errors reach the caller as the engine raises them (class and table only), and the Arrow conversion error is a class-only `TypeError` with no chain. The last part holds for `decoy.mask()` too.
 - G5. A DataFrame passed to `decoy.scan()` goes through the same engine reader as a Parquet file: it is written to an owner-only temp Parquet file (the `decoy.mask()` staging helper) under a fixed name, which is removed on success and on failure. The returned core names its source path as `<dataframe>`, never the temp path.
-- G6. A usage error (bad rows, bad strategy, bad format, unknown suffix, missing path, header flags, layout) is found before the engine is called, on both routes: `ScanUsageError` (a `ValueError`) in the API, exit 1 in the CLI.
+- G6. A usage error (bad rows, bad strategy, bad format, missing path, directory, header flags, layout) is found before the engine is called, on both routes: `ScanUsageError` (a `ValueError`) in the API, exit 1 in the CLI when Typer has not already refused the input.
 
 Non-goals:
 
 - No engine change. `scan_sources` and `scan_set_to_dict` are used as they are in the pinned engine.
-- No change to `decoy scan` output bytes: card, `--json`, `--output` and `--output -` stay as on `1120e39a`. The two usage changes in section 12 are the only visible CLI changes.
+- No change to `decoy scan` output bytes: card, `--json`, `--output` and `--output -` stay as on `1120e39a`. The negative `--rows` exit change in section 12 is the only visible CLI change.
 - No multi-table `decoy.scan()` (a mapping of inputs). Additive later (Q6).
 - No model detectors in `decoy.scan()`. It is regex only, and its docstring says so; `decoy scan --detectors` keeps its models through `scan_descriptors(pre_scan=...)`. A `detectors` keyword on the API is additive later.
 - `decoy init` keeps its direct `profile_columns` call. The init wizard is stopped (owner 2026-11-19), and its profile feeds strategy inference, not a scan result. It is an allowlist entry, not a route.
 - `decoy fit` and the `decoy run` pre-scan and post-scan are out of scope; they do not produce a scan document.
+- Follow-up: one suffix registry across scan, run, mask and init. Today: `_targets._SUFFIX_FORMAT` (`src/decoy/cli/io/_targets.py:51`), `_multi.py:47-48`, `scan.py:91-93`.
 - No new public name. `decoy.scan` gains two keyword parameters; no new exception type is exported.
 - Compressed `.tsv` files keep today's CLI behaviour (the tab rule reads `p.suffix`); not widened here.
 
@@ -110,8 +123,7 @@ Search run: the codebase (this repository's choke points and their sentries, `de
 |---|---|---|
 | Paths to descriptors, header rules, TSV, layout | `resolve_sources`, `_kind`, `_check_header_flags`, `_layout_columns`, `_split_names`, `ScanUsageError` | `src/decoy/cli/scanning/_multi.py:60-65,153-268` |
 | Format names | `_FORMAT_FLAG` | `src/decoy/cli/scanning/_multi.py:49` |
-| Strategy names | `SampleStrategy` | `src/decoy/cli/scan.py:59-62` |
-| Compression suffix split | `split_compression` (as `_format_suffix` uses it) | `src/decoy/cli/io/_targets.py:102-108` |
+| Strategy names | `SampleStrategy` moves with the shared call | `src/decoy/cli/scan.py:59-62` today; `_engine_call.py` after C1 |
 | Table name from a path | `table_name_from_path` | `src/decoy/cli/scanning/_multi.py:68` |
 | Layout rules | `_parse_layout` | `src/decoy/cli/scan.py:221-292` |
 | Model detectors | `_detectors.resolve_pre_scan`, `preflight`, `detector_log` | `src/decoy/cli/scanning/_detectors.py:60-90`; `src/decoy/ui/output.py` |
@@ -129,6 +141,11 @@ New module `src/decoy/cli/scanning/_engine_call.py`, exported from `decoy.cli.sc
 
 ```python
 DEFAULT_SCAN_ROWS: Final = 10_000
+
+class SampleStrategy(str, Enum):
+    full = "full"
+    head = "head"
+    random = "random"
 
 @dataclass(frozen=True)
 class ScanRun:
@@ -151,7 +168,7 @@ def core_bytes(core: Mapping[str, Any]) -> bytes:   # json.dumps(core, indent=2)
 
 Rules, each stated once:
 
-1. `check_scan_options`: `strategy` must be a `SampleStrategy` value (the allowed list is `[s.value for s in SampleStrategy]`, imported inside the function, as `_layout_columns` imports `_parse_layout`, because `cli/scan.py` imports `decoy.cli.scanning`), else `ScanUsageError("strategy must be one of ['full', 'head', 'random'], got 'x'.")`. A negative `rows` is `ScanUsageError("rows must be 0 or more, got -1.")`. No other strategy or rows list exists.
+1. `SampleStrategy` moves from `scan.py:59-62` into `_engine_call.py` beside the rule that consumes it. `scan.py` imports the exported enum from `decoy.cli.scanning`, so the choke point never imports the Typer command module. `check_scan_options` takes its allowed list from `[s.value for s in SampleStrategy]`, else raises `ScanUsageError("strategy must be one of ['full', 'head', 'random'], got 'x'.")`. A negative `rows` is `ScanUsageError("rows must be 0 or more, got -1.")`. No other strategy or rows list exists.
 2. `scan_descriptors` calls `check_scan_options` first (the API route), then maps rows: `None` or `0`, or `strategy == "full"`, reads every row (`sample_rows=None, strategy="full"`); otherwise `sample_rows=rows, strategy=strategy`. This is the CLI's `--rows 0` rule (`_multi.py:522-524`), moved.
 3. It calls `scan_sources(descriptors, sample_rows=..., strategy=..., pre_scan=pre_scan)`, then `on_stage()`, then `scan_set_to_dict(result, detail=False)`, then `on_stage()`. `on_stage` keeps the CLI progress stages without a UI import in the choke point.
 4. It catches nothing. Engine errors reach each caller unchanged; the CLI keeps its own class-only message (`_failure_message`, `_multi.py:281-290`).
@@ -200,7 +217,7 @@ Steps:
    - `column_names` may be a comma string (CLI) or a sequence (API); `_split_names` takes both and applies the same empty and repeated-name rules.
    - `format` not in `_FORMAT_FLAG`: `ScanUsageError("format must be one of ['delimited', 'fixed-width', 'parquet'], got 'x'.")`, the list taken from `_FORMAT_FLAG`. Today the API raises `ValueError` from `InputFormat(...)` and `_kind` would raise a bare `KeyError`.
    - A missing path: `ScanUsageError("<path>: file not found.")`; a directory: `ScanUsageError("<path>: is a directory, not a file.")`. In the CLI, Typer refuses both first (exit 2, unchanged); the check is for the API and for any later caller.
-   - No format and a suffix (before any compression suffix, `split_compression`) outside `.csv`, `.tsv`, the Parquet set and the fixed-width set: `ScanUsageError("<path>: cannot tell the format from the suffix '.txt'.", hint "give --format delimited, parquet or fixed-width; known suffixes: .csv, .tsv, .parquet, .pq, .fwf, .dat, .fixed, .fw")`, with the flag named through `spelling`. Today such a file is read as CSV.
+   - No format keeps `_kind`'s current rule: Parquet and fixed-width suffixes select those readers; every other suffix selects CSV. The API and CLI use the same fallback.
    - `source_label`, when given, replaces the derived table name (Q5).
 2. A DataFrame: `_stage_source_entry("scan", df, tmp_paths)` writes an owner-only temp Parquet file. The name is the fixed string `scan`, so the file is `.decoy-mask-scan-.decoy-<hex>.tmp` in the temp folder and never holds the caller's `source_label`. `format`, `layout`, `has_header` or `column_names` given with a DataFrame raise `ScanUsageError` (today they are silently ignored, `api.py:676-679`). Table name: `source_label`, else `dataframe`. `_to_pa_table` changes for every caller (`decoy.mask()` included):
 
@@ -251,42 +268,44 @@ Each test names the mutation that must turn it red. Parity tests compare documen
 
 | Id | Test | Red on main because | Mutation that must turn it red | Slice |
 |---|---|---|---|---|
-| AT-0 | CLI refactor guard, one test run: for each cell, `decoy scan F <flags> --output o.json` against `json.dumps(scan_set_to_dict(scan_sources(descriptors, sample_rows=<pre-refactor row_cap>, strategy=<pre-refactor effective>, pre_scan=None), detail=False), indent=2)` computed in the test from `resolve_sources`, `scanned_at` normalized; the same for `--output -` against `json.dumps(core)` (compact). Cells: CSV `--has-header` default rows; CSV `--rows 0`; CSV `--rows 5 --strategy random`; Parquet; fixed width with a layout file; CSV `--has-header --detectors regex`. A spy on `decoy.cli.scanning._engine_call`'s engine binding records one call per scan | `_engine_call` does not exist: the spy cannot attach | in `scan_descriptors`, pass `sample_rows=None` always | C1 |
-| AT-1 | Parity matrix, file inputs: `decoy scan F <flags> --output o.json` against `decoy.scan(F, <same kwargs>)`, byte-identical. Cells: CSV with `has_header=True` and default rows; CSV `rows=0`; CSV `rows=5, strategy="random"`; CSV `rows=5, strategy="full"`; a CSV of 10,050 rows with default rows (basis `sample`, `row_count > scanned_rows`); `.tsv`; a headerless CSV with `column_names`; a header-suspect CSV (warning, `c0..cn` names); a CSV whose header repeats `a` (both routes give fields `a` and `a.1`, D9); Parquet; fixed width with a layout file; fixed width with a parsed layout list | the API calls `profile_columns`; its result is a `ColumnProfile` | the API calls `scan_sources` itself with `sample_rows=rows` and no `rows=0` mapping (the 10,050-row and `rows=0` cells go red) | C2 |
+| AT-0 | CLI refactor guard, one test run: for each cell, `decoy scan F <flags> --output o.json` against `json.dumps(scan_set_to_dict(scan_sources(descriptors, sample_rows=<pre-refactor row_cap>, strategy=<pre-refactor effective>, pre_scan=None), detail=False), indent=2)` computed in the test from `resolve_sources`, `scanned_at` normalized; the same for `--output -` against `json.dumps(core) + "\n"` (compact plus the newline from `emit_json_document`, `src/decoy/ui/output.py:250-261`). Cells: CSV `--has-header` default rows; CSV `--rows 0`; CSV `--rows 5 --strategy random`; Parquet; fixed width with a layout file; CSV `--has-header --detectors regex`. A spy on `decoy.cli.scanning._engine_call`'s engine binding records one call per scan | `_engine_call` does not exist: the spy cannot attach | in `scan_descriptors`, pass `sample_rows=None` always | C1 |
+| AT-1 | Parity matrix, file inputs: `decoy scan F <flags> --output o.json` against `decoy.scan(F, <same kwargs>)`, byte-identical. Cells: CSV with `has_header=True` and default rows; CSV `rows=0`; CSV `rows=5, strategy="random"`; CSV `rows=5, strategy="full"`; a CSV of 10,050 rows with default rows (basis `sample`, `row_count > scanned_rows`); `.tsv`; a headerless CSV with `column_names`; a header-suspect CSV (warning, `c0..cn` names); a CSV whose header repeats `a` (both routes give fields `a` and `a.1`, D9); Parquet; fixed width with a layout file; fixed width with a parsed layout list | the API calls `profile_columns`; its result is a `ColumnProfile` | the API calls `scan_sources` itself with `sample_rows=rows` and no `rows=0` mapping (only the `rows=0` cell goes red; default rows still match the CLI) | C2 |
 | AT-2 | DataFrame parity: write `df` to `t.parquet`; `decoy scan t.parquet --output` against `decoy.scan(df, source_label="t")`: identical except `tables[0].descriptor.path`, which is `"<dataframe>"` on the API side | the API result is a `ColumnProfile` | drop 5.4 step 4 (the temp path reaches the core) | C2 |
 | AT-3 | Defaults: `decoy.scan(F, has_header=True)` with no `rows` equals `decoy scan F --has-header` with no `--rows`, on a 10,050-row file; `inspect.signature(decoy.scan).parameters["rows"].default is DEFAULT_SCAN_ROWS` | the API default reads every row | set the API default to `rows=None` | C2 |
 | AT-4 | Header rules with API spelling: `decoy.scan("x.csv")` without `has_header` raises `ValueError` whose text is the CLI template with `has_header=True` / `has_header=False` in place of `--has-header` / `--no-header`, and names no `--` flag; the same for `has_header=False` without `column_names`, for a repeated name in `column_names`, and for `format="fixed-width"` without `layout`. The CLI texts for the same inputs are unchanged (existing e2e) | the API guesses the header | default `has_header=True` in the API; or pass `CLI_SPELLING` from the API | C2 |
 | AT-5 | The API result validates against the engine read model (`ScanSetCoreRead`), and a recursive walk finds no `detail`, `top_values`, `mode`, `min` or `max` key | the result is a value-bearing profile | call `scan_set_to_dict(detail=True)` | C2 |
 | AT-6 | Sentry G-ONE-SCAN-CALL: a syntax-tree walk over `src/decoy` finds every call, attribute access and import of `scan_sources`, `scan_set_to_dict` and `profile_columns` from `decoy_engine` (`from decoy_engine import x`, `from decoy_engine.profiling import x`, `import decoy_engine as de; de.x(...)`, an `as` alias). A site outside `cli/scanning/_engine_call.py` fails unless its `file::function` is in the `scan-call-allow` baseline. Self-tests seed each spelling in a scratch source and assert the walk finds it | no sentry | add `from decoy_engine import profile_columns` and a call in `api.py::scan` | C1 (the allowlist holds `api.py::scan`); C2 (that entry removed) |
-| AT-7 | Error parity: a Parquet file with two columns named `a` (written with `pa.Table.from_arrays(..., names=["a", "a"])`), and a `.parquet` file that is not Parquet. The API raises the engine's error (the duplicate-name refusal or `ScanSourceError`) with the same class, `table` and `cause_class` the CLI prints; the exception text holds no marker value seeded in the data | the API reads the duplicate Parquet with pandas and does not refuse (D9), and raises a pyarrow error for the bad file | wrap the engine error as `ValueError(str(exc))` | C2 |
+| AT-7 | Error parity: a Parquet file with two columns named `a` (written with `pa.Table.from_arrays(..., names=["a", "a"])`), and a `.parquet` file that is not Parquet. The duplicate-name case is a `TransformError`; compare its class and `code` (`E:src/decoy_engine/execution/_guards.py:58-62`). The bad-file case is a `ScanSourceError`; compare its class, `table` and `cause_class` (`E:src/decoy_engine/profiling/scan_set.py:98-104`). In both cases the exception text holds no marker value seeded in the data | the API reads the duplicate Parquet with pandas and does not refuse (D9), and raises a pyarrow error for the bad file | wrap the engine error as `ValueError(str(exc))` | C2 |
 | AT-8 | Signature pin in `tests/unit/release/test_api_signatures.py`: the parameter list and defaults of 5.4 | old signature | remove `has_header` | C2 |
 | AT-9 | `decoy demo` `scan.json` bytes equal `core_bytes` of the run, and the spy of AT-0 records that demo's scan went through `_engine_call` | `_engine_call` does not exist | write with `indent=None` in demo; or call `scan_sources` in demo directly | C1 |
 | AT-10 | With `tempfile.tempdir` patched to an empty `tmp_path`: during a DataFrame scan (`source_label="secret_label"`) the engine spy sees exactly one staged file whose name starts with `.decoy-mask-scan-` and does not contain `secret_label`; after a successful scan and after a scan whose engine call is patched to raise, `tmp_path` is empty | the API stages nothing; no staged file exists | remove the `finally` unlink; or stage with `source_label` as the name | C2 |
 | AT-11 | A DataFrame with a mixed int and str object column holding a marker string: `decoy.scan(df)` and `decoy.mask(config, data=df)` both raise `TypeError` whose `str(exc)` names the class only and holds no marker, and `exc.__cause__ is None and exc.__context__ is None` | `decoy.scan()` profiles it in pandas; `decoy.mask()` raises the Arrow error, whose text quotes the cell | re-raise inside the `except` (chain kept); or put the Arrow text in the message | C2 |
 | AT-12 | Choke point unit test with the engine patched: `rows` of 0 and None both give `sample_rows=None, strategy="full"`; a bad strategy and a negative `rows` raise `ScanUsageError` before the engine is called, the allowed strategies equal `[s.value for s in SampleStrategy]`; a sentinel `pre_scan` object reaches `scan_sources` unchanged; `on_stage` runs twice | no choke point | map `rows=0` to `sample_rows=0`; drop `pre_scan=` from the engine call | C1 |
-| AT-13 | API input refusals, each a `ValueError` (`ScanUsageError`) raised before the engine is called (engine patched to fail the test): `format="xml"` (text lists `['delimited', 'fixed-width', 'parquet']`); a missing path; a directory; `notes.txt` with no `format` (text names `format=` and the known suffixes); a DataFrame with `has_header`; a layout list with `width: 0` (same text as a layout file with the same column). `decoy.scan("notes.txt", format="delimited", has_header=True)` scans as CSV | today: `ValueError` from `InputFormat`, `FileNotFoundError`, `IsADirectoryError`, `notes.txt` read as CSV, DataFrame options ignored, the list reaches pandas unchecked | treat an unknown suffix as CSV again in `_kind` | C2 |
-| AT-14 | CLI usage exits, e2e: `decoy scan f.csv --has-header --rows -1` exits 1 with the `rows must be 0 or more` usage text; `decoy scan notes.txt --has-header` exits 1 naming `--format` and the known suffixes; `decoy scan notes.txt --format delimited --has-header` exits 0 | today exit 3 (engine) and exit 0 (read as CSV) | call `check_scan_options` inside the engine `try`; treat an unknown suffix as CSV | C1 |
+| AT-13 | API input refusals, each a `ValueError` (`ScanUsageError`) raised before the engine is called (engine patched to fail the test): `format="xml"` (text lists `['delimited', 'fixed-width', 'parquet']`); a missing path; a directory; a DataFrame with `has_header`; a layout list with `width: 0` (same text as a layout file with the same column) | today: `ValueError` from `InputFormat`, `FileNotFoundError`, `IsADirectoryError`, DataFrame options ignored, and the list reaches pandas unchecked | remove the missing-path or directory check from `resolve_sources` | C2 |
+| AT-14 | CLI usage exit, e2e: `decoy scan f.csv --has-header --rows -1` exits 1 with the `rows must be 0 or more` usage text | today it exits 3 from the engine | call `check_scan_options` inside the engine `try` | C1 |
 
-Existing tests that change: `tests/unit/test_api.py:403-449` (`test_scan_dataframe_returns_profile`, `test_scan_path_csv`, `test_scan_invalid_strategy_raises`, `test_scan_parity_with_cli_scan`) are replaced by AT-1 to AT-5 and AT-12. `test_scan_profile_keeps_a_rare_label_but_the_saved_document_floors_it` (`tests/unit/test_api.py:414`, row 24zm) reads a `ColumnProfile` from `decoy.scan()`; C2 changes it to call `decoy_engine.profile_columns` directly, which is the function it tests. The test module docstring (`tests/unit/test_api.py:1-16`) is updated. Any existing e2e that scans a file with an unknown suffix and no `--format` gets `--format delimited` in C1 (the builder greps `tests/` for `decoy scan` on such suffixes and lists them in the PR).
+Existing tests that change: `tests/unit/test_api.py:403-449` (`test_scan_dataframe_returns_profile`, `test_scan_path_csv`, `test_scan_invalid_strategy_raises`, `test_scan_parity_with_cli_scan`) are replaced by AT-1 to AT-5 and AT-12. `test_scan_profile_keeps_a_rare_label_but_the_saved_document_floors_it` (`tests/unit/test_api.py:414`, row 24zm) reads a `ColumnProfile` from `decoy.scan()`; C2 changes it to call `decoy_engine.profile_columns` directly, which is the function it tests. The test module docstring (`tests/unit/test_api.py:1-16`) is updated.
 
 ## 8. Mutations (gate set)
 
-Run on the exact head of each slice (T2). M1: `sample_rows=None` always (AT-0, AT-1). M2: API default `rows=None` (AT-3). M3: `detail=True` (AT-5). M4: a direct `profile_columns` call in `api.py` (AT-6). M5: drop the temp-path replacement (AT-2). M6: drop the `finally` unlink (AT-10). M7: `has_header` defaults to `True` (AT-4). M8: `rows=0` maps to `sample_rows=0` (AT-12). M9: drop `pre_scan=` in `scan_descriptors` (AT-12). M10: re-raise the Arrow error inside the `except` (AT-11). M11: stage with `source_label` as the name (AT-10). M12: `check_scan_options` moved inside the engine `try` (AT-14). M13: unknown suffix read as CSV (AT-13, AT-14). Each must turn its test red; the gate ledger records the result.
+Run on the exact head of each slice (T2). M1: `sample_rows=None` always (AT-0, AT-1). M2: API default `rows=None` (AT-3). M3: `detail=True` (AT-5). M4: a direct `profile_columns` call in `api.py` (AT-6). M5: drop the temp-path replacement (AT-2). M6: drop the `finally` unlink (AT-10). M7: `has_header` defaults to `True` (AT-4). M8: `rows=0` maps to `sample_rows=0` (AT-12). M9: drop `pre_scan=` in `scan_descriptors` (AT-12). M10: re-raise the Arrow error inside the `except` (AT-11). M11: stage with `source_label` as the name (AT-10). M12: `check_scan_options` moved inside the engine `try` (AT-14). Each must turn its test red; the gate ledger records the result.
 
 ## 9. Placement (against `CODEMAP.md`)
 
 | Path | Change | CODEMAP row | Notes |
 |---|---|---|---|
-| `src/decoy/cli/scanning/_engine_call.py` | new (about 80 lines): `DEFAULT_SCAN_ROWS`, `ScanRun`, `check_scan_options`, `scan_descriptors`, `core_bytes` | "`decoy scan` internals" (`CODEMAP.md:52`): `src/decoy/cli/scanning/_<noun>.py`, beside `_multi.py` | add it to the row's examples; the row's sentry cell names the new sentry |
-| `src/decoy/cli/scanning/__init__.py` | export `scan_descriptors`, `check_scan_options`, `core_bytes`, `ScanRun`, `DEFAULT_SCAN_ROWS`, `resolve_sources`, `API_SPELLING` | same row ("Other packages import these names") | |
-| `src/decoy/cli/scanning/_multi.py` | `run_scan` calls `check_scan_options` before the engine `try` and `scan_descriptors(..., pre_scan=pre_scan)` inside `detector_log`, keeping the preflight; `ScanUsageError(ValueError)`; `ScanSpelling`, `CLI_SPELLING`, `API_SPELLING`; `resolve_sources` gains `spelling` and the format, missing-path, directory and unknown-suffix refusals; `_layout_columns(layout: Path \| list[dict] \| None, spelling)` checks a list with `_check_layout_columns`; `_split_names` takes a string or a sequence | same row | 605 lines today; ends near 640, under the 800 cap |
-| `src/decoy/cli/scan.py` | C1: the `--rows` default reads `DEFAULT_SCAN_ROWS`. C2: the column loop of `_parse_layout` becomes `_check_layout_columns`; delete `_infer_format` (`scan.py:207-218`) and the loaders (`scan.py:295-377`); docstring line 26 names `scan_sources` | "Command module" (`CODEMAP.md:49`) | lower the ceiling in `tests/sentry/baselines/module-size.json:17` |
+| `src/decoy/cli/scanning/_engine_call.py` | new (about 85 lines): `DEFAULT_SCAN_ROWS`, `SampleStrategy`, `ScanRun`, `check_scan_options`, `scan_descriptors`, `core_bytes` | "`decoy scan` internals" (`CODEMAP.md:52`): `src/decoy/cli/scanning/_<noun>.py`, beside `_multi.py` | add it to the row's examples; the row's sentry cell names the new sentry |
+| `src/decoy/cli/scanning/__init__.py` | export `scan_descriptors`, `check_scan_options`, `core_bytes`, `SampleStrategy`, `ScanRun`, `DEFAULT_SCAN_ROWS`, `resolve_sources`, `API_SPELLING` | same row ("Other packages import these names") | |
+| `src/decoy/cli/scanning/_multi.py` | `run_scan` calls `check_scan_options` before the engine `try` and `scan_descriptors(..., pre_scan=pre_scan)` inside `detector_log`, keeping the preflight; `ScanUsageError(ValueError)`; `ScanSpelling`, `CLI_SPELLING`, `API_SPELLING`; `resolve_sources` gains `spelling` and the bad-format, missing-path and directory refusals while `_kind` keeps the CSV fallback; `_layout_columns(layout: Path \| list[dict] \| None, spelling)` checks a list with `_check_layout_columns`; `_split_names` takes a string or a sequence | same row | 605 lines today; ends near 640, under the 800 cap |
+| `src/decoy/cli/scan.py` | C1: import `SampleStrategy` and `DEFAULT_SCAN_ROWS` through `decoy.cli.scanning`; the `--rows` default reads `DEFAULT_SCAN_ROWS`. C2: the column loop of `_parse_layout` becomes `_check_layout_columns`; delete `_infer_format` (`scan.py:207-218`), the loaders (`scan.py:295-377`) and their unused `_FIXED_WIDTH_EXTENSIONS` and `_PARQUET_EXTENSIONS` copies (`scan.py:91-93`, same values as `_multi.py:47-48`); docstring line 26 names `scan_sources` | "Command module" (`CODEMAP.md:49`) | lower the ceiling in `tests/sentry/baselines/module-size.json:17` |
 | `src/decoy/api.py` | `scan` rewritten (about 55 lines, was 80); `_to_pa_table` and `_arrow_schema` raise a class-only `TypeError` after the handler; module docstring lines 1-21; imports at `api.py:53-59` | "Python API" (`CODEMAP.md:59`) | `_stage_source_entry` reused unchanged, called with the fixed name `scan` |
 | `src/decoy/__init__.py` | docstring lines 7-11 | "Python API" | |
 | `src/decoy/cli/demo.py` | `:153-164` calls the choke point and `core_bytes` | "Command module" | |
 | `tests/sentry/scan/__init__.py`, `tests/sentry/scan/test_one_scan_call.py` | new (about 120 lines) | "Sentry test" (`CODEMAP.md:71`): add "`decoy scan` choke points in `tests/sentry/scan/`", as for `tests/sentry/run/` | `tests/sentry/io_policy/` is at its fan-out cap; the walk reuses `tests/sentry/io_policy/_calls.py` |
 | `tests/sentry/baselines/scan-call-allow.json` | new: `cli/init.py::init` (C1 and C2), `api.py::scan` (C1 only) | "Sentry test" | a row in `scripts/dev/sentry_registry.toml` (`kind = "json"`) |
 | `tests/sentry/baselines/csv-read-allow.json` | C2: remove the two `cli/scan.py` entries (lines 9-16) | io_policy | shrink only |
+| `tests/sentry/allowlist-before.json` | C2: remove the matching `csv-read-allow` entries (`:39-40`) and lower the `src/decoy/cli/scan.py` value in the `module-size` snapshot (`:140-145`) | sentry baseline migration snapshot | required by snapshot equality at `tests/sentry/test_baseline_registry.py:108-111` |
+| `tests/sentry/test_baseline_registry.py` | C1: add `scan-call-allow` to `CREATED_IN` (`:43-74`) | "Sentry test" | required by `test_created_in_table_covers_every_row_and_no_other` (`:104-105`) |
 | `tests/sentry/io_policy/test_declared_read_choke_point.py` | C2: remove the `("cli/scan.py", "_load_parquet_with_sampling")` entry from `CALLER_NAMED` (`:100-103`) | io_policy | the function is deleted in the same commit |
 | `tests/unit/scanning/__init__.py`, `tests/unit/scanning/test_engine_call.py` | new (AT-12) | "`decoy scan` internals" tests `tests/unit/` | a package, so the flat `tests/unit/` does not grow |
 | `tests/e2e/test_scan_one_call.py` | new (AT-0, AT-9, AT-14) | "`decoy scan` internals" tests `tests/e2e/` | |
@@ -299,7 +318,7 @@ Run on the exact head of each slice (T2). M1: `sample_rows=None` always (AT-0, A
 
 - Principle: one source for a fact that two surfaces show. The concrete pain: D1 to D13 exist because the API reimplemented read and sample steps the engine and `resolve_sources` already own.
 - Pattern: a choke point plus a walk-based sentry with a ratchet baseline, as in `tests/sentry/run/test_one_result_builder.py` and `tests/sentry/io_policy/outbound/`. The sentry resolves names through the shared `_calls.py` walker, never a grep.
-- Where each fact lives: the default rows, the `rows=0` rule and the rows and strategy checks in `_engine_call.py` (strategy values from `SampleStrategy`); the format, suffix, path, header, TSV, layout and table-name rules in `_multi.py::resolve_sources` (format names from `_FORMAT_FLAG`, layout rules from `_check_layout_columns`); the saved-file serializer in `_engine_call.py::core_bytes`; DataFrame staging and the Arrow error in `api.py`. None is restated.
+- Where each fact lives: the default rows, `SampleStrategy`, the `rows=0` rule and the rows and strategy checks in `_engine_call.py`; the format, suffix fallback, path, header, TSV, layout and table-name rules in `_multi.py::resolve_sources` (format names from `_FORMAT_FLAG`, layout rules from `_check_layout_columns`); the saved-file serializer in `_engine_call.py::core_bytes`; DataFrame staging and the Arrow error in `api.py`. None is restated.
 - Error spelling is a parameter, not a second message set: one template per rule, so the CLI and API texts cannot drift apart.
 - Deletion test: `scan_descriptors` is more than a forwarding wrapper. It owns the rows and strategy rules that today sit in `run_scan` and are missing from the API, and it is the one site the sentry allows. `ScanRun` exists because the CLI needs both the in-memory result (for `k_anonymity` and `sample_strategy`) and the core; the API uses only the core.
 - The choke point sits in `cli/scanning/`, not in a new `src/decoy/_scan.py`, because its other half (`resolve_sources`, `ScanUsageError`) is there and `api.py` already imports from `decoy.cli.*`.
@@ -310,13 +329,13 @@ PR #340 merged on `1120e39a`; the overlap section is no longer needed. Its label
 
 ## 12. Compatibility impact
 
-C1: `decoy scan` output bytes do not change (AT-0, AT-9). Two usage changes, one `CHANGELOG.md` entry under `[Unreleased]`, `### Changed`:
+C1: `decoy scan` output bytes do not change (AT-0, AT-9). One usage change, one `CHANGELOG.md` entry under `[Unreleased]`, `### Changed`:
 
-- **`decoy scan` refuses a negative `--rows` and an unknown file suffix as usage errors (exit 1).** A negative `--rows` was refused by the engine with exit 3. A file whose suffix is not `.csv`, `.tsv`, Parquet or fixed width was read as CSV; it now needs `--format`.
+- **`decoy scan` refuses a negative `--rows` as a usage error (exit 1).** A negative `--rows` was refused by the engine with exit 3.
 
 C2: `decoy.scan()` changes. One `CHANGELOG.md` entry under `[Unreleased]`, `### Changed`:
 
-- **Breaking: `decoy.scan()` returns the `decoy scan --output` document and follows the CLI's input rules (FREEZE-SURFACE item 3, audit J2).** It now calls the same function as `decoy scan` and returns the value-free `scan-set/v1` core as a dict, not the engine's `ColumnProfile`; it has no top values, modes, minimum or maximum. It runs the regex detectors only. A CSV path needs `has_header=True` or `has_header=False` (with `column_names`). A `.tsv` file is read tab-delimited. A file with an unknown suffix needs `format`. The default is the first 10,000 rows; `rows=None` or `rows=0` reads every row. A Parquet source with a repeated column name is refused. Table names follow `decoy scan` (`source_label` overrides; a DataFrame is `dataframe`, with source path `<dataframe>`). Usage errors are `ValueError`s that name the keyword arguments; scan errors are the engine's class-only errors. `format`, `layout`, `has_header` and `column_names` with a DataFrame now raise `ValueError`. A DataFrame is staged to an owner-only temp Parquet file for the scan and removed afterwards. For the value-bearing profile, call `decoy_engine.profile_columns`.
+- **Breaking: `decoy.scan()` returns the `decoy scan --output` document and follows the CLI's input rules (FREEZE-SURFACE item 3, audit J2).** It now calls the same function as `decoy scan` and returns the value-free `scan-set/v1` core as a dict, not the engine's `ColumnProfile`; it has no top values, modes, minimum or maximum. It runs the regex detectors only. A CSV path needs `has_header=True` or `has_header=False` (with `column_names`). A `.tsv` file is read tab-delimited. Other suffixes keep the CLI's CSV fallback. The default is the first 10,000 rows; `rows=None` or `rows=0` reads every row. A Parquet source with a repeated column name is refused. Table names follow `decoy scan` (`source_label` overrides; a DataFrame is `dataframe`, with source path `<dataframe>`). Usage errors are `ValueError`s that name the keyword arguments; scan errors are the engine's class-only errors. `format`, `layout`, `has_header` and `column_names` with a DataFrame now raise `ValueError`. A DataFrame is staged to an owner-only temp Parquet file for the scan and removed afterwards. For the value-bearing profile, call `decoy_engine.profile_columns`.
 - **`decoy.mask()` and `decoy.scan()` report a DataFrame that Arrow cannot convert as `TypeError` naming the error class only.** The Arrow message, which can quote a cell, is no longer raised or chained.
 
 If the freeze plan's X1 has merged by then, the `decoy.scan()` entry also starts with "Experimental:", per contract section 3.6 rule 2. Consumers inventoried: `tests/unit/test_api.py`, `tests/unit/release/test_api_signatures.py`, `docs/release/frozen-surfaces.md:22`, `docs/roadmap/groups/scan.md` (row 24zm text), `docs/RECENTLY-SHIPPED.md`, and the `decoy.scan()` mentions in `CHANGELOG.md` (history, unchanged). No README, guide or example calls `decoy.scan(` (grep over `README.md` and `docs/` outside records, plans and archive). No platform consumer (platform parked).
@@ -333,14 +352,14 @@ If the freeze plan's X1 has merged by then, the `decoy.scan()` entry also starts
 | Q5 | Table name and `source_label` | `source_label` sets the table name. |
 | Q6 | Several inputs in one `decoy.scan()` call | No: one input per call. |
 
-Design calls made by the author under these answers (no owner question): error texts name the caller's own spelling (5.1); unknown suffixes are refused on both routes (5.4 step 1); the API stays regex only (non-goals).
+Design calls made by the author under these answers (no owner question): error texts name the caller's own spelling (5.1); the API stays regex only (non-goals).
 
 ## 14. Slices
 
 | Slice | Repo | Content | Risk | Tests | After | Gate |
 |---|---|---|---|---|---|---|
-| C1 | CLI | `_engine_call.py` (`scan_descriptors` with `pre_scan`, `check_scan_options`, `core_bytes`, `ScanRun`, `DEFAULT_SCAN_ROWS`); `run_scan` and `decoy demo` call it; `check_scan_options` before the engine `try`; unknown-suffix, bad-format, missing-path and directory refusals in `resolve_sources`; sentry G-ONE-SCAN-CALL with `scan-call-allow` (`cli/init.py::init`, `api.py::scan`); CODEMAP rows; CHANGELOG C1 entry | R2 (two visible usage changes) | AT-0, AT-6, AT-9, AT-12, AT-14; existing scan, scan-models and demo e2e | owner answers (done) | T2 on the exact head plus M1, M4, M8, M9, M12, M13; Dennis then Codex |
-| C2 | CLI | `decoy.scan()` ported (5.4); `ScanUsageError(ValueError)`; `ScanSpelling`; layout list through `_layout_columns`; `_to_pa_table` and `_arrow_schema` class-only errors; `scan.py` loaders deleted; `csv-read-allow`, `CALLER_NAMED` and `scan-call-allow` shrink; module-size ceiling lowered; tests replaced; CHANGELOG Breaking entry; frozen-surface map row; health row and RECENTLY-SHIPPED | R2 | AT-1 to AT-5, AT-7, AT-8, AT-10, AT-11, AT-13 | C1 merged | T2 on the exact head plus M1 to M7, M10, M11, M13; full suite before merge (escalation triggers: a frozen public signature and result, and moved or deleted tests); Dennis then Codex |
+| C1 | CLI | `_engine_call.py` (`scan_descriptors` with `pre_scan`, `check_scan_options`, `core_bytes`, `SampleStrategy`, `ScanRun`, `DEFAULT_SCAN_ROWS`); `scan.py` imports the enum through `decoy.cli.scanning`; `run_scan` and `decoy demo` call the choke point; `check_scan_options` runs before the engine `try`; bad-format, missing-path and directory refusals in `resolve_sources`; sentry G-ONE-SCAN-CALL with `scan-call-allow` (`cli/init.py::init`, `api.py::scan`); the registry `CREATED_IN` row; CODEMAP rows; CHANGELOG C1 entry | R2 (negative `--rows` changes from exit 3 to exit 1) | AT-0, AT-6, AT-9, AT-12, AT-14; existing scan, scan-models and demo e2e | owner answers (done) | T2 on the exact head plus M1, M4, M8, M9, M12; Dennis then Codex |
+| C2 | CLI | `decoy.scan()` ported (5.4); `ScanUsageError(ValueError)`; `ScanSpelling`; layout list through `_layout_columns`; `_to_pa_table` and `_arrow_schema` class-only errors; `scan.py` loaders, `_infer_format` and the copied suffix constants at `scan.py:91-93` deleted; `csv-read-allow`, `allowlist-before`, `CALLER_NAMED` and `scan-call-allow` shrink; module-size ceiling and its `allowlist-before` snapshot lowered; tests replaced; CHANGELOG Breaking entry; frozen-surface map row; health row and RECENTLY-SHIPPED | R2 | AT-1 to AT-5, AT-7, AT-8, AT-10, AT-11, AT-13 | C1 merged | T2 on the exact head plus M1 to M7, M10 and M11; full suite before merge (escalation triggers: a frozen public signature and result, and moved or deleted tests); Dennis then Codex |
 
 Two slices because C1 is a refactor with a small usage change and a guard, and C2 is the public break. If the owner prefers one slice, C1 folds into C2.
 
@@ -348,8 +367,8 @@ Size: C1 adds about 100 source lines, removes about 20, and adds about 250 test 
 
 ## 15. Done when
 
-- C1: AT-0, AT-6, AT-9, AT-12 and AT-14 pass on the merge head; M1, M4, M8, M9, M12 and M13 are recorded red; `scan-call-allow` holds `cli/init.py::init` and `api.py::scan`; the CHANGELOG C1 entry and `CODEMAP.md` rows 52 and 71 are updated.
-- C2: AT-1 to AT-5, AT-7, AT-8, AT-10, AT-11 and AT-13 pass on the merge head, with AT-0 and AT-12 still green; M1 to M7, M10, M11 and M13 are recorded red; `scan-call-allow` holds only `cli/init.py::init`; the Breaking entry, `docs/release/frozen-surfaces.md:22`, `CODEMAP.md` row 59, the FREEZE-SURFACE row in `docs/roadmap/groups/health.md` (item 3 merged) and `docs/RECENTLY-SHIPPED.md` are updated.
+- C1: AT-0, AT-6, AT-9, AT-12 and AT-14 pass on the merge head; M1, M4, M8, M9 and M12 are recorded red; `scan-call-allow` holds `cli/init.py::init` and `api.py::scan`; `CREATED_IN` covers the new baseline; the CHANGELOG C1 entry and `CODEMAP.md` rows 52 and 71 are updated.
+- C2: AT-1 to AT-5, AT-7, AT-8, AT-10, AT-11 and AT-13 pass on the merge head, with AT-0 and AT-12 still green; M1 to M7, M10 and M11 are recorded red; `scan-call-allow` holds only `cli/init.py::init`; the live baselines and `allowlist-before.json` agree after their shrink; the Breaking entry, `docs/release/frozen-surfaces.md:22`, `CODEMAP.md` row 59, the FREEZE-SURFACE row in `docs/roadmap/groups/health.md` (item 3 merged) and `docs/RECENTLY-SHIPPED.md` are updated.
 
 ## 15.1 Plan defect catalog classes
 
@@ -360,7 +379,7 @@ Size: C1 adds about 100 source lines, removes about 20, and adds about 250 test 
 | 3 | State completeness (every scan producer goes through the choke point; every allowed bypass has a reason) | `scan-call-allow` baseline with a reason per entry, shrink-only | AT-6 | add a site with no allowlist row | C1, C2 |
 | 4 | Route coverage (CLI, demo and API take one path; every input kind has a parity cell) | `scan_descriptors` is the only engine caller; the AT-1 matrix has a cell per drift row and per format | AT-1, AT-2, AT-6, AT-9 | the API calls `scan_sources` itself | C1, C2 |
 | 5 | Referential integrity | not applicable: the scan passes no relationships (`relationships` stays empty on both routes) | none | none | - |
-| 6 | Untrusted input (caller-given paths, formats, layouts, column names and DataFrames) | `resolve_sources` checks apply to both routes before the engine; the engine validates each descriptor | AT-4, AT-7, AT-11, AT-13, AT-14 | default `has_header=True`; unknown suffix read as CSV | C1, C2 |
+| 6 | Untrusted input (caller-given paths, formats, layouts, column names and DataFrames) | `resolve_sources` checks apply to both routes before the engine; the engine validates each descriptor | AT-4, AT-7, AT-11, AT-13, AT-14 | default `has_header=True`; remove the missing-path check | C1, C2 |
 | 7 | TOCTOU or check-then-use | not applicable beyond today: the engine opens the descriptor path it validated (the new missing-path check is a usage message, not a guard); the temp file is created owner-only by `create_private_temp` before the write | existing private-file sentries | none new | - |
 | 8 | Weak proof (a sentry that passes on an empty walk; a parity test that compares a few members; a guard compared to stale recorded bytes) | the sentry self-tests seed each spelling and assert the walk finds `_engine_call.py` itself; parity compares whole documents byte for byte; AT-0 computes its expected bytes in the same run | AT-6 self-tests, AT-0, AT-1 | make the walk return nothing | C1, C2 |
 | 9 | Refactor drift (C1 changes `decoy scan` or `decoy demo` bytes, or drops `pre_scan`, while moving the engine call) | C1 moves the call and the rows rule unchanged, inside `detector_log` | AT-0, AT-9, AT-12 | `sample_rows=None` always; `indent=None` in demo; drop `pre_scan=` | C1 |
@@ -385,7 +404,7 @@ Callers of the engine scan functions under `src/decoy` on `origin/main` `1120e39
 `decoy scan` exit codes (`src/decoy/cli/scanning/_multi.py:485-561`):
 
 - Exit 2: a Typer usage error (missing path, directory, bad `--format` value), unchanged.
-- Exit 1: a `ScanUsageError` or detector usage error, now including a negative `--rows` (was 3) and an unknown suffix (was 0).
+- Exit 1: a `ScanUsageError` or detector usage error, now including a negative `--rows` (was 3).
 - Exit 3: a scan failure.
 
 ### 15.2.3 Routes
@@ -405,9 +424,9 @@ N/A: both routes call `scan_sources` without `relationships`, so the integrity p
 
 ### 15.2.5 Fields
 
-The fields of the returned core are the engine's `TableCore` and `FieldCore` members (`E:src/decoy_engine/profiling/_scan_core.py`), listed in 5.5. Inputs and options, each with an AT-1, AT-2, AT-3, AT-12, AT-13 or AT-14 cell:
+The fields of the returned core are the engine's `TableCore` and `FieldCore` members (`E:src/decoy_engine/profiling/_scan_core.py`), listed in 5.5. Relevant acceptance tests are AT-1, AT-2, AT-3, AT-12, AT-13 and AT-14. The inputs and options are:
 
-- Input kinds: CSV path (with header, or headerless with names), TSV path, Parquet path, fixed-width path (layout file or parsed list), a path with an unknown suffix (with or without `format`), a missing path, a directory, a DataFrame.
+- Input kinds: CSV path (with header, or headerless with names), TSV path, Parquet path, fixed-width path (layout file or parsed list), a path with another suffix using the CSV fallback, a missing path, a directory, a DataFrame.
 - `strategy`: `head`, `random`, `full`, invalid.
 - `rows`: default, positive, `0`, `None`, negative.
 - `format`: valid, invalid, absent.
@@ -417,7 +436,7 @@ The fields of the returned core are the engine's `TableCore` and `FieldCore` mem
 - `decoy.scan()` return value: changes in C2.
 - `decoy scan` card, `--json`, `--output FILE` and `--output -` (`src/decoy/cli/scanning/_multi.py:544-605`): unchanged bytes.
 - `decoy demo` `scan.json` (`src/decoy/cli/demo.py:162-164`): unchanged bytes.
-- `decoy scan` usage error texts: unchanged except the two new refusals (C1).
+- `decoy scan` usage error texts: unchanged except the negative `--rows` refusal moves from exit 3 to exit 1 (C1).
 - `decoy.mask()` exception text and chain for an Arrow conversion failure: class only, no chain (C2).
 
 ## 15.3 Frozen contracts
@@ -426,7 +445,7 @@ The fields of the returned core are the engine's `TableCore` and `FieldCore` mem
 - Frozen-surface map row `docs/release/frozen-surfaces.md:22`: text updated in C2.
 - `scan-set/v1` (engine contract 3.1): not changed; the API now returns it as `decoy scan --output` does.
 - `decoy scan` `--json` shapes (`tests/fixtures/release_freeze/json-shapes.json`) and `--output` bytes: not changed (AT-0).
-- Exit-code integers (`docs/release/frozen-surfaces.md:16`): not changed; C1 moves two `decoy scan` misuse cases between existing codes.
+- Exit-code integers (`docs/release/frozen-surfaces.md:16`): not changed; C1 moves the negative `--rows` case from exit 3 to exit 1.
 
 ## 16. Pre-mortem
 
@@ -434,4 +453,4 @@ The fields of the returned core are the engine's `TableCore` and `FieldCore` mem
 - "The sentry missed `import decoy_engine.profiling.scan_set as s; s.scan_sources(...)`." The self-tests seed the module alias form; a runtime-bound name (`getattr`) is a named limit, as in the CSV read sentry.
 - "Staging a 5 GB DataFrame filled the temp folder." Known limit (F11), the same as `decoy.mask()`; the docstring says to pass a path for large data.
 - "`--detectors classifier` ran regex only after C1." AT-12 checks that `pre_scan` reaches the engine; the `scan_models` e2e tests run in the C1 gate.
-- "A user's `.txt` export stopped scanning." The refusal names `--format delimited`; the C1 CHANGELOG entry says so.
+- "A user's `.txt` export stopped scanning." Both routes keep `_kind`'s CSV fallback, so this item does not change that behavior.
