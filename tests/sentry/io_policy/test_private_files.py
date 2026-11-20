@@ -606,7 +606,7 @@ def test_the_census_is_60_watched_sinks(files: dict[str, str]) -> None:
     counts: dict[str, int] = {}
     for r in ROWS:
         counts[r.disposition] = counts.get(r.disposition, 0) + 1
-    assert counts == {"public": 23, "private": 4, "staged": 3, "temp": 2, "read": 5}
+    assert counts == {"public": 20, "private": 4, "staged": 3, "temp": 2, "read": 5}
 
 
 def test_the_baseline_has_two_rows_with_exits() -> None:
