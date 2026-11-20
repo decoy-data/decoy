@@ -1,4 +1,4 @@
-"""The one engine call behind every scan: `decoy scan`, `decoy demo` and, later, `decoy.scan()`.
+"""The one engine call behind every scan: `decoy scan`, `decoy demo` and `decoy.scan()`.
 
 This module owns the facts the callers must agree on: the default sample size, the strategy
 names, the rule that `--rows 0` reads every row, and the bytes of a saved scan. It is the only
