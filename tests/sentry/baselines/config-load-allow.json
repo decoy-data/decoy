@@ -2,7 +2,7 @@
  "sentry_id": "config-load-allow",
  "created_in": "CL3",
  "entries": {
-  "ci/locations.py::YamlSourceIndex.from_text::1": {
+  "_source_positions.py::YamlPositionIndex.from_text::1": {
    "reason": "source index: yaml.compose of text the gate already loaded, for SARIF line marks"
   },
   "ci/manifest.py::_parse::1": {

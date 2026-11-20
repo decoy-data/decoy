@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any, NamedTuple
 
 from tests.sentry._ratchet import load_allowlist
+from tests.sentry.io_policy import _lang_imports as lang_imports
 from tests.sentry.io_policy import _yaml_load_sites as sites
 
 KINDS = frozenset(
@@ -132,3 +133,112 @@ def test_a_hand_rolled_read_and_decode_is_seen() -> None:
 def test_reading_bytes_or_decoding_alone_is_not_a_bypass() -> None:
     assert sites.bypass_sites_in_source("def f(p):\n    return p.read_bytes()\n", "x.py") == set()
     assert sites.bypass_sites_in_source("def f(b):\n    return b.decode()\n", "x.py") == set()
+
+
+# --- the language is reached only through the loader (rule 1, tests 2 and 3) --------------------
+
+
+def test_no_one_outside_the_loader_takes_a_private_name_of_it() -> None:
+    """`_parse_yaml_mapping(read_config_text(p))` is the bypass this closes: the YAML parser is
+    private, so a caller cannot read a pipeline file without the loader's checks."""
+    private = [v for v in lang_imports.violations() if "private loader name" in v]
+    assert private == []
+
+
+def test_the_language_is_imported_only_by_the_exact_allowed_pairs() -> None:
+    assert lang_imports.violations() == []
+
+
+_PAIR_SEEDS = [
+    ("decoy._config_file", "from decoy.lang import lower_text\n", "lower_text"),
+    ("decoy._config_file", "def f():\n    from decoy.lang import LangError\n", "LangError"),
+    ("decoy.cli.lang._fmt", "from decoy.lang import format_text, render\n", "format_text"),
+    ("decoy.cli.lang", "from decoy.lang import convert_config, emit_yaml\n", "emit_yaml"),
+    (
+        "decoy.ci.rule_codes",
+        "def validation_codes():\n    from decoy.lang import CODES\n",
+        "CODES",
+    ),
+]
+
+
+def _bad(importer: str, source: str) -> list[tuple[str, str, str]]:
+    return [
+        use
+        for use in sorted(lang_imports.uses_in_source(source))
+        if not lang_imports.is_allowed(importer, *use)
+    ]
+
+
+def test_each_allowed_pair_passes_its_own_seeded_check() -> None:
+    for importer, source, name in _PAIR_SEEDS:
+        assert {u[1] for u in lang_imports.uses_in_source(source)} >= {name}, source
+        assert _bad(importer, source) == [], (importer, source)
+
+
+def test_moving_the_codes_import_to_module_scope_is_red() -> None:
+    assert _bad("decoy.ci.rule_codes", "from decoy.lang import CODES\n")
+
+
+def test_one_more_name_for_an_allowed_importer_is_red() -> None:
+    assert _bad("decoy._config_file", "from decoy.lang import lower_text, compile_text\n")
+
+
+_SPELLINGS = {
+    "alias": "import decoy.lang as L\nL.lower_text(t)\n",
+    "from_import": "from decoy.lang import compile_text\n",
+    "attribute": "import decoy\ndecoy.lang.compile_text(t)\n",
+    "private_from": "from decoy.lang._lower import lower\n",
+    "package_binding": "from decoy import lang\n",
+    "star": "from decoy.lang import *\n",
+    "dunder_import": '__import__("decoy.lang")\n',
+    "import_module": 'import importlib\nimportlib.import_module("decoy.lang")\n',
+    "private_import_module": 'import importlib\nimportlib.import_module("decoy.lang._lower")\n',
+    "private_alias": "import decoy.lang._lower as x\n",
+}
+
+
+def test_each_seeded_spelling_is_red_for_a_cli_module() -> None:
+    for name, source in _SPELLINGS.items():
+        assert _bad("decoy.cli.validate", source), name
+
+
+def test_a_private_loader_name_is_seen_in_each_spelling() -> None:
+    bypass = "from decoy._config_file import _parse_yaml_mapping, read_config_text\n"
+    assert lang_imports.private_loader_imports(bypass) == {"_parse_yaml_mapping"}
+    assert lang_imports.private_loader_imports("from decoy._config_file import *\n") == {"*"}
+    assert lang_imports.private_loader_imports(
+        "from decoy import _config_file\n_config_file._parse_yaml_mapping(t)\n"
+    ) == {"_parse_yaml_mapping"}
+    assert lang_imports.private_loader_imports("from decoy._config_file import load_pipeline\n") == set()
+
+
+# --- the one pipeline suffix table (F10) --------------------------------------------------------
+
+_CLI = sites.SRC / "cli"
+
+
+def yml_literals(source: str) -> list[int]:
+    """Lines of a string literal that is exactly `.yml`. The suffix table is
+    `decoy._config_file.PIPELINE_SUFFIXES`; no command module keeps a second one."""
+    import ast
+
+    return [
+        n.lineno
+        for n in ast.walk(ast.parse(source))
+        if isinstance(n, ast.Constant) and n.value == ".yml"
+    ]
+
+
+def test_no_cli_module_spells_a_pipeline_suffix() -> None:
+    found = {
+        p.relative_to(sites.SRC).as_posix(): yml_literals(p.read_text(encoding="utf-8"))
+        for p in sorted(_CLI.rglob("*.py"))
+    }
+    assert {k: v for k, v in found.items() if v} == {}
+
+
+def test_a_seeded_suffix_literal_is_seen() -> None:
+    assert yml_literals('SUFFIXES = (".yaml", ".yml")\n') == [1]
+    assert yml_literals('name.endswith((".yml", ".yaml"))\n') == [1]
+    assert yml_literals('"native-companion.yml CI"\n') == []

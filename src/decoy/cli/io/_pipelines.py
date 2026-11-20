@@ -27,6 +27,7 @@ from typing import Any, overload
 
 import typer
 
+from decoy._config_file import PIPELINE_SUFFIXES
 from decoy.cli.completers import pipeline_names
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io._layout import (
@@ -52,8 +53,6 @@ from decoy.cli.io._layout_errors import (
 from decoy.cli.io._project import Project, find_project
 from decoy.ui.output import OutputMode, OutputState, emit_json
 from decoy.ui.theme import error
-
-_PATH_SUFFIXES = (".yaml", ".yml")
 
 
 @dataclass(frozen=True)
@@ -113,7 +112,7 @@ def explicit_project(ctx: typer.Context | None) -> Path | None:
 
 def looks_like_path(raw: str) -> bool:
     """True for a token with a separator, a YAML suffix, or `-`: a path, not a pipeline name."""
-    return raw == "-" or "/" in raw or "\\" in raw or raw.lower().endswith(_PATH_SUFFIXES)
+    return raw == "-" or "/" in raw or "\\" in raw or raw.lower().endswith(PIPELINE_SUFFIXES)
 
 
 def _require_readable_file(raw: str) -> None:

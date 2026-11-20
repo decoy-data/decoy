@@ -9,6 +9,8 @@ that is not on this page.
 
 | Code | Means | Fix |
 |---|---|---|
+| `lang.not_utf8` | The file is not UTF-8 text | Save it as UTF-8 |
+| `lang.empty` | The file has no text | Write a program |
 | `lang.syntax` | A word or symbol is not where the language expects one | The hint lists what would fit there |
 | `lang.version` | The first line is not `decoy 1` | Write `decoy 1` |
 | `lang.string_escape` | A backslash sequence in double quotes is not one the language reads | Use single quotes, or double the backslash |

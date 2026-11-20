@@ -112,7 +112,9 @@ See also: decoy run, decoy report fidelity.
 
 
 def config(
-    config: str = pipeline_argument(help="Path or name of the YAML pipeline config to validate."),
+    config: str = pipeline_argument(
+        help="Path or name of the pipeline file (.yaml or .decoy) to validate."
+    ),
     json_: bool = typer.Option(
         False,
         "--json",
@@ -253,7 +255,7 @@ _GATE_LAYERS: tuple[tuple[str, str], ...] = (
 
 def _gate(
     config: str = pipeline_argument(
-        help="Path or name of the YAML pipeline config to run the whole pre-run gate against.",
+        help="Path or name of the pipeline file (.yaml or .decoy) to run the whole gate on.",
     ),
     json_: bool = typer.Option(
         False,

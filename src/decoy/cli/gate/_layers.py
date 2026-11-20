@@ -15,12 +15,7 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from decoy._config_file import (
-    ConfigFileError,
-    decode_config_bytes,
-    parse_config_mapping,
-    read_config_text,
-)
+from decoy._config_file import ConfigFileError, ConfigProblem, load_pipeline
 from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_OK, EXIT_USAGE, EXIT_WARNINGS
 
 if TYPE_CHECKING:
@@ -93,24 +88,28 @@ def _plan_error_fields(error: Exception) -> tuple[str, str, str | None]:
     return code, message, (translated.extra if translated is not None else None)
 
 
+def _loader_finding(problem: ConfigProblem) -> GateFinding:
+    return GateFinding("config", "error", problem.code, problem.text)
+
+
 def parse_pipeline_yaml(
     config_path: Path, source_text: str | bytes | None = None
 ) -> tuple[dict[str, Any] | None, list[GateFinding]]:
-    """The pipeline YAML as a mapping, through the one config loader.
+    """The pipeline file as a mapping, through the one config loader (YAML or `.decoy`).
 
     Reads `config_path` unless `source_text` is given; bytes are decoded by the loader.
-    Returns `(raw, [])`, or `(None,
-    [finding])` when the file is not UTF-8, does not parse, is empty or is not a mapping: the
-    finding carries the loader's code (`yaml.not_utf8`, `yaml.parse_error`, `yaml.empty`,
-    `yaml.not_mapping`) and its text. An `OSError` from the read passes through.
+    Returns `(raw, [])`, or `(None, findings)` when the file cannot be used: one finding per
+    problem, carrying the loader's code (`yaml.not_utf8`, `yaml.parse_error`, `yaml.empty`,
+    `yaml.not_mapping`, or a `lang.*` code) and its text, which leads with line and column for a
+    `.decoy` problem. A file whose only problem is a `?` mark returns `(raw, mark findings)`:
+    the mapping is real, but the callers refuse on any finding, so no mark reaches a run.
+    An `OSError` from the read passes through.
     """
     try:
-        if source_text is None:
-            source_text = read_config_text(config_path)
-        text = decode_config_bytes(source_text) if isinstance(source_text, bytes) else source_text
-        return parse_config_mapping(text), []
+        pipeline = load_pipeline(config_path, text=source_text)
     except ConfigFileError as exc:
-        return None, [GateFinding("config", "error", exc.code, exc.message)]
+        return None, [_loader_finding(problem) for problem in exc.problems]
+    return pipeline.config, [_loader_finding(mark) for mark in pipeline.unreviewed]
 
 
 def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:

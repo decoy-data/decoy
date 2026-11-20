@@ -79,7 +79,7 @@ See also: decoy run, decoy validate, decoy validate preflight.
 
 def subset(
     config: str = pipeline_argument(
-        help="Path or name of the YAML pipeline config (must declare a subset: block).",
+        help="Path or name of the pipeline file (.yaml or .decoy; must declare a subset).",
     ),
     out: Path | None = typer.Option(
         None,

@@ -20,6 +20,8 @@ from functools import lru_cache
 
 import typer
 
+from decoy._config_file import PIPELINE_SUFFIXES
+
 # Transform IDs are static -- one entry per mask strategy shipped by the engine.
 # Keep this list in sync with `decoy_engine.execution._strategies.SCALAR_HANDLERS`
 # if a new one ships. (composite/orphan are generation/FK handlers, not column
@@ -127,7 +129,7 @@ def _yaml_paths(incomplete: str) -> list[str]:
                 continue
             if entry.is_dir():
                 found.append(f"{head}{sep}{entry.name}/")
-            elif entry.name.lower().endswith((".yaml", ".yml")):
+            elif entry.name.lower().endswith(PIPELINE_SUFFIXES):
                 found.append(f"{head}{sep}{entry.name}")
     except OSError:
         return []
