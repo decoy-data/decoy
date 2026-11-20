@@ -38,6 +38,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
+from scripts.qa.corpus.manifest import load_manifest
 from scripts.qa.io import AlreadyPublished, exclusive_claim, publish_or_same, publish_private_once
 from scripts.qa.sweep import (
     NothingRead,
@@ -65,6 +66,35 @@ FIELDS: dict[str, type] = {
     "confusing": bool,
 }  # fmt: skip
 OPTIONAL = {"coordinate"}
+
+
+def _corpus_ids() -> frozenset[str]:
+    """The closed vocabulary of `corpus_item`: the ids in the corpus manifest."""
+    return frozenset(item.id for item in load_manifest(MANIFEST))
+
+
+def _pattern(text: str) -> Callable[[str], bool]:
+    compiled = re.compile(text)
+    return lambda value: compiled.fullmatch(value) is not None
+
+
+# Harness-filled structural fields: typed metadata like the plan's metric fields. Each has a strict
+# grammar (an anchored pattern or a closed vocabulary), is refused when it does not fit, and then
+# skips the refusal-set lookup, because a version such as `1.0.0` would otherwise collide with a
+# corpus value `0`. The needles scan still runs on every one. Free text (`command`, `config`,
+# `expected`, `actual`, `repro`, `coordinate`) keeps the full lookup.
+STRUCTURAL: dict[str, Callable[[str], bool]] = {
+    "id": _pattern(r"[a-z0-9][a-z0-9-]{2,63}"),
+    "layer": _pattern(r"L[1-4]"),
+    "persona": _pattern(r"|P[1-9][0-9]?"),
+    "group": _pattern(r"[A-Z][A-Z0-9-]{0,15}"),
+    "platform": _pattern(r"[a-z0-9][a-z0-9_.-]{0,31}"),
+    "cli_version": _pattern(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+.][0-9A-Za-z.-]{1,31})?"),
+    "engine_version": _pattern(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+.][0-9A-Za-z.-]{1,31})?"),
+    "bundle_digest": _pattern(r"sha256:[0-9a-f]{2,64}"),
+    "proposed_tier": lambda value: value in {"V1", "V2-LOG"},
+    "corpus_item": lambda value: value in _corpus_ids(),
+}
 # The triager's vocabulary. A tester never writes a verdict on their own finding.
 TRIAGE = ("confirmed", "not-reproduced", "duplicate", "v1", "v2-log", "docs-only")
 # The verdict file's descriptor. A verdict is written and read through it, as a record is.
@@ -75,6 +105,7 @@ PASS_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 ARTIFACT = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 MARKER_PREFIX = "qamark"
 RECORDS = Path(__file__).resolve().parents[2] / "docs/records"
+MANIFEST = Path(__file__).resolve().parents[2] / "docs/qa/corpus/manifest.toml"
 
 
 class Refused(ValueError):
@@ -153,6 +184,9 @@ VERDICT = Schema(VERDICT_FIELDS)
 
 def _validate(doc: Mapping[str, object], *, reading: bool, tester: str | None = None) -> None:
     RECORD.check(doc, reading=reading)
+    for name, fits in STRUCTURAL.items():
+        if name in doc and not fits(str(doc[name])):
+            raise _Invalid(f"{name} does not fit its grammar")
     ident = str(doc["id"])
     if ID.fullmatch(ident) is None or (tester is not None and not ident.startswith(f"{tester}-")):
         raise _Invalid("id is not a tester-scoped id")
@@ -245,7 +279,8 @@ def write(
     _check_record(record, tester)
     for name, value in record.items():
         for text in _strings(value):
-            _guard(text, name, needles, refusal)
+            # Structural fields passed their grammar above; only free text gets the scalar lookup.
+            _guard(text, name, needles, None if name in STRUCTURAL else refusal)
     for name, blob in artifacts.items():
         # `<id>.toml` is the record itself, so a name that ends the file in `.toml` is refused.
         if ARTIFACT.fullmatch(name) is None or f"{record['id']}.{name}".endswith(".toml"):
@@ -368,8 +403,10 @@ def publish(
     slack = f"QA-BETA pass {pass_id}: {len(found)} findings. Ids: " + ", ".join(
         str(r["id"]) for r in found
     )
-    _guard(record_text, "the pass record", needles, refusal)
-    _guard(slack, "the Slack text", needles, refusal)
+    # Both texts hold only grammar-checked fields and counts, so a corpus number such as `1` would
+    # collide with a count: needles only. Free text was checked when each record was written.
+    _guard(record_text, "the pass record", needles, None)
+    _guard(slack, "the Slack text", needles, None)
     day = (today or datetime.date.today()).isoformat()
     target = Path(records_dir) / f"{day}-qa-beta-{pass_id}.md"
     publish_or_same(target, record_text.encode("utf-8"))  # a rerun finds it done

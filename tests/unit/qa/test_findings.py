@@ -21,7 +21,7 @@ def record(**over: object) -> dict[str, object]:
     base: dict[str, object] = {
         "id": "t1-001", "layer": "L1", "persona": "", "group": "RUN", "platform": "linux-x86_64",
         "cli_version": "1.0.0", "engine_version": "1.0.0", "bundle_digest": "sha256:ab",
-        "corpus_item": "shop-s", "command": "decoy run shop", "config": "values removed",
+        "corpus_item": "single-csv-s", "command": "decoy run shop", "config": "values removed",
         "expected": "docs/cli-reference.md:108", "actual": "output differs", "exit": 1,
         "repro": "sh repro.sh", "proposed_tier": "V1", "confusing": False,
     }  # fmt: skip
@@ -479,11 +479,6 @@ def test_a_latin1_and_a_utf32_artifact_are_checked_too(tmp_path: Path) -> None:
     assert not (tmp_path / "pass-1").exists()
 
 
-def _rc(**over: object) -> dict[str, object]:
-    """A record whose version strings hold no `0` token, so only the field under test can match."""
-    return record(cli_version="rc", engine_version="rc", **over)
-
-
 # Short values (coordinator ruling): every scalar is indexed; one and two characters match whole.
 @pytest.mark.parametrize("value", ["sex F", "state CA.", "count 0", "delta -1", "ratio 3.5", "-1"])
 @pytest.mark.parametrize("field", ["actual", "command", "config", "expected", "repro"])
@@ -491,7 +486,7 @@ def test_short_whole_tokens_are_refused_in_every_string_field(
     tmp_path: Path, field: str, value: str
 ) -> None:
     with pytest.raises(findings.Refused):
-        findings.write(tmp_path, "pass-1", _rc(**{field: value}), NEEDLES, SHORT_REFUSAL)
+        findings.write(tmp_path, "pass-1", record(**{field: value}), NEEDLES, SHORT_REFUSAL)
 
 
 @pytest.mark.parametrize("value", ["F", "CA", "0", "-1"])
@@ -499,13 +494,13 @@ def test_short_whole_tokens_are_refused_in_artifacts(tmp_path: Path, value: str)
     for blob in (f"x {value} y".encode(), f"x {value} y".encode("utf-16")):
         with pytest.raises(findings.Refused):
             findings.write(
-                tmp_path, "pass-1", _rc(), NEEDLES, SHORT_REFUSAL, artifacts={"a.txt": blob}
+                tmp_path, "pass-1", record(), NEEDLES, SHORT_REFUSAL, artifacts={"a.txt": blob}
             )
 
 
 @pytest.mark.parametrize("value", ["the CAT sat", "Fred left", "10 and 100", "item-1", "1.50"])
 def test_the_same_characters_inside_a_longer_word_are_accepted(tmp_path: Path, value: str) -> None:
-    findings.write(tmp_path, "pass-1", _rc(actual=value), NEEDLES, SHORT_REFUSAL)
+    findings.write(tmp_path, "pass-1", record(actual=value), NEEDLES, SHORT_REFUSAL)
 
 
 # V1-5: valid TOML for any text ---------------------------------------------------------------
@@ -658,3 +653,54 @@ def test_the_cli_write_requires_a_tester(tmp_path: Path) -> None:
     assert findings.main([*base, "--tester", "t2"]) == 1  # another tester's id
     assert not (tmp_path / "root").exists()
     assert findings.main([*base, "--tester", "t1"]) == 0
+
+
+# Structural fields: typed metadata with a grammar, no refusal-set lookup -------------------------
+ZERO = sweep.RefusalSet.build([0, 1, "F", "CA"])
+
+
+def test_a_version_with_a_zero_is_accepted_when_zero_is_in_the_refusal_set(
+    tmp_path: Path,
+) -> None:
+    assert ZERO.found_in("run 0 rows") and record()["cli_version"] == "1.0.0"
+    findings.write(tmp_path, "pass-1", record(), NEEDLES, ZERO)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("cli_version", "Bob"), ("engine_version", "1.0"), ("layer", "L9"), ("persona", "Zelda"),
+     ("group", "run"), ("platform", "Linux x86"), ("bundle_digest", "sha256:XYZ"),
+     ("corpus_item", "not-in-manifest"), ("proposed_tier", "V3"), ("cli_version", "0")],
+)  # fmt: skip
+def test_a_structural_field_that_does_not_fit_its_grammar_is_refused(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    with pytest.raises(findings.Refused, match="grammar"):
+        findings.write(tmp_path, "pass-1", record(**{field: value}), NEEDLES, ZERO)
+    with pytest.raises(findings.ReaderError):
+        findings.read_record(findings._render(record(**{field: value})).decode())
+
+
+def test_free_text_still_gets_the_full_lookup_and_needles_still_scan_structural_fields(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(findings.Refused):
+        findings.write(tmp_path, "pass-1", record(actual="saw 0 rows"), NEEDLES, ZERO)
+    for field in ("command", "config", "expected"):
+        with pytest.raises(findings.Refused):
+            findings.write(tmp_path, "pass-1", record(**{field: "a 1 b"}), NEEDLES, ZERO)
+    needle = sweep.read_needles("1.0.0\n")  # a needle that equals a structural value
+    with pytest.raises(findings.Refused):
+        findings.write(tmp_path, "pass-1", record(), needle, ZERO)
+
+
+def test_publish_with_numbers_in_the_refusal_set_is_not_blocked_by_counts_or_ids(
+    tmp_path: Path,
+) -> None:
+    findings.write(tmp_path, "pass-1", record(), NEEDLES, ZERO)
+    findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
+    sent: list[str] = []
+    findings.publish(
+        tmp_path, "pass-1", NEEDLES, ZERO, records_dir=tmp_path / "rec", notify=sent.append
+    )
+    assert sent == ["QA-BETA pass pass-1: 1 findings. Ids: t1-001"]
