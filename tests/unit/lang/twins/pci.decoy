@@ -1,0 +1,15 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  mask transactions from csv("./transactions.csv", header: true) to csv("./transactions_masked.csv") {
+    cardholder_name  : faker(person_name)
+    card_number      : fpe(charset: digits, validate_luhn: true) in pan_identity
+    card_expiry, cvv : redact
+    billing_zip      : truncate(length: 3)
+    email            : faker(person_email)
+    transaction_id   : hash in transaction_identity
+    transaction_date : date_shift(min_days: -30, max_days: 30, date_format: "%Y-%m-%d") in transaction_dates
+  }
+}

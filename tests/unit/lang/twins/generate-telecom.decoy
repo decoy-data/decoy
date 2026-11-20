@@ -1,0 +1,29 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  generate subscribers rows 1000 to csv("./subscribers.csv") {
+    subscriber_id = sequence(100000, step: 1)
+    first_name    = faker(first_name)
+    last_name     = faker(last_name)
+    email         = faker(email)
+    city          = faker(city)
+  }
+
+  generate lines rows 1400 to csv("./lines.csv") {
+    line_id       = sequence(1, step: 1)
+    subscriber_id <- subscribers.subscriber_id
+    phone_number  = faker(phone_number)
+    plan          = categorical({Prepaid: 0.2, Basic: 0.3, Unlimited: 0.35, Family: 0.15})
+    activated_on  = faker(date_this_decade)
+  }
+
+  generate call_records rows 10000 to csv("./call_records.csv") {
+    call_id          = sequence(1, step: 1)
+    line_id          <- lines.line_id
+    started_at       = faker(date_time_this_year)
+    duration_seconds = faker(random_int, faker_kwargs: {min: 5, max: 3600})
+    call_type        = categorical({Voice: 0.4, SMS: 0.3, Data: 0.3})
+  }
+}
