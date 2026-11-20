@@ -121,7 +121,9 @@ def parse(text: str) -> list[Matrix]:
     try:
         doc = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
-        raise MatrixError("matrix.toml is not valid TOML") from None
+        doc = None
+    if doc is None:  # raised outside the handler so the error carries no __context__
+        raise MatrixError("matrix.toml is not valid TOML")
     if type(doc.get("schema_version")) is not int or doc["schema_version"] != SCHEMA_VERSION:
         raise MatrixError(f"schema_version must be the integer {SCHEMA_VERSION}")
     out, seen = [], set()
@@ -235,7 +237,7 @@ def to_json(matrix: Matrix, result: Plan) -> str:
         ],
         "removed_pairs": result.removed,
         "standalone_refusals": [
-            {"id": s.id, "flags": list(s.flags), "doc": s.doc, "expect": s.expect}
+            {"id": s.id, "kind": s.kind, "flags": list(s.flags), "doc": s.doc, "expect": s.expect}
             for s in result.standalone
         ],
     }

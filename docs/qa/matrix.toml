@@ -23,7 +23,7 @@ strategy_mix = [
   "faker and categorical",
   "bucketize and truncate",
   "text_redact on free text",
-  "tokenize with vault",
+  "redact with vault column",
   "passthrough mixed in",
 ]
 source = ["csv", "tsv", "parquet", "fixed-width", "duckdb"]
@@ -73,14 +73,6 @@ cites = ["--post-validate", "--chunked"]
 expect = "exit 1, a reason that names --post-validate"
 
 [[matrix.constraints]]
-id = "mask-chunked-not-value-keyed"
-kind = "refused"
-when = { chunked = "--chunked", strategy_mix = "tokenize with vault" }
-doc = "docs/cli-reference.md:109"
-cites = ["value-keyed", "--chunked"]
-expect = "exit 1, a reason that names the strategy that is not value-keyed"
-
-[[matrix.constraints]]
 id = "mask-duckdb-evidence"
 kind = "refused"
 when = { source = "duckdb", evidence = "--evidence-out" }
@@ -102,11 +94,13 @@ expect = "exit 1 before any run"
 # `decoy explain keys`). bucketize, truncate, text_redact and redact are not keyed. "passthrough
 # mixed in" means passthrough columns beside a hash column. `decoy run` rejects `strategy:
 # tokenize` itself (exit 3, `tokenize_requires_vault`; the `decoy tokenize` verb serves it), so
-# "tokenize with vault" is a `vault: true` column on a one-way strategy with a namespace.
+# the "redact with vault column" mix is a `vault: true` column on `redact` with a namespace. Only
+# the `--vault` flag is refused under `--chunked` (src/decoy/cli/run/_prepare.py:455), not the
+# marker, so `--chunked` with this mix is a valid run.
 [[matrix.constraints]]
 id = "mask-keyed-needs-secret"
 kind = "refused"
-when = { mask_secret = "absent", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "tokenize with vault", "passthrough mixed in"] }
+when = { mask_secret = "absent", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "redact with vault column", "passthrough mixed in"] }
 doc = "src/decoy/cli/explain.py:210"
 cites = ["keyed_strategy_requires_secret"]
 expect = "exit 1, code keyed_strategy_requires_secret, before any data is read"
@@ -130,7 +124,7 @@ expect = "exit 1 before any run, code native_require_vault_active"
 [[matrix.constraints]]
 id = "mask-native-vault-column"
 kind = "refused_after_run"
-when = { native = "--native", strategy_mix = "tokenize with vault" }
+when = { native = "--native", strategy_mix = "redact with vault column" }
 doc = "src/decoy/_native_gate.py:247"
 cites = ["vault"]
 expect = "refusal before any output is written: a vault: true column never shows compiled-kernel evidence"
@@ -145,6 +139,22 @@ when = { native = "--native", subset = "config subset on" }
 doc = "docs/cli-reference.md:121"
 cites = ["--native", "FK table"]
 expect = "refusal before any output is written, as for an FK table (unconfirmed for subset)"
+
+# With --native the engine admits fpe, hash, faker, categorical, bucket_perturb, group_key,
+# date_shift and the plain strategies, but only hash, faker and fpe give positive compiled-kernel
+# evidence (decoy_engine `_operator_registry`, positive_kernel_evidence). `bucketize` is not a
+# native operator at all (`bucket_perturb` is). Native mixes by outcome:
+#   evidence, run passes:  hash only; fpe and date_shift; faker and categorical (person_first_name
+#                          and person_last_name providers, the native allow-list); passthrough
+#                          mixed in (its hash column gives the evidence)
+#   refused after the run: bucketize and truncate; text_redact on free text; the vault column mix
+[[matrix.constraints]]
+id = "mask-native-bucketize-no-evidence"
+kind = "refused_after_run"
+when = { native = "--native", strategy_mix = "bucketize and truncate" }
+doc = "src/decoy/_native_gate.py:450"
+cites = ["native_require_no_evidence"]
+expect = "refusal before any output is written; bucketize has no native operator"
 
 # Reading note: the docs name "passthrough/redact/truncate" as the strategies with no compiled
 # kernel evidence. The only mix that holds redact-family strategies alone is text_redact.

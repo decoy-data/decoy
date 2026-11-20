@@ -5,6 +5,7 @@ the answer against an independent brute-force walk of the whole product."""
 from __future__ import annotations
 
 import itertools
+import json
 import random
 from pathlib import Path
 
@@ -117,7 +118,7 @@ def test_the_real_matrices_are_covered_or_removed_exactly(name: str) -> None:
 
 
 def test_run_counts_are_in_the_planned_range() -> None:
-    assert len(mx.plan(MATRICES["mask"]).runs) == 54
+    assert len(mx.plan(MATRICES["mask"]).runs) == 59
     assert len(mx.plan(MATRICES["generate"]).runs) == 9
 
 
@@ -177,7 +178,6 @@ def test_every_planned_refusal_example_is_a_constraint() -> None:
         "mask-chunked-subset",
         "mask-chunked-fixed-width",
         "mask-chunked-post-validate",
-        "mask-chunked-not-value-keyed",
         "mask-duckdb-evidence",
         "mask-keyed-needs-secret",
         "mask-vault-flag-needs-vault-column",
@@ -262,3 +262,68 @@ def test_a_doc_gap_citation_points_at_product_source() -> None:
         "mask-native-vault-flag",
         "mask-native-vault-column",
     }
+
+
+def test_standalone_kinds_reach_the_json() -> None:
+    kinds = {}
+    for matrix in MATRICES.values():
+        doc = json.loads(mx.to_json(matrix, mx.plan(matrix)))
+        kinds |= {s["id"]: s["kind"] for s in doc["standalone_refusals"]}
+    assert kinds == {"generate-native": "refused", "mask-native-fk-tables": "refused_after_run"}
+
+
+# Guards tied to the product's own gates ---------------------------------------------------
+
+
+def test_chunked_refuses_the_vault_flag_not_the_vault_column() -> None:
+    """The product gate reads the live flag (`ctx.vault`), so the vault-column mix runs chunked."""
+    gate = (ROOT / "src/decoy/cli/run/_prepare.py").read_text(encoding="utf-8")
+    assert "if ctx.chunked and ctx.vault is not None:" in gate
+    mask = MATRICES["mask"]
+    vault_mix = "redact with vault column"
+    pair = {"chunked": "--chunked", "strategy_mix": vault_mix}
+    blockers = [c.id for c in mask.constraints if c.kind in mx.BLOCKING and c.matches(pair)]
+    assert blockers == []
+    runs = mx.plan(mask).runs
+    assert any(r["chunked"] == "--chunked" and r["strategy_mix"] == vault_mix for r in runs)
+
+
+# Which strategies each mix holds, so the native outcome can be read off the engine's registry.
+MIX_STRATEGIES = {
+    "hash only": {"hash"},
+    "fpe and date_shift": {"fpe", "date_shift"},
+    "faker and categorical": {"faker", "categorical"},
+    "bucketize and truncate": {"bucketize", "truncate"},
+    "text_redact on free text": {"text_redact"},
+    "redact with vault column": {"redact"},
+    "passthrough mixed in": {"passthrough", "hash"},
+}
+VAULT_MIXES = {"redact with vault column"}
+
+
+def test_native_mixes_without_kernel_evidence_are_refused_after_the_run() -> None:
+    """`--native` needs a strategy with positive compiled-kernel evidence in the mix."""
+    from decoy_engine.execution._operator_registry import OPERATORS
+
+    positive = {s for s, spec in OPERATORS.items() if spec.positive_kernel_evidence}
+    mask = MATRICES["mask"]
+    assert set(MIX_STRATEGIES) == set(mask.parameters["strategy_mix"])
+    expected = {
+        mix
+        for mix, strategies in MIX_STRATEGIES.items()
+        if not strategies & positive or mix in VAULT_MIXES
+    }
+    after_run = {
+        mix
+        for c in mask.constraints
+        if c.kind == "refused_after_run" and c.when.get("native") == ("--native",)
+        for mix in c.when.get("strategy_mix", ())
+    }
+    assert after_run == expected
+    assert "bucketize" not in OPERATORS  # the native operator is bucket_perturb
+
+
+def test_a_bad_matrix_error_carries_no_context() -> None:
+    with pytest.raises(mx.MatrixError) as err:
+        mx.parse("not toml [")
+    assert err.value.__cause__ is None and err.value.__context__ is None
