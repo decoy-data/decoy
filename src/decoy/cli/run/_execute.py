@@ -369,6 +369,7 @@ def execute(ctx: RunContext) -> None:
             **_native_gate.run_pipeline_kwargs(ctx.gate_result),
             **_resources.run_pipeline_kwargs(ctx._res),
         )
+        ctx._execution = result
         ctx._subset_metrics = result.quality_metrics.get("subset")
         ctx._native_route = _native_gate.classify_route(
             chunked=False,
@@ -420,6 +421,7 @@ def execute_preview(ctx: RunContext) -> None:
         quarantine_path=None,
         **_resources.run_pipeline_kwargs(ctx._res),
     )
+    ctx._execution = result
     order = [name for name, _parents in generation_order(ctx.config_dict)]
     ctx._preview_tables = gen.sample_tables(result.outputs, order, ctx.rows)
     ctx._ev_engine_warnings = result.warnings

@@ -15,10 +15,14 @@ Moved here from `decoy-platform/docs/backlog/RECENTLY-SHIPPED.md` on 2026-11-05 
 ([ROADMAP.md](ROADMAP.md)). The platform copy is frozen at that date. Entries below 2026-11-05 are
 copied unchanged; paths in them are relative to the repo they name.
 
-Last updated: 2026-11-19 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
+Last updated: 2026-11-20 (entries for 2026-10-27 to 2026-10-30 are not filled in here; see the repos'
 git logs). Dates are the UTC merge dates from GitHub.
 
 ---
+
+## 2026-11-20
+
+- **Roadmap**: row 32b INIT-WIZARD closed under the owner's 2026-11-19 decision to stop the guided wizard. 1.0 keeps today's `decoy init` (presets, and `decoy init <file>` with `# REVIEW:` comments) plus the engine pieces E3 (engine #407), E1 (engine #653, `56a06f1b3`, 2026-11-19: `column_entry` and `apply_review`) and E2 (engine #654, `40e2bb275`, 2026-11-19: `finding_edits`). E1 and E2 ship in the experimental tier. The rest of `C:plan/init-wizard-v1-rest` is stopped; pipeline authoring moves to DECOY-LANG.
 
 ## 2026-11-19
 
