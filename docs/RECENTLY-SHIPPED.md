@@ -27,11 +27,12 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-20
 
+- **CLI** (CLI #327): the engine repin to 0.28.1 (tag `v0.28.1`, carries 0.28.0). `requirements-certified.txt` has 70 pins (adds `joserfc`, `rfc8785` and `pynacl`) and fingerprint `b61dcfd6...`, which the engine lists as a certified row. Rows 24zp FIT-YEAR-CODING and 24zq NESTED-INIT-REG (engine halves merged) close with the pin. The CLI halves of rows 24zm, 24f, 24z, 24zu and PROFILE-SAMPLE-LABELS follow in a stacked change.
 - **Roadmap**: row 32b INIT-WIZARD closed under the owner's 2026-11-19 decision to stop the guided wizard. 1.0 keeps today's `decoy init` (presets, and `decoy init <file>` with `# REVIEW:` comments) plus the engine pieces E3 (engine #407), E1 (engine #653, `56a06f1b3`, 2026-11-19: `column_entry` and `apply_review`) and E2 (engine #654, `40e2bb275`, 2026-11-19: `finding_edits`). E1 and E2 ship in the experimental tier. The rest of `C:plan/init-wizard-v1-rest` is stopped; pipeline authoring moves to DECOY-LANG.
 
 ## 2026-11-19
 
-Engine 0.28.0 (tag `v0.28.0`, engine #698, `7dc9e30bd`) was cut at 00:45 UTC. The CLI still pins 0.27.0. Engine entries below 0.28.0 marked "after the tag" are in no release yet.
+Engine 0.28.0 (tag `v0.28.0`, engine #698, `7dc9e30bd`) was cut at 00:45 UTC. The CLI pins 0.28.1 (CLI #327). Engine entries below 0.28.0 marked "after the tag" are in no release yet.
 
 - **Engine** (`fa656aa23`, engine #700; `ce542ffaa`, engine #692, 2026-11-18): OUTPUT-METADATA-LEAK slices E0 and E1 (roadmap row OUTPUT-METADATA-LEAK, partly merged). E0 is the canary matrix across every output route. E1: published Parquet files carry only an allow-list of key/value metadata, through new `output_schema` and `output_table`. Extension-type columns are written as their storage type, except `arrow.uuid`, `arrow.bool8`, `arrow.json` and the pandas period and interval types. E2 (carrier sites) and C1 (CLI) are left.
 - **Engine** (`cc0149152`, engine #707): PROFILE-SAMPLE-LABELS slice E0 (partly merged). `ProfileSource.sample_frame(n)` returns n rows unless the source ended. Cloud CSV scans now profile the requested 10,000 rows, so their null counts, distinct counts and profile hash can change.
