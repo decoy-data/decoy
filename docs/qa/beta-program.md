@@ -57,9 +57,18 @@ tester that reads the source tests the code's intent, not the user's experience.
   the public docs and a read-only corpus mount. The user cannot read repository checkouts on the
   node.
 - The owner runs `scripts/qa/setup-testers.sh` once on each node to create the tester users. The
-  launcher does not create users. (Built by slice S2.)
+  launcher does not create users.
 - The launcher captures tester stdout and stderr in a node-local file. The coordinator gets only
-  finding ids and counts. (Built by slice S2.)
+  finding ids and counts.
+- Tester files live in `/var/lib/decoy-qa/testers/qatester-<slug>` (plan section 10a). The
+  bundle, docs and corpus come from `/var/lib/decoy-qa/src/`, which only the owner can write.
+  Setup copies them as whole trees and refuses links that point outside a tree.
+- The tester starts in its own workspace, `<home>/work`. As the tester, `decoy` must resolve
+  inside the bundle at the bundle's version, or the launcher refuses to start. The launcher also
+  refuses without the marker file that the S3 sandbox probe writes for the node and tester.
+- Each tester submits into its own inbox, `<home>/work/inbox`, which the tester owns. The launcher
+  makes no folder as the tester, lists the inbox, and fails closed when the listing fails. Capture
+  and issued ids are coordinator-only. The launcher exits nonzero when the tester does.
 - Briefs forbid values in messages.
 
 ## Corpus
@@ -113,7 +122,7 @@ redistributed, committed or quoted in a record.
 
 Each charter states the persona, the mission, the time box (2 hours of agent time), the corpus
 items in scope, the node and the debrief questions. Charters go in `docs/qa/briefs/` with the
-checklist-pass, doc-walk and triager briefs. (Built by slice S2.)
+checklist-pass, doc-walk and triager briefs.
 
 | Persona | Mission | Node |
 |---|---|---|
@@ -255,7 +264,7 @@ I6 classifies every exit the CLI can give. The registry is `src/decoy/cli/exit_c
 ## Finding record
 
 Each finding is one file at `findings/<pass>/<id>.toml` in the node-local pass folder, with
-`schema_version = 1`. The template is `docs/qa/finding-template.toml` (built by slice S2). The
+`schema_version = 1`. The template is `docs/qa/finding-template.toml`. The
 fields are:
 
 - `schema_version`, `id`, `layer`, `persona`, `group`

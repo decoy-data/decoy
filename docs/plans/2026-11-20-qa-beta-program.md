@@ -95,7 +95,7 @@ Command coverage. L4 covers `decoy run` only, so every other command has a named
 | `library path`, `schema`, `list`, `show`, `project` | yes | yes | P1 |
 | `upgrade` | yes | yes | P1 |
 
-Sandbox. Every tester works from the installed release bundle and reads only the public docs folder. The launcher starts each tester as its own OS user on Linux and macOS. The user home holds only the bundle, public docs and a read-only corpus mount. The user cannot read repository checkouts on the node. The owner runs `scripts/qa/setup-testers.sh` once on each node to create these tester users. The launcher does not create users. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
+Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs and a read-only copy of the tester's corpus items. Repository checkouts and other testers do not exist inside it. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
 
 ### 5.2 Corpus
 
@@ -276,12 +276,12 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher 
 | `scripts/qa/corpus/{fetch,generate}.py` | corpus tools | same new row |
 | `scripts/qa/invariants/*.py` | I1 to I7 checkers, one module per invariant | same new row |
 | `scripts/qa/{io,matrix,findings,launch,repro}.py` | private writer, pairwise runs, finding commands, launcher and repro runner | same new row |
-| `scripts/qa/setup-testers.sh` | owner-run OS-user setup | same new row |
+| `scripts/qa/nodes.md` | one-time Podman and Tart node setup | same new row |
 | `tests/unit/qa/` | AT-1 to AT-13 | new row with the tooling |
 
 Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus` and `invariants` concerns use named subpackages.
 
-Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent.
+Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines. S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again.
 
 ## 10. Design notes
 
@@ -291,7 +291,36 @@ Expected size: 30 to 36 new or changed files and at most 3,600 hand-written line
 - **Why docs-only testers.** A tester who reads the code tests the code's intent, not the user's experience. Doc mismatches are real V1 findings (REL-DOCS).
 - **Why triage reproduces.** Agent reports have been wrong before (a docs agent claimed fixes not in files; a builder reported a passing ratchet that failed). One clean repro is the gate.
 
+### 10a. Tester isolation (rev 3, after S2 review round 3)
+
+Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS users, groups and file modes, changed by root, where every rerun and every path is a new attack surface. A codex-fix pass closed the gaps, but only by adding more of the same machinery (per-pass generations, private groups, mount tables, disk images). Rev 3 removes the class. Isolation comes from established tools that start from a clean image each time.
+
+**Linux (Dell): one rootless Podman container per tester per pass.** `podman run --rm` from a pinned base image (`ubuntu:22.04` by digest), as an unprivileged user inside a user namespace, with:
+- `--network none`. P3 is the exception and runs in the GitHub sandbox repo, not here;
+- read-only bind mounts for the bundle, the docs copy and the tester's corpus items (`:ro`);
+- a writable `--tmpfs /work:size=2g` as HOME and cwd, plus `--tmpfs /fault:size=64m` for P5 only;
+- the inbox at `/work/inbox`, copied out by the launcher after the container exits, through `io.py`;
+- `--read-only` root file system, `--cap-drop=ALL`, `--security-opt no-new-privileges`, and a memory and pids limit.
+
+The checkout and other testers do not exist inside the container. A rerun starts from the same clean image, so there is no rerun state.
+
+**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (needs owner OK, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
+
+**What remains ours.**
+- `scripts/qa/launch.py` builds the podman or tart argv from one table. The table is the only place that lists mounts and limits.
+- The launcher captures output through `io.open_private_capture`, and copies the inbox out through `io.publish_private_once`.
+- `scripts/qa/nodes.md` gives the one-time node setup: install Podman (apt) on the Dell and Tart (brew) on the Mac, and pull or clone the pinned images.
+
+No setup script runs as root on a schedule. No tester OS users exist. `setup-testers.sh` and `provision.py` are dropped.
+
+**Agent inside the sandbox.** The agent runtime runs inside the container or guest with only the brief, the docs and the bundle. The launcher passes only the model API credential, through a mounted secret file, never argv. The credential is a separate low-limit QA key. Getting it is an owner step (Q4).
+
+**Tests.** Unit tests check the argv table: every listed mount is read-only except /work and /fault; there is no network except where a row says so; the security flags are present; the secret is mounted, not passed as an argument. S3 proves the isolation for real: a probe inside the container and the guest cannot read the checkout path, the other testers' inboxes or the host home, and a write to `/fault` stops at 64 MiB.
+
 ## 11. Owner questions
+
+- Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Recommended: yes.
+- Q4 (added 2026-11-20, rev 3): a separate low-limit model API key for QA testers, used only inside the sandbox. Recommended: yes.
 
 | Id | Question | Recommendation |
 |---|---|---|
@@ -309,9 +338,9 @@ None. No product surface changes. The tooling reads the exit registry and schema
 | Slice | Dates and estimate | Contents | Risk | Review |
 |---|---|---|---|---|
 | S0 | 2026-11-21, 1 day, 5 files, 300 lines | merge this plan; add the roadmap row, current method, checklist pointer and CODEMAP rows | R1 docs | Codex |
-| S1a | 2026-11-22 to 2026-11-25, 4 days, 11 files, 1,200 lines | add `io.py`, corpus manifest and tools, matrices, `allpairspy`, surface registry and AT-1, AT-6 and AT-8; run M3 on the final head | R2 data and atomic writes | Dennis then Codex |
+| S1a | 2026-11-22 to 2026-11-25, 4 days, 11 files, 1,200 lines (actual about 27 files, 3,500 lines; re-baselined 2026-11-20) | add `io.py`, corpus manifest and tools, matrices, `allpairspy`, surface registry and AT-1, AT-6 and AT-8; run M3 on the final head | R2 data and atomic writes | Dennis then Codex |
 | S1b | 2026-11-26 to 2026-12-01, 6 days, 15 files, 1,700 lines | add the shared sweep, I1 to I7, `findings.py`, `repro.py`, AT-2 to AT-5, AT-7, AT-9 and AT-11 to AT-13; run M1, M2 and M4 on the final head | R2 oracle and publication controls | Dennis then Codex |
-| S2 | 2026-11-22 to 2026-11-27, 6 days, 10 files, 700 lines | add five charters, checklist, doc-walk and triager briefs, finding template, launcher, tester setup script and AT-10 | R1 launcher and docs | Codex |
+| S2 | 2026-11-22 to 2026-11-27, 6 days, 10 files, 700 lines (actual about 20 files, 1,900 lines; section 10a added after review round 2) | add five charters, checklist, doc-walk and triager briefs, finding template, launcher, tester setup script and AT-10 | R1 launcher and docs | Codex |
 | S3 | 2026-12-02 to 2026-12-03, 2 days, 1 record | run the dry run on Linux and macOS; run the real OS-user probes; build S and M on both systems and L on Linux; run a 10-cell matrix smoke and one 30-minute charter; triage one finding | R2 operational proof | Codex reads the record |
 | Reserve | 2026-12-04, 1 day | correct dry-run failures only; defer new scope | same as the failed slice | required review for the changed slice |
 

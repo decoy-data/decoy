@@ -1,0 +1,24 @@
+# Finding record template (QA-BETA plan 5.6 and 15.2.4). Status: current.
+#
+# One file per finding. Testers never edit a copy by hand: `findings.py write` builds the record
+# and refuses any value, marker or secret. Every example below is a placeholder, not data.
+# The id comes from the launcher (`QA_FINDING_IDS`). Coordinates are opaque ids.
+
+schema_version = 1
+id = "f-p1-0123456789ab"             # launcher-issued, tester-scoped, used once
+layer = "L3"                         # L1 checklist, L2 doc walk, L3 persona, L4 matrix
+persona = "p1"                       # p1 to p5, or the brief name for L1 and L2
+group = "run"                        # the checklist feature group
+platform = "linux-x86_64"            # or macos-arm64
+cli_version = "0.0.0"
+engine_version = "0.0.0"
+bundle_digest = "sha256:0000"        # digest of the installed bundle
+corpus_item = "item-id"              # manifest id, never file content
+command = "decoy run"                # the command line with every value removed
+config = "strategy: hash"            # the config with every value removed
+expected = "docs/cli-reference.md:1" # a doc path and line, or an invariant id such as I1
+actual = "exit 1, internal error"    # what happened, value free, coordinates by opaque id only
+exit = 1
+repro = "repro.sh"                   # a script that runs in a fresh DECOY_HOME
+proposed_tier = "V1"                 # V1 or V2-LOG
+confusing = false                    # true when the doc is correct but unclear to a new user

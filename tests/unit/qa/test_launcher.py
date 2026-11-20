@@ -1,0 +1,334 @@
+"""AT-10 (launcher): command construction, workspace and PATH behavior, probe gate, tester-scoped
+ids, capture through the central writer, and the counts-and-ids hand-back with a real exit
+status. The OS-user checkout probe itself is slice S3."""
+
+from __future__ import annotations
+
+import ast
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+from tests.unit.qa._paths import QA_SCRIPTS, load_qa_module
+
+launch = load_qa_module("launch")
+
+
+def _publish(path: Path, data: bytes) -> None:
+    """Stand-in for io.publish_private_once: create once or raise."""
+    with open(path, "xb") as fh:  # test double, not QA tooling
+        fh.write(data)
+
+
+def _mkdir(path: Path, mode: int = 0o700) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(mode)
+
+
+def _capture(path: Path) -> int:
+    return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+
+
+IO = launch.IoApi(_publish, _mkdir, _capture)
+
+
+class Node:
+    """A fake node: probe marker present, scripted tester-side probes."""
+
+    def __init__(self, tmp_path: Path, *, marker: bool = True) -> None:
+        self.tmp = tmp_path
+        self.marker_root = tmp_path / "probes"
+        if marker:
+            m = launch.probe_marker_path("node1", "p1", self.marker_root)
+            m.parent.mkdir(parents=True)
+            m.write_text("")
+        self.real_decoy = "inside"  # inside, outside or wrong-version
+        self.ls_code = 0
+        self.inbox_listing = ""
+        self.calls: list[list[str]] = []
+
+    def probe(self, argv: list[str]) -> tuple[int, str]:
+        self.calls.append(argv)
+        tail = argv[argv.index("--") + 1 :]
+        script = " ".join(tail)
+        if "command -v decoy" in script:
+            bundle = tail[-1]
+            real = f"{bundle}/bin/decoy" if self.real_decoy != "outside" else "/usr/bin/decoy"
+            version = "9.9.9" if self.real_decoy == "wrong-version" else "1.2.3"
+            return 0, f"{real}\n{bundle}\ndecoy {version}\n1.2.3\n"
+        if "ls -1" in script:
+            return self.ls_code, self.inbox_listing
+        return 0, ""
+
+    def run(self, **kw):
+        runner = kw.pop("runner", lambda argv, fd, text: 0)
+        return launch.launch(
+            system="linux",
+            slug="p1",
+            brief="p1-solo-developer",
+            pass_dir=self.tmp / "pass",
+            id_count=2,
+            findings_tool="/opt/decoy-qa/findings.py",
+            io=IO,
+            runner=runner,
+            probe=self.probe,
+            node="node1",
+            marker_root=self.marker_root,
+            **kw,
+        )
+
+
+def _cmd(system: str = "linux", slug: str = "p1", **kw):
+    return launch.build_command(
+        system=system,
+        slug=slug,
+        agent_argv=["sh", "-c", "pwd"],
+        ids=("f-p1-aaa",),
+        findings_tool="/opt/decoy-qa/findings.py",
+        **kw,
+    )
+
+
+@pytest.mark.parametrize("system", ["linux", "darwin"])
+def test_the_command_runs_as_the_tester_user_with_the_bundle_first_on_path(system: str) -> None:
+    cmd = _cmd(system)
+    assert cmd[:6] == ["sudo", "-n", "-u", "qatester-p1", "-H", "--"]
+    home = "/var/lib/decoy-qa/testers/qatester-p1"
+    assert f"QA_INBOX={home}/work/inbox" in cmd
+    assert f"PATH={home}/bundle/bin:" in " ".join(cmd)
+    assert f"HOME={home}/work" in cmd
+
+
+def test_an_unknown_system_or_bad_slug_is_refused() -> None:
+    with pytest.raises(launch.LaunchError):
+        _cmd("windows")
+    for slug in ("", "P1", "p1;rm", "../p1", "x" * 40):
+        with pytest.raises(launch.LaunchError):
+            _cmd(slug=slug)
+
+
+def _inner(cmd: list[str]) -> list[str]:
+    return cmd[cmd.index("env") :]
+
+
+def test_the_agent_starts_in_the_tester_workspace_not_the_callers_folder(tmp_path: Path) -> None:
+    root = tmp_path / "homes"
+    (root / "testers" / "qatester-p1" / "work").mkdir(parents=True)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    cmd = _cmd(qa_root=str(root))
+    done = subprocess.run(_inner(cmd), cwd=checkout, capture_output=True, text=True, check=True)
+    assert (
+        Path(done.stdout.strip()).resolve() == (root / "testers" / "qatester-p1" / "work").resolve()
+    )
+
+
+def test_the_bundle_bin_is_first_on_the_clean_path(tmp_path: Path) -> None:
+    root = tmp_path / "homes"
+    (root / "testers" / "qatester-p1" / "work").mkdir(parents=True)
+    cmd = launch.build_command(
+        system="linux",
+        slug="p1",
+        agent_argv=["sh", "-c", 'printf %s "$PATH"; printf " %s" "${SLACK_TOKEN-unset}"'],
+        ids=(),
+        findings_tool="x",
+        qa_root=str(root),
+    )
+    env = {**os.environ, "SLACK_TOKEN": "leak"}
+    done = subprocess.run(_inner(cmd), capture_output=True, text=True, check=True, env=env)
+    path, token = done.stdout.rsplit(" ", 1)
+    assert path.split(":")[0] == f"{root}/testers/qatester-p1/bundle/bin"
+    assert token == "unset"
+
+
+def test_the_secret_file_is_for_p3_only_and_never_in_argv_as_a_value() -> None:
+    assert any(a.startswith("QA_SECRET_FILE=") for a in _cmd(slug="p3"))
+    assert not any(a.startswith("QA_SECRET_FILE=") for a in _cmd(slug="p1"))
+
+
+@pytest.mark.parametrize("bad", ["--mask-secret=abc", "--api-key", "TOKEN", "a b", "$(x)", "--x=1"])
+def test_extra_agent_args_must_pass_the_allowlist(bad: str) -> None:
+    with pytest.raises(launch.LaunchError):
+        launch.check_agent_extras([bad])
+    assert launch.check_agent_extras(["--model", "sonnet"]) == ["--model", "sonnet"]
+
+
+def test_launch_refuses_without_the_s3_probe_marker(tmp_path: Path) -> None:
+    node = Node(tmp_path, marker=False)
+    with pytest.raises(launch.LaunchError, match="probe"):
+        node.run()
+    assert not (tmp_path / "pass").exists()
+
+
+@pytest.mark.parametrize("kind", ["outside", "wrong-version"])
+def test_launch_fails_closed_when_decoy_is_not_the_candidate_bundle(
+    tmp_path: Path, kind: str
+) -> None:
+    node = Node(tmp_path)
+    node.real_decoy = kind
+    with pytest.raises(launch.LaunchError, match="bundle"):
+        node.run(runner=lambda *a: pytest.fail("must not start"))
+    assert not (tmp_path / "pass").exists()
+
+
+def test_pass_folders_are_coordinator_only_and_the_launcher_makes_nothing_as_the_tester(
+    tmp_path: Path,
+) -> None:
+    node = Node(tmp_path)
+    node.run()
+    pass_dir = tmp_path / "pass"
+    for name in ("capture", "issued"):
+        assert (pass_dir / name).stat().st_mode & 0o777 == 0o700
+    assert not (pass_dir / "inbox").exists()
+    tester_scripts = " ".join(" ".join(c) for c in node.calls)
+    assert "mkdir" not in tester_scripts and "chmod" not in tester_scripts
+
+
+def test_an_inbox_listing_failure_fails_closed_and_main_exits_nonzero(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    node = Node(tmp_path)
+    node.ls_code = 1
+    with pytest.raises(launch.LaunchError, match="listed"):
+        node.run()
+
+    def failing(**kw):
+        raise launch.LaunchError("the tester inbox could not be listed")
+
+    original = launch.launch
+    launch.launch = failing
+    try:
+        code = launch.main(["p1", "--brief", "p1-solo-developer", "--pass-dir", str(tmp_path)])
+    finally:
+        launch.launch = original
+    assert code != 0
+    assert "listed" in capsys.readouterr().err
+
+
+def test_the_missing_io_helper_error_has_no_cause_or_context(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(launch, "__file__", str(tmp_path / "launch.py"))
+    with pytest.raises(launch.LaunchError) as info:
+        launch.default_io()
+    assert info.value.__cause__ is None and info.value.__context__ is None
+    (tmp_path / "io.py").write_text("def publish_private_once(p, d): ...\n")
+    with pytest.raises(launch.LaunchError) as info:
+        launch.default_io()
+    assert info.value.__cause__ is None and info.value.__context__ is None
+
+
+def test_ids_are_tester_scoped_opaque_unique_and_retried_on_collision(tmp_path: Path) -> None:
+    (tmp_path / "issued").mkdir()
+    tokens = iter(["aaaa", "aaaa", "bbbb"])
+    ids = launch.allocate_ids(tmp_path, "p1", 2, publish=_publish, token=lambda: next(tokens))
+    assert ids == ["f-p1-aaaa", "f-p1-bbbb"]
+
+
+def test_the_capture_goes_through_the_writer_fd_and_the_tester_output_stays_in_it(
+    tmp_path: Path,
+) -> None:
+    node = Node(tmp_path)
+
+    def runner(argv: list[str], fd: int, text: str) -> int:
+        assert "Mission" in text, "the brief goes in on stdin"
+        assert not any("Mission" in a for a in argv)
+        os.write(fd, b"tester said something with a value\n")
+        return 0
+
+    result = node.run(runner=runner)
+    assert "value" not in result.line
+    log = (tmp_path / "pass" / "capture" / "p1.log").read_bytes()
+    assert log.startswith(b"tester said")
+    assert (tmp_path / "pass" / "capture" / "p1.log").stat().st_mode & 0o777 == 0o600
+
+
+def test_handback_is_counts_and_ids_only_and_never_reads_records(tmp_path: Path) -> None:
+    node = Node(tmp_path)
+    node.inbox_listing = ""
+    first = node.run().line
+    assert first.startswith("tester=p1 findings=0 issued=2 exit=0 ids=")
+    assert (
+        launch.handback("p1", ["f-p1-a", "f-p1-b"], ["f-p1-a.toml", "f-p2-z.toml"], exit_code=0)
+        == "tester=p1 findings=1 issued=2 exit=0 ids=f-p1-a"
+    )
+
+
+def test_a_tester_exit_of_three_gives_a_nonzero_launcher_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    node = Node(tmp_path)
+    result = node.run(runner=lambda *a: 3)
+    assert result.exit_code == 3 and "exit=3" in result.line
+
+    monkeypatch.setattr(launch, "launch", lambda **kw: result)
+    code = launch.main(["p1", "--brief", "p1-solo-developer", "--pass-dir", str(tmp_path)])
+    assert code != 0
+    assert capsys.readouterr().out.strip() == result.line
+
+
+def test_a_real_subprocess_exit_of_three_reaches_the_result(tmp_path: Path) -> None:
+    root = tmp_path / "homes"
+    (root / "testers" / "qatester-p1" / "work").mkdir(parents=True)
+
+    def real(argv: list[str], fd: int, text: str) -> int:
+        # Drop the sudo prefix and swap the fixed agent argv for a shell that exits 3.
+        inner = _inner(argv)
+        assert inner[-2:] == ["claude", "-p"]
+        return subprocess.run(
+            [*inner[:-2], "sh", "-c", "exit 3"], stdout=fd, check=False
+        ).returncode
+
+    node = Node(tmp_path)
+    assert node.run(runner=real, qa_root=str(root)).exit_code == 3
+
+
+def test_p5_without_a_bounded_volume_skips_the_disk_full_cell(tmp_path: Path) -> None:
+    node = Node(tmp_path)
+    m = launch.probe_marker_path("node1", "p5", node.marker_root)
+    m.parent.mkdir(parents=True, exist_ok=True)
+    m.write_text("")
+    skipping = launch.launch(
+        system="linux", slug="p5", brief="p5-careless-user", pass_dir=tmp_path / "p5pass",
+        id_count=1, findings_tool="x", io=IO, runner=lambda *a: 0,
+        probe=lambda argv: (1, "") if "test" in argv else node.probe(argv),
+        node="node1", marker_root=node.marker_root,
+    )  # fmt: skip
+    assert "skipped=disk-full" in skipping.line
+
+
+def _calls(tree: ast.AST) -> list[str]:
+    names = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call):
+            f = n.func
+            names.append(f.id if isinstance(f, ast.Name) else getattr(f, "attr", ""))
+    return names
+
+
+def test_the_launcher_has_no_direct_file_writes_user_creation_or_product_imports() -> None:
+    tree = ast.parse((QA_SCRIPTS / "launch.py").read_text())
+    banned_calls = {
+        "open",
+        "mkdir",
+        "makedirs",
+        "write_text",
+        "write_bytes",
+        "touch",
+        "copy",
+        "copytree",
+        "rmtree",
+        "chmod",
+        "chown",
+    }
+    assert banned_calls.isdisjoint(_calls(tree)), banned_calls & set(_calls(tree))
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            assert not any(a.name.split(".")[0] == "decoy" for a in n.names)
+        if isinstance(n, ast.ImportFrom):
+            assert (n.module or "").split(".")[0] != "decoy"
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            for word in ("useradd", "dscl", "adduser", "sysadminctl"):
+                assert word not in n.value
+    assert (QA_SCRIPTS / "launch.py").read_text().count("\n") < 400
