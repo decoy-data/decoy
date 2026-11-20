@@ -368,69 +368,6 @@ def test_no_native_flag_forces_legacy_pandas(tmp_path: Path):
     assert payload["native_route"]["state"] == "pandas"
 
 
-def test_no_native_stays_compatible_with_an_older_engine(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """HIGH regression (dennis/Codex round 3): `unified_slice_enabled`
-    landed on engine main (2026-09-15) after the `decoy-engine>=0.5.0`
-    floor was tagged (2026-07-24), so an in-range install can genuinely
-    lack the parameter. `--no-native` -- the documented ROLLBACK -- must
-    not be the one path that crashes such an install; the shared
-    `_native_gate.run_pipeline_kwargs` capability-detects the parameter and
-    omits it when absent (an engine without it has no unified-slice lane
-    at all, so omitting is not a compromise). The fake below has an
-    EXPLICIT signature (no **kwargs catch-all) mirroring a real function,
-    so passing an unrecognized keyword raises TypeError exactly like the
-    real old engine would."""
-    import decoy_engine
-
-    real_run_pipeline = decoy_engine.run_pipeline
-
-    # An EXPLICIT signature with no `unified_slice_enabled` parameter and no
-    # **kwargs catch-all, mirroring a real pre-2026-09-15 `run_pipeline` --
-    # forwards to the real implementation (this dev environment has no
-    # actual old engine build to install), but the wrapper's own signature
-    # is what `inspect.signature` sees and what raises TypeError on an
-    # unrecognized keyword, exactly like the real old function would.
-    def _old_engine_run_pipeline(
-        config,
-        sources=None,
-        *,
-        engine_version,
-        registry=None,
-        derive_key=None,
-        instance_default_locale=None,
-        vault_writer=None,
-        # DE-02 (engine 0.4.0, the floor) predates the slice; a real old engine has it.
-        key_provider=None,
-        base_dir=None,
-        # The pin is decoy-engine==0.22.0, which has the resource keywords every run sends.
-        native_threads=1,
-        out_of_core_threads=None,
-        out_of_core_budget_bytes=None,
-    ):
-        return real_run_pipeline(
-            config,
-            sources,
-            engine_version=engine_version,
-            registry=registry,
-            derive_key=derive_key,
-            instance_default_locale=instance_default_locale,
-            vault_writer=vault_writer,
-            key_provider=key_provider,
-            base_dir=base_dir,
-            native_threads=native_threads,
-            out_of_core_threads=out_of_core_threads,
-            out_of_core_budget_bytes=out_of_core_budget_bytes,
-        )
-
-    monkeypatch.setattr("decoy_engine.run_pipeline", _old_engine_run_pipeline)
-    config = _hash_eligible_config(tmp_path)
-    result = runner.invoke(app, ["run", str(config), "--no-native"])
-    assert result.exit_code == 0, result.output
-    assert (tmp_path / "out.csv").exists()
-
-
 def test_no_native_downgrades_broken_companion_to_warned_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

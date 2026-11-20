@@ -1,0 +1,673 @@
+{
+  "demo": {
+    "paths": {
+      "/command": "string",
+      "/dir": "string",
+      "/masked": "string",
+      "/pii_columns": "integer",
+      "/scan": "string",
+      "/status": "string",
+      "/variant": "string"
+    }
+  },
+  "detokenize": {
+    "paths": {
+      "/columns[]/column": "string",
+      "/columns[]/misses": "integer",
+      "/columns[]/namespace": "string",
+      "/columns[]/reversed": "integer",
+      "/columns[]/status": "string",
+      "/command": "string",
+      "/config": "string",
+      "/input": "string",
+      "/output": "string",
+      "/status": "string",
+      "/table": "string"
+    }
+  },
+  "doctor": {
+    "exempt": "the check list depends on the installed extras and the host"
+  },
+  "explain": {
+    "paths": {
+      "/body": "string",
+      "/command": "string",
+      "/see_also[]": "string",
+      "/status": "string",
+      "/summary": "string",
+      "/topic": "string"
+    }
+  },
+  "fit": {
+    "dynamic_maps": [
+      "/columns",
+      "/null_rates"
+    ],
+    "paths": {
+      "/columns/*": "string",
+      "/command": "string",
+      "/fanout_columns": "[]",
+      "/joints": "[]",
+      "/null_rates/*": "number",
+      "/output": "string",
+      "/redacted_columns[]": "string",
+      "/row_count": "integer",
+      "/rows_total": "integer",
+      "/rows_used": "integer",
+      "/source": "string",
+      "/status": "string",
+      "/value_policy": "string",
+      "/warnings": "[]"
+    }
+  },
+  "info": {
+    "opaque_values": {
+      "/native_companion": "null|object"
+    },
+    "paths": {
+      "/command": "string",
+      "/native_companion": "null|object",
+      "/status": "string",
+      "/templates[]": "string",
+      "/topics[]": "string",
+      "/version": "string"
+    }
+  },
+  "init": {
+    "paths": {
+      "/command": "string",
+      "/out": "string",
+      "/preset": "string",
+      "/rule_count": "integer",
+      "/status": "string"
+    }
+  },
+  "library diff": {
+    "paths": {
+      "/a": "string",
+      "/b": "string",
+      "/command": "string",
+      "/diff/added": "[]",
+      "/diff/changed[]": "string",
+      "/diff/payload_digest/new": "string",
+      "/diff/payload_digest/old": "string",
+      "/diff/removed": "[]",
+      "/kind": "string",
+      "/rule": "string"
+    }
+  },
+  "library list": {
+    "paths": {
+      "/command": "string",
+      "/count": "integer",
+      "/records[]/created_at": "string",
+      "/records[]/id": "string",
+      "/records[]/invocation_id": "string",
+      "/records[]/kind": "string",
+      "/records[]/known": "boolean",
+      "/records[]/links": "[]",
+      "/records[]/payload_schema": "string",
+      "/records[]/pipeline": "null",
+      "/records[]/status": "null",
+      "/records[]/tables": "[]"
+    }
+  },
+  "library show": {
+    "dynamic_maps": [
+      "/record/payload/table_rows",
+      "/record/payload/subset_seed_counts"
+    ],
+    "paths": {
+      "/command": "string",
+      "/payload_schema": "string",
+      "/record/created_at": "string",
+      "/record/id": "string",
+      "/record/invocation_id": "string",
+      "/record/kind": "string",
+      "/record/labels": "{}",
+      "/record/links": "[]",
+      "/record/payload/approximate_columns": "[]",
+      "/record/payload/outputs": "[]",
+      "/record/payload/root_table": "string",
+      "/record/payload/sample_size": "integer",
+      "/record/payload/scratch_dir": "string",
+      "/record/payload/subset_seed_counts/*": "integer",
+      "/record/payload/table_rows/*": "integer",
+      "/record/payload/ttl_seconds": "integer",
+      "/record/payload_digest": "string",
+      "/record/payload_schema": "string",
+      "/record/producer/engine_version": "string",
+      "/record/producer/name": "string",
+      "/record/producer/version": "string",
+      "/record/record_schema": "string",
+      "/status": "string"
+    }
+  },
+  "list": {
+    "paths": {
+      "/command": "string",
+      "/status": "string",
+      "/templates[]/name": "string",
+      "/templates[]/summary": "string"
+    }
+  },
+  "models install": {
+    "paths": {
+      "/already_installed": "boolean",
+      "/command": "string",
+      "/dp_certified_environment": "boolean",
+      "/installed[]": "string",
+      "/installer": "string",
+      "/model/id": "string",
+      "/model/version": "string",
+      "/status": "string"
+    }
+  },
+  "models list": {
+    "opaque_values": {
+      "/models/cause": "null|string",
+      "/models/hint": "null|string",
+      "/models/reason": "null|string",
+      "/models/runtime_version": "null|string",
+      "/models/version": "null|string"
+    },
+    "paths": {
+      "/command": "string",
+      "/models[]/available": "boolean",
+      "/models[]/cause": "null|string",
+      "/models[]/hint": "null|string",
+      "/models[]/model_id": "string",
+      "/models[]/reason": "null|string",
+      "/models[]/runtime_version": "null|string",
+      "/models[]/source": "string",
+      "/models[]/version": "null|string",
+      "/note": "string",
+      "/status": "string"
+    }
+  },
+  "project list": {
+    "paths": {
+      "/command": "string",
+      "/projects[]/folder": "string",
+      "/projects[]/pipelines": "integer",
+      "/projects[]/root": "string",
+      "/status": "string",
+      "/warnings": "[]"
+    }
+  },
+  "project new": {
+    "paths": {
+      "/already_project": "boolean",
+      "/command": "string",
+      "/root": "string",
+      "/status": "string",
+      "/warnings": "[]"
+    }
+  },
+  "project show": {
+    "paths": {
+      "/command": "string",
+      "/pipelines": "[]",
+      "/root": "string",
+      "/status": "string",
+      "/warnings": "[]"
+    }
+  },
+  "report diff": {
+    "paths": {
+      "/any_change": "boolean",
+      "/any_data_change": "boolean",
+      "/command": "string",
+      "/data_level": "string",
+      "/evidence_file_a": "string",
+      "/evidence_file_b": "string",
+      "/input_fingerprint_changes/added": "[]",
+      "/input_fingerprint_changes/changed": "[]",
+      "/input_fingerprint_changes/removed": "[]",
+      "/new_pipeline_fingerprint": "string",
+      "/old_pipeline_fingerprint": "string",
+      "/output_fingerprint_changes/added": "[]",
+      "/output_fingerprint_changes/changed": "[]",
+      "/output_fingerprint_changes/removed": "[]",
+      "/pipeline_fingerprint_changed": "boolean",
+      "/row_count_deltas": "[]",
+      "/status": "string",
+      "/table_deltas[]/column_deltas": "[]",
+      "/table_deltas[]/columns_added": "[]",
+      "/table_deltas[]/columns_removed": "[]",
+      "/table_deltas[]/row_count_a": "integer",
+      "/table_deltas[]/row_count_b": "integer",
+      "/table_deltas[]/row_count_delta": "integer",
+      "/table_deltas[]/table": "string",
+      "/warnings_added": "[]",
+      "/warnings_removed": "[]"
+    }
+  },
+  "report fidelity": {
+    "paths": {
+      "/command": "string",
+      "/diagnostic/checks[]/added_columns": "[]",
+      "/diagnostic/checks[]/check": "string",
+      "/diagnostic/checks[]/drifted": "[]",
+      "/diagnostic/checks[]/expect_parity": "boolean",
+      "/diagnostic/checks[]/missing_columns": "[]",
+      "/diagnostic/checks[]/output_rows": "integer",
+      "/diagnostic/checks[]/passed": "boolean",
+      "/diagnostic/checks[]/source_rows": "integer",
+      "/diagnostic/checks[]/threshold_pp": "number",
+      "/diagnostic/passed": "boolean",
+      "/diagnostic/schema_version": "string",
+      "/generated_at": "string",
+      "/grade": "string",
+      "/job_id": "null",
+      "/marginal/columns[]/column": "string",
+      "/marginal/columns[]/comparable": "boolean",
+      "/marginal/columns[]/extra_metrics/chi_cramers_v/chi2_statistic": "number",
+      "/marginal/columns[]/extra_metrics/chi_cramers_v/comparable": "boolean",
+      "/marginal/columns[]/extra_metrics/chi_cramers_v/cramers_v": "number",
+      "/marginal/columns[]/extra_metrics/chi_cramers_v/method": "string",
+      "/marginal/columns[]/extra_metrics/chi_cramers_v/reason": "string",
+      "/marginal/columns[]/extra_metrics/chi_cramers_v/value": "null|number",
+      "/marginal/columns[]/extra_metrics/ks_complement/comparable": "boolean",
+      "/marginal/columns[]/extra_metrics/ks_complement/d_statistic": "number",
+      "/marginal/columns[]/extra_metrics/ks_complement/method": "string",
+      "/marginal/columns[]/extra_metrics/ks_complement/value": "number",
+      "/marginal/columns[]/method": "string",
+      "/marginal/columns[]/missing_value_similarity": "number",
+      "/marginal/columns[]/similarity": "number",
+      "/marginal/columns[]/value_similarity": "number",
+      "/marginal/score": "number",
+      "/omissions": "[]",
+      "/output/fingerprint": "null",
+      "/output/kind": "string",
+      "/output/row_count": "integer",
+      "/overall_score": "number",
+      "/pairwise/joints": "[]",
+      "/pairwise/score": "null",
+      "/policy/mode": "string",
+      "/policy/schema_version": "string",
+      "/policy/verdict": "string",
+      "/policy/violations": "[]",
+      "/sample_size": "null",
+      "/sampled": "boolean",
+      "/schema_version": "string",
+      "/shape_fidelity/marginal/columns[]/column": "string",
+      "/shape_fidelity/marginal/columns[]/comparable": "boolean",
+      "/shape_fidelity/marginal/columns[]/method": "string",
+      "/shape_fidelity/marginal/columns[]/shape_similarity": "number",
+      "/shape_fidelity/marginal/shape_score": "number",
+      "/shape_fidelity/overall_shape_score": "number",
+      "/shape_fidelity/pairwise/joints": "[]",
+      "/shape_fidelity/pairwise/shape_score": "null",
+      "/shape_fidelity/schema_version": "string",
+      "/source/fingerprint": "null",
+      "/source/kind": "string",
+      "/source/row_count": "integer",
+      "/status": "string",
+      "/warnings[]/code": "string",
+      "/warnings[]/detail/column": "string",
+      "/warnings[]/detail/metric": "string",
+      "/warnings[]/detail/reason": "string",
+      "/warnings[]/source": "string"
+    }
+  },
+  "report integrity": {
+    "paths": {
+      "/command": "string",
+      "/masked": "string",
+      "/report/config_sha256": "null",
+      "/report/detectors[]/model": "null",
+      "/report/detectors[]/source": "string",
+      "/report/error_count": "integer",
+      "/report/fail_count": "integer",
+      "/report/fk_preservation": "[]",
+      "/report/generated_at": "string",
+      "/report/pass_count": "integer",
+      "/report/pass_failed_with": "null",
+      "/report/policy_validation": "[]",
+      "/report/residual_pii": "[]",
+      "/report/schema_version": "string",
+      "/report/tables_checked[]": "string",
+      "/report/warning_count": "integer",
+      "/source": "string",
+      "/status": "string"
+    }
+  },
+  "report render": {
+    "paths": {
+      "/command": "string",
+      "/evidence_file": "string",
+      "/format": "string",
+      "/output": "string",
+      "/status": "string"
+    }
+  },
+  "report show": {
+    "dynamic_maps": [
+      "/manifest/input_fingerprints",
+      "/manifest/output_fingerprints",
+      "/manifest/row_counts"
+    ],
+    "paths": {
+      "/command": "string",
+      "/evidence_file": "string",
+      "/manifest/cli_version": "string",
+      "/manifest/engine_version": "string",
+      "/manifest/input_fingerprints/*/fingerprint": "string",
+      "/manifest/input_fingerprints/*/fingerprint_method": "string",
+      "/manifest/input_fingerprints/*/path": "string",
+      "/manifest/input_fingerprints/*/size_bytes": "integer",
+      "/manifest/key_label": "null",
+      "/manifest/manifest_hash": "string",
+      "/manifest/output_fingerprints/*/fingerprint": "string",
+      "/manifest/output_fingerprints/*/fingerprint_method": "string",
+      "/manifest/output_fingerprints/*/format": "string",
+      "/manifest/output_fingerprints/*/path": "string",
+      "/manifest/output_fingerprints/*/size_bytes": "integer",
+      "/manifest/pipeline_fingerprint": "string",
+      "/manifest/pipeline_path": "string",
+      "/manifest/producer": "string",
+      "/manifest/row_counts/*": "integer",
+      "/manifest/run_id": "string",
+      "/manifest/run_timestamp": "string",
+      "/manifest/schema_version": "string",
+      "/manifest/strategies[]/column": "string",
+      "/manifest/strategies[]/strategy": "string",
+      "/manifest/strategies[]/table": "string",
+      "/manifest/timings": "[]",
+      "/manifest/warnings[]/code": "string",
+      "/manifest/warnings[]/column": "null",
+      "/manifest/warnings[]/detail/message": "string",
+      "/manifest/warnings[]/detail/no_sink": "boolean",
+      "/manifest/warnings[]/detail/resident_source": "boolean",
+      "/manifest/warnings[]/provider": "string",
+      "/status": "string"
+    }
+  },
+  "report vault": {
+    "paths": {
+      "/ambiguous_dropped": "integer",
+      "/command": "string",
+      "/entries": "integer",
+      "/namespaces[]": "string",
+      "/status": "string",
+      "/vault": "string"
+    }
+  },
+  "report verify": {
+    "paths": {
+      "/command": "string",
+      "/evidence_file": "string",
+      "/issue_count": "integer",
+      "/issues": "[]",
+      "/status": "string"
+    }
+  },
+  "run": {
+    "opaque_values": {
+      "/warnings": "array"
+    },
+    "optional_keys": [
+      "/native_route",
+      "/notify",
+      "/report",
+      "/subset"
+    ],
+    "paths": {
+      "/command": "string",
+      "/config": "string",
+      "/elapsed_s": "number",
+      "/mode": "string",
+      "/output_dir": "string",
+      "/outputs[]/path": "string",
+      "/outputs[]/table": "string",
+      "/pipeline/given_as": "string",
+      "/pipeline/name": "string",
+      "/pipeline/yaml": "string",
+      "/project/implicit": "boolean",
+      "/project/root": "string",
+      "/project/skipped": "[]",
+      "/resources/max_memory_bytes": "integer",
+      "/resources/max_memory_source": "string",
+      "/resources/threads": "integer",
+      "/resources/threads_source": "string",
+      "/result/checks[]/blocking": "boolean",
+      "/result/checks[]/codes": "[]",
+      "/result/checks[]/counts/error": "integer",
+      "/result/checks[]/counts/fail": "integer",
+      "/result/checks[]/counts/pass": "integer",
+      "/result/checks[]/counts/warning": "integer",
+      "/result/checks[]/id": "string",
+      "/result/checks[]/status": "string",
+      "/result/command": "string",
+      "/result/config/file_sha256": "string",
+      "/result/config/name": "string",
+      "/result/config/semantic_hash": "string",
+      "/result/delivery/mode": "string",
+      "/result/delivery/outcome": "string",
+      "/result/delivery/vault": "string",
+      "/result/exit_code": "integer",
+      "/result/failure": "null",
+      "/result/invocation_id": "string",
+      "/result/links/baseline": "null",
+      "/result/links/evidence": "null",
+      "/result/links/log": "null",
+      "/result/pipeline_kind": "string",
+      "/result/producer/cli_version": "string",
+      "/result/producer/engine_version": "string",
+      "/result/producer/event_schema": "integer",
+      "/result/producer/registry_version": "string",
+      "/result/route/chunked": "boolean",
+      "/result/route/execution_mode": "string",
+      "/result/route/native/applicable": "boolean",
+      "/result/route/native/state": "null",
+      "/result/route/route_reason": "string",
+      "/result/schema": "string",
+      "/result/status": "string",
+      "/result/tables[]/delivery/dropped_because": "null",
+      "/result/tables[]/delivery/format": "string",
+      "/result/tables[]/delivery/output": "string",
+      "/result/tables[]/delivery/reason": "null",
+      "/result/tables[]/delivery/state": "string",
+      "/result/tables[]/elapsed_s": "number",
+      "/result/tables[]/index": "integer",
+      "/result/tables[]/kind": "string",
+      "/result/tables[]/name": "string",
+      "/result/tables[]/outcome": "string",
+      "/result/tables[]/reason": "null",
+      "/result/tables[]/row_errors": "integer",
+      "/result/tables[]/rows_out": "integer",
+      "/result/tables[]/rows_source": "string",
+      "/result/timings/elapsed_s": "number",
+      "/result/timings/finished_at": "string",
+      "/result/timings/phases[]/elapsed_s": "number",
+      "/result/timings/phases[]/name": "string",
+      "/result/timings/started_at": "string",
+      "/result/warnings[]/code": "string",
+      "/result/warnings[]/column": "null",
+      "/result/warnings[]/count": "integer",
+      "/result/warnings[]/table": "null",
+      "/result_status/code": "null",
+      "/result_status/document": "string",
+      "/result_status/file": "string",
+      "/status": "string",
+      "/tables[]/name": "string",
+      "/tables[]/path": "string",
+      "/tables[]/rows": "integer",
+      "/warnings": "array"
+    }
+  },
+  "scan diff": {
+    "paths": {
+      "/changes/added": "[]",
+      "/changes/pii_decreased": "[]",
+      "/changes/pii_increased": "[]",
+      "/changes/qi_groups_added": "[]",
+      "/changes/qi_groups_removed": "[]",
+      "/changes/removed": "[]",
+      "/command": "string",
+      "/drift": "boolean",
+      "/new": "string",
+      "/old": "string",
+      "/status": "string",
+      "/summary/added": "integer",
+      "/summary/pii_decreased": "integer",
+      "/summary/pii_increased": "integer",
+      "/summary/qi_groups_added": "integer",
+      "/summary/qi_groups_removed": "integer",
+      "/summary/reid_risk_delta": "number",
+      "/summary/removed": "integer"
+    }
+  },
+  "scan fields": {
+    "paths": {
+      "/command": "string",
+      "/fields[]/name": "string",
+      "/fields[]/pii_bucket": "string",
+      "/fields[]/pii_score": "number",
+      "/fields[]/quasi_identifier": "boolean",
+      "/matched": "integer",
+      "/scan": "string",
+      "/status": "string",
+      "/total": "integer"
+    }
+  },
+  "scan show": {
+    "paths": {
+      "/basis": "string",
+      "/command": "string",
+      "/field/detector_hits": "[]",
+      "/field/distinct_count": "integer",
+      "/field/dtype": "string",
+      "/field/leading_zero_count": "integer",
+      "/field/model_hits": "[]",
+      "/field/name": "string",
+      "/field/null_count": "integer",
+      "/field/null_rate": "number",
+      "/field/pii_candidate": "boolean",
+      "/field/pii_score": "number",
+      "/pii_bucket": "string",
+      "/quasi_identifier_groups": "[]",
+      "/scan": "string",
+      "/scanned_rows": "integer",
+      "/status": "string"
+    }
+  },
+  "schema": {
+    "exempt": "prints the engine PipelineConfig schema, pinned by the engine snapshot"
+  },
+  "setup": {
+    "exempt": "writes the user's settings file outside the test directory"
+  },
+  "show": {
+    "paths": {
+      "/body": "string",
+      "/command": "string",
+      "/name": "string",
+      "/status": "string",
+      "/summary": "string"
+    }
+  },
+  "subset": {
+    "paths": {
+      "/budget_outcome": "string",
+      "/closure_rounds": "integer",
+      "/command": "string",
+      "/config": "string",
+      "/dry_run": "boolean",
+      "/edges[]/direction": "string",
+      "/edges[]/edge_id": "string",
+      "/edges[]/rows_added_downward": "integer",
+      "/edges[]/rows_added_upward": "integer",
+      "/engine_version": "string",
+      "/seed_specs[]/count": "null",
+      "/seed_specs[]/fraction": "number",
+      "/seed_specs[]/key_columns[]": "string",
+      "/seed_specs[]/mode": "string",
+      "/seed_specs[]/table": "string",
+      "/status": "string",
+      "/tables[]/input_rows": "integer",
+      "/tables[]/seed_null_excluded": "integer",
+      "/tables[]/seed_rows": "integer",
+      "/tables[]/surviving_rows": "integer",
+      "/tables[]/table": "string",
+      "/total_surviving_rows": "integer",
+      "/warnings": "[]"
+    }
+  },
+  "tokenize": {
+    "paths": {
+      "/columns[]/column": "string",
+      "/columns[]/namespace": "string",
+      "/columns[]/table": "string",
+      "/command": "string",
+      "/config": "string",
+      "/rows": "integer",
+      "/status": "string",
+      "/vault": "string",
+      "/vault_entries": "integer"
+    }
+  },
+  "unmask": {
+    "paths": {
+      "/columns[]/column": "string",
+      "/columns[]/detail": "string",
+      "/columns[]/status": "string",
+      "/columns[]/strategy": "string",
+      "/columns[]/table": "string",
+      "/command": "string",
+      "/config": "string",
+      "/input": "string",
+      "/output": "string",
+      "/status": "string",
+      "/table": "string"
+    }
+  },
+  "upgrade": {
+    "exempt": "manages a bundled install and refuses a pip or dev install"
+  },
+  "validate compile": {
+    "paths": {
+      "/command": "string",
+      "/compile_checks/passed[]": "string",
+      "/compile_checks/skipped[]": "string",
+      "/compile_checks/warnings": "[]",
+      "/config": "string",
+      "/engine_version": "string",
+      "/pipeline_config_hash": "string",
+      "/status": "string"
+    }
+  },
+  "validate config": {
+    "paths": {
+      "/checks_run[]": "string",
+      "/command": "string",
+      "/config": "string",
+      "/messages": "[]",
+      "/status": "string"
+    }
+  },
+  "validate preflight": {
+    "paths": {
+      "/capacity/code": "null",
+      "/capacity/message": "string",
+      "/capacity/status": "string",
+      "/checks[]/location": "string",
+      "/checks[]/message": "string",
+      "/checks[]/name": "string",
+      "/checks[]/status": "string",
+      "/command": "string",
+      "/config": "string",
+      "/fail_count": "integer",
+      "/native_companion/code": "null",
+      "/native_companion/message": "string",
+      "/native_companion/status": "string",
+      "/native_eligibility/code": "null",
+      "/native_eligibility/message": "string",
+      "/native_eligibility/status": "string",
+      "/pass_count": "integer",
+      "/status": "string",
+      "/warn_count": "integer"
+    }
+  }
+}

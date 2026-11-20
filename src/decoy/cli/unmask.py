@@ -16,22 +16,25 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
-import yaml as _yaml
 
 from decoy import _mask_secret, _mask_secret_guidance
 from decoy._atomic import AtomicWriteError, describe
+from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
 from decoy.cli._sources import read_file
-from decoy.cli._yaml_errors import sanitize_yaml_error
-from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE, exit_code_for
 from decoy.cli.io import (
     TargetFormatError,
     check_output_path,
     format_for_path,
     input_format,
+    owning_pipeline,
+    pipeline_argument,
+    resolve_pipeline,
+    side_file_default,
     write_private_table,
 )
-from decoy.ui.output import OutputMode, emit_json, setup_output
-from decoy.ui.theme import code, error, hint, success, warn
+from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
+from decoy.ui.theme import code, success, warn
 
 _UNMASK_EPILOG = """\
 Examples:
@@ -64,11 +67,7 @@ See also: decoy run, decoy explain transforms.
 
 
 def unmask(
-    config: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
+    config: str = pipeline_argument(
         help=(
             "The pipeline config the mask run used. The mask secret (--mask-secret or "
             "its global_settings.mask_secret_ref) must be the one that run used."
@@ -132,34 +131,19 @@ def unmask(
     error, 3 on a runtime failure.
     """
     state = setup_output(json_, quiet, verbose)
+    ref = resolve_pipeline(config, state, "unmask")
+    config_path = ref.yaml
 
-    def _emit_error(message: str, *, hint_text: str | None = None) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "unmask",
-                    "status": "error",
-                    "config": str(config),
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            # markup=False: message is engine text or a user path, not authored
-            # markup. Engine install lines such as `pip install 'decoy-engine[vault]'`
-            # would otherwise lose the bracketed extra name to Rich's tag parser.
-            state.err_console.print(error("error:"), message, markup=False)
-            if hint_text:
-                state.err_console.print(" ", hint("hint:"), hint_text)
+    def _emit_error(message: str, *, hint_text: str | None = None, code: str | None = None) -> None:
+        emit_error(
+            state, "unmask", message, code=code, hint=hint_text, context={"config": str(config)}
+        )
 
     try:
-        raw = _yaml.safe_load(config.read_text(encoding="utf-8"))
-    except _yaml.YAMLError as exc:
-        _emit_error(sanitize_yaml_error(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-    if not isinstance(raw, dict):
-        _emit_error(f"Pipeline YAML must be a YAML mapping (object), not {type(raw).__name__}.")
-        raise typer.Exit(code=EXIT_USAGE)
+        raw = load_config_mapping(config_path)
+    except (ConfigFileError, OSError) as exc:
+        _emit_error(**config_refusal(exc))
+        raise typer.Exit(code=exit_code_for(exc))
     try:
         _mask_secret.apply_mask_secret(raw, mask_secret)
     except _mask_secret.MaskSecretFlagError as exc:
@@ -205,7 +189,13 @@ def unmask(
 
     # The declared format of the table's target when `masked` is that file, else the suffix rule.
     try:
-        in_format, in_layout = input_format(raw, target_table, masked, config.parent)
+        in_format, in_layout = input_format(
+            raw,
+            target_table,
+            masked,
+            config_path.parent,
+            owning_pipeline(config_path, raw.get("name"), ref.project),
+        )
     except TargetFormatError as exc:
         _emit_error(f"{exc.code}: {exc}")
         raise typer.Exit(code=EXIT_USAGE)
@@ -276,7 +266,7 @@ def unmask(
         _emit_error(f"unmask failed: {type(exc).__name__}")
         raise typer.Exit(code=EXIT_RUNTIME)
 
-    out_path = output if output is not None else masked.with_suffix(".unmasked.csv")
+    out_path = output if output is not None else side_file_default("unmasked", masked)
     try:
         write_private_table(result.outputs[target_table], format_for_path(out_path), out_path)
     except AtomicWriteError as exc:

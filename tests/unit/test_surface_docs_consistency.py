@@ -10,7 +10,7 @@ Both are read against the LIVE Typer app (`decoy.__main__.app`), via the shared
 stale: adding, removing, or re-parenting a command and forgetting to update
 the help/README fails here.
 
-The extractor resolves NESTED command paths (`storm analyze`, `validate
+The extractor resolves NESTED command paths (`scan show`, `validate
 config`, `report show`) against the registry rather than treating every token
 as a flat command -- an example line carries args, flags, and placeholders
 after the command path, and a group reference is two tokens, not one.
@@ -24,6 +24,7 @@ from pathlib import Path
 
 import pytest
 from tests.command_tree import registry
+from tests.sentry._ratchet import load_allowlist
 
 from decoy.__main__ import _ROOT_HELP, app
 
@@ -40,40 +41,12 @@ README = REPO_ROOT / "README.md"
 
 # Root help is a curated quick-start. These power/introspection commands are
 # deliberately kept out of it (full surface is in `decoy --help`).
-_ROOT_HELP_OMITTED = frozenset(
-    {
-        "schema",
-        "doctor",
-        # CLI-launch: `upgrade` manages the self-hosted install; a power command
-        # kept out of the first-run quick-start (full surface is in `decoy --help`).
-        "upgrade",
-        # S3b: the four registry sub-apps folded into `list`/`show`, which ARE
-        # advertised in the root help (`decoy list templates` / `show template`).
-        # S4b: `vault`, `evidence`, and `storm` are gone -- their verbs folded
-        # into `decoy report` (vault / verify+show / integrity), so they are no
-        # longer registered and must not appear here.
-    }
-)
+_ROOT_HELP_OMITTED = frozenset(load_allowlist("root-help-omitted"))
 
 # The README "Common commands" table is an even shorter first-contact list:
 # everything below is a real command that the table deliberately does not
 # repeat (the table points readers to `decoy --help` for the rest).
-_README_TABLE_OMITTED = frozenset(
-    {
-        "unmask",
-        "info",
-        "schema",
-        "doctor",
-        "subset",
-        "upgrade",
-        # S3b: the four registry sub-apps folded into `list`/`show`; the README
-        # table advertises `decoy list templates` / `decoy show template`.
-        # S4b: `vault`, `evidence`, and `storm` are gone (folded into `decoy
-        # report`), so they are no longer registered and must not appear here.
-        # `report` is now featured in the table (the post-run surface), so it
-        # is no longer allowlisted out.
-    }
-)
+_README_TABLE_OMITTED = frozenset(load_allowlist("readme-table-omitted"))
 
 
 # ---------------------------------------------------------------------------
@@ -251,12 +224,13 @@ def test_every_top_level_command_is_in_readme_table_or_allowlisted() -> None:
 
 # ---------------------------------------------------------------------------
 # Flag-vocabulary grep gate (slice B1): the standalone flag `--out` is gone;
-# `--output`/`-o` is the one spelling. `--output` itself must not trip this.
+# `--output`/`-o` is the one spelling. `--output` and `--out-dir` (a folder, PROJECT-LAYOUT
+# plan 3.6) must not trip this.
 # ---------------------------------------------------------------------------
 
 
 def test_no_standalone_out_flag_in_source() -> None:
-    pattern = re.compile(r"--out(?!put)")
+    pattern = re.compile(r"--out(?!put|-dir)")
     offenders: list[str] = []
     for path in SRC_ROOT.rglob("*.py"):
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):

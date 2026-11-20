@@ -19,6 +19,7 @@ from pathlib import Path
 import typer
 
 from decoy import _resources
+from decoy.cli.io import out_dir_option, pipeline_argument, resolve_pipeline
 from decoy.cli.io import resolve_path as _resolve_path
 from decoy.cli.run import _flow
 from decoy.cli.run._context import DEFAULT_CHUNK_SIZE, Mode, NotifyOn, RunContext
@@ -45,6 +46,12 @@ Examples:
 
   decoy run pipeline.yaml
     Run with default mode (mask).
+
+  decoy run
+    In a project with exactly one pipeline, run it.
+
+  decoy run --all
+    Run every pipeline of the project, one process each, in name order.
 
   decoy run generate.yaml --rows 5
     Preview a generate pipeline: the largest table at 5 rows, the others in proportion.
@@ -100,12 +107,22 @@ See also: decoy validate compile --explain, decoy report fidelity, decoy validat
 
 
 def run(
-    config: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
-        help="Path to the YAML pipeline config.",
+    ctx: typer.Context,
+    config: str = pipeline_argument(
+        help=(
+            "Path or name of the YAML pipeline config (a name is looked up in the project). "
+            "Optional when the project has exactly one pipeline."
+        ),
+        optional=True,
+    ),
+    all_: bool = typer.Option(
+        False,
+        "--all",
+        help=(
+            "Run every pipeline of the project, one process each, in name order. The exit "
+            "code is the first of 5 > 3 > 1 > 6 > 4 > 2 > 0 that any child produced. Takes no "
+            "pipeline name and refuses --evidence-out, --vault and --out-dir."
+        ),
     ),
     mode: Mode = typer.Option(
         Mode.mask,
@@ -224,6 +241,7 @@ def run(
             "See: decoy report show."
         ),
     ),
+    out_dir: Path = out_dir_option(),
     notify: list[str] = typer.Option(
         [],
         "--notify",
@@ -328,6 +346,15 @@ def run(
             "handle."
         ),
     ),
+    no_subset: bool = typer.Option(
+        False,
+        "--no-subset",
+        help=(
+            "Mask every source row even when the pipeline has a `subset:` block. The YAML file "
+            "is not changed. The summary then prints `subset: not applied (--no-subset)` and --json shows `applied: false`. "
+            "A pipeline with `subset:` is refused under --chunked, with or without this flag."
+        ),
+    ),
     rows: int = typer.Option(
         None,
         "--rows",
@@ -338,7 +365,7 @@ def run(
             "scaled by the same ratio, so parent and child sizes keep their proportions. "
             "Refused with a mask table, --chunked, --chunk-size, --evidence-out, --notify, "
             "--vault, --fidelity, --explain-plan, --post-validate, --post-validate-enforce, "
-            "--native and --duckdb-source."
+            "--native, --duckdb-source and --out-dir."
         ),
     ),
     otel_endpoint: str = typer.Option(
@@ -366,10 +393,15 @@ def run(
     counted on stderr and never stop it. There is no flag to skip the check.
     """
     state = setup_output(json_, quiet, verbose)
+    # `--all` takes no pipeline: its refusal comes before a lookup that could fail first.
+    ref = None if all_ else resolve_pipeline(config, state, "run")
     _flow.execute(
         RunContext(
             state=state,
-            config=config,
+            pipeline=ref,
+            all_=all_,
+            named=config is not None,
+            cli=ctx,
             mode=mode,
             json_=json_,
             quiet=quiet,
@@ -383,6 +415,7 @@ def run(
             vault=vault,
             key_label=key_label,
             evidence_out=evidence_out,
+            out_dir=out_dir,
             notify=notify,
             notify_on=notify_on,
             native=native,
@@ -392,6 +425,7 @@ def run(
             post_validate=post_validate,
             post_validate_enforce=post_validate_enforce,
             duckdb_source=duckdb_source,
+            no_subset=no_subset,
             otel_endpoint=otel_endpoint,
             rows=rows,
         )

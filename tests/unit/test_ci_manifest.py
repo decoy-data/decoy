@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -312,3 +313,38 @@ def test_canonical_example_loads_and_matches_the_plan_shape() -> None:
 
 def test_helper_manifest_text_is_valid(tmp_path: Path) -> None:
     assert _load(tmp_path, ci_manifest(patterns=[{"id": "p.one", "literal": "ABCDEFGH"}])).manifest
+
+
+# AT-C5. `decoy-ci/v1` is a frozen contract; the retired-name slice rewrites one `description`.
+# The validation projection drops `description`, `title` and `examples` where they are schema
+# keywords (a property or definition that happens to carry one of those names stays), so the hash
+# below moves only when validation changes, never for a wording edit.
+_ANNOTATIONS = frozenset({"description", "title", "examples"})
+_NAME_MAPS = frozenset({"properties", "patternProperties", "$defs", "definitions"})
+# Computed at merge base 419572a20e2d93b7d2436267fbae7049d620c013 (origin/main when C2 was cut).
+_VALIDATION_PROJECTION_SHA256 = "0091c9c928045df509eebe09d96e6744912f8393940190a797a68fc230e0f4f6"
+
+
+def _validation_projection(node, *, names: bool = False):
+    if isinstance(node, dict):
+        return {
+            k: _validation_projection(v, names=(not names and k in _NAME_MAPS))
+            for k, v in node.items()
+            if names or k not in _ANNOTATIONS
+        }
+    if isinstance(node, list):
+        return [_validation_projection(v) for v in node]
+    return node
+
+
+def test_schema_validation_projection_is_unchanged_by_annotation_edits() -> None:
+    schema = json.loads(manifest_json_schema_text())
+    canonical = json.dumps(_validation_projection(schema), sort_keys=True, separators=(",", ":"))
+    assert hashlib.sha256(canonical.encode()).hexdigest() == _VALIDATION_PROJECTION_SHA256
+    assert schema["$id"].endswith("decoy-ci-v1.schema.json")
+    assert CI_MANIFEST_VERSION == "decoy-ci/v1"
+
+
+def test_validation_projection_keeps_property_names_that_match_an_annotation_keyword() -> None:
+    node = {"properties": {"title": {"type": "string", "title": "T"}}, "description": "d"}
+    assert _validation_projection(node) == {"properties": {"title": {"type": "string"}}}

@@ -27,15 +27,6 @@ reason = "Parquet bytes of the caller's DataFrame go into the spool that create_
 via = "create_private_temp"
 
 [[row]]
-file = "ci/engine_logging.py"
-function = "engine_logging_silenced"
-sink = "tempfile.TemporaryDirectory"
-ordinal = 1
-disposition = "temp"
-reason = "Scratch directory for engine log files; the stdlib makes it 0700 on POSIX."
-exit = "WIN-FEAS"
-
-[[row]]
 file = "cli/_duckdb_source.py"
 function = "acquire_relation"
 sink = "duckdb.connect"
@@ -51,6 +42,23 @@ ordinal = 1
 disposition = "temp"
 reason = "COPY writes the unmasked source table into the 0700 spill directory run.py makes; the file takes the umask mode inside it."
 exit = "WIN-FEAS"
+
+[[row]]
+file = "cli/library/_fs.py"
+function = "open_database_readonly"
+sink = "sqlite3.connect"
+ordinal = 1
+disposition = "read"
+reason = "fsck opens the library index read-only (mode=ro URI) to compare it with the object files; writes nothing."
+
+[[row]]
+file = "cli/library/_fs.py"
+function = "open_database"
+sink = "sqlite3.connect"
+ordinal = 1
+disposition = "private"
+reason = "SQLite opens the library index (and lock) file open_private just created 0600; it holds value-free index rows."
+via = "open_private"
 
 [[row]]
 file = "cli/_token_vault.py"
@@ -84,30 +92,6 @@ sink = "write_text"
 ordinal = 2
 disposition = "public"
 reason = "Synthetic demo config and data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 1
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 2
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 3
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
 
 [[row]]
 file = "cli/init.py"
@@ -231,24 +215,6 @@ reason = "DuckDB spill directory; mkdtemp makes it 0700 on POSIX."
 exit = "WIN-FEAS"
 
 [[row]]
-file = "cli/run/_vault.py"
-function = "_commit_vault"
-sink = "tempfile.mkstemp"
-ordinal = 1
-disposition = "private"
-reason = "Vault staging file; mkstemp makes it 0600 and the engine writer reopens it by path."
-exit = "L5a (_vault_commit.py)"
-
-[[row]]
-file = "cli/run/_vault.py"
-function = "_commit_vault"
-sink = "os.open"
-ordinal = 1
-disposition = "private"
-reason = "Reopens the vault staging file to fsync it."
-exit = "L5a (_vault_commit.py)"
-
-[[row]]
 file = "cli/schema.py"
 function = "schema"
 sink = "write_text"
@@ -295,3 +261,20 @@ sink = "os.open"
 ordinal = 1
 disposition = "public"
 reason = "Empty install lock file; holds no data."
+
+[[row]]
+file = "cli/models/_private.py"
+function = "private_workdir"
+sink = "tempfile.gettempdir"
+ordinal = 1
+disposition = "read"
+reason = "Reads the system temp folder's name; create_private_directory then makes the 0700 install work folder inside it."
+
+[[row]]
+file = "cli/models/_private.py"
+function = "write_private"
+sink = "write_bytes"
+ordinal = 1
+disposition = "private"
+reason = "Writes the install's constraints file, pinned-model requirements file and --from wheel copies into the file open_private just created 0600."
+via = "open_private"

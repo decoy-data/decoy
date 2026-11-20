@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING, NoReturn
 
 import typer
 
@@ -23,8 +24,11 @@ from decoy._version import __version__
 from decoy.cli.exit_codes import EXIT_OK, EXIT_RUNTIME, EXIT_USAGE
 from decoy.distribution import installer, layout, release_key
 from decoy.distribution import version_document as vd
-from decoy.ui.output import OutputMode, emit_json, setup_output
-from decoy.ui.theme import error, hint, success
+from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
+from decoy.ui.theme import hint, success
+
+if TYPE_CHECKING:
+    from decoy import _outbound
 
 UPGRADE_EPILOG = """\
 Examples:
@@ -42,19 +46,39 @@ Verification: the version document and the bundle are both checked against the p
 release key before anything is swapped. A bad signature or checksum refuses the upgrade.
 """
 
-_DEFAULT_VERSION_URL = "https://decoy.dev/cli/version.json"
-
 
 def _managed_home() -> Path | None:
     """The managed-runtime home, or None for a pip/dev install (see `layout.managed_home`)."""
     return layout.managed_home()
 
 
-def _fetch(url: str) -> bytes:
-    import urllib.request
+def _fetch(url: str, purpose: "_outbound.Purpose" = "upgrade_artifact") -> bytes:
+    # Imported here, not at module load, so a start that never upgrades does not load urllib.
+    from decoy import _outbound
 
-    with urllib.request.urlopen(url, timeout=30) as resp:
+    with _outbound.open_url(url, purpose=purpose, timeout=30) as resp:
         return resp.read()
+
+
+def _refuse_scheme(state, url: str) -> None:
+    """Exit 1 before any socket when the version-document URL has a scheme the purpose refuses.
+    The refusal is raised outside the `except` so the URL cannot ride in the exception context."""
+    from decoy import _outbound
+
+    try:
+        _outbound.check_scheme(url, "upgrade_document")
+        refused = None
+    except _outbound.OutboundRefused as exc:
+        refused = exc
+    if refused is not None:
+        allowed = " or ".join(_outbound.allowed_schemes("upgrade_document"))
+        emit_error(
+            state,
+            "upgrade",
+            f"the version-document URL scheme is not allowed (use {allowed}).",
+            code=refused.code,
+        )
+        raise typer.Exit(code=EXIT_USAGE)
 
 
 def upgrade(
@@ -63,25 +87,32 @@ def upgrade(
     force: bool = typer.Option(False, "--force", help="Reinstall even if already current."),
     url: str = typer.Option(None, "--url", help="Override the version-document URL.", hidden=True),
     json_: bool = typer.Option(False, "--json", help="Emit a JSON result."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stdout."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Debug logs on stderr."),
 ) -> None:
     """Upgrade (or pin) the managed Decoy runtime from the Decoy-hosted channel."""
     state = setup_output(json_, quiet, verbose)
+    from decoy import _outbound
+
+    if url is not None:
+        _refuse_scheme(state, url)
 
     home = _managed_home()
     if home is None:
-        state.err_console.print(
-            error("error:"),
+        emit_error(
+            state,
+            "upgrade",
             "`decoy upgrade` manages a bundled install, but this looks like a pip/dev install.",
+            hint="upgrade it the way you installed it (e.g. `pip install -U decoy-cli`).",
         )
-        state.err_console.print(" ", hint("hint:"), "upgrade it the way you installed it (e.g. `pip install -U decoy-cli`).")
         raise typer.Exit(code=EXIT_USAGE)
 
     try:
         pubkey = release_key.pinned_public_pem()
     except release_key.NoPinnedKeyError as exc:
-        state.err_console.print(error("error:"), str(exc))
+        emit_error(state, "upgrade", "this build carries no pinned release key.", code="upgrade_no_key")
         raise typer.Exit(code=EXIT_USAGE) from exc
 
     # Local rollback must not depend on the network. An explicit `--version <v>` that is
@@ -96,33 +127,40 @@ def upgrade(
         try:
             outcome = installer.activate_local_version(version, home=home, expected_public_pem=pubkey)
         except installer.InstallError as exc:
-            state.err_console.print(error("error:"), str(exc))
-            raise typer.Exit(code=EXIT_RUNTIME) from exc
+            _refuse(state, "could not activate the installed version", "upgrade_activate_failed", exc)
         _report_outcome(state, outcome, "activated")
         raise typer.Exit(code=EXIT_OK)
 
-    doc_url = url or _DEFAULT_VERSION_URL
+    doc_url = vd.resolve_version_url(url)
+    _refuse_scheme(state, doc_url)
+    failure: BaseException | None = None
     try:
-        doc_bytes = _fetch(doc_url)
-        doc_sig = _fetch(doc_url + ".sig").decode("ascii").strip()
+        doc_bytes = _fetch(doc_url, "upgrade_document")
+        doc_sig = _fetch(doc_url + ".sig", "upgrade_document").decode("ascii").strip()
     except Exception as exc:
-        state.err_console.print(error("error:"), f"could not reach the version endpoint: {exc}")
-        raise typer.Exit(code=EXIT_RUNTIME) from exc
+        failure = exc
+    # Refused outside the `except`, so no `__context__` carries the URL (defect class 3).
+    if isinstance(failure, _outbound.OutboundRefused):
+        _refuse(state, _outbound_text(failure, "the version endpoint"), failure.code, failure)
+    if failure is not None:
+        _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", failure)
 
     if not vd.verify_document(doc_bytes, doc_sig, expected_public_pem=pubkey):
-        state.err_console.print(error("error:"), "version-document signature INVALID -- refusing (possible tampering).")
+        emit_error(
+            state,
+            "upgrade",
+            "version-document signature INVALID -- refusing (possible tampering).",
+        )
         raise typer.Exit(code=EXIT_RUNTIME)
     try:
         doc = vd.parse_document(doc_bytes)
     except ValueError as exc:
-        state.err_console.print(error("error:"), f"version document rejected: {exc}")
-        raise typer.Exit(code=EXIT_RUNTIME) from exc
+        _refuse(state, "version document rejected", "upgrade_document_rejected", exc)
     try:
         # --check is read-only, so it enforces freshness but does not advance the state.
         installer.check_document_freshness(doc, home, record=False)
     except installer.InstallError as exc:
-        state.err_console.print(error("error:"), str(exc))
-        raise typer.Exit(code=EXIT_RUNTIME) from exc
+        _refuse(state, "version document failed the freshness check", "upgrade_document_stale", exc)
     latest = doc.get("latest")
     target_version = version or latest
 
@@ -156,26 +194,49 @@ def upgrade(
     # not-yet-installed version, and a `--force` reinstall (a repair, even of a version
     # already on disk -- so a same-version `--force` re-downloads and re-verifies rather
     # than swapping to the retained bits).
+    install_failure: BaseException | None = None
     try:
-        # The base the version document was served under; a pinned non-latest version
-        # resolves <base>/<version>/decoy-<version>-<target>.tar.gz (install.sh scheme).
-        base_url = doc_url.rsplit("/", 1)[0]
+        # A pinned non-latest version resolves <bundle base>/v<version>/decoy-<version>-<target>.tar.gz
+        # (install.sh scheme), not under the document's own base.
         outcome = installer.install_version(
             version_doc_bytes=doc_bytes,
             version_doc_sig_b64=doc_sig,
             expected_public_pem=pubkey,
             home=home,
             pin_version=version,
-            base_url=base_url,
             download=_fetch,
             post_swap_validate=_post_swap,
         )
-    except installer.InstallError as exc:
-        state.err_console.print(error("error:"), str(exc))
-        raise typer.Exit(code=EXIT_RUNTIME) from exc
+    except (_outbound.OutboundRefused, installer.InstallError) as exc:
+        install_failure = exc
+    if isinstance(install_failure, _outbound.OutboundRefused):
+        _refuse(state, _outbound_text(install_failure, "a download"), install_failure.code, install_failure)
+    if install_failure is not None:
+        _refuse(
+            state,
+            "the upgrade failed and the installed runtime is unchanged",
+            "upgrade_install_failed",
+            install_failure,
+        )
 
     _report_outcome(state, outcome, "upgraded")
     raise typer.Exit(code=EXIT_OK)
+
+
+def _outbound_text(exc, what: str) -> str:
+    """Fixed text for an outbound refusal, chosen by its code."""
+    if exc.code == "url_redirect_refused":
+        return f"{what} redirected somewhere not allowed"
+    return f"{what} uses a URL scheme that is not allowed"
+
+
+def _refuse(state, message: str, code: str, exc: BaseException) -> NoReturn:
+    """Fixed text and a code, plus the exception type, then exit. Never `str(exc)`: a network,
+    installer or version-document error can quote the `--url` (credentials included), a system
+    message or a literal from the document. The exit drops the chain (`from None`) for the same
+    reason, so the exception cannot sit in `__cause__`."""
+    emit_error(state, "upgrade", f"{message}: {type(exc).__name__}.", code=code)
+    raise typer.Exit(code=EXIT_RUNTIME) from None
 
 
 def _report_outcome(state, outcome, action: str) -> None:

@@ -79,7 +79,7 @@ Every column also records its null count, non-null count and distinct count. The
 In the sample file, `full_name` has 80 distinct values, so it is treated as
 free text and only its length is kept.
 
-**The snapshot can still be sensitive.** `fit` profiles every row it fits on (the whole file, or the sample for a file over the row limit) and withholds the values of every column it flags as personal data (an SSN, a name, an id). The snapshot then carries `value_policy: flagged-redacted/v1` and lists those columns under `redacted_columns`. `fit` prints their names, never their values. A withheld number column keeps one coarse range and a withheld date column keeps years. A column the profiler does not flag still holds its real values. For a category column that looks like this:
+**The snapshot can still be sensitive.** `fit` profiles every row it fits on (the whole file, or the sample for a file over the row limit) and withholds the values of every column it flags as personal data (an SSN, a name, an id). The snapshot then carries `value_policy: flagged-redacted/v2` and lists those columns under `redacted_columns`. `fit` prints their names, never their values. A withheld number column keeps one coarse range and a withheld date column keeps years. A column the profiler does not flag still holds its real values. For a category column that looks like this:
 
 ```json
 "state": {
@@ -213,6 +213,33 @@ top: `0` turns blanks off and `0.1` gives 10%, whatever the source had.
 
 `decoy fit` records the cell format per column, so its snapshots carry the
 blank rate.
+
+## Formulas read numbers as numbers
+
+A `formula` column sees each column it references as that column's own type. A plain
+`sequence`, an int or float `faker` column and a numeric column with blanks arrive as numbers,
+so `round(a / 3)` over a sequence gives `0, 1, 1, 1, 2`. Adding a formula never changes the type
+of the column it reads in the output.
+
+Two rules keep a formula from writing wrong cells:
+
+- A formula that uses a number as text is refused at `decoy validate` and `decoy run` with
+  `generate_formula_number_used_as_text` (exit 1). Rewrite it as in the table below.
+- A formula that raises on a row stops the run with `generate_formula_evaluation_failed`
+  (exit 1) and writes no output. The message names the table, the column, the row index and a
+  reason word, never a cell value. It used to write blanks with a warning.
+
+A blank number reference gives a blank result. A formula cannot replace it, so write
+`x if id is not None else y` when you need to test for blank (`x if id else y` is false for 0).
+
+| Before | After |
+|---|---|
+| `'ORD-' + id` | `'ORD-' + str(id)` or `f'ORD-{id}'` |
+| `id.zfill(5)` | `str(id).zfill(5)` or `f'{id:05d}'` |
+| `id[-4:]`, `len(id)` | `str(id)[-4:]`, `len(str(id))` |
+| `id == '1'` | `id == 1` |
+
+This needs engine 0.24.0 or later. The CLI pins a later one.
 
 ## Step 3: check the result
 

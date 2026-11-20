@@ -495,9 +495,15 @@ def test_unreadable_entries_are_value_free(tmp_path: Path) -> None:
 
 # Recorded on the base tree (A2 head 16e82b1), with the temp folder replaced by <TMP>.
 # The init digest was re-recorded when the scaffold header stopped naming a
-# private engine module; that header line is the only line that changed.
-_INIT_YAML_SHA256 = "8c0c4567132e801bb91d967e059af6d72d46083f47a6890f9912a86a25af5d4e"
-_SCAN_JSON_SHA256 = "81b904aa55af6552451bd44d1cbec86b3cf9f860f0d4aaa2f56df720f090a476"
+# private engine module; that header line is the only line that changed. Re-recorded again
+# when init began writing the source relative to the YAML and a bare target (PROJECT-LAYOUT P7);
+# only the two path lines changed. The scan digest was re-recorded when the scan `pii_note`
+# stopped naming the retired detector (retired-name removal, slice C1); that note is the only change.
+# Moves only for the REVIEW wording change ("The scan found ..."); undoing that wording gives the old
+# digest f392a49f, so nothing else in the scaffold changed. The scan digest moved again when the
+# scan JSON gained `basis`, `scanned_rows` and `row_count_exact` (PROFILE-SAMPLE-LABELS C1).
+_INIT_YAML_SHA256 = "e62ad0ab254fe83df4ba4d1f710e1f4b5c563000e9139af96c0789a75a758766"
+_SCAN_JSON_SHA256 = "59f6cb8c3cfa3c798dc181ee4e63447ba7185cbac001b10f8ccc3b3db7d6417d"
 
 
 def test_init_and_scan_parquet_unchanged(tmp_path: Path) -> None:

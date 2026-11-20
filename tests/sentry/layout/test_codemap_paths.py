@@ -24,6 +24,7 @@ KINDS = frozenset(
     {
         "Command module",
         "Command-private helpers",
+        "Local record library (LIB): root rule, store, and later refs, index, scratch and logs; commands import the facade, never its `_` modules",
         "Generation CLI helpers (the exact fit shared by `fit` and `init`, the `run --rows` preview, the CSV generate scaffold; the flat `cli/` is frozen)",
         "`decoy run` internals (phases, error arm, summary, evidence, notifications, vault commit)",
         "`decoy scan` internals (argument resolution, engine call, card and `--json`)",
@@ -34,11 +35,13 @@ KINDS = frozenset(
         "Python API",
         "CI integration",
         "Terminal output",
+        "Versioned schema artifacts",
         "User-facing CLI text and crash handling",
         "Shipped install and update",
         "Build-host release tools (not shipped in the wheel)",
         "Packaged templates",
         "Private shared filesystem or process primitives used by more than one package",
+        "Shared first-party outbound policy",
         "Notifications, telemetry",
         "First-user QA item tests, grouped by behavior",
         "Sentry test",
@@ -46,10 +49,13 @@ KINDS = frozenset(
         "Shared cross-suite test helpers (constants and lookups used by more than one test folder)",
         "Developer environment scripts",
         "Release scripts",
+        "Release runbooks, logs and maps",
         "CI install, vendor and lane policy",
         "Composite CI actions",
         "Task-oriented user guides (one folder per topic, with a `README.md` index)",
+        "Root legal files (license text, notice, licensing FAQ, trademark policy)",
         "Roadmap, plans, records",
+        "QA checklists and run templates",
     }
 )
 # Paths the map marks `(target)`. A new or misspelled target is red. None is open since C3

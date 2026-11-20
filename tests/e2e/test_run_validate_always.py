@@ -52,7 +52,15 @@ def _cfg(tmp_path: Path, **over: Any) -> dict[str, Any]:
         "version": 2,
         "global_settings": {"seed": 42},
         "sources": {"customers": csv_source(src)},
-        "tables": [{"name": "customers", "columns": [{"name": "email", "strategy": "redact"}]}],
+        "tables": [
+            {
+                "name": "customers",
+                "columns": [
+                    {"name": "email", "strategy": "redact"},
+                    {"name": "id", "strategy": "passthrough"},
+                ],
+            }
+        ],
         "targets": {
             "customers": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}
         },
@@ -363,7 +371,8 @@ def _unique_cfg(tmp_path: Path) -> Path:
             "strategy": "faker",
             "provider": "person_email",
             "cardinality_mode": "unique",
-        }
+        },
+        {"name": "id", "strategy": "passthrough"},
     ]
     return _write(tmp_path, cfg)
 
@@ -418,7 +427,10 @@ def test_bad_mask_secret_ref_stays_behind_the_de02_guard(tmp_path: Path) -> None
 
 def test_keyed_config_passes_the_gate_with_only_the_flag(tmp_path: Path) -> None:
     cfg = _cfg(tmp_path)
-    cfg["tables"][0]["columns"] = [{"name": "email", "strategy": "hash", "namespace": "n"}]
+    cfg["tables"][0]["columns"] = [
+        {"name": "email", "strategy": "hash", "namespace": "n"},
+        {"name": "id", "strategy": "passthrough"},
+    ]
     result = runner.invoke(
         app, ["run", str(_write(tmp_path, cfg)), "--mask-secret", TEST_MASK_SECRET_REF]
     )
@@ -469,7 +481,7 @@ def _duckdb_cfg(tmp_path: Path) -> tuple[Path, Path]:
     db = tmp_path / "in.duckdb"
     con = duckdb.connect(str(db))
     try:
-        con.execute("CREATE TABLE customers AS SELECT 'a@b.com' AS email")
+        con.execute("CREATE TABLE customers AS SELECT 'a@b.com' AS email, 1 AS id")
     finally:
         con.close()
     cfg = _cfg(tmp_path)
@@ -497,8 +509,16 @@ def test_gate_refusal_removes_the_staging_dir(
         return d
 
     monkeypatch.setattr(tempfile, "mkdtemp", _record)
+    # The config and compile layers refuse before staging (r13), so the refusal that has a
+    # staging dir to remove is a preflight one: source readiness is checked on the staged file.
+    from decoy.cli.gate import GateFinding
+
     monkeypatch.setattr(
-        "decoy_engine.plan.compile_plan", mock.Mock(side_effect=_plan_error("synthetic_compile"))
+        "decoy.cli.gate._layers._run_preflight_layer",
+        lambda *a, **k: (
+            [GateFinding("preflight", "error", "synthetic_preflight", "x", None)],
+            False,
+        ),
     )
     result = runner.invoke(app, ["run", str(path), "--duckdb-source", f"customers={db}"])
     assert result.exit_code == EXIT_USAGE
@@ -550,6 +570,7 @@ def test_headerless_dialect_csv_passes_validate_and_run(tmp_path: Path) -> None:
         "column_names": ["id", "email", "age"],
         "delimiter": "|",
     }
+    cfg["tables"][0]["columns"].append({"name": "age", "strategy": "passthrough"})
     path = _write(tmp_path, cfg)
     assert runner.invoke(app, ["validate", str(path)]).exit_code == EXIT_OK
     assert runner.invoke(app, ["run", str(path)]).exit_code == EXIT_OK

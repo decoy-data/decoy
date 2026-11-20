@@ -1,7 +1,7 @@
 """E2E tests for the S3a `decoy scan` merge behaviors.
 
 These cover the behaviors unique to the profile+analyze merge (not already
-carried by the ported profile/storm tests): persist-only-on-`--output`,
+carried by the ported profile and saved-scan tests): persist-only-on-`--output`,
 `--output -` streaming, the PII-honesty framing (H4) in both human and JSON,
 and the privacy-safe field record (H5) that drops raw aggregates.
 """
@@ -16,6 +16,7 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.sentry.release.test_retired_name_residual import RETIRED_NAME
 
 runner = CliRunner()
 
@@ -172,7 +173,8 @@ def test_scan_rows_default_bounds_sample(large_csv: Path) -> None:
     result = runner.invoke(app, ["scan", str(large_csv), "--has-header", "--rows", "50", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
-    assert payload["row_count"] <= 50
+    assert payload["scanned_rows"] <= 50
+    assert payload["basis"] == "sample"
 
 
 def test_scan_rows_zero_full_scan(large_csv: Path) -> None:
@@ -184,7 +186,7 @@ def test_scan_rows_zero_full_scan(large_csv: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Removed surfaces -> "No such command"; storm integrity still works.
+# Removed surfaces -> "No such command"; report integrity still works.
 # ---------------------------------------------------------------------------
 
 
@@ -194,14 +196,14 @@ def test_top_level_profile_is_gone() -> None:
     assert "No such command" in result.output
 
 
-def test_storm_analyze_is_gone() -> None:
-    result = runner.invoke(app, ["storm", "analyze", "some.csv"])
+def test_old_analyze_verb_is_gone() -> None:
+    result = runner.invoke(app, [RETIRED_NAME, "analyze", "some.csv"])
     assert result.exit_code != 0
     assert "No such command" in result.output
 
 
 def test_report_integrity_registered() -> None:
-    # S4b: `storm integrity` relocated to `report integrity`.
+    # S4b: the old integrity verb relocated to `report integrity`.
     result = runner.invoke(app, ["report", "integrity", "--help"])
     assert result.exit_code == 0
     assert "--source" in result.output

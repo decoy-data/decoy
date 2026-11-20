@@ -76,12 +76,14 @@ tables:
 
       # Dates more specific than needed for analytics shift by a keyed
       # offset; same source date -> same shifted date.
+      # Set date_format to the format your dates use (strptime, e.g. %m/%d/%Y).
       - name: transaction_date
         strategy: date_shift
         namespace: transaction_dates
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
 
 targets:
   transactions:

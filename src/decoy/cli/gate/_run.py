@@ -9,7 +9,7 @@ data values); this module only caps their length for the run envelope.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from decoy.cli.exit_codes import EXIT_CAPACITY
 from decoy.cli.gate._layers import (
@@ -18,7 +18,11 @@ from decoy.cli.gate._layers import (
     GateRoute,
     gate_exit_code,
     run_gate_on_config,
+    run_static_gate,
 )
+
+if TYPE_CHECKING:
+    from decoy.cli.io import OutputPlacement
 
 # `decoy run` caps every error text it emits (CLI QA F8): an engine exception can quote
 # source-row content verbatim, so the cap bounds what reaches a log aggregator.
@@ -88,6 +92,17 @@ class PreRunCheckError(Exception):
             if extra is not None:
                 error_kind = "missing_extra"
         where = f" (at {first.location})" if first.location else ""
+        if first.layer == "preflight" and first.code.startswith("source_file."):
+            # The engine's own refusal text, "code: reason", as `decoy run` printed it before
+            # the gate carried this check; the findings still hold every error.
+            return cls(
+                first.message,
+                exit_code=exit_code,
+                error_kind=error_kind,
+                code=first.code,
+                extra=extra,
+                messages=[_message(f) for f in result.findings],
+            )
         summary = (
             f"{len(errors)} error(s) found before the run; first: "
             f"{cap_error_text(first.message)}{where}. "
@@ -124,13 +139,22 @@ def _message(f: GateFinding) -> dict[str, Any]:
     }
 
 
-def check_before_run(raw: Any, config_path: Path, route: GateRoute, state: Any) -> dict[str, Any]:
+def check_before_run(
+    raw: Any,
+    config_path: Path,
+    route: GateRoute,
+    state: Any,
+    placement: OutputPlacement | None = None,
+    *,
+    skip_subset: bool = False,
+) -> dict[str, Any]:
     """Run the gate on the parsed YAML; return the validated config or raise.
 
     Warnings never stop a run. In human mode one stderr line gives their count and the
-    command that lists them; `--quiet` and `--json` print nothing extra.
+    command that lists them; `--quiet` and `--json` print nothing extra. `skip_subset` is
+    `--no-subset`: the capacity estimate then prices the full sources.
     """
-    result = run_gate_on_config(raw, config_path, route)
+    result = run_gate_on_config(raw, config_path, route, placement, skip_subset=skip_subset)
     if gate_exit_code(result, fail_on_warning=False) != 0:
         raise PreRunCheckError.from_result(result)
     warnings = sum(1 for f in result.findings if f.severity == "warning")
@@ -145,6 +169,29 @@ def check_before_run(raw: Any, config_path: Path, route: GateRoute, state: Any) 
     if result.config is None:  # a passing gate always carries its config; kept under -O
         raise RuntimeError("pre-run gate passed without a parsed config")
     return result.config
+
+
+def check_static_before_acquire(
+    raw: Any, config_path: Path, placement: OutputPlacement | None = None
+) -> dict[str, Any]:
+    """Refuse a config the config and compile layers reject, before any source is acquired.
+
+    Raises `PreRunCheckError` exactly as `check_before_run` does for those layers and returns the
+    validated config otherwise. Preflight (source readiness, capacity) is source-dependent and
+    stays with `check_before_run`."""
+    static = run_static_gate(raw, config_path, placement)
+    result = GateResult(
+        static.config_findings + static.compile_findings,
+        static.layers,
+        False,
+        static.checks_run,
+        static.config,
+    )
+    if gate_exit_code(result, fail_on_warning=False) != 0:
+        raise PreRunCheckError.from_result(result)
+    if static.config is None:  # a passing static gate carries its config; kept under -O
+        raise RuntimeError("static gate passed without a parsed config")
+    return static.config
 
 
 def _is_human(state: Any) -> bool:

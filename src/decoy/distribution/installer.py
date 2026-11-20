@@ -63,11 +63,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Callable
 
-from decoy._atomic import AtomicWriteError, WriteMode, write_atomic
-from decoy.distribution import layout, lock, verify_extracted
+from decoy._env_flags import env_str
+from decoy.distribution import layout, lock, trust_state, verify_extracted
 from decoy.distribution import manifest as manifest_mod
 from decoy.distribution import targets as targets_mod
 from decoy.distribution import version_document as vd
+from decoy.distribution.errors import InstallError
 
 Downloader = Callable[[str], bytes]
 PostSwapValidator = Callable[[Path], bool]
@@ -75,10 +76,23 @@ PostSwapValidator = Callable[[Path], bool]
 # The per-bundle metadata file the assembler writes (packaging_tools/build_bundle.py).
 _BUNDLE_INFO = "BUNDLE_INFO.json"
 
+# Pinned (non-latest) bundles are release assets: <base>/v<version>/decoy-<version>-<target>.tar.gz.
+# install.sh and install.ps1 carry the same literal; DECOY_BUNDLE_BASE overrides it everywhere.
+DEFAULT_BUNDLE_BASE = "https://github.com/decoy-data/decoy/releases/download"
 
-class InstallError(RuntimeError):
-    """A hard refusal: a failed verification or a broken bundle. The managed runtime is
-    left exactly as it was (or rolled back)."""
+
+def resolve_bundle_base(override: str | None = None) -> str:
+    """The pinned-bundle base: an explicit override, else `DECOY_BUNDLE_BASE`, else `DEFAULT_BUNDLE_BASE`."""
+    return _explicit_bundle_base(override) or DEFAULT_BUNDLE_BASE
+
+
+def _explicit_bundle_base(override: str | None = None) -> str:
+    """The configured base (argument, else `DECOY_BUNDLE_BASE`), or "" when none is set."""
+    return override or env_str("DECOY_BUNDLE_BASE", "")
+
+
+def _bundle_url(base: str, version: str, target: str) -> str:
+    return f"{base.rstrip('/')}/v{version}/decoy-{version}-{target}.tar.gz"
 
 
 @contextlib.contextmanager
@@ -160,39 +174,6 @@ def _sweep_stale_staging(versions: Path) -> None:
         shutil.rmtree(entry, ignore_errors=True)
 
 
-_TRUST_STATE = "trust_state.json"
-
-
-def _read_trust_state(home: Path) -> dict:
-    """Absent state is a first run ({}); a present but unreadable/invalid one is refused,
-    never treated as "nothing seen", or corrupting the file would reset rollback protection."""
-    import json
-
-    path = home / _TRUST_STATE
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {}
-    except OSError as exc:
-        raise InstallError(f"cannot read {path}: {exc} -- refusing (trust state unreadable)") from exc
-    try:
-        data = json.loads(raw)
-    except ValueError as exc:
-        raise InstallError(f"{path} is corrupt -- refusing (trust state unreadable)") from exc
-    serial = data.get("serial") if isinstance(data, dict) else None
-    if not isinstance(serial, int) or isinstance(serial, bool) or serial < 0:
-        raise InstallError(f"{path} has no valid 'serial' -- refusing (trust state unreadable)")
-    return data
-
-
-def _trust_state_text(latest: object, serial: int) -> str:
-    """Canonical compact sorted form; ``install.sh`` reads the serial from it with a
-    whitespace-tolerant pattern, so the two sides do not depend on matching formatting."""
-    import json
-
-    return json.dumps({"latest": latest, "serial": serial}, sort_keys=True, separators=(",", ":")) + "\n"
-
-
 def check_document_freshness(
     doc: dict, home: Path, *, now: _dt.datetime | None = None, record: bool = True
 ) -> None:
@@ -202,33 +183,24 @@ def check_document_freshness(
         vd.check_fresh(doc, now=now)
     except ValueError as exc:
         raise InstallError(f"version document rejected: {exc}") from exc
-    state = _read_trust_state(home)
-    seen_serial = state.get("serial") if isinstance(state.get("serial"), int) else 0
+    state = trust_state.read_trust_state(home)
     serial, latest = doc["serial"], doc.get("latest")
-    if serial < seen_serial:
+    if serial < state.serial:
         raise InstallError(
-            f"version document serial {serial} is older than the newest accepted ({seen_serial}) "
+            f"version document serial {serial} is older than the newest accepted ({state.serial}) "
             "-- refusing (rollback/replay)"
         )
     if not record:
         return
     # ``latest`` is recorded for diagnostics only: a signer may legitimately move it back
     # (pull a bad release) under a HIGHER serial, so the serial alone gates rollback.
-    home.mkdir(parents=True, exist_ok=True)
-    try:
-        write_atomic(
-            home, _TRUST_STATE, _trust_state_text(latest, serial).encode("utf-8"), WriteMode.REPLACE
-        )
-    except AtomicWriteError as exc:
-        raise InstallError(
-            f"could not record the trust state ({exc.code}) -- refusing to continue"
-        ) from None
+    trust_state.write_trust_state(home, trust_state.NO_ROTATION, latest=latest, document_serial=serial)
 
 
 def _urllib_download(url: str) -> bytes:
-    import urllib.request
+    from decoy import _outbound
 
-    with urllib.request.urlopen(url) as resp:
+    with _outbound.open_url(url, purpose="upgrade_artifact") as resp:
         return resp.read()
 
 
@@ -490,21 +462,20 @@ def install_version(
         # 2) resolve the bundle URL for the REQUESTED version (not blindly the latest),
         #    then download. The v1 document carries only the latest release's artifacts, so
         #    a pinned non-latest version resolves by the published URL convention -- the same
-        #    scheme install.sh uses -- from the base the version document was served under.
+        #    scheme install.sh uses -- from the bundle base (release assets).
         expected_sha: str | None
+        override = _explicit_bundle_base(base_url)
         if version == doc.get("latest"):
             art = vd.select_artifact(doc, target)
             if art is None:
                 raise InstallError(f"version document lists no bundle for target {target}")
             url, sig_url, expected_sha = art["url"], art["sig"], art["sha256"]
+            if override:
+                # A configured base (mirror, allowlist) wins for latest too; the signed sha256 still applies.
+                url = _bundle_url(override, version, target)
+                sig_url = url + ".sig"
         else:
-            if not base_url:
-                raise InstallError(
-                    f"cannot resolve pinned version {version}: the version document lists "
-                    "only the latest release and no base URL was given to resolve older bundles"
-                )
-            name = f"decoy-{version}-{target}.tar.gz"
-            url = f"{base_url.rstrip('/')}/{version}/{name}"
+            url = _bundle_url(resolve_bundle_base(base_url), version, target)
             sig_url = url + ".sig"
             # CHECKSUM EXCEPTION: the signed v1 document carries only the latest release's
             # sha256, so a pinned older download has NO signed checksum. The sidecar is an

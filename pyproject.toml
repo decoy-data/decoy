@@ -13,18 +13,13 @@ version = "0.1.0"
 description = "Source-available CLI for data masking and synthetic generation. Wraps the decoy-engine library; runs masking + generate jobs from the terminal or a notebook."
 readme = "README.md"
 requires-python = ">=3.10"
-# OSS.2 (license flip to Apache-2.0) is DEFERRED INDEFINITELY per PO
-# decision 2026-06-02: the CLI + engine are staying private. The
-# Apache-2.0 lock from 2026-06-01 still stands as the intended
-# end-state IF + WHEN the OSS launch resumes; the timing is
-# unscheduled. Until then the CLI carries BUSL-1.1, the commercial
-# platform pairs with it, and the LICENSE.md auto-converts to
-# Apache-2.0 on its Change Date (see LICENSE.md for the exact date).
-# Also: the description = "Free, open-source CLI..." line on the
-# project block above will need rewriting alongside any future flip.
-license = "LicenseRef-BUSL-1.1"
-license-files = ["LICENSE.md"]
-authors = [{ name = "louiskeep" }]
+# FSL-1.1-ALv2 (owner decision, replacing BUSL-1.1) for the CLI; the engine
+# takes it from 0.23.0, its first FSL release (0.22.0 and earlier stay Apache-2.0). Any use except a Competing Use; each release
+# becomes Apache-2.0 two years after it ships. Counsel confirms in R1-c.
+# FSL has no Trove classifier, hence Other/Proprietary below.
+license = "FSL-1.1-ALv2"
+license-files = ["LICENSE.md", "NOTICE"]
+authors = [{ name = "Decoy", email = "decoy@trydecoy.com" }]
 
 # PyPI Trove classifiers. Bare-minimum honest set: the Python versions
 # we actually test against (3.10/3.11/3.12 in release-smoke.yml), the OS
@@ -116,10 +111,42 @@ dependencies = [
     # generate columns per type at validate; the certified row aa038ddd is kept
     # and d5898d1f is added for the CLI runtime profile.
     #
+    # 0.23.0 adds the post-scan gate core and the chunked scan guards, makes the
+    # lgbm field classifier (scikit-learn, lightgbm) a base dependency, and moves the
+    # engine to FSL-1.1-ALv2; row 73acf493 is the CLI runtime profile (67 pins).
+    #
+    # 0.24.0 raises the `cryptography` floor to 49 (already in the certified set),
+    # adds the `blocked` isolated-run outcome for a post-scan block, and makes a
+    # profile's `generated_at` end `+00:00`; row 620a48a5 is the CLI runtime
+    # profile (67 pins, unchanged).
+    #
+    # 0.25.0 canonicalises every digest input (pinned-plan and resume fingerprints
+    # and `pipeline_config_hash` move), refuses a YAML date, NaN or surrogate in a
+    # config at plan compile, and renames `CUSTOM_PROVIDERS_DIR` to
+    # `DECOY_CUSTOM_PROVIDERS_DIR`; row c80550ef is the CLI runtime profile (67
+    # pins, unchanged).
+    #
+    # 0.26.0 refuses two declared tables that write to one destination
+    # (`target_shared_destination`) and reads every fixed-width file through one
+    # record parser; row dceac0cd is the CLI runtime profile (67 pins, unchanged).
+    #
+    # 0.27.0 publishes the isolated route and the reference sink through
+    # `publish_unit`, renames `ScratchArena.open` to `fresh`, and emits the post-scan
+    # report as `post-scan-integrity/v3`; row 789b1eae is the CLI runtime profile (67
+    # pins, unchanged).
+    #
+    # 0.28.0 adds joserfc and rfc8785 as base dependencies (the signed-evidence
+    # verifier), refuses `scan_baseline.on_drift: fail` without `scan_baseline.sha256`,
+    # and makes a plain `fit` snapshot and profile document floor small groups; the
+    # CLI runtime profile gains those two pins (69 pins, fingerprint 701aa152).
+    #
+    # 0.28.1 makes PyNaCl a base dependency; the CLI runtime profile gains pynacl==1.6.2
+    # (70 pins, fingerprint b61dcfd6).
+    #
     # Hard-pinned to one engine release. The platform is parked and stays on
     # 0.18.0, so the two pins differ for now. The engine is not on PyPI, so CI
-    # and the smoke docs install the `v0.22.0` git tag.
-    "decoy-engine==0.22.0",
+    # and the smoke docs install the `v0.28.1` git tag.
+    "decoy-engine==0.28.1",
     # Pin the typer minor: `typer utils docs` metavar rendering differs across
     # typer minors (0.26.x emits `TEXT`/`FILE`; 0.27.x emits `<str>`/`<file>`),
     # and docs/cli-reference.md is committed and checked by the test_cli_surface
@@ -137,8 +164,9 @@ dependencies = [
     # decoy.distribution.version_document, pulled in on every `decoy` invocation
     # via __main__ -> cli.upgrade. `cryptography` (Ed25519 verify) backs
     # decoy.distribution.signing (used by `decoy upgrade`). Floors match the
-    # engine's own (`packaging>=21.0`, `cryptography>=42`), so a minimal env that
-    # lacks either breaks the whole CLI, not just upgrade.
+    # engine's own for `packaging` (`>=21.0`); `cryptography>=42` is the CLI's own floor
+    # (engine 0.24.0 itself needs a newer one), so a minimal env that lacks either
+    # breaks the whole CLI, not just upgrade.
     "packaging>=21.0",
     "cryptography>=42",
     # Declared directly: `decoy ci` owns the decoy-ci/v1 manifest as a strict Pydantic model
@@ -164,18 +192,19 @@ dev = [
 # CLI install DX (2026-09-25): pass-through extras so `pip install
 # decoy-cli[...]` actually reaches the engine's matching extra instead of
 # failing "unknown extra". The base install stays lean (no cloud SDKs, no
-# NER/ML weight); each of these is opt-in by name. `all` bundles every
+# NER weight); each of these is opt-in by name. `all` bundles every
 # user-facing extra; it deliberately excludes `dev` (contributor tooling,
-# not a runtime capability).
+# not a runtime capability). There is no `ml` extra: the classifier's
+# packages are base engine dependencies (SCAN-ML M2). `decoy models install
+# ner` installs spaCy and the pinned model wheel.
 #
 # `vault` is a compatibility alias, not a real opt-in capability: the engine's own `vault` extra is `[]` because `cryptography` (FF1's
 # AES-256 backend) is a base engine dependency, not optional. Kept so an
 # existing `pip install decoy-cli[vault]` still resolves.
 cloud = ["decoy-engine[cloud]"]
 ner = ["decoy-engine[ner]"]
-ml = ["decoy-engine[ml]"]
 vault = ["decoy-engine[vault]"]
-all = ["decoy-cli[cloud,ner,ml,vault]"]
+all = ["decoy-cli[cloud,ner,vault]"]
 # F30: opt-in OpenTelemetry trace export (`decoy run --otel-endpoint`). Kept
 # out of `all`: the engine DP gate fingerprints every installed distribution,
 # so these five would decertify DP fits (requirements-certified.txt).
@@ -204,12 +233,12 @@ otel = [
 # Project URLs surfaced on the PyPI sidebar. Source key is the
 # convention pip/Warehouse uses.
 [project.urls]
-Homepage = "https://github.com/louiskeep/decoy"
-Repository = "https://github.com/louiskeep/decoy"
-Documentation = "https://github.com/louiskeep/decoy/blob/main/README.md"
-Issues = "https://github.com/louiskeep/decoy/issues"
-Changelog = "https://github.com/louiskeep/decoy/blob/main/CHANGELOG.md"
-"Release smoke log" = "https://github.com/louiskeep/decoy/blob/main/docs/release/smoke-log.md"
+Homepage = "https://github.com/decoy-data/decoy"
+Repository = "https://github.com/decoy-data/decoy"
+Documentation = "https://github.com/decoy-data/decoy/blob/main/README.md"
+Issues = "https://github.com/decoy-data/decoy/issues"
+Changelog = "https://github.com/decoy-data/decoy/blob/main/CHANGELOG.md"
+"Release smoke log" = "https://github.com/decoy-data/decoy/blob/main/docs/release/smoke-log.md"
 
 [project.scripts]
 # Console script name STAYS `decoy` regardless of the distribution name.

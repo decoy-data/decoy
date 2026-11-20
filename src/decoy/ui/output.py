@@ -7,17 +7,21 @@ and writes through the returned `OutputState`. See CLI_UX_GUIDE.md section 4.
 from __future__ import annotations
 
 import json as _json
-import os
+import re
 import sys
 import warnings
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from typing import Any, TypeAlias
 
 import typer
 from rich.cells import cell_len
 from rich.console import Console, ConsoleOptions, RenderableType, RenderResult
+from rich.text import Text
 from rich.traceback import Trace, Traceback
 
+from decoy._env_flags import no_color
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.ui.theme import DECOY_THEME, error, hint
 
@@ -36,21 +40,50 @@ class OutputState:
     err_console: Console
 
 
+def _keep_lines_whole(console: Console) -> Console:
+    """Off a terminal, make a console's text-only prints soft-wrap so a path is never folded.
+
+    Rich folds a long line at 80 columns when output is not a terminal, which puts a newline
+    inside a filesystem path (`root: <path>`, `OK <path>`) and breaks greps and copy-paste. A
+    print whose arguments are all plain text or `Text` is a line, so off a terminal it
+    soft-wraps. On a terminal the console keeps its own default, so Rich still word-wraps
+    long prose at spaces. A print that passes a `Panel`, `Table` or other renderable keeps
+    Rich's layout, because soft wrap would crop its cells. An explicit `soft_wrap=` is
+    honoured. Wrapping the instance keeps `_make_console` the one place that constructs a
+    `Console`.
+    """
+    plain_print = console.print
+
+    def print_line(*objects: Any, soft_wrap: bool | None = None, **kwargs: Any) -> None:
+        if (
+            soft_wrap is None
+            and not console.is_terminal
+            and all(isinstance(o, (str, Text)) for o in objects)
+        ):
+            soft_wrap = True
+        plain_print(*objects, soft_wrap=soft_wrap, **kwargs)
+
+    console.print = print_line  # type: ignore[method-assign]
+    return console
+
+
 def _make_console(*, stderr: bool) -> Console:
     """Build a Rich console. This is the only place the CLI constructs one.
 
     The stderr console soft-wraps: each print is one line and the terminal does the
     wrapping. Off a TTY Rich otherwise folds at 80 columns and puts a newline inside a long
     path, which breaks log greps. It is for lines only: no `Panel` or `Table` goes to it,
-    because soft wrap would crop their cell text. Stdout keeps Rich's own layout.
+    because soft wrap would crop their cell text. The stdout console keeps Rich's layout for
+    renderables and, off a TTY, soft-wraps text-only lines (see `_keep_lines_whole`).
     """
-    no_color = os.environ.get("NO_COLOR") is not None
-    return Console(
-        stderr=stderr,
-        soft_wrap=stderr,
-        theme=DECOY_THEME,
-        no_color=no_color,
-        highlight=False,
+    return _keep_lines_whole(
+        Console(
+            stderr=stderr,
+            soft_wrap=stderr,
+            theme=DECOY_THEME,
+            no_color=no_color(),
+            highlight=False,
+        )
     )
 
 
@@ -160,3 +193,67 @@ def emit_json(state: OutputState, payload: dict) -> None:
     if state.mode is OutputMode.json:
         sys.stdout.write(_json.dumps(payload) + "\n")
         sys.stdout.flush()
+
+
+JsonValue: TypeAlias = "None | bool | int | float | str | list[JsonValue] | dict[str, JsonValue]"
+
+# The members every error object owns. `context` carries the per-command rest.
+_FIXED_MEMBERS = frozenset({"command", "status", "error", "code", "hint"})
+# Same rule as `docs/schemas/decoy-error-v1.schema.json`. `fullmatch`, not `$`, so a trailing
+# newline cannot slip through.
+_CODE_RULE = re.compile(r"[a-z][a-z0-9_.]*")
+_HINT_STYLE = hint
+
+
+def emit_error(
+    state: OutputState,
+    command: str,
+    message: str,
+    *,
+    code: str | None = None,
+    hint: str | None = None,
+    context: Mapping[str, JsonValue] | None = None,
+) -> None:
+    """Report a failure in the active mode. The one place a command's error is built.
+
+    `--json` writes one `decoy-error-v1` object to stdout. Every other mode, `--quiet`
+    included, writes `error: <message>` and an optional `  hint: <hint>` to stderr:
+    `--quiet` silences stdout, never a failure. `code` is the engine reason code or CLI
+    warning code, kept out of `message` in JSON and shown as a `[code]` prefix in the human
+    line. The caller builds `message` and `hint` without data values; this function only
+    refuses a malformed call (a `ValueError` before anything is written).
+    """
+    if code is not None and _CODE_RULE.fullmatch(code) is None:
+        raise ValueError("error code must match [a-z][a-z0-9_.]*")
+    shadowed = _FIXED_MEMBERS.intersection(context or ())
+    if shadowed:
+        raise ValueError(f"context may not reuse the fixed members {sorted(shadowed)}")
+    if state.mode is OutputMode.json:
+        payload: dict[str, JsonValue] = {"command": command, "status": "error", "error": message}
+        if code is not None:
+            payload["code"] = code
+        if hint is not None:
+            payload["hint"] = hint
+        payload.update(context or {})
+        emit_json(state, payload)
+        return
+    # markup=False: the message is engine text, a user path or a bracketed code. Rich would
+    # read `[vault]` as a style tag and drop it.
+    prefix = f"[{code}] " if code is not None else ""
+    state.err_console.print(error("error:"), f"{prefix}{message}", markup=False)
+    if hint is not None:
+        state.err_console.print(" ", _HINT_STYLE("hint:"), hint, markup=False)
+
+
+def emit_json_document(state: OutputState, doc: object, *, indent: int | None) -> None:
+    """Write one raw JSON document to stdout in default mode.
+
+    This is the document a user pipes to a file (`decoy schema`, `decoy scan --output -`), not
+    the `--json` envelope. In `--json` mode stdout belongs to the envelope and in `--quiet`
+    mode to nothing, so a call there is a bug in the caller, not a case to ignore. The message
+    names no part of the document.
+    """
+    if state.mode is not OutputMode.default:
+        raise ValueError("emit_json_document writes only in default output mode.")
+    sys.stdout.write(_json.dumps(doc, indent=indent) + "\n")
+    sys.stdout.flush()

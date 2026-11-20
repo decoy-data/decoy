@@ -25,14 +25,15 @@ layers =
     cli : _update_check
     ci | _resources
     ui | distribution | notify | telemetry | templates
-    _mask_secret | _mask_secret_guidance | _native_gate | _atomic | _row_sample
-    _private_file | _version
+    _mask_secret | _mask_secret_guidance | _native_gate | _atomic | _row_sample | _env_flags
+    _config_file | _outbound
+    _private_file | _version | _yaml_errors
 ignore_imports =
     decoy.ci.adapters -> decoy.cli.evidence
     decoy.ci.adapters -> decoy.cli.exit_codes
     decoy.ci.adapters -> decoy.cli.gate
     decoy.ci.adapters -> decoy.cli.io
-    decoy.ci.adapters -> decoy.cli.scan
+    decoy.ci.adapters -> decoy.cli.scanning
     decoy.ci.contracts -> decoy.cli.exit_codes
     decoy.ci.rule_codes -> decoy.cli.io
     decoy.ci.runner -> decoy.cli.exit_codes

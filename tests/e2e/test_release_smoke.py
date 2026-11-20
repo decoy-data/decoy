@@ -3,7 +3,7 @@
 CLI.3 commit 3+4 (2026-06-02): rewritten against the V2 surface.
 Pre-rewrite the file exercised the V1 graph template, the V1
 `examples/*.yaml` shapes, the deleted `forecast` command, and the V1
-demo body. All four are dead under storm-reframe-C and
+demo body. All four are dead since the V1 recommender removal and
 S22-CL-V1GRAPHRUNNER. The new cells:
 
 - `decoy --version` smoke (module install + entry point work).
@@ -40,6 +40,8 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.cli_journey import journey_step
+from tests.generate_industry_templates import GENERATE_INDUSTRY_TEMPLATES
 
 runner = CliRunner()
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -50,6 +52,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # --------------------------------------------------------------------------
 
 
+@journey_step("CJ-01")
 def test_decoy_module_invocation_succeeds():
     """`python -m decoy --version` is the smoke that catches a botched
     package install or a broken `__main__`."""
@@ -77,7 +80,7 @@ def test_templates_list_json_returns_v2_template_set():
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     names = {t["name"] for t in payload["templates"]}
-    expected = {"minimal", "hipaa", "pci", "gdpr", "generate"}
+    expected = {"minimal", "hipaa", "pci", "gdpr", "generate", *GENERATE_INDUSTRY_TEMPLATES}
     assert expected == names, f"template registry drift: expected={expected} got={names}"
 
 
@@ -88,10 +91,10 @@ def test_templates_list_json_returns_v2_template_set():
 
 def test_demo_json_produces_expected_artifacts(tmp_path: Path):
     """`decoy demo` is the canonical clean-checkout-runnable command:
-    generates its own fixture, scans with STORM, masks via the V2 spine.
+    generates its own fixture, scans, masks via the V2 spine.
     R6.8 asserts the JSON envelope shape + that the artifacts actually
     got written. The FORECAST step from the V1 demo was deleted under
-    storm-reframe-C; no forecast.json is expected."""
+    the V1 recommender removal; no forecast.json is expected."""
     result = runner.invoke(app, ["demo", "--dir", str(tmp_path), "--json"])
     assert result.exit_code == 0, f"demo failed: {result.output}"
     payload = json.loads(result.output)
@@ -109,6 +112,7 @@ def test_demo_json_produces_expected_artifacts(tmp_path: Path):
 # --------------------------------------------------------------------------
 
 
+@journey_step("CJ-08")
 def test_release_smoke_runs_bundled_minimal_template(tmp_path: Path):
     """CLI.3 spec DoD 8 canonical smoke. Pulls the bundled minimal
     template, rewrites its source/target paths to point into tmp_path,
@@ -165,7 +169,7 @@ def test_root_help_lists_canonical_commands():
     output = result.output.lower()
     for cmd in ("validate", "run", "demo", "report", "list", "init"):
         assert cmd in output, f"root help missing {cmd!r}: {result.output[:500]}"
-    # CLI.1 (2026-06-02): forecast subcommand deleted under storm-reframe-C.
+    # CLI.1 (2026-06-02): forecast subcommand deleted with the V1 recommender.
     assert "forecast" not in output
 
 
@@ -204,7 +208,7 @@ def test_command_help_includes_see_also(cmd: str):
         "output",
         "pipeline",
         "yaml",
-        "storm",
+        "scan",
         "keys",
         "security",
         "completion",

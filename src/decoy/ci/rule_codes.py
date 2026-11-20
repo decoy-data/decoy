@@ -26,7 +26,8 @@ UNKNOWN_CODE = "unknown_code"
 # data, so only the fixed family token is emitted.
 _TEMPLATED = re.compile(
     r"^(?P<family>source|target)\..+\."
-    r"(?P<check>type|path|exists|is_file|readable|would_overwrite|parent_missing)\Z",
+    r"(?P<check>type|path|exists|is_file|readable|would_overwrite|"
+    r"path_invalid|parent_unwritable)\Z",
     re.DOTALL,
 )
 _TEMPLATED_CODES = frozenset(
@@ -37,7 +38,8 @@ _TEMPLATED_CODES = frozenset(
         "source.is_file",
         "source.readable",
         "target.would_overwrite",
-        "target.parent_missing",
+        "target.path_invalid",
+        "target.parent_unwritable",
     }
 )
 
@@ -50,6 +52,8 @@ _CLI_GATE_CODES: frozenset[str] = frozenset(
         "compile.needs_profile",
         "compile_warning",
         "missing_extra",
+        "source.declared_columns",
+        "source.declared_columns_not_checked",
         "native.companion",
         "native.eligibility",
         "pipeline.validation_error",
@@ -58,6 +62,7 @@ _CLI_GATE_CODES: frozenset[str] = frozenset(
         "validation_error",
         "yaml.empty",
         "yaml.not_mapping",
+        "yaml.not_utf8",
         "yaml.parse_error",
     }
 )
@@ -200,34 +205,47 @@ def _engine_registry_codes() -> frozenset[str]:
     codes are fixed tokens that carry no values, which is the property this allowlist keeps.
 
     Derived on first use, not at import: `decoy ci` must first import the engine inside
-    `engine_logging_silenced`, or the engine's cwd-relative log file lands in the repository."""
+    `engine_logging_silenced`, so the engine's logger is quiet before anything can log."""
     from decoy_engine import reasons
 
     return _codes_from_registry(reasons.manifest()["entries"])
 
 
-# Literal codes the engine emits outside the registry (sources at engine v0.22.0). The test
+# Literal codes the engine emits outside the registry (sources at engine v0.28.1). The test
 # holds this set equal to what an AST scan of the installed engine finds minus the registry.
 _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
     {
         "abi-mismatch",  # execution/native/_companion_status.py:346
         "absent",  # execution/native/_companion_status.py:269
+        "ambiguous_dropped",  # vault/_reader.py:106
+        "bad_token",  # _canonical/_strict_spec.py:119
+        "binding_pair",  # records/_payloads.py:117
         "collision_rate",  # execution/native/_pool_quality.py:442
         "digest",  # declared_casting/_quarantine_local.py:504
+        "digest_mismatch",  # _error_base.py:24
         "field_missing",  # execution/_isolated_memwatch.py:44
         "kat-corrupt",  # execution/native/_companion_status.py:147
         "load-error",  # execution/native/_companion_status.py:291
         "magic",  # declared_casting/_quarantine_local.py:439
         "measured",  # execution/_probe.py:461
+        "missing_tag",  # profiling/scan_set_read.py:22
         "oom_killed",  # execution/_isolated_run.py:520
+        "out_of_range",  # _canonical/_json.py:297
+        "oversized",  # _canonical/_json.py:358
+        "path_base_value",  # records/_payloads.py:108
         "pool_duplicate_rate",  # execution/native/_pool_quality.py:454
         "present-ok",  # execution/native/_companion_status.py:384
         "process_exited",  # execution/_isolated_memwatch.py:44
         "read_error",  # execution/_isolated_memwatch.py:44
+        "scan_core_table",  # profiling/_scan_core.py:98
+        "scan_diff_unknown_kind",  # profiling/scan_diff.py:287
         "stopped",  # execution/_isolated_memwatch.py:44
         "thread_start_failed",  # execution/_isolated_memwatch.py:44
         "type",  # config/_declared_casting.py:55
         "unreachable",  # secret_providers/_preflight.py:216
+        "unreadable",  # fileaccess/_ambient_tree.py:47
+        "unsupported_tag",  # profiling/scan_set_read.py:22
+        "wrong_type",  # _canonical/_strict_spec.py:117
     }
 )
 

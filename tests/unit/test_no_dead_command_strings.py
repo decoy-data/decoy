@@ -1,7 +1,7 @@
 """Grep gate: no source string under `src/decoy/` names a deleted command.
 
-The CLI-redesign S1 sprint removed the `storm scan` alias and the `storm test`
-demo command. S2 re-parented `compile`/`preflight` under `validate` and folded
+The CLI-redesign S1 sprint removed two old scan aliases (the retired-name scan and test
+commands, now caught by the residual sentry). S2 re-parented `compile`/`preflight` under `validate` and folded
 `plan` into `validate compile`, so the top-level invocation strings `decoy
 compile`, `decoy plan`, and `decoy preflight` (note the trailing space -- the
 nested `decoy validate preflight` / `decoy validate compile` forms are the live

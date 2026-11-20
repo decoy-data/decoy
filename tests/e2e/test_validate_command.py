@@ -3,7 +3,7 @@
 CLI.2 commit 1 (2026-06-02): rewritten against the V2 PipelineConfig
 choke point. Pre-rewrite the file exercised V1 graph YAML + V1
 `masking_rules` shapes; both are dead under the V2 clean break (S22 /
-storm-reframe-C) and the validator now hard-rejects them. The new
+the V1 scan rework) and the validator now hard-rejects them. The new
 cells verify (a) a minimal valid V2 PipelineConfig passes, (b) V1
 graph YAML exits 1 with a typed PipelineValidationError, (c) V1
 `masking_rules` configs exit 1 (no `version: 2`), (d) malformed YAML

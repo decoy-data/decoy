@@ -10,8 +10,8 @@ Filters, each on purpose:
   `eligible`) that appear in the CLI as ordinary text; matching them would flag prose, not copies.
 - Matching is exact string equality, so a longer message that merely contains a code is not a copy.
 
-Legacy copies are frozen in `ALLOWLIST` (mirrored in `baselines/engine-reason-code-copies.json`,
-shrink-only). A new (file, code) pair, a higher count, a stale entry (pair gone) or a count that
+Legacy copies are frozen in `baselines/engine-reason-code-copies.json` (shrink-only, read as
+`ALLOWLIST`). A new (file, code) pair, a higher count, a stale entry (pair gone) or a count that
 fell all fail, so the list only shrinks. Some entries are dict keys or section names that happen to
 equal a code; they stay listed because the scan cannot tell them from a copied code.
 
@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 _ROOT = Path(__file__).resolve().parents[2]
 _SRC = _ROOT / "src" / "decoy"
@@ -41,49 +42,9 @@ class AllowedCopy:
 
 
 _COPY = "Legacy copy of an engine reason code; import the engine constant, then delete this entry."
-_KEY = (
-    "Dict key or section name that equals an engine code, not a code the CLI matches; "
-    "rename or delete this entry once the scan can tell them apart."
-)
-
-
-def _copy(file: str, code: str, count: int = 1) -> AllowedCopy:
-    return AllowedCopy(file, code, count, _COPY)
-
-
-def _key(file: str, code: str, count: int) -> AllowedCopy:
-    return AllowedCopy(file, code, count, _KEY)
-
-
-ALLOWLIST: tuple[AllowedCopy, ...] = (
-    _copy("_mask_secret.py", "secret_file_permissions_unsafe"),
-    _copy("_mask_secret_guidance.py", "keyed_strategy_requires_secret"),
-    _copy("_mask_secret_guidance.py", "weak_mask_secret"),
-    _copy("_mask_secret_guidance.py", "missing_mask_secret"),
-    _copy("_mask_secret_guidance.py", "bad_secret_ref"),
-    _copy("_mask_secret_guidance.py", "secret_provider_unknown"),
-    _copy("_mask_secret_guidance.py", "secret_file_permissions_unsafe"),
-    _copy("cli/extras.py", "ner_spacy_not_installed"),
-    _key("cli/fit.py", "row_count", 2),
-    _copy("cli/fit.py", "dp_numeric_domain_invalid", 2),
-    _copy("cli/fit.py", "dp_schedule_mismatch", 2),
-    _key("cli/gen/_preview.py", "row_count", 2),
-    _key("cli/gen/_scaffold.py", "row_count", 2),
-    _key("cli/io/_scan_set.py", "row_count", 3),
-    _copy("cli/preflight.py", "out_of_core_fanin_exceeds_budget"),
-    _copy("cli/preflight.py", "capacity_source_unprofilable"),
-    _copy("cli/report.py", "vault_protocol_version_mismatch"),
-    _copy("cli/run/_errors.py", "uniqueness_impossible"),
-    _key("cli/run/_execute.py", "fidelity_report", 1),
-    _key("cli/run/_execute.py", "post_validation", 1),
-    _copy("cli/scanning/_multi.py", "scan_header_suspect"),
-    _copy("cli/scanning/_multi.py", "scan_key_type_mismatch"),
-    _key("cli/scanning/_multi.py", "row_count", 6),
-    _copy("cli/subset.py", "subset_config_missing"),
-    _copy("cli/unmask.py", "vault_protocol_version_mismatch"),
-    _key("notify.py", "row_count", 3),
-    _copy("ui/summary.py", "null_drift"),
-    _copy("ui/summary.py", "kind_drift"),
+ALLOWLIST: tuple[AllowedCopy, ...] = tuple(
+    AllowedCopy(*key.split("::"), e["count"], e["reason"])
+    for key, e in load_allowlist("engine-reason-code-copies").items()
 )
 
 

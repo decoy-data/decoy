@@ -110,7 +110,13 @@ _FIT_SCAN = _E2E + "test_fit_and_scan_outputs_are_private"
 _REPORT = _E2E + "test_report_writers_are_private"
 _RESTORED = _E2E + "test_unmask_and_detokenize_outputs_are_private"
 _VAULT = _E2E + "test_tokenize_vault_and_its_journal_are_private"
+_LIBRARY = _UNIT + "test_library_files_and_folders_are_owner_only_under_umask_zero"
+_LIBRARY_LOCK = _UNIT + "test_library_lock_and_ref_files_are_owner_only_under_umask_zero"
+_MODELS = _UNIT + "test_models_install_folders_and_files_are_owner_only_under_umask_zero"
 PRIVATE_CASES: dict[str, str] = {
+    "cli/models/_private.py::make_private_dir::create_private_directory::1": _MODELS,
+    "cli/models/_private.py::write_private::open_private::1": _MODELS,
+    "cli/models/_private.py::write_private::write_bytes::1": _MODELS,
     "api.py::_stage_source_entry::create_private_temp::1": _SPOOL,
     "api.py::_stage_source_entry::write_table::1": _SPOOL,
     "ci/debug.py::DebugSink.flush::write_local_target::1": _CI,
@@ -128,22 +134,30 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
     "cli/_token_vault.py::LocalTokenVault.__init__::sqlite3.connect::1": _VAULT,
     "_resources.py::write_settings::write_atomic::1": _E2E + "test_setup_settings_file_is_private",
-    "distribution/installer.py::check_document_freshness::write_atomic::1": _UNIT
+    "distribution/trust_state.py::write_trust_state::write_atomic::1": _UNIT
     + "test_installer_trust_state_is_owner_only_under_umask_zero",
     "cli/io/_layout.py::create_run_folder::create_private_directory::1": _UNIT
     + "test_create_private_directory_is_0700_under_umask_000",
+    "cli/io/_layout.py::RunLayout.out_dir::create_private_directory::1": "e2e:"
+    + "test_run_surfaces.py::test_a_missing_out_dir_is_made_owner_only",
     "cli/io/_layout.py::prepare_out::write_local_target::1": _UNIT
     + "test_layout_files_are_owner_only_under_umask_zero",
     "cli/io/_layout.py::write_claim::write_atomic::1": _UNIT
     + "test_layout_files_are_owner_only_under_umask_zero",
     "cli/io/_layout.py::RunLayout.commit_latest::write_atomic::1": _UNIT
     + "test_layout_files_are_owner_only_under_umask_zero",
-    "cli/io/_project.py::ensure_decoy_dir::write_local_target::1": _UNIT
+    "cli/io/_project.py::_create_once::write_local_target::1": _UNIT
     + "test_layout_files_are_owner_only_under_umask_zero",
+    "cli/library/_fs.py::ensure_private_dir::create_private_directory::1": _LIBRARY,
+    "cli/library/_fs.py::_write::write_atomic::1": _LIBRARY,
+    "cli/library/_fs.py::open_database::open_private::1": _LIBRARY_LOCK,
+    "cli/library/_fs.py::open_database::sqlite3.connect::1": _LIBRARY_LOCK,
+    "cli/library/_fs.py::_write_local::write_local_target::1": _LIBRARY,
 }
 _CASE_MODULES = {
     "e2e:test_private_surfaces.py": ROOT / "tests/e2e/private_file/test_private_surfaces.py",
     "unit:test_private_file.py": ROOT / "tests/unit/private_file/test_private_file.py",
+    "e2e:test_run_surfaces.py": ROOT / "tests/e2e/project_layout/test_run_surfaces.py",
 }
 
 
@@ -172,8 +186,6 @@ def load_rows(text: str) -> list[Row]:
 
 ROWS = load_rows(ROWS_FILE.read_text(encoding="utf-8"))
 # The shrink-only baseline source (`tests/sentry/_baseline_sources.py`): rows that carry an exit.
-BASELINE_ROWS = tuple((r.key, r.reason) for r in ROWS if r.exit)
-
 
 # --- the scan -----------------------------------------------------------------------------
 
@@ -583,25 +595,23 @@ def run(source_files: Mapping[str, str], **given: object) -> list[str]:
 
 
 def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
-    """AT-P2j: P1 to P5 hold with the 5-row baseline, and every private site has a case."""
+    """AT-P2j: P1 to P5 hold with the 2-row baseline, and every private site has a case."""
     assert run(files) == []
 
 
-def test_the_census_is_55_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_60_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 55
-    assert len([s for s in sinks if is_entry(s)]) == 19
+    assert len(sinks) == 60
+    assert len([s for s in sinks if is_entry(s)]) == 26
     counts: dict[str, int] = {}
     for r in ROWS:
         counts[r.disposition] = counts.get(r.disposition, 0) + 1
-    assert counts == {"public": 23, "private": 4, "staged": 3, "temp": 3, "read": 3}
+    assert counts == {"public": 20, "private": 4, "staged": 3, "temp": 2, "read": 5}
 
 
-def test_the_baseline_has_five_rows_with_exits() -> None:
+def test_the_baseline_has_two_rows_with_exits() -> None:
     doc = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "private-file-sinks"
-    assert doc["created_in"] == "X7c-S3"
-    assert len(doc["entries"]) == 5
+    assert len(doc["entries"]) == 2
     assert all(e["exit"] for e in doc["entries"].values())
     assert doc["entries"] == baseline_entries(ROWS)
 

@@ -296,7 +296,7 @@ def test_the_marker_codes_are_registered_gate_codes() -> None:
         "layout.project_not_found",
     }
     assert codes <= GATE_CODES
-    assert all(re.fullmatch(r"layout\.[a-z_]+", c) for c in GATE_CODES)
+    assert all(re.fullmatch(r"(layout|report)\.[a-z_]+", c) for c in GATE_CODES)
 
 
 @posix_only

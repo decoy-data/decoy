@@ -127,6 +127,27 @@ def test_open_private_leaves_an_existing_parent_alone(tmp_path: Path) -> None:
     assert _mode(tmp_path) == 0o755
 
 
+@posix_only
+def test_open_private_truncate_empties_in_place_and_keeps_the_inode(tmp_path: Path) -> None:
+    """The library index reset: one inode, so a lock on it stays one lock."""
+    path = tmp_path / "index.sqlite"
+    path.write_bytes(b"not a database")
+    before = os.stat(path).st_ino
+    open_private(path, new_parent=False, truncate=True)
+    assert path.read_bytes() == b"" and os.stat(path).st_ino == before and _mode(path) == 0o600
+
+
+@posix_only
+def test_open_private_truncate_never_follows_a_symlink(tmp_path: Path) -> None:
+    victim = tmp_path / "victim.txt"
+    victim.write_bytes(b"mine")
+    link = tmp_path / "index.sqlite"
+    link.symlink_to(victim)
+    with pytest.raises(PrivateFileError) as caught:
+        open_private(link, new_parent=False, truncate=True)
+    assert caught.value.errno == errno.ELOOP and victim.read_bytes() == b"mine"
+
+
 # -- AT-P1c: planted names ------------------------------------------------------------------
 
 
@@ -445,3 +466,80 @@ def test_layout_files_are_owner_only_under_umask_zero(tmp_path: Path) -> None:
         "out/p/PIPELINE 0o600",
         "out/p/LATEST 0o600",
     ]
+
+
+_LIBRARY_FILES = (
+    "import os, stat, sys\n"
+    "from datetime import datetime, timezone\n"
+    "from pathlib import Path\n"
+    "from decoy_engine import records\n"
+    "from decoy.cli.io import DECOY_DIR\n"
+    "from decoy.cli.library import open_library\n"
+    "os.umask(0)\n"
+    "root = Path(sys.argv[1]) / DECOY_DIR\n"
+    "payload = {'sample_size': 1, 'root_table': 't', 'table_rows': {'t': 1},\n"
+    "    'subset_seed_counts': {'t': 1}, 'approximate_columns': (), 'scratch_dir': 's',\n"
+    "    'outputs': (), 'ttl_seconds': 60}\n"
+    "env = records.build('sample-run', payload,\n"
+    "    producer={'name': 'decoy-cli', 'version': '0.0.0', 'engine_version': '0.22.0'},\n"
+    "    invocation_id='0b6c9a3e-1d2f-4c5b-8a7e-9f0e1d2c3b4a',\n"
+    "    created_at=datetime(2026, 11, 11, tzinfo=timezone.utc))\n"
+    "open_library(root).put(env)\n"
+    "for p in sorted(root.rglob('*')):\n"
+    "    kind = 'dir' if p.is_dir() else 'file'\n"
+    "    print(kind, oct(stat.S_IMODE(os.stat(p).st_mode)))\n"
+    "print('root', oct(stat.S_IMODE(os.stat(root).st_mode)))\n"
+)
+
+
+@posix_only
+def test_library_files_and_folders_are_owner_only_under_umask_zero(tmp_path: Path) -> None:
+    """Library folders come from `create_private_directory`; records, `LAYOUT` and the git files
+    from the atomic writer."""
+    got = _run(_LIBRARY_FILES, str(tmp_path)).splitlines()
+    files = [line for line in got if line.startswith("file ")]
+    dirs = [line for line in got if line.startswith(("dir ", "root "))]
+    assert len(files) == 5  # .gitignore, .gitattributes, LAYOUT, index.sqlite, one record
+    assert set(files) == {"file 0o600"}
+    assert len(dirs) == 5  # the root, library, objects, the fan-out folder, tmp
+    assert {line.split()[1] for line in dirs} == {"0o700"}
+
+
+_LIBRARY_LOCK = _LIBRARY_FILES.replace(
+    "open_library(root).put(env)\n",
+    "library = open_library(root)\nlibrary.put(env)\nlibrary.set_ref('sample-run', 'scope/base', env.id)\n",
+).replace(
+    "for p in sorted(root.rglob('*')):\n",
+    "for p in [root / 'library' / 'index.sqlite', root / 'library' / 'refs' / 'sample-run' / 'scope' / 'base']:\n",
+)
+
+
+@posix_only
+def test_library_lock_and_ref_files_are_owner_only_under_umask_zero(tmp_path: Path) -> None:
+    """The lock file is pre-created by `open_private` before SQLite opens it; refs come from the
+    atomic writer."""
+    assert "set_ref" in _LIBRARY_LOCK and "index.sqlite" in _LIBRARY_LOCK
+    got = _run(_LIBRARY_LOCK, str(tmp_path)).splitlines()
+    assert got == ["file 0o600", "file 0o600", "root 0o700"]
+
+
+# -- SCAN-ML C1: the `decoy models install` work folder and the files written into it ----------
+
+_MODELS_WORKDIR = (
+    "import os, stat, sys, tempfile\n"
+    "from pathlib import Path\n"
+    "from decoy.cli.models._private import make_private_dir, private_workdir, write_private\n"
+    "os.umask(0)\n"
+    "tempfile.tempdir = sys.argv[1]\n"
+    "work = private_workdir()\n"
+    "wheels = make_private_dir(work / 'wheels')\n"
+    "write_private(wheels / 'a.whl', b'wheel')\n"
+    "write_private(work / 'constraints.txt', b'numpy==2.2.6\\n')\n"
+    "mode = lambda p: oct(stat.S_IMODE(os.stat(p).st_mode))\n"
+    "print(mode(work), mode(wheels), mode(wheels / 'a.whl'), mode(work / 'constraints.txt'))\n"
+)
+
+
+@posix_only
+def test_models_install_folders_and_files_are_owner_only_under_umask_zero(tmp_path: Path) -> None:
+    assert _run(_MODELS_WORKDIR, str(tmp_path)) == "0o700 0o700 0o600 0o600"

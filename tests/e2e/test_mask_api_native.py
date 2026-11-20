@@ -189,51 +189,6 @@ def test_mask_native_false_forces_legacy_pandas(eligible_parquet_config: dict, t
     assert (tmp_path / "out.csv").exists()
 
 
-def test_mask_native_false_stays_compatible_with_an_older_engine(
-    eligible_parquet_config: dict, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """HIGH regression (dennis/Codex round 3): `native=False` -- the
-    documented rollback -- must not crash on an engine whose `run_pipeline`
-    predates `unified_slice_enabled` (an in-range `decoy-engine>=0.5.0`
-    install can genuinely lack it; see
-    `decoy._native_gate.run_pipeline_kwargs`'s docstring). The fake below
-    has an EXPLICIT signature (no **kwargs), so an unrecognized keyword
-    raises TypeError exactly like the real old engine would."""
-    import decoy_engine
-
-    real_run_pipeline = decoy_engine.run_pipeline
-
-    def _old_engine_run_pipeline(
-        config,
-        sources=None,
-        *,
-        engine_version,
-        registry=None,
-        derive_key=None,
-        instance_default_locale=None,
-        vault_writer=None,
-        # DE-02 (engine 0.4.0, the floor) predates the slice; a real old engine has it.
-        key_provider=None,
-        base_dir=None,
-    ):
-        return real_run_pipeline(
-            config,
-            sources,
-            engine_version=engine_version,
-            registry=registry,
-            derive_key=derive_key,
-            instance_default_locale=instance_default_locale,
-            vault_writer=vault_writer,
-            key_provider=key_provider,
-            base_dir=base_dir,
-        )
-
-    monkeypatch.setattr("decoy_engine.run_pipeline", _old_engine_run_pipeline)
-    out = decoy.mask(config=eligible_parquet_config, native=False)
-    assert isinstance(out, pd.DataFrame)
-    assert (tmp_path / "out.csv").exists()
-
-
 def test_mask_default_broken_companion_fails_closed_no_return(
     eligible_parquet_config: dict, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -340,40 +295,18 @@ def test_mask_dispatches_native_route_when_engine_reports_compiled_kernel(
     assert (tmp_path / "out.csv").exists()
 
 
-def test_mask_default_and_native_true_stay_compatible_with_an_older_engine(
+def test_mask_default_and_native_true_run_the_pinned_engine(
     eligible_parquet_config: dict, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """H1 regression (Codex round-2 repro): `mask()` must never pass
-    `unified_slice_enabled=True` explicitly -- an engine whose `run_pipeline`
-    predates that kwarg entirely would raise `TypeError` on every plain
-    call, not just a `--no-native` one. Simulates that older engine by
-    wrapping the real `run_pipeline` and asserting the kwarg never arrives
-    unless it is `False`."""
-    import decoy_engine
-
-    real_run_pipeline = decoy_engine.run_pipeline
-
-    def _old_engine_run_pipeline(*args, **kwargs):
-        if "unified_slice_enabled" in kwargs and kwargs["unified_slice_enabled"] is not False:
-            raise TypeError(
-                "old_run_pipeline() got an unexpected keyword argument 'unified_slice_enabled'"
-            )
-        kwargs.pop("unified_slice_enabled", None)
-        return real_run_pipeline(*args, **kwargs)
-
-    monkeypatch.setattr("decoy_engine.run_pipeline", _old_engine_run_pipeline)
-
-    # Default intent: must not pass the kwarg at all.
+    """`mask()` passes only the keywords the pinned engine takes: the default call runs, and
+    `native=True` with the companion forced absent refuses on `post_run_verify`'s
+    `NativeGateError`, not on a keyword error."""
     out = decoy.mask(config=eligible_parquet_config)
     assert isinstance(out, pd.DataFrame)
 
-    # native=True with a companion the CLI-side gate believes is healthy:
-    # Stage 1 passes, so this actually REACHES the old-engine fake. Forcing
-    # the companion genuinely absent (regardless of whether one happens to
+    # Forcing the companion genuinely absent (regardless of whether one happens to
     # be built in this environment) makes admission decline the hash gate,
-    # so Stage 2 refuses for lack of compiled-kernel evidence -- but that
-    # must be `post_run_verify`'s NativeGateError, not a TypeError from
-    # `unified_slice_enabled=True` hitting the simulated old engine.
+    # so Stage 2 refuses for lack of compiled-kernel evidence.
     _patch(monkeypatch, _status("present-ok", present=True, ok=True, abi_actual=_ABI))
     monkeypatch.setitem(sys.modules, "decoy_engine_native", None)
     with pytest.raises(NativeGateError) as exc_info:

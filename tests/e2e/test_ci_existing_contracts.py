@@ -21,6 +21,7 @@ from tests.ci_support import (
     write_clean_pipeline,
 )
 from tests.run_outputs import latest_output
+from tests.scan_docs import scan_set_doc
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -58,6 +59,10 @@ def test_validate_gate_config_error_keeps_null_location_and_exit(tmp_path: Path)
 
 def test_validate_fail_on_warning_exit_is_unchanged(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
+    # An existing absolute target draws the overwrite warning; a relative one lands in a new
+    # run folder and draws none (PROJECT-LAYOUT P4, AT-16).
+    target = repo / "out" / "out.csv"
+    write(repo, "pipeline.yaml", CLEAN_PIPELINE.replace("path: out/out.csv", f"path: {target}"))
     write(repo, "out/out.csv", "exists\n")
     assert run_decoy(["validate", "pipeline.yaml"], repo).returncode == EXIT_OK
     proc = run_decoy(["validate", "pipeline.yaml", "--fail-on-warning", "--json"], repo)
@@ -66,9 +71,7 @@ def test_validate_fail_on_warning_exit_is_unchanged(tmp_path: Path) -> None:
 
 
 def _scan(fields: list[dict], qi: list[list[str]] | None = None) -> str:
-    return json.dumps(
-        {"fields": fields, "quasi_identifier_groups": qi or [], "reid_risk_score": 0.1}
-    )
+    return json.dumps(scan_set_doc(fields, quasi_identifier_groups=qi or [], reid_risk_score=0.1))
 
 
 def test_scan_diff_strict_keeps_its_direct_command_exit(tmp_path: Path) -> None:
@@ -76,8 +79,8 @@ def test_scan_diff_strict_keeps_its_direct_command_exit(tmp_path: Path) -> None:
     write(repo, "old.json", _scan([{"name": "a", "pii_score": 0.1}]))
     write(repo, "new.json", _scan([{"name": "a", "pii_score": 0.9}]))
     proc = run_decoy(["scan", "diff", "old.json", "new.json", "--strict", "--json"], repo)
-    # Public direct-command behavior: strict drift is EXIT_USAGE, not EXIT_FINDINGS.
-    assert proc.returncode == EXIT_USAGE
+    # Strict drift exits EXIT_FINDINGS, the code `decoy ci check` returns for the same drift (REL-GATE Q8a).
+    assert proc.returncode == EXIT_FINDINGS
     payload = json.loads(proc.stdout)
     assert payload["drift"] is True
     assert payload["summary"]["pii_increased"] == 1

@@ -54,7 +54,11 @@ def test_init_refuses_to_overwrite_in_json_mode(tmp_path: Path):
     out.write_text("existing")
     result = runner.invoke(app, ["init", "--output", str(out), "--json"])
     assert result.exit_code == 1
-    assert "already exists" in result.stderr
+    # The refusal is the one `--json` error object on stdout, not human text on stderr.
+    payload = _json.loads(result.stdout)
+    assert payload["status"] == "error"
+    assert "already exists" in payload["error"]
+    assert out.read_text() == "existing"
 
 
 def test_init_overwrites_with_yes_flag(tmp_path: Path):
@@ -68,9 +72,7 @@ def test_init_overwrites_with_yes_flag(tmp_path: Path):
 
 def test_init_preset_hipaa_writes_hipaa_template(tmp_path: Path):
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "hipaa", "--output", str(out), "--quiet"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "hipaa", "--output", str(out), "--quiet"])
     assert result.exit_code == 0
     body = out.read_text()
     # Pulled from the bundled hipaa template -- must include PHI columns.
@@ -94,9 +96,7 @@ def test_init_preset_json_envelope_carries_preset_and_count(tmp_path: Path):
     import json as _json
 
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "pci", "--output", str(out), "--json"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "pci", "--output", str(out), "--json"])
     assert result.exit_code == 0
     payload = _json.loads(result.stdout)
     assert payload["preset"] == "pci"
@@ -104,17 +104,15 @@ def test_init_preset_json_envelope_carries_preset_and_count(tmp_path: Path):
 
 
 def test_init_preset_generate_produces_generator_yaml(tmp_path: Path):
-    """The generate preset uses `mode: generate` + `generate_columns`. CLI.3
+    """The generate preset uses `generate_columns` and no top-level `mode:`. CLI.3
     (2026-06-02): V1 `generator_settings:` block folded into the unified
     V2 `global_settings:`."""
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "generate", "--output", str(out), "--quiet"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "generate", "--output", str(out), "--quiet"])
     assert result.exit_code == 0
     body = out.read_text()
     assert "tables:" in body
-    assert "mode: generate" in body
+    assert "mode: generate" not in body
     assert "generate_columns:" in body
 
 
@@ -161,14 +159,14 @@ def _luhn_valid(number: str) -> bool:
 
 @pytest.fixture
 def csv_with_date_zip_pan_id(tmp_path: Path) -> Path:
-    """Columns that STORM should infer to date_shift, truncate, fpe, and
+    """Columns that the scan should infer to date_shift, truncate, fpe, and
     hash respectively (per `_INFERENCE_TABLE` in `_init_inference.py`):
 
       - `signup_date`: ISO dates -> iso_date detector -> date_shift
       - `zip_code`: 5-digit US ZIPs -> us_zip detector -> truncate
       - `card_number`: Luhn-valid 16-digit PANs (standard test card
         numbers) -> pan detector -> fpe
-      - `account_id`: 6-digit unique integers -> hash (whether STORM
+      - `account_id`: 6-digit unique integers -> hash (whether the scan
         routes it through a numeric-id detector or the no-detector-match
         likely-unique-integer fallback, both map to `strategy: hash` in
         `_infer_strategy_for_column`)
@@ -266,8 +264,8 @@ def test_init_scaffold_actually_runs_and_pan_stays_luhn_valid(
         f"scaffold failed to run (exit {run_result.exit_code}): {run_result.output}"
     )
 
-    output_path = tmp_path / "accounts.masked.csv"
-    assert output_path.exists(), "decoy run did not write the scaffolded output path"
+    # A bare target is placed in the run folder under `out/`.
+    (output_path,) = (tmp_path / "out").rglob("accounts.masked.csv")
 
     masked = pd.read_csv(output_path, dtype=str)
     assert "card_number" in masked.columns
@@ -335,9 +333,13 @@ def test_every_template_with_a_source_is_path_edited():
 
 
 @pytest.mark.parametrize("preset", _PATHED_PRESETS)
-def test_typed_paths_reach_the_written_pipeline(tmp_path: Path, preset: str):
+def test_typed_paths_reach_the_written_pipeline(
+    tmp_path: Path, preset: str, monkeypatch: pytest.MonkeyPatch
+):
     from decoy_engine import PipelineConfig
 
+    # A typed source is relative to the current folder; with the YAML in it, it is written as typed.
+    monkeypatch.chdir(tmp_path)
     out = tmp_path / "pipeline.yaml"
     typed_in = "in #1/o'brien: x.csv"
     typed_out = "out dir/masked.csv"

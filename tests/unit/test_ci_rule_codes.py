@@ -24,6 +24,7 @@ import pytest
 from tests.ci_support import MANIFEST_NAME, ci_manifest, make_repo, write, write_clean_pipeline
 from typer.testing import CliRunner
 
+import decoy._config_file as config_file
 import decoy.cli.evidence as cli_evidence
 import decoy.cli.gate as cli_gate
 import decoy.cli.gate._layers as cli_gate_layers
@@ -156,6 +157,11 @@ def _cli_gate_codes() -> tuple[set[str], set[str]]:
         if isinstance(node, ast.Call) and _call_name(node) == "GateFinding":
             if len(node.args) > 2 and isinstance(node.args[2], ast.Constant):
                 codes.add(node.args[2].value)
+    # The gate's `yaml.*` findings carry the loader's codes: `ConfigFileError("<code>", ...)`.
+    for node in ast.walk(_module_tree(config_file)):
+        if isinstance(node, ast.Call) and _call_name(node) == "ConfigFileError":
+            if node.args and isinstance(node.args[0], ast.Constant):
+                codes.add(node.args[0].value)
     gate_checks = {
         "_check_source_files",
         "_check_target_overwrite",
@@ -301,6 +307,7 @@ def test_every_pydantic_error_type_is_allowlisted() -> None:
 def test_every_cli_gate_code_and_preflight_template_is_allowlisted() -> None:
     codes, templates = _cli_gate_codes()
     assert {"yaml.parse_error", "missing_extra", "compile.needs_profile"} <= codes
+    assert {"yaml.not_utf8", "yaml.empty", "yaml.not_mapping"} <= codes
     assert sorted(codes - validation_codes()) == []
     assert templates, "the preflight scan found no templated check names"
     for template in templates:
@@ -325,7 +332,10 @@ def test_every_evidence_issue_kind_is_allowlisted() -> None:
         ("yaml.parse_error", "yaml.parse_error"),
         ("missing", "missing"),
         ("target.Customers.would_overwrite", "target.would_overwrite"),
+        ("target.Customers.path_invalid", "target.path_invalid"),
         ("source.a.b.exists", "source.exists"),
+        ("target.Customers.parent_unwritable", "target.parent_unwritable"),
+        ("target.Customers.parent_missing", UNKNOWN_CODE),
         ("Unknown_Provider", UNKNOWN_CODE),
         ("odd code!", UNKNOWN_CODE),
         ("", UNKNOWN_CODE),
@@ -354,7 +364,16 @@ def test_an_unknown_upstream_code_never_reaches_any_report_format(
 
     repo = make_repo(tmp_path / "repo")
     write_clean_pipeline(repo)
-    write(repo, "build/evidence.json", "{}\n")
+    # The shared reader refuses a malformed manifest before the (patched) verifier runs.
+    manifest = {
+        "schema_version": "cli-local-1",
+        "pipeline_path": "pipeline.yaml",
+        "pipeline_fingerprint": "sha256:0",
+        "input_fingerprints": {},
+        "output_fingerprints": {},
+        "manifest_hash": "sha256:0",
+    }
+    write(repo, "build/evidence.json", json.dumps(manifest))
     ev = "  evidence:\n    - {id: e, manifest: build/evidence.json}\n"
     write(repo, MANIFEST_NAME, ci_manifest(extra_checks=ev))
 
@@ -394,9 +413,9 @@ def test_an_unknown_upstream_code_never_reaches_any_report_format(
 
 
 def test_importing_the_ci_modules_does_not_import_the_engine() -> None:
-    """`decoy ci` first imports the engine inside engine_logging_silenced, from a scratch cwd,
-    so the engine's cwd-relative log file never lands in the checked repository. The allowlist
-    must therefore derive the registry half on first use, not when the module is imported."""
+    """`decoy ci` first imports the engine inside engine_logging_silenced, so the engine's logger
+    is quiet before anything can log. The allowlist must therefore derive the registry half on
+    first use, not when the module is imported."""
     import subprocess
     import sys
 

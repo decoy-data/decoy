@@ -22,16 +22,15 @@ tests/sentry/baselines/atomic-writer-allow.json, which also records each entry's
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "decoy"
 CHOKE_POINT = "_atomic.py"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "atomic-writer-allow.json"
 
 _MODULE_CALLS: dict[str, set[str]] = {
     "os": {"replace", "rename", "renames", "link"},
@@ -43,6 +42,59 @@ _PATH_CLASSES = {"Path", "PosixPath", "WindowsPath"}
 _PATH_ALWAYS = {"rename", "hardlink_to", "link_to"}
 
 
+def realpath_sites(source: str) -> list[tuple[str, int]]:
+    """Return the enclosing function and line for normalized os.path.realpath calls."""
+    tree = ast.parse(source)
+    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    os_modules: set[str] = set()
+    path_modules: set[str] = set()
+    members: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "os":
+                    os_modules.add(alias.asname or "os")
+                elif alias.name == "os.path":
+                    (path_modules if alias.asname else os_modules).add(alias.asname or "os")
+        elif isinstance(node, ast.ImportFrom) and node.module == "os":
+            path_modules |= {
+                alias.asname or alias.name for alias in node.names if alias.name == "path"
+            }
+        elif isinstance(node, ast.ImportFrom) and node.module == "os.path":
+            members |= {
+                alias.asname or alias.name for alias in node.names if alias.name == "realpath"
+            }
+    found: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        direct = isinstance(func, ast.Name) and func.id in members
+        path_alias = (
+            isinstance(func, ast.Attribute)
+            and func.attr == "realpath"
+            and isinstance(func.value, ast.Name)
+            and func.value.id in path_modules
+        )
+        os_path = (
+            isinstance(func, ast.Attribute)
+            and func.attr == "realpath"
+            and isinstance(func.value, ast.Attribute)
+            and func.value.attr == "path"
+            and isinstance(func.value.value, ast.Name)
+            and func.value.value.id in os_modules
+        )
+        if not (direct or path_alias or os_path):
+            continue
+        parent = parents.get(node)
+        while parent is not None and not isinstance(
+            parent, (ast.FunctionDef, ast.AsyncFunctionDef)
+        ):
+            parent = parents.get(parent)
+        found.append((parent.name if parent is not None else "<module>", node.lineno))
+    return found
+
+
 @dataclass(frozen=True)
 class AllowedInline:
     file: str  # relative to src/decoy
@@ -50,26 +102,9 @@ class AllowedInline:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedInline, ...] = (
-    AllowedInline(
-        "cli/run/_vault.py",
-        4,
-        "_commit_vault keeps a hard-link backup and restores or removes the vault when the "
-        "directory fsync fails (tests/e2e/test_vault_commit_order.py); a transaction, not a "
-        "plain atomic write. L5a moves it to _vault_commit.py and renames this entry.",
-    ),
-    AllowedInline(
-        "distribution/installer.py",
-        3,
-        "Moves a staged runtime directory into versions/ and writes the 0755 launcher shim "
-        "(temp file, chmod, replace); a directory move and an executable-mode write, not a "
-        "0600 data write.",
-    ),
-    AllowedInline(
-        "distribution/first_install.py",
-        1,
-        "Moves the unpacked bundle into place on first install; not a file write.",
-    ),
+ALLOWLIST: tuple[AllowedInline, ...] = tuple(
+    AllowedInline(file, e["sites"], e["reason"])
+    for file, e in load_allowlist("atomic-writer-allow").items()
 )
 
 
@@ -168,22 +203,40 @@ def test_no_inline_atomic_write_outside_the_choke_point() -> None:
     assert findings(scan(SRC)) == []
 
 
-def test_allowlist_baseline_is_three_with_reasons() -> None:
-    assert len(ALLOWLIST) == 3
-    assert len({e.file for e in ALLOWLIST}) == 3
+def test_allowlist_baseline_is_two_with_reasons() -> None:
+    assert len(ALLOWLIST) == 2
+    assert len({e.file for e in ALLOWLIST}) == 2
     assert all(len(e.reason.strip()) >= 15 and e.sites > 0 for e in ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_sites_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    assert {k: (v["sites"], v["reason"]) for k, v in entries.items()} == {
-        e.file: (e.sites, e.reason) for e in ALLOWLIST
-    }
 
 
 def test_choke_point_exists_and_is_excluded() -> None:
     assert (SRC / CHOKE_POINT).is_file()
     assert CHOKE_POINT not in scan(SRC)
+
+
+def test_output_realpath_calls_stay_in_the_destination_identity_choke_point() -> None:
+    seeded = (
+        "import os as operating\nimport os.path as osp\n"
+        "from os import path as pathmod\nfrom os.path import realpath as resolve\n"
+        "def sites(p):\n return (operating.path.realpath(p), osp.realpath(p), "
+        "pathmod.realpath(p), resolve(p))\n"
+    )
+    assert [name for name, _line in realpath_sites(seeded)] == ["sites"] * 4
+    allowed = {
+        ("_atomic.py", "destination_entry"),
+        ("cli/io/_placement.py", "_landing"),
+    }
+    found: set[tuple[str, str]] = set()
+    roots = (SRC / "_atomic.py", SRC / "cli" / "io", SRC / "cli" / "run")
+    for root in roots:
+        paths = [root] if root.is_file() else sorted(root.rglob("*.py"))
+        for path in paths:
+            rel = path.relative_to(SRC).as_posix()
+            found |= {
+                (rel, function)
+                for function, _line in realpath_sites(path.read_text(encoding="utf-8"))
+            }
+    assert found == allowed
 
 
 def test_seeded_inline_copy_is_red(tmp_path: Path) -> None:
@@ -202,11 +255,14 @@ def test_seeded_inline_copy_is_red(tmp_path: Path) -> None:
 
 def test_seeded_copy_in_an_allowlisted_file_is_red() -> None:
     real = {k: v for k, v in scan(SRC).items() if k in {e.file for e in ALLOWLIST}}
-    seeded = {**real, "cli/run/_vault.py": [*real["cli/run/_vault.py"], (999, "os.replace")]}
-    lines = ", ".join(str(n) for n, _ in seeded["cli/run/_vault.py"])
-    recorded = next(e.sites for e in ALLOWLIST if e.file == "cli/run/_vault.py")
+    seeded = {
+        **real,
+        "distribution/installer.py": [*real["distribution/installer.py"], (999, "os.replace")],
+    }
+    lines = ", ".join(str(n) for n, _ in seeded["distribution/installer.py"])
+    recorded = next(e.sites for e in ALLOWLIST if e.file == "distribution/installer.py")
     assert findings(seeded) == [
-        f"cli/run/_vault.py: {recorded + 1} site(s), allowlist records {recorded} ({lines})"
+        f"distribution/installer.py: {recorded + 1} site(s), allowlist records {recorded} ({lines})"
     ]
 
 

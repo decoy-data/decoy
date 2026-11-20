@@ -45,7 +45,6 @@ design decision to hide.
 
 from __future__ import annotations
 
-import inspect
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -125,21 +124,10 @@ class RouteClassification:
     label: str
 
 
-class _NativeProbeUnavailable(Exception):
-    """The installed `decoy-engine` predates `native_companion_status()`
-    (added after the `>=0.5.0` floor was tagged, per the same
-    still-labeled-0.5.0 situation `run.py`'s DE-02 comment documents for
-    `keyprovider`). Caught internally by `pre_execution_gate` -- never
-    escapes this module."""
-
-
 def _probe_status() -> Any:
     import decoy_engine
 
-    probe = getattr(decoy_engine, "native_companion_status", None)
-    if probe is None:
-        raise _NativeProbeUnavailable
-    return probe()
+    return decoy_engine.native_companion_status()
 
 
 _NON_STRING_ABI_MARKER = "<non-string value>"
@@ -346,15 +334,7 @@ def pre_execution_gate(
                 code="native_require_vault_active",
             )
         if status is None:
-            try:
-                status = _probe_status()
-            except _NativeProbeUnavailable:
-                raise NativeGateError(
-                    "--native needs a decoy-engine build with the native probe "
-                    "(native_companion_status); the installed decoy-engine "
-                    "predates it. Upgrade decoy-engine, or drop --native.",
-                    code="native_require_engine_too_old",
-                ) from None
+            status = _probe_status()
         if not status.ok:
             raise NativeGateError(
                 "--native requires a healthy decoy-engine-native companion, but "
@@ -366,17 +346,14 @@ def pre_execution_gate(
     if intent == "disable":
         warn_message = None
         if candidate:
-            try:
-                if status is None:
-                    status = _probe_status()
-                if status.present and not status.ok:
-                    warn_message = (
-                        "the decoy-engine-native companion is present but not usable "
-                        f"({status.reason}); moot here since disabling native already "
-                        "forces the legacy pandas adapter."
-                    )
-            except _NativeProbeUnavailable:
-                pass
+            if status is None:
+                status = _probe_status()
+            if status.present and not status.ok:
+                warn_message = (
+                    "the decoy-engine-native companion is present but not usable "
+                    f"({status.reason}); moot here since disabling native already "
+                    "forces the legacy pandas adapter."
+                )
         return PreGateResult(unified_slice_enabled=False, warn_message=warn_message)
 
     # intent == "default": inherit the engine's own default (unified slice
@@ -386,13 +363,8 @@ def pre_execution_gate(
     # never touch.
     if vault_active or not candidate or not static_native_eligibility(config_dict):
         return PreGateResult(unified_slice_enabled=True)
-    try:
-        if status is None:
-            status = _probe_status()
-    except _NativeProbeUnavailable:
-        # An engine this old predates the whole native lane too, so there is
-        # nothing to gate -- collapse to the same no-op as "not a candidate".
-        return PreGateResult(unified_slice_enabled=True)
+    if status is None:
+        status = _probe_status()
     if status.reason == "absent":
         return PreGateResult(
             unified_slice_enabled=True,
@@ -480,31 +452,13 @@ def post_run_verify(*, intent: NativeIntent, route: RouteClassification) -> None
 
 
 def run_pipeline_kwargs(gate_result: PreGateResult) -> dict[str, bool]:
-    """The `run_pipeline` kwargs to pass for `gate_result`, capability-detected
-    against the INSTALLED engine (HIGH remediation, round 3): `unified_slice_
-    enabled=True` is already the engine's own default, so it is passed only to
-    force it `False` (`--no-native` / `native=False`) -- and even then, only
-    if the installed `run_pipeline` actually accepts that parameter.
+    """The `run_pipeline` kwargs to pass for `gate_result`.
 
-    `unified_slice_enabled` landed on engine main (2026-09-15) after the
-    `decoy-engine>=0.5.0` floor was tagged (2026-07-24, per the same still-
-    labeled-0.5.0 situation `run.py`'s DE-02 comment documents for
-    `keyprovider`), so an in-range 0.5.0 install can genuinely lack it. Before
-    this fix, `--no-native` -- the documented ROLLBACK for when something
-    looks wrong -- was the one path guaranteed to crash such an install with a
-    `TypeError`, while doing nothing (the default path) or requiring native
-    (which fails on its own missing-capability check first) both degraded
-    cleanly. An engine without the parameter also has no unified-slice lane at
-    all, so omitting it is not a compromise: that engine already behaves as if
-    native were disabled, unconditionally.
-
-    Both `decoy run` and `decoy.mask()` call this instead of building the
-    kwargs dict themselves, so neither can independently regress this."""
+    `unified_slice_enabled=True` is already the engine's own default, so it is passed only to
+    force it `False` (`--no-native` / `native=False`). Both `decoy run` and `decoy.mask()` call
+    this instead of building the kwargs dict themselves, so neither can independently regress
+    this."""
     if gate_result.unified_slice_enabled:
-        return {}
-    from decoy_engine import run_pipeline
-
-    if "unified_slice_enabled" not in inspect.signature(run_pipeline).parameters:
         return {}
     return {"unified_slice_enabled": False}
 

@@ -14,7 +14,7 @@ arguments reference). There is no run catalog or workspace.
 
 S4b (CLI redesign) folded the former `report summarize` + `report compare`,
 the `evidence` verbs (show/verify), the `validate` distribution check, the
-`storm` integrity check, and `vault info` into this one noun. The relocated
+old integrity check group, and `vault info` into this one noun. The relocated
 bodies are reused verbatim; their engine deps stay lazy-imported inside each
 body.
 
@@ -27,7 +27,7 @@ RAW-VALUE ISOLATION (Dennis review note, cli-first-capability-guide.md L534-538)
   The manifest renderers accept a manifest DICT and render it. They do NOT:
     - Read source or output CSV files from disk.
     - Embed raw cell/row values in any report.
-    - Render full STORM profiles or raw diagnostic values.
+    - Render full scan profiles or raw diagnostic values.
 
   What is intentionally excluded is stated in each report footer so reviewers
   know the omission is deliberate. (`fidelity`/`integrity` DO read the data
@@ -46,13 +46,32 @@ from rich.markup import escape
 
 from decoy import _mask_secret
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
-from decoy.cli._sources import read_file, read_report_source
-from decoy.cli._yaml_errors import sanitize_yaml_error
-from decoy.cli.evidence import _render_manifest_card, verify_manifest
-from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_RUNTIME, EXIT_USAGE
-from decoy.cli.io import entry_format
-from decoy.ui.output import OutputMode, OutputState, emit_json, print_traceback, setup_output
-from decoy.ui.summary import render_fidelity_report
+from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
+from decoy._yaml_errors import sanitize_yaml_error
+from decoy.cli._sources import (
+    ReportSourceError,
+    gate_report_source,
+    read_file,
+    read_report_source,
+)
+from decoy.cli.evidence import (
+    ManifestError,
+    _render_manifest_card,
+    read_manifest,
+    resolve_manifest_path,
+    verify_manifest,
+)
+from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_RUNTIME, EXIT_USAGE, exit_code_for
+from decoy.cli.io import ReportTarget, entry_format, pipeline_option, report_dest, resolve_pipeline
+from decoy.ui.output import (
+    OutputMode,
+    OutputState,
+    emit_error,
+    emit_json,
+    print_traceback,
+    setup_output,
+)
+from decoy.ui.summary import announce_report, null_rate_pairs, render_fidelity_report
 from decoy.ui.theme import accent, code, error, hint, info, risk_high, success, warn
 
 # Grade -> minimum overall_score, mirroring the engine's own grade thresholds
@@ -81,50 +100,30 @@ report_app = typer.Typer(
 # ---------------------------------------------------------------------------
 
 
-def _write_out(state: OutputState, path: Path, text: str) -> None:
-    """Write a report file atomically (owner-only); refuse with the rendered reason."""
+def _write_out(state: OutputState, target: ReportTarget, text: str) -> Path | None:
+    """Write a report file (owner-only); a typed target refuses on failure, a default only warns."""
+    with target.recording():
+        for path in target.paths:
+            write_local_target(path, text.encode("utf-8"), WriteMode.REPLACE)
+    return announce_report(state, target)
+
+
+def _load_manifest(
+    path: Path, state: OutputState, command: str, project: Path | None = None
+) -> dict[str, Any]:
+    """Read a manifest through the shared strict reader. Exit with EXIT_USAGE on a refusal."""
     try:
-        write_local_target(path, text.encode("utf-8"), WriteMode.REPLACE)
-    except AtomicWriteError as exc:
-        state.err_console.print(error("error:"), f"could not write {path}: {describe(exc)}")
-        raise typer.Exit(code=EXIT_USAGE)
-
-
-def _load_manifest(path: Path, state: OutputState, command: str) -> dict[str, Any]:
-    """Load and parse a manifest file. Exit with EXIT_USAGE on any error."""
-    if not path.exists():
-        msg = f"evidence file not found: {path}"
-        if state.mode is OutputMode.json:
-            emit_json(state, {"command": command, "status": "error", "error": msg})
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), msg)
-            state.err_console.print(
-                " ",
-                hint("hint:"),
-                "produce an evidence file with",
-                code("decoy run pipeline.yaml --evidence-out evidence.json"),
-            )
-        raise typer.Exit(code=EXIT_USAGE)
-
-    try:
-        raw = path.read_text(encoding="utf-8")
-        manifest = _json.loads(raw)
-    except _json.JSONDecodeError as exc:
-        msg = f"could not parse {path.name} as JSON: {exc.msg}"
-        if state.mode is OutputMode.json:
-            emit_json(state, {"command": command, "status": "error", "error": msg})
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), msg)
-        raise typer.Exit(code=EXIT_USAGE)
-    except OSError as exc:
-        msg = f"could not read {path}: {exc}"
-        if state.mode is OutputMode.json:
-            emit_json(state, {"command": command, "status": "error", "error": msg})
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), msg)
-        raise typer.Exit(code=EXIT_USAGE)
-
-    return manifest
+        return read_manifest(path, project)
+    except ManifestError as exc:
+        msg, missing = exc.message, exc.kind == "missing"
+    if state.mode is OutputMode.json:
+        emit_json(state, {"command": command, "status": "error", "error": msg})
+    else:
+        state.err_console.print(error("error:"), msg)
+        if missing:
+            how = code("decoy run pipeline.yaml --evidence-out evidence.json")
+            state.err_console.print(" ", hint("hint:"), "produce an evidence file with", how)
+    raise typer.Exit(code=EXIT_USAGE)
 
 
 # ---------------------------------------------------------------------------
@@ -640,7 +639,7 @@ What the report includes:
   row counts, masking strategies (names only), node timings, and warnings.
 
 What the report intentionally excludes:
-  Raw row values, PII samples, STORM profile internals, diagnostic values.
+  Raw row values, PII samples, scan profile internals, diagnostic values.
   The evidence manifest records strategy names and fingerprints only; the
   report renders that safe subset.
 
@@ -681,7 +680,7 @@ def _render(
     """Render an evidence manifest to an HTML or Markdown report file.
 
     The report is built from the manifest only (evidence-safe). Raw row
-    values, PII, and STORM profile internals are never included.
+    values, PII, and scan profile internals are never included.
 
     HTML output is self-contained and offline-capable (no CDN/external JS).
     Markdown output is plain text.
@@ -866,53 +865,37 @@ def _column_profile(df: "Any") -> dict[str, dict[str, Any]]:
 
 
 def compare_data(
-    output_fps_a: dict[str, Any],
-    output_fps_b: dict[str, Any],
+    manifest_a: dict[str, Any],
+    manifest_b: dict[str, Any],
+    *,
+    manifest_file_a: Path | None,
+    manifest_file_b: Path | None,
 ) -> dict[str, Any]:
     """Compare output data files from two runs at the data level.
 
-    Accepts the `output_fingerprints` dicts from two evidence manifests.
-    Each dict is keyed by table name and has a `path` field pointing to the output file and,
-    since CLI-FMT, a `format` (and fixed-width `layout`) it was written in. Each side is read
-    by its own entry; an entry without `format` takes the legacy suffix rule.
+    Takes two whole evidence manifests and the files they were read from. Each output entry's
+    `path` is resolved by `evidence.resolve_manifest_path` against its own manifest's project,
+    never the working directory; an entry with a null fingerprint (nothing written) counts as
+    missing. Since CLI-FMT an entry records the `format` (and fixed-width `layout`) it was
+    written in; each side is read by its own entry, and one without `format` takes the legacy
+    suffix rule. Raises `ManifestError` when a stored path is refused.
 
-    Returns a structured dict with:
-      any_data_change  bool
-      table_deltas     list of per-table dicts with:
-        table             str
-        row_count_a       int or None
-        row_count_b       int or None
-        row_count_delta   int or None
-        columns_added     list[str] -- columns in B but not A
-        columns_removed   list[str] -- columns in A but not B
-        column_deltas     list of per-column dicts with:
-          column          str
-          null_count_delta  int or None
-          unique_count_delta int or None
-          dtype_kind_a    str or None
-          dtype_kind_b    str or None
-          dtype_changed   bool
-      missing_files      list[str] -- paths that could not be found
+    Returns `any_data_change` (bool), `missing_files` (recorded paths not found or not
+    readable) and `table_deltas`: per table, `row_count_a`/`_b`/`_delta`, `columns_added` and
+    `columns_removed` (B against A), and `column_deltas` with `null_count_delta`,
+    `unique_count_delta`, `dtype_kind_a`/`_b` and `dtype_changed` for each changed column.
 
-    Methodology: pandas.Series.nunique() and .isnull().sum() for column-level
+    Methodology: pandas.Series.nunique() and .isnull().sum() (pandas v2.x) for column-level
     null/cardinality counts. No novel statistical method is used.
-    References: pandas v2.x docs.
 
     EVIDENCE-SAFE: reports aggregate counts only. Raw row/cell values are
     never included in the output.
     """
-    try:
-        import pandas  # noqa: F401  (the dependency guard; the readers import it themselves)
-    except ImportError as _err:
-        raise RuntimeError(
-            "pandas is required for data-level diff. Install with: pip install pandas"
-        ) from _err
     from decoy_engine import DecoyError
 
-    # Determine which tables appear in both sets.
-    tables_a = set(output_fps_a)
-    tables_b = set(output_fps_b)
-    all_tables = sorted(tables_a | tables_b)
+    output_fps_a: dict[str, Any] = manifest_a.get("output_fingerprints") or {}
+    output_fps_b: dict[str, Any] = manifest_b.get("output_fingerprints") or {}
+    all_tables = sorted(set(output_fps_a) | set(output_fps_b))
 
     table_deltas: list[dict[str, Any]] = []
     missing_files: list[str] = []
@@ -941,33 +924,30 @@ def compare_data(
             )
             continue
 
-        from pathlib import Path as _Path
-
-        path_a = _Path(path_a_str)
-        path_b = _Path(path_b_str)
-
-        if not path_a.exists():
-            missing_files.append(path_a_str)
-        if not path_b.exists() and path_b_str not in missing_files:
-            missing_files.append(path_b_str)
+        sides = ((manifest_a, fp_a, manifest_file_a), (manifest_b, fp_b, manifest_file_b))
+        found: list[Path] = []
+        for manifest, entry, where in sides:
+            raw = entry["path"]
+            path = None
+            if entry.get("fingerprint") is not None:
+                field = f"output_fingerprints.{table}.path"
+                path = resolve_manifest_path(manifest, raw, manifest_file=where, field=field)
+            if path is not None and path.exists():
+                found.append(path)
+            elif raw not in missing_files:
+                missing_files.append(raw)
 
         if missing_files:
-            # Report missing but don't continue loading
             continue
 
         # Each side is read by its own recorded format (an old entry: the legacy suffix rule).
+        rec_a, rec_b = ({k: fp[k] for k in ("format", "layout") if k in fp} for fp in (fp_a, fp_b))
         try:
-            df_a = read_file(path_a, *entry_format(fp_a), table=table)
-            df_b = read_file(path_b, *entry_format(fp_b), table=table)
+            df_a = read_file(found[0], *entry_format(found[0], rec_a), table=table)
+            df_b = read_file(found[1], *entry_format(found[1], rec_b), table=table)
         except (OSError, ValueError, DecoyError):
-            # The file exists but could not be read (corrupt, truncated, or not the
-            # format its entry records; a parquet reader raises ArrowInvalid/ValueError,
-            # a bad path raises OSError, the engine's CSV reader a DecoyError, an entry
-            # with no usable format a TargetFormatError). Degrade this table to the same
-            # data-unavailable handling as a missing file so one broken output cannot
-            # crash the whole comparison; the caller still reports manifest level and
-            # --require-data still hard-fails. The raw parser message is dropped: it can
-            # echo file bytes or cell values (observability leak rule).
+            # Unreadable (corrupt, truncated, or not its recorded format): treat it as missing so
+            # --require-data still fails. The parser message is dropped: it can echo cell values.
             for p_str in (path_a_str, path_b_str):
                 if p_str not in missing_files:
                     missing_files.append(p_str)
@@ -1090,7 +1070,9 @@ def _show(
         help="Write the report to this file path (requires --format).",
     ),
     json_: bool = typer.Option(False, "--json", help="Emit the evidence manifest as JSON."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stdout."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug-level logs."),
 ) -> None:
     """Render the evidence report from an evidence manifest file.
@@ -1135,7 +1117,7 @@ def _show(
             content = render_markdown(manifest)
         else:
             content = render_html(manifest)
-        _write_out(state, out, content)
+        _write_out(state, ReportTarget(out, False), content)
         fmt_label = "Markdown" if fmt in ("markdown", "md") else "HTML"
         state.console.print(success("ok"), f"{fmt_label} report written to", code(str(out)))
         return
@@ -1222,7 +1204,9 @@ def _diff(
         ),
     ),
     json_: bool = typer.Option(False, "--json", help="Emit structured JSON."),
-    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress stdout."),
+    quiet: bool = typer.Option(
+        False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
+    ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug-level logs."),
 ) -> None:
     """Compare two evidence manifests: fingerprints always, data when present.
@@ -1246,14 +1230,16 @@ def _diff(
     # --- Manifest/fingerprint-level comparison (always) ---
     manifest_diff = compare_manifests(manifest_a, manifest_b)
 
-    out_fps_a: dict[str, Any] = manifest_a.get("output_fingerprints") or {}
-    out_fps_b: dict[str, Any] = manifest_b.get("output_fingerprints") or {}
-
     # --- Data-level comparison (when the referenced output files exist) ---
     data_result: dict[str, Any] | None = None
     data_dep_error: str | None = None
     try:
-        data_result = compare_data(out_fps_a, out_fps_b)
+        data_result = compare_data(
+            manifest_a,
+            manifest_b,
+            manifest_file_a=evidence_file_a,
+            manifest_file_b=evidence_file_b,
+        )
     except RuntimeError as _dep_err:
         # pandas (or a parquet reader) is not installed. Treat the data level
         # as unavailable rather than failing the whole comparison.
@@ -1273,7 +1259,7 @@ def _diff(
             msg = data_dep_error or "data-level comparison is unavailable."
         if state.mode is OutputMode.json:
             emit_json(state, {"command": "report diff", "status": "error", "error": msg})
-        elif state.mode is not OutputMode.quiet:
+        else:
             state.err_console.print(error("error:"), msg)
             state.err_console.print(
                 " ",
@@ -1461,10 +1447,16 @@ def _verify(
         help="Emit a structured JSON result instead of human-readable output.",
     ),
     quiet: bool = typer.Option(
-        False, "--quiet", "-q", help="Suppress stdout. Exit code carries the result."
+        False,
+        "--quiet",
+        "-q",
+        help="Suppress stdout. Errors still go to stderr; exit code carries the result.",
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable debug-level CLI logs on stderr."
+    ),
+    project: Path | None = typer.Option(
+        None, "--project", help="Project root for a manifest's project-relative paths."
     ),
 ) -> None:
     """Verify a local evidence manifest's fingerprints against current files.
@@ -1485,9 +1477,18 @@ def _verify(
     required for adversarial authenticity guarantees.
     """
     state = setup_output(json_, quiet, verbose)
-    manifest = _load_manifest(evidence_file, state, "report verify")
-
-    issues = verify_manifest(manifest)
+    manifest = _load_manifest(evidence_file, state, "report verify", project)
+    refusal = None
+    try:
+        issues = verify_manifest(manifest, manifest_file=evidence_file, project=project)
+    except ManifestError as exc:
+        refusal, issues = exc.message, []
+    if refusal is not None:
+        if state.mode is OutputMode.json:
+            emit_json(state, {"command": "report verify", "status": "error", "error": refusal})
+        else:
+            state.err_console.print(error("error:"), refusal)
+        raise typer.Exit(code=EXIT_USAGE)
 
     if state.mode is OutputMode.json:
         emit_json(
@@ -1625,12 +1626,9 @@ def _fidelity(
             "assumes masking (row parity expected)."
         ),
     ),
-    pipeline_config: Path | None = typer.Option(
+    pipeline_config: str | None = pipeline_option(
         None,
         "--config",
-        exists=True,
-        dir_okay=False,
-        readable=True,
         help=(
             "Pipeline YAML naming each column's strategy, so intentional "
             "loss (hash, bucketize, faker, ...) is not flagged as accidental "
@@ -1686,7 +1684,7 @@ def _fidelity(
         False,
         "--quiet",
         "-q",
-        help="Suppress stdout. Exit code carries the result.",
+        help="Suppress stdout. Errors still go to stderr; exit code carries the result.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -1697,13 +1695,11 @@ def _fidelity(
 ) -> None:
     """Recompute distribution fidelity between a source and an output CSV.
 
-    Wraps `decoy_engine.quality.compute_quality_report` +
-    `apply_quality_policy` (report.py:97, policy.py:142): the engine owns
-    every metric and the letter grade; this command computes no fidelity
-    number itself. Reads both CSVs fresh on every invocation (pure,
-    repeatable) -- the CLI's local evidence manifest records file
+    The engine owns every metric and the letter grade; this command
+    computes no fidelity number itself. It reads both CSVs fresh on every
+    run (pure, repeatable). The local evidence manifest records file
     fingerprints but not the raw frames, so recomputing from the two files
-    is the only honest source for this number (BF1).
+    is the only honest source for this number.
 
     Exit codes: 0 when the policy verdict is 'pass' (or 'warn' without
     --fail-on-warning); EXIT_FINDINGS (4) when the verdict is 'fail', or
@@ -1715,23 +1711,19 @@ def _fidelity(
     import yaml as _yaml
 
     state = setup_output(json_, quiet, verbose)
+    ref = resolve_pipeline(pipeline_config, state, "report fidelity")
+    pipeline_path = ref.yaml if ref else None
     source_str = str(source)
     output_str = str(output)
 
-    def _emit_error(message: str) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "report fidelity",
-                    "status": "error",
-                    "source": source_str,
-                    "output": output_str,
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), message)
+    def _emit_error(message: str, *, code: str | None = None) -> None:
+        emit_error(
+            state,
+            "report fidelity",
+            message,
+            code=code,
+            context={"source": source_str, "output": output_str},
+        )
 
     joint_pairs: list[tuple[str, str]] = []
     for spec in joint:
@@ -1754,16 +1746,16 @@ def _fidelity(
         raise typer.Exit(code=EXIT_USAGE)
 
     config_dict: dict[str, Any] = {}
-    if pipeline_config is not None:
+    if pipeline_path is not None:
         from decoy_engine import parse_pipeline_config
 
         try:
-            raw_cfg = _yaml.safe_load(pipeline_config.read_text(encoding="utf-8"))
+            raw_cfg = load_config_mapping(pipeline_path)
+        except (ConfigFileError, OSError) as exc:
+            _emit_error(**config_refusal(exc))
+            raise typer.Exit(code=exit_code_for(exc))
+        try:
             config_dict = parse_pipeline_config(raw_cfg).model_dump()
-        except _yaml.YAMLError as exc:
-            # YAMLError carries the offending source line verbatim; sanitize it.
-            _emit_error(sanitize_yaml_error(exc))
-            raise typer.Exit(code=EXIT_USAGE)
         except Exception as exc:
             _emit_error(f"could not parse --config {pipeline_config}: {exc}")
             raise typer.Exit(code=EXIT_USAGE)
@@ -1791,16 +1783,20 @@ def _fidelity(
 
     from decoy_engine.quality import apply_quality_policy, compute_quality_report
 
-    config_dir = pipeline_config.parent if pipeline_config is not None else Path.cwd()
+    config_dir = pipeline_path.parent if pipeline_path is not None else Path.cwd()
     try:
-        src_df = read_report_source(source, config_dict, config_dir)
+        table = gate_report_source(config_dict, config_dir, source)
+        src_df = read_report_source(source, config_dict, config_dir, table)
+    except ReportSourceError as exc:
+        _emit_error(exc.message, code=exc.code)
+        raise typer.Exit(code=EXIT_USAGE)
     except Exception as exc:
-        _emit_error(f"could not read {source}: {exc}")
+        _emit_error(f"could not read {source}: {type(exc).__name__}.")
         raise typer.Exit(code=EXIT_USAGE)
     try:
         out_df = read_report_source(output, {}, config_dir)
     except Exception as exc:
-        _emit_error(f"could not read {output}: {exc}")
+        _emit_error(f"could not read {output}: {type(exc).__name__}.")
         raise typer.Exit(code=EXIT_USAGE)
 
     report = compute_quality_report(
@@ -1811,8 +1807,8 @@ def _fidelity(
     )
     policy_result = apply_quality_policy(report, policy_config, strategy_map=strategy_map)
 
-    if report_out is not None:
-        _write_out(state, report_out, _json.dumps({**report, "policy": policy_result}, indent=2))
+    text = _json.dumps({**report, "policy": policy_result}, indent=2)
+    written = _write_out(state, report_dest("fidelity", output, ref, report_out), text)
 
     verdict = policy_result["verdict"]
     status = "ok" if verdict == "pass" else verdict
@@ -1821,46 +1817,15 @@ def _fidelity(
         envelope = dict(report)
         envelope["command"] = "report fidelity"
         envelope["status"] = status
-        envelope["policy"] = policy_result
+        envelope.update(policy=policy_result, **({"report_path": str(written)} if written else {}))
         emit_json(state, envelope)
     elif state.mode is not OutputMode.quiet:
         render_fidelity_report(
-            state, report, policy_result, null_rates=_null_rate_pairs(report, src_df, out_df)
+            state, report, policy_result, null_rates=null_rate_pairs(report, src_df, out_df)
         )
 
     if verdict == "fail" or (verdict == "warn" and fail_on_warning):
         raise typer.Exit(code=EXIT_FINDINGS)
-
-
-def _null_rate_pairs(
-    report: dict[str, Any], src_df: Any, out_df: Any
-) -> dict[str, tuple[float | None, float | None]]:
-    """Source and output null rates per column, only when some column's rates differ.
-
-    The report carries `missing_value_similarity` but not the rates behind it, so the two
-    frames are profiled again and each rate comes from the engine's `snapshot_null_fraction`.
-    Returns an empty map when every column scored 1 (or None), so the common case pays nothing.
-    """
-    columns = [c for c in report.get("marginal", {}).get("columns", []) if isinstance(c, dict)]
-    if not any(
-        isinstance(c.get("missing_value_similarity"), (int, float))
-        and c["missing_value_similarity"] < 1
-        for c in columns
-    ):
-        return {}
-    from decoy_engine import distribution_snapshot_document
-    from decoy_engine.quality import snapshot_null_fraction
-
-    # Only the counts are read. The redacting writer is the one snapshot builder the CLI uses.
-    src_cols = distribution_snapshot_document(src_df, source_label="source")["columns"]
-    out_cols = distribution_snapshot_document(out_df, source_label="output")["columns"]
-    return {
-        str(c.get("column")): (
-            snapshot_null_fraction(src_cols[c["column"]]) if c.get("column") in src_cols else None,
-            snapshot_null_fraction(out_cols[c["column"]]) if c.get("column") in out_cols else None,
-        )
-        for c in columns
-    }
 
 
 def _render_residual_pii(state: Any, findings: list[Any]) -> None:
@@ -1896,7 +1861,7 @@ def _render_residual_pii(state: Any, findings: list[Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI: report integrity MASKED --source SRC  (relocated from the `storm` group)
+# CLI: report integrity MASKED --source SRC  (relocated from the old scan group)
 # ---------------------------------------------------------------------------
 
 _INTEGRITY_EPILOG = """\
@@ -1914,7 +1879,7 @@ Examples:
     is reduced to "no config provided" notes.
 
   decoy report integrity masked.csv --source source.csv --json > report.json
-    Pipe the full JobStormReport-shaped JSON for downstream tooling.
+    Pipe the full integrity report JSON for downstream tooling.
 
   decoy report integrity masked.csv --source source.csv --output report.json
     Write JSON to file + render a Rich summary on stderr.
@@ -1943,14 +1908,11 @@ def _integrity(
         readable=True,
         help="Pre-mask source CSV (ground truth for the integrity check).",
     ),
-    config: Path | None = typer.Option(
+    config: str | None = pipeline_option(
         None,
         "--config",
-        exists=True,
-        dir_okay=False,
-        readable=True,
         help=(
-            "Optional pipeline.yaml. When passed, policy_validation can "
+            "Optional pipeline.yaml, or a pipeline name. When passed, policy_validation can "
             "compare against the configured masks. Without it the runner "
             "still produces residual_pii + fk_preservation findings."
         ),
@@ -1960,7 +1922,7 @@ def _integrity(
         "--output",
         "-o",
         help=(
-            "Write the JobStormReport JSON to this path. The Rich table still renders to stderr."
+            "Write the integrity report JSON to this path. The Rich table still renders to stderr."
         ),
     ),
     allow_source_mismatch: bool = typer.Option(
@@ -1974,7 +1936,7 @@ def _integrity(
     json_: bool = typer.Option(
         False,
         "--json",
-        help="Emit the full JobStormReport JSON to stdout. No card.",
+        help="Emit the full integrity report JSON to stdout. No card.",
     ),
     quiet: bool = typer.Option(
         False, "--quiet", "-q", help="Suppress stdout. Errors still go to stderr."
@@ -1985,11 +1947,9 @@ def _integrity(
 ) -> None:
     """Verify a masked file's integrity against its pre-mask source.
 
-    Wraps `decoy_engine.verification.postmask.run_post_mask`. Runs the
-    three post-mask check buckets (residual_pii, fk_preservation,
-    policy_validation) the platform's mask job already runs when
-    `post_scan: {integrity: true}` is declared in the pipeline; this verb lets the
-    CLI user run the same checks standalone.
+    Runs the three post-mask check buckets (residual_pii, fk_preservation,
+    policy_validation) that `post_scan: {integrity: true}` runs inside a
+    pipeline; this verb runs the same checks standalone.
 
     Distinct from `report verify` (manifest fingerprint-drift): integrity is
     post-mask residual-PII / FK / policy on a masked file plus --source.
@@ -2001,6 +1961,8 @@ def _integrity(
     from decoy.ui.table import make_table
 
     state = setup_output(json_, quiet, verbose)
+    ref = resolve_pipeline(config, state, "report integrity")
+    config_path = ref.yaml if ref else None
     masked_str = str(masked)
     source_str = str(source)
 
@@ -2009,16 +1971,15 @@ def _integrity(
 
         config_dict: dict
         table_name: str
-        if config is not None:
-            import yaml as _yaml
+        if config_path is not None:
             from decoy_engine import parse_pipeline_config
 
             try:
-                raw = _yaml.safe_load(config.read_text(encoding="utf-8"))
-            except _yaml.YAMLError as exc:
-                # The outer handler renders str(exc); a raw YAMLError there would
-                # echo the offending source line. Re-raise a pre-sanitized message.
-                raise ValueError(sanitize_yaml_error(exc)) from None
+                raw = load_config_mapping(config_path)
+            except (ConfigFileError, OSError) as exc:
+                members = {"masked": masked_str, "source": source_str}
+                emit_error(state, "report integrity", context=members, **config_refusal(exc))
+                raise typer.Exit(code=exit_code_for(exc))
             config_dict = parse_pipeline_config(raw).model_dump()
             # One source/masked pair: anchor on the first declared table.
             tables = config_dict.get("tables") or []
@@ -2050,7 +2011,14 @@ def _integrity(
                 "relationships": [],
             }
 
-        source_df = read_report_source(source, config_dict, config.parent if config else Path.cwd())
+        source_dir = config_path.parent if config_path else Path.cwd()
+        try:
+            gated = gate_report_source(config_dict, source_dir, source, table_name)
+        except ReportSourceError as exc:
+            context = {"masked": masked_str, "source": source_str}
+            emit_error(state, "report integrity", exc.message, code=exc.code, context=context)
+            raise typer.Exit(code=EXIT_USAGE)
+        source_df = read_report_source(source, config_dict, source_dir, gated)
         masked_df = read_report_source(masked, {}, Path.cwd())
 
         report = run_post_mask(
@@ -2059,8 +2027,8 @@ def _integrity(
             config=config_dict,
         )
 
-        if out is not None:
-            _write_out(state, out, _json.dumps(report, indent=2))
+        target = report_dest("integrity", masked, ref, out)
+        written = _write_out(state, target, _json.dumps(report, indent=2))
 
         # Decide exit code based on the report's severity counters.
         fail_count = int(report.get("fail_count") or 0)
@@ -2076,12 +2044,13 @@ def _integrity(
                     "masked": masked_str,
                     "source": source_str,
                     "report": report,
+                    **({"report_path": str(written)} if written else {}),
                 },
             )
         elif state.mode is not OutputMode.quiet:
             # A 3-row summary, then the residual-PII rows. FK and policy findings
             # are other record types and stay in the JSON payload only.
-            table = make_table("Bucket", "Findings", "Severities", title="Storm integrity")
+            table = make_table("Bucket", "Findings", "Severities", title="Post-scan integrity")
             for bucket in ("residual_pii", "fk_preservation", "policy_validation"):
                 findings = report.get(bucket) or []
                 if not findings:
@@ -2173,10 +2142,10 @@ Examples:
   decoy report vault vault.bin --config pipeline.yaml --quiet
     Silent mode; exit code 0 = vault opened successfully.
 
-The vault is encrypted under a key derived from the config's seed. The
-config passed to --config must be the SAME config (or at least the same
-global_settings.seed) used by the `decoy run --vault` call that wrote
-the vault, otherwise the decrypt will fail and the command exits 1.
+The vault opens only under the mask secret that the `decoy run --vault`
+call used. Pass the same secret with --mask-secret, or name it in the
+config's global_settings.mask_secret_ref. The seed is not key material.
+A missing or wrong secret exits 1.
 
 See also: decoy run --vault, decoy unmask --vault.
 """
@@ -2190,12 +2159,9 @@ def _vault(
         readable=True,
         help="The vault file written by `decoy run --vault`.",
     ),
-    config: Path = typer.Option(
+    config: str = pipeline_option(
         ...,
         "--config",
-        exists=True,
-        dir_okay=False,
-        readable=True,
         help=(
             "The pipeline config the mask run used. The vault opens only under the mask "
             "secret that run used (--mask-secret or global_settings.mask_secret_ref)."
@@ -2227,38 +2193,19 @@ def _vault(
     used; the seed is not key material. A missing or wrong secret exits 1.
     Exits 0 on success, 1 on a config/vault/usage error.
     """
-    import yaml as _yaml
-
     state = setup_output(json_, quiet, verbose)
+    config_path = resolve_pipeline(config, state, "report vault").yaml
 
-    def _emit_error(message: str, *, hint_text: str | None = None) -> None:
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "report vault",
-                    "status": "error",
-                    "vault": str(vault),
-                    "error": message,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            # markup=False: message is engine text or a user path, not authored
-            # markup. Engine install lines such as `pip install 'decoy-engine[vault]'`
-            # would otherwise lose the bracketed extra name to Rich's tag parser.
-            state.err_console.print(error("error:"), message, markup=False)
-            if hint_text:
-                state.err_console.print(" ", hint("hint:"), hint_text)
+    def _emit_error(message: str, *, hint_text: str | None = None, code: str | None = None) -> None:
+        emit_error(
+            state, "report vault", message, code=code, hint=hint_text, context={"vault": str(vault)}
+        )
 
-    # Parse config YAML.
     try:
-        raw = _yaml.safe_load(config.read_text(encoding="utf-8"))
-    except _yaml.YAMLError as exc:
-        _emit_error(sanitize_yaml_error(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-    if not isinstance(raw, dict):
-        _emit_error(f"Pipeline YAML must be a YAML mapping (object), not {type(raw).__name__}.")
-        raise typer.Exit(code=EXIT_USAGE)
+        raw = load_config_mapping(config_path)
+    except (ConfigFileError, OSError) as exc:
+        _emit_error(**config_refusal(exc))
+        raise typer.Exit(code=exit_code_for(exc))
     try:
         _mask_secret.apply_mask_secret(raw, mask_secret)
     except _mask_secret.MaskSecretFlagError as exc:

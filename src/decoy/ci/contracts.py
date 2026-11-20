@@ -33,14 +33,8 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from decoy.ci import CI_MANIFEST_VERSION, CI_REPORT_VERSION
-from decoy.cli.exit_codes import (
-    EXIT_CAPACITY,
-    EXIT_FINDINGS,
-    EXIT_OK,
-    EXIT_RUNTIME,
-    EXIT_USAGE,
-    EXIT_WARNINGS,
-)
+from decoy.cli import exit_codes
+from decoy.cli.exit_codes import EXIT_OK
 
 __all__ = [
     "CI_MANIFEST_VERSION",
@@ -116,18 +110,13 @@ CHECK_STATUSES: frozenset[str] = frozenset(
     {"ok", "noop", "findings", "partial", "refused", "failed"}
 )
 LEVELS: frozenset[str] = frozenset({"error", "warning", "note"})
+# Derived from the public constants, so a new exit code cannot be left out here.
 EXIT_CODES: frozenset[int] = frozenset(
-    {EXIT_OK, EXIT_USAGE, EXIT_WARNINGS, EXIT_RUNTIME, EXIT_FINDINGS, EXIT_CAPACITY}
+    getattr(exit_codes, name) for name in exit_codes.__all__ if name.startswith("EXIT_")
 )
-# Highest precedence first: capacity > runtime > invalid/refused > findings > warnings > ok.
-EXIT_PRECEDENCE: tuple[int, ...] = (
-    EXIT_CAPACITY,
-    EXIT_RUNTIME,
-    EXIT_USAGE,
-    EXIT_FINDINGS,
-    EXIT_WARNINGS,
-    EXIT_OK,
-)
+# Highest precedence first: capacity > runtime > invalid/refused > partial > findings >
+# warnings > ok. The same object `decoy run --all` ranks with, so the two cannot drift.
+EXIT_PRECEDENCE: tuple[int, ...] = exit_codes.PRECEDENCE
 
 _TOKEN = re.compile(r"^[a-z][a-z0-9_.-]{0,127}\Z")
 _HEX64 = re.compile(r"^[0-9a-f]{64}\Z")
@@ -527,7 +516,7 @@ class ValidationCheck(_Strict):
 
 
 class DriftCheck(_Strict):
-    """Compare two saved STORM scan JSON files with the `scan diff` categorizer."""
+    """Compare two saved scan JSON files with the `scan diff` categorizer."""
 
     id: Id
     baseline: RepoPath

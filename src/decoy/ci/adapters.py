@@ -1,7 +1,7 @@
 """Thin adapters from Decoy's EXISTING check results to value-free `CheckOutcome`s.
 
 Nothing here re-implements a check. Each adapter calls the same seam the direct command
-uses (`validate.run_gate`, `scan.compute_scan_diff`, `evidence.verify_manifest_issues`),
+uses (`validate.run_gate`, `scanning.diff_scan_sets`, `evidence.verify_manifest_issues`),
 keeps only codes, severities, counts and logical paths from the result, and discards the
 raw prose before the report boundary. Any exception becomes a `failed` check with a fixed
 reason; its text goes to the unsafe debug sink and nowhere else.
@@ -9,9 +9,9 @@ reason; its text goes to the unsafe debug sink and nowhere else.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+from decoy._config_file import ConfigFileError, read_config_text
 from decoy.ci.contracts import (
     CheckOutcome,
     DriftCheck,
@@ -82,13 +82,12 @@ def validation_outcome(
         rel = loaded.repo_relative(path)
         if rel is None or not path.is_file():
             return refused(check_id, "validation", "ci.input_missing")
-        data = path.read_bytes()
         try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError:
-            # The direct gate would crash here; report it as the parse error it is.
+            text = read_config_text(path)  # the one read; its text feeds the index and the gate
+        except ConfigFileError:
+            # Only the decode step can fail here: the loader's `yaml.not_utf8`, as `validate`.
             finding = SafeFinding.create(
-                rule_id="validate.yaml.parse_error",
+                rule_id="validate.yaml.not_utf8",
                 level="error",
                 safe_message_id="ci.validation_failed",
                 check_id=check_id,
@@ -156,14 +155,14 @@ def _load_scan(path: Path) -> dict:
 def drift_outcome(loaded: LoadedManifest, check: DriftCheck, sink: DebugSink) -> CheckOutcome:
     check_id = f"drift.{check.id}"
     try:
-        from decoy.cli.scan import compute_scan_diff
+        from decoy.cli.scanning import diff_scan_sets
 
         baseline = loaded.resolve(check.baseline)
         current = loaded.resolve(check.current)
         if not baseline.is_file() or not current.is_file():
             return refused(check_id, "drift", "ci.input_missing")
         try:
-            diff = compute_scan_diff(_load_scan(baseline), _load_scan(current))
+            diff = diff_scan_sets(_load_scan(baseline), _load_scan(current))
         except (OSError, ValueError, AttributeError, TypeError, KeyError) as exc:
             sink.add(check_id, f"unreadable scan: {exc!r}")
             return refused(check_id, "drift", "ci.drift_unreadable")
@@ -226,19 +225,19 @@ def drift_outcome(loaded: LoadedManifest, check: DriftCheck, sink: DebugSink) ->
 def evidence_outcome(loaded: LoadedManifest, check: EvidenceCheck, sink: DebugSink) -> CheckOutcome:
     check_id = f"evidence.{check.id}"
     try:
-        from decoy.cli.evidence import verify_manifest_issues
+        from decoy.cli.evidence import ManifestError, read_manifest, verify_manifest_issues
 
         path = loaded.resolve(check.manifest)
-        if not path.is_file():
-            return refused(check_id, "evidence", "ci.input_missing")
         try:
-            manifest = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            sink.add(check_id, f"unreadable evidence manifest: {exc!r}")
-            return refused(check_id, "evidence", "ci.evidence_unreadable")
-        if not isinstance(manifest, dict):
-            return refused(check_id, "evidence", "ci.evidence_unreadable")
-        issues = verify_manifest_issues(manifest, regular_files_only=True)
+            # The shared reader owns every check of the file and its object; a project-relative
+            # manifest reads from the marker above its own file, never the working directory or
+            # DECOY_PROJECT, so the check passes from any folder.
+            manifest = read_manifest(path)
+            issues = verify_manifest_issues(manifest, manifest_file=path, regular_files_only=True)
+        except ManifestError as exc:
+            sink.add(check_id, exc.message)
+            reason = "ci.input_missing" if exc.kind == "missing" else "ci.evidence_unreadable"
+            return refused(check_id, "evidence", reason)
         for issue in issues:
             sink.add(check_id, issue.message)
         rel = loaded.repo_relative(path)

@@ -32,18 +32,31 @@ import pandas as pd
 import pyarrow as pa
 
 from decoy import _mask_secret, _mask_secret_guidance, _native_gate
-from decoy._mask_secret import is_valid_mask_secret_ref as _is_valid_mask_secret_ref
 from decoy._row_sample import sample_frame
-from decoy.cli._sources import CSV_DIALECT_KEYS, csv_file_source, resolved_source_config
+from decoy.cli._sources import (
+    CSV_DIALECT_KEYS,
+    csv_file_source,
+    resolved_source_config,
+)
 from decoy.cli.extras import UnsupportedCloudEndpointError
-from decoy.cli.io import RunLayout
+from decoy.cli.io import (
+    OUTPUT_PATH_COLLISION,
+    RunLayout,
+    prepared_sources,
+    resolved_output_collisions,
+)
 from decoy.cli.io._targets import claimed_format, format_for_path
 from decoy.cli.run import (
     _load_sources_from_config,
     _write_mask_outputs,
 )
-from decoy.cli.scan import InputFormat, SampleStrategy, _load_data, _parse_layout
-from decoy.cli.scan import _infer_format as _storm_infer_format
+from decoy.cli.scan import (
+    InputFormat,
+    SampleStrategy,
+    _infer_format,
+    _load_data,
+    _parse_layout,
+)
 
 __all__ = [
     "ConfigValidationError",
@@ -84,23 +97,17 @@ def _load_config_dict(config: Any) -> dict:
 
         return copy.deepcopy(config)
     if isinstance(config, (str, Path)):
-        import yaml
-        from decoy_engine.safe_output import yaml_error_text
+        from decoy._config_file import ConfigFileError, load_config_mapping
 
         path = Path(config)
-        yaml_failure: str | None = None
+        refusal: ConfigFileError | None = None
         try:
-            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except yaml.YAMLError as exc:
-            yaml_failure = yaml_error_text(exc)
-        if yaml_failure is not None:
-            # Raised outside the handler: the YAML error quotes the offending line, so it must
-            # be neither the cause nor the context.
-            raise ConfigValidationError(f"{path}: {yaml_failure}")
-        if not isinstance(raw, dict):
-            raise ConfigValidationError(
-                f"{path}: expected a YAML mapping at the top level, got {type(raw).__name__}."
-            )
+            raw = load_config_mapping(path)
+        except ConfigFileError as exc:
+            refusal = exc
+        if refusal is not None:
+            # Raised outside the handler so the library error holds no exception context.
+            raise ConfigValidationError(f"{path}: {refusal.message}")
         return raw
     raise TypeError(f"config must be a path (str/Path) or a dict, got {type(config).__name__}.")
 
@@ -117,12 +124,9 @@ def _validate_mask_secret_ref_shape(raw: dict) -> None:
             f"global_settings must be a mapping (key: value pairs), not a {type(raw_gs).__name__}."
         )
     raw_ref = raw_gs.get("mask_secret_ref") if isinstance(raw_gs, dict) else None
-    if raw_ref is not None and not _is_valid_mask_secret_ref(raw_ref):
-        raise MaskSecretConfigError(
-            "Invalid global_settings.mask_secret_ref: expected an "
-            "'env:NAME' or 'file:/PATH' reference to a >=32-byte secret. "
-            "It is a REFERENCE, never the raw secret."
-        )
+    problem = None if raw_ref is None else _mask_secret.mask_secret_ref_problem(raw_ref)
+    if problem is not None:
+        raise MaskSecretConfigError(problem)
 
 
 def _apply_mask_secret(config_dict: dict, mask_secret: str | None) -> None:
@@ -139,12 +143,6 @@ def _apply_mask_secret(config_dict: dict, mask_secret: str | None) -> None:
             "global_settings.mask_secret_ref. Set the masking secret "
             "in exactly one place: drop mask_secret=, or remove "
             "mask_secret_ref from the config."
-        ),
-        invalid=(
-            "Invalid mask secret: expected an 'env:NAME' or 'file:/PATH' "
-            "reference to a >=32-byte secret (from mask_secret= or "
-            "global_settings.mask_secret_ref). It is a REFERENCE, never "
-            "the raw secret."
         ),
     )
     if (config_dict.get("global_settings") or {}).get("mask_secret_ref") is not None:
@@ -271,6 +269,33 @@ def _stage_source_entry(name: str, value: Any, tmp_paths: list[Path], declared: 
     return {"type": "file", "format": "parquet", "path": str(tmp_path)}
 
 
+def _arrow_schema(value: pd.DataFrame | pa.Table) -> pa.Schema:
+    """The Arrow schema of in-memory data, taken without converting the rows."""
+    if isinstance(value, pa.Table):
+        return value.schema
+    return pa.Schema.from_pandas(value, preserve_index=False)
+
+
+def _gate_in_memory_data(raw: dict, items: list[tuple[str, Any]]) -> None:
+    """Refuse an undeclared table or column of in-memory data before any temp file is written.
+
+    The config is not validated yet at this point, so a config whose `tables` block is not a
+    list of named mappings is left for schema validation to report. Path data is not opened
+    here: its descriptor is checked by `_load_sources_from_config`."""
+    tables = raw.get("tables")
+    if not isinstance(tables, list) or not all(
+        isinstance(t, dict) and isinstance(t.get("name"), str) for t in tables
+    ):
+        return
+    schemas = {
+        name: _arrow_schema(value)
+        for name, value in items
+        if isinstance(value, (pd.DataFrame, pa.Table))
+    }
+    if schemas:
+        prepared_sources(raw, base_dir=Path.cwd(), schemas=schemas)
+
+
 def _stage_data_sources(raw: dict, data: Any, tmp_paths: list[Path]) -> None:
     """Mutate `raw['sources']` so every table `data` covers points at a
     real on-disk file (spooling DataFrames/Tables to temp Parquet via
@@ -290,6 +315,7 @@ def _stage_data_sources(raw: dict, data: Any, tmp_paths: list[Path]) -> None:
             context="data was given as a single DataFrame/Table/path",
         )
         items = [(name, data)]
+    _gate_in_memory_data(raw, items)
     for name, value in items:
         sources[name] = _stage_source_entry(name, value, tmp_paths, sources.get(name))
     raw["sources"] = sources
@@ -337,6 +363,31 @@ def _file_target_entry(existing: Any, path: Any) -> dict:
             entry["format"] = claimed
             entry.pop("layout", None)
     return entry
+
+
+def _refuse_output_collisions(config_dict: dict, layout: RunLayout) -> None:
+    """Refuse two outputs that `_write_mask_outputs` would write to one file.
+
+    Checks the paths the writer will open, not the declared text, so `../x.csv`, a symlinked
+    folder or a case-only difference is caught as well as two equal spellings. Every file
+    target takes part, as in `decoy run` and `decoy validate`, so the library refuses what the
+    CLI refuses. The check input is built fresh: `config_dict` is never edited, because the plan
+    hash covers `quarantine`.
+    """
+    placed_targets: dict[str, dict] = {}
+    for table, entry in (config_dict.get("targets") or {}).items():
+        if not isinstance(entry, dict):
+            continue
+        raw = entry.get("path")
+        if entry.get("type", "file") in ("file", None) and isinstance(raw, str):
+            placed_targets[table] = {"type": "file", "path": str(layout.place_target(raw))}
+    placed: dict[str, Any] = {"targets": placed_targets}
+    quarantine = layout.place_quarantine(config_dict)
+    if quarantine is not None:
+        placed["quarantine"] = {"enabled": True, "output_path": quarantine}
+    clash = resolved_output_collisions(placed, None)
+    if clash is not None:
+        raise OUTPUT_PATH_COLLISION.error(first=clash[0], second=clash[1])
 
 
 def mask(
@@ -414,7 +465,8 @@ def mask(
 
     Raises:
         ConfigValidationError: the config fails `PipelineConfig` schema
-            validation.
+            validation, including two declared tables whose targets the
+            engine proves equal (`target_shared_destination`).
         MaskSecretConfigError: a mask secret is missing, malformed, or
             configured in two places at once.
         ValueError / TypeError: an ambiguous or wrongly-shaped `data` /
@@ -422,6 +474,11 @@ def mask(
         decoy.cli.io._targets.TargetFormatError: a declared target format
             contradicts its path suffix (for example `format: parquet` at
             `out.csv`). Raised before any source is read or the engine runs.
+        decoy.cli.io.LayoutError: two outputs (targets, or a target and the
+            quarantine file) the schema accepts still resolve to one file on
+            disk (a symlink, hard link, case folding or `..`), code
+            `layout.output_path_collision`. Raised before any source is read
+            or the engine runs, so no output is replaced.
         UnsupportedCloudEndpointError: a source or target (after `data` /
             `out` are applied) is s3 or gcs. Same refusal as `decoy run`,
             raised by the shared I/O helper before the engine runs; cloud
@@ -514,6 +571,9 @@ def mask(
             warnings.warn(gate_result.warn_message, stacklevel=2)
 
         base_dir = Path(config).parent if isinstance(config, (str, Path)) else Path.cwd()
+        # Library callers get fixed, predictable paths: no run folder, claim, `LATEST` or `current`.
+        layout = RunLayout.fixed(base_dir)
+        _refuse_output_collisions(config_dict, layout)
         # Every `sources:` entry now points at a real file (the caller's
         # own declared path, or one of the temp files just staged), so the
         # CLI's own loader (`decoy.cli.run._load_sources_from_config`)
@@ -521,8 +581,6 @@ def mask(
         # `decoy run pipeline.yaml`.
         sources = _load_sources_from_config(config_dict, base_dir)
 
-        # Library callers get fixed, predictable paths: no run folder, claim, `LATEST` or `current`.
-        layout = RunLayout.fixed(base_dir)
         resolver = _build_generation_resolver(master_key, key_label)
         instance_locale = (config_dict.get("global_settings") or {}).get("default_locale")
 
@@ -541,9 +599,6 @@ def mask(
             # None keeps run_pipeline's call shape for an unkeyed config.
             with _mask_secret.admitted_key_provider(config_dict) as key_provider:
                 key_kwargs = {} if key_provider is None else {"key_provider": key_provider}
-                # Sent only when set, so an engine without the keyword still runs a config without it.
-                quarantine_path = layout.place_quarantine(config_dict)
-                quarantine_kwargs = {"quarantine_path": quarantine_path} if quarantine_path else {}
                 result = run_pipeline(
                     resolved_source_config(config_dict, base_dir),
                     sources,
@@ -551,7 +606,7 @@ def mask(
                     derive_key=resolver,
                     instance_default_locale=instance_locale,
                     base_dir=base_dir,
-                    **quarantine_kwargs,
+                    quarantine_path=layout.place_quarantine(config_dict),
                     **key_kwargs,
                     **extra_run_pipeline_kwargs,
                 )
@@ -627,10 +682,14 @@ def scan(
 
     Returns:
         The in-memory `decoy_engine.ColumnProfile`, which holds cell values
-        (top values, modes, ranges). `decoy scan --output` writes only the
-        value-free `scan-set/v1` core. To save the profile, write
-        `decoy_engine.profile_document(profile)`, which redacts the
-        sensitive columns.
+        (top values, modes, ranges). Save it only through
+        `decoy_engine.profile_document(profile)`: that floors every column the
+        profiler did not flag at 10 rows (no rare label, no exact extreme),
+        the same floor `decoy fit` applies. To save a scan that `decoy scan fields`,
+        `show` and `diff` can read, run `decoy scan --output scan.json`: it
+        writes the value-free `scan-set/v1` core. A profile saved with
+        `decoy_engine.profile_document(profile)` is not that format and
+        those commands refuse it.
     """
     from decoy_engine import profile_columns
 
@@ -650,7 +709,7 @@ def scan(
         label = source_label or "<dataframe>"
     elif isinstance(data, (str, Path)):
         path = Path(data)
-        fmt = InputFormat(format) if format is not None else _storm_infer_format(path)
+        fmt = InputFormat(format) if format is not None else _infer_format(path)
         layout_columns: list[dict] | None
         if isinstance(layout, list):
             layout_columns = layout

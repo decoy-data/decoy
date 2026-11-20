@@ -1,7 +1,7 @@
 # F43 verification evidence (build branch `feat/f43-ci-integration`)
 
-Baseline: `main` @ `574aa1e9ec2b95f9ba8af5eb8112c1a3c0fcf434` (merge-base re-verified before the PR).
-Engine: `decoy-engine==0.15.1`, stamp `fd51be10673225d81a8c000d460b0172112b26ac`
+Baseline: `main` @ `1ee6e1d1dd1e1864163a39a614d87a06962d0e1a` (merge-base re-verified before the PR).
+Engine: `decoy-engine==0.15.1`, stamp `e6ded7e249f4bcd87ac76c12263ff8a3acfd9aae`
 (built from the `v0.15.1` tag; never engine `main`). Python 3.12.3 primary, 3.10.20 spot run.
 The Codex -> Opus-4.8 Dennis -> owner code gates run on the pushed commit; nothing here is a
 verdict from them.
@@ -65,6 +65,7 @@ maps to `pipeline.yaml` line 14 column 9; inserting two lines moves it to 16/9 w
 `partialFingerprints["primary/v1"]` is unchanged; no `snippet`. The location-free finding
 (`yaml.not_mapping`) and a missing top-level key yield schema-valid SARIF with no `locations` /
 no region, a fingerprint, and a matching `rules[]` entry.
+A pipeline that is not UTF-8 text is the same kind of finding: rule `validate.yaml.not_utf8` (code `yaml.not_utf8`, added with the one config loader), pinned by `tests/e2e/test_config_loader_commands.py`.
 
 ### Offline pre-commit (real `pre-commit` 4.7.0, `PIP_NO_INDEX=1`, socket-denying `sitecustomize`)
 Transcript of `pre-commit run --verbose` with a staged synthetic identifier (the test asserts the

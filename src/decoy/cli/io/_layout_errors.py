@@ -1,4 +1,4 @@
-"""The `layout.*` descriptors: one registry of codes and fixed, value-free messages.
+"""The `layout.*` and `report.*` descriptors: one registry of codes and fixed, value-free messages.
 
 Every refusal and warning of the project layout (project root, pipeline names, run folders)
 is built from a `Descriptor` here. A message template names folders, files, pipeline names
@@ -66,7 +66,7 @@ PROJECT_NOT_FOUND = Descriptor(
 )
 PROJECT_MISMATCH = Descriptor(
     "layout.project_mismatch",
-    "{path} is in the project {actual}, but --project names {given}.",
+    "{path} is in the project {actual}, but --project or DECOY_PROJECT names {given}.",
 )
 PIPELINE_UNKNOWN = Descriptor(
     "layout.pipeline_unknown",
@@ -97,14 +97,40 @@ PATH_TOO_LONG = Descriptor(
     "The output path would be {length} characters long as Windows counts them; Windows allows {limit}. "
     "Shorten the project path, the pipeline name or the output path.",
 )
+OUTPUT_PATH_COLLISION = Descriptor(
+    "layout.output_path_collision",
+    "Configured outputs {first} and {second} resolve to one destination. "
+    "Give each output a different path.",
+)
+OUTPUT_DIR_UNUSABLE = Descriptor(
+    "layout.output_dir_unusable",
+    "--out-dir must name an existing directory, or a new directory whose parent exists.",
+)
 PROJECT_ROOT_REFUSED = Descriptor(
     "layout.project_root_refused",
     "{path} cannot be a project root: it is your home folder, one of its parents, or `/`.",
 )
+DELIVERY_ROOT_SPLIT = Descriptor(
+    "layout.delivery_root_split",
+    "Outputs {first} and {second} are not in one delivery folder. Use relative paths for "
+    "all outputs, or put every output directly in one folder.",
+)
+SIDE_FILE_IN_OUT = Descriptor(
+    "layout.side_file_in_out",
+    "{flag} is inside {base}, where Decoy keeps run outputs. Write it outside out/.",
+)
+CLOUD_TARGET_INVALID = Descriptor(
+    "layout.cloud_target_invalid",
+    "Cloud target {subject} {rule}.",
+)
+CLOUD_TARGET_UNSUPPORTED = Descriptor(
+    "layout.cloud_target_unsupported",
+    "Cloud delivery does not support {field} for {subject} in this release.",
+)
 
 LATEST_INVALID = Descriptor(
     "layout.latest_invalid",
-    "The LATEST file in {path} is not a run folder name; it is ignored until the next clean run.",
+    "The LATEST file in {path} does not name an existing run folder; it is ignored until the next clean run.",
 )
 LATEST_LINK_FAILED = Descriptor(
     "layout.latest_link_failed",
@@ -118,6 +144,10 @@ GITIGNORE_WRITE_FAILED = Descriptor(
     "layout.gitignore_write_failed",
     "Could not write {path}; the run goes on without it.",
 )
+REPORT_NOT_WRITTEN = Descriptor(
+    "layout.report_not_written",
+    "The default report was not written; the check's result is unchanged.",
+)
 PROJECT_NESTED = Descriptor(
     "layout.project_nested",
     "{path} is inside another project ({outer}).",
@@ -126,6 +156,15 @@ CONFIG_INSIDE_OUT = Descriptor(
     "layout.config_inside_out",
     "The pipeline YAML {path} is inside an out/ folder, where run folders live.",
 )
+REPORT_SOURCE_AMBIGUOUS = Descriptor(
+    "report.source_ambiguous",
+    "--source matches no declared source and the config declares several tables; "
+    "pass the declared file",
+)
+
+# `report.*` refusals of the `report` commands. They live here, in the one descriptor module, but
+# sit outside the `layout.` namespace because no layout rule produces them.
+REPORT_DESCRIPTORS: tuple[Descriptor, ...] = (REPORT_SOURCE_AMBIGUOUS,)
 
 # Codes a gate or command can refuse with (exit 1); the CI rule-code set is derived from them.
 GATE_DESCRIPTORS: tuple[Descriptor, ...] = (
@@ -139,13 +178,21 @@ GATE_DESCRIPTORS: tuple[Descriptor, ...] = (
     PIPELINE_NAME_COLLISION,
     OUTPUT_PATH_ESCAPES,
     PATH_TOO_LONG,
+    OUTPUT_PATH_COLLISION,
+    OUTPUT_DIR_UNUSABLE,
     PROJECT_ROOT_REFUSED,
+    DELIVERY_ROOT_SPLIT,
+    SIDE_FILE_IN_OUT,
+    CLOUD_TARGET_INVALID,
+    CLOUD_TARGET_UNSUPPORTED,
+    *REPORT_DESCRIPTORS,
 )
 WARNING_DESCRIPTORS: tuple[Descriptor, ...] = (
     LATEST_INVALID,
     LATEST_LINK_FAILED,
     LATEST_WRITE_FAILED,
     GITIGNORE_WRITE_FAILED,
+    REPORT_NOT_WRITTEN,
     PROJECT_NESTED,
     CONFIG_INSIDE_OUT,
 )

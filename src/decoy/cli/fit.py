@@ -1,7 +1,7 @@
 """`decoy fit` -- fit a distribution snapshot from a source CSV.
 
 Capability-gaps WS3 (2026-06-12). Wraps the engine's
-`compute_distribution_snapshot` (distribution-snapshot/v1): the JSON it
+`compute_distribution_snapshot` (distribution-snapshot/v2): the JSON it
 writes is the fitted-model artifact that `type: statistical` generate
 columns consume. The loop is:
 
@@ -11,7 +11,7 @@ columns consume. The loop is:
 
 The snapshot is written through the engine's `distribution_snapshot_document`:
 columns the sensitivity profile flags have their cell values withheld
-(`value_policy: flagged-redacted/v1`, names in `redacted_columns`).
+(`value_policy: flagged-redacted/v2`, names in `redacted_columns`).
 `--include-values` keeps them and stamps `value_policy: raw`. Unflagged
 categorical `top_values` still carry real source values; that is why
 statistical categorical columns require the `allow_real_categories: true`
@@ -47,8 +47,9 @@ from decoy.cli.gen import (
     read_fit_csv,
     strict_csv,
 )
-from decoy.ui.output import OutputMode, emit_json, setup_output
-from decoy.ui.theme import code, error, hint, success, warn
+from decoy.cli.io import side_file_default
+from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
+from decoy.ui.theme import code, hint, success, warn
 
 _DP_REFUSED_LINE = (
     "DP fit is not available on this install: it runs only on a certified platform and package set."
@@ -372,7 +373,7 @@ def fit(
         False,
         "--quiet",
         "-q",
-        help="Suppress stdout. Exit code carries the result.",
+        help="Suppress stdout. Errors still go to stderr; exit code carries the result.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -381,7 +382,7 @@ def fit(
         help="Enable debug-level CLI logs on stderr.",
     ),
 ) -> None:
-    """Fit a distribution-snapshot/v1 artifact for statistical generation.
+    """Fit a distribution-snapshot/v2 artifact for statistical generation.
 
     Without --epsilon: reads the source CSV, captures per-column
     distribution shape (numeric histograms + quantiles, categorical top-k,
@@ -403,35 +404,22 @@ def fit(
     def _emit_error(
         message: str, *, err_code: str | None = None, hint_text: str | None = None
     ) -> None:
-        if state.mode is OutputMode.json:
-            payload: dict[str, Any] = {
-                "command": "fit",
-                "status": "error",
-                "source": str(source),
-            }
-            if err_code is not None:
-                payload["code"] = err_code
-                payload["message"] = message
-                payload["error"] = f"{err_code}: {message}"
-            else:
-                payload["error"] = message
-            if hint_text is not None:
-                payload["hint"] = hint_text
-            emit_json(state, payload)
-        elif state.mode is not OutputMode.quiet:
-            prefix = f"{err_code}: " if err_code is not None else ""
-            state.err_console.print(error("error:"), f"{prefix}{message}")
-            if hint_text is not None:
-                state.err_console.print(" ", hint("hint:"), hint_text)
+        emit_error(
+            state,
+            "fit",
+            message,
+            code=err_code,
+            hint=hint_text,
+            context={"source": str(source)},
+        )
 
     def _emit_dp_refused(refusal: Any) -> None:
         # The engine text carries the platform and a package fingerprint: JSON
         # and --verbose keep it, the default human line stays plain.
         if state.mode is OutputMode.json:
             _emit_error(refusal.message, err_code=refusal.code, hint_text=_DP_REFUSED_HINT)
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), _DP_REFUSED_LINE)
-            state.err_console.print(" ", hint("hint:"), _DP_REFUSED_HINT)
+        else:
+            emit_error(state, "fit", _DP_REFUSED_LINE, hint=_DP_REFUSED_HINT)
             if verbose:
                 state.err_console.print(" ", f"{refusal.code}: {refusal.message}")
 
@@ -729,9 +717,8 @@ def fit(
             raise typer.Exit(code=EXIT_USAGE)
 
     withheld: list[str] = list(snapshot.get("redacted_columns") or []) if epsilon is None else []
-    # Only reached on success: no artifact is created or overwritten when the
-    # fit above raised.
-    out_path = output if output is not None else source.with_suffix(".snapshot.json")
+    # Only reached on success: a failed fit creates or overwrites nothing.
+    out_path = output if output is not None else side_file_default("snapshot", source)
     try:
         write_local_target(
             out_path, json.dumps(snapshot, indent=1).encode("utf-8"), WriteMode.REPLACE

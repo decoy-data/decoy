@@ -1,10 +1,10 @@
 # Contributing to decoy
 
-Thanks for considering a contribution. `decoy` is the CLI front end for [`decoy-engine`](https://github.com/louiskeep/decoy-engine); most data-plane changes belong in the engine repo rather than here.
+Thanks for considering a contribution. `decoy` is the CLI front end for [`decoy-engine`](https://github.com/decoy-data/decoy-engine); most data-plane changes belong in the engine repo rather than here.
 
 ## Reporting bugs and requesting features
 
-[GitHub Issues](https://github.com/louiskeep/decoy/issues) is the right channel for both. A good bug report includes:
+[GitHub Issues](https://github.com/decoy-data/decoy/issues) is the right channel for both. A good bug report includes:
 
 - CLI version (`decoy --version`)
 - Engine version (`python -c "import decoy_engine; print(decoy_engine.__version__)"`)
@@ -17,7 +17,7 @@ For security issues, do not file a public issue: see [`SECURITY.md`](SECURITY.md
 ## Local development
 
 ```
-git clone https://github.com/louiskeep/decoy
+git clone https://github.com/decoy-data/decoy
 cd decoy
 python -m venv .venv
 source .venv/bin/activate    # PowerShell: .venv\Scripts\Activate.ps1
@@ -47,7 +47,7 @@ A green local run on Python 3.10, 3.11, and 3.12 is the bar before requesting re
 ## Pull requests
 
 - One topic per PR. Smaller diffs land faster.
-- Use `git commit -s` to sign off (Developer Certificate of Origin). The project is licensed under BUSL-1.1, which auto-converts to Apache-2.0 on the Change Date (2030-05-10). Contributions are accepted under the project license.
+- Use `git commit -s` to sign off (Developer Certificate of Origin). The project is licensed under FSL-1.1-ALv2 (see `LICENSE.md`); each release converts to Apache-2.0 two years after it ships. Contributions are accepted under the project license. TODO(counsel): add a contributor license agreement before accepting outside contributions, so the licensor can keep offering commercial licenses.
 - User-visible changes (new command, new flag, exit-code semantics, output format) need a `CHANGELOG.md` entry under `[Unreleased]`.
 - Command/flag changes must regenerate the CLI reference: run `python -m typer decoy.__main__ utils docs --name decoy --output docs/cli-reference.md` and commit it. The `tests/unit/test_cli_surface.py` guard fails CI if you forget, so the command surface cannot change without its docs.
 - If a change is more than one PR, file an Issue describing the plan first.

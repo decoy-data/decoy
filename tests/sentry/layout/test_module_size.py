@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.layout import SIZE_TERMS, loc, ratchet_verdict
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -19,12 +20,7 @@ LIMIT = 800
 TOPS = ("src", "scripts", "packaging_tools")
 
 # Legacy modules over the cap: exact line count at the build base; may only shrink.
-SIZE_ALLOWLIST: dict[str, int] = {
-    "src/decoy/cli/report.py": 2352,
-    "src/decoy/cli/scan.py": 1157,
-    "src/decoy/cli/preflight.py": 891,
-    "src/decoy/cli/fit.py": 831,
-}
+SIZE_ALLOWLIST: dict[str, int] = {key: e["max"] for key, e in load_allowlist("module-size").items()}
 
 
 def capped_files(root: Path = ROOT) -> list[Path]:

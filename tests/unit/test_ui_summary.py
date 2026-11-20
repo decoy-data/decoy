@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from decoy_engine import QualityWarning
 
 from decoy.ui.summary import (
@@ -17,8 +19,8 @@ _DETAIL = {
     "overall_score": 0.42,
     "threshold": 0.8,
     "trigger": "overall",
-    "worst_columns": [["start_date", 0.39], ["age", 0.5]],
-    "below_columns": [["start_date", 0.39]],
+    "worst_columns": ["start_date=0.39", "age=0.5"],
+    "below_columns": ["start_date=0.39"],
 }
 
 
@@ -45,7 +47,7 @@ def test_column_trigger_sentence() -> None:
                 table="people",
                 trigger="column",
                 overall_score=0.861,
-                below_columns=[["null90", 0.096]],
+                below_columns=["null90=0.096"],
             )
         ]
     )
@@ -95,7 +97,9 @@ def test_report_drift_lines_one_per_column() -> None:
 
 def test_huge_dict_detail_stays_short_in_human_line_and_whole_in_json() -> None:
     big = {f"row{i}": i for i in range(10_000)}
-    w = QualityWarning(code="pool_fallback", provider="p", column="c", detail={"by_row": big})
+    # QualityWarning refuses a dict detail since engine 0.28.0; the CLI still prints other
+    # warning-shaped records, so keep proving the human line stays short for one.
+    w = SimpleNamespace(code="pool_fallback", provider="p", column="c", detail={"by_row": big})
     (rec,) = warning_records([w])
     assert rec["message"] == "pool_fallback (column c): by_row=<10000 entries>"
     assert len(rec["message"]) < 200
@@ -163,3 +167,40 @@ def test_parent_unseen_line_says_at_least_when_the_count_was_capped() -> None:
     line = _parent_unseen(parent_values_capped=True)
     assert "had at least 3 parent values" in line
     assert "one of" not in line
+
+
+def test_gof_unavailable_line_names_column_metric_and_reason() -> None:
+    """24zv: the line fills in the real column, metric and reason, never the key names."""
+    recs = report_warning_records(
+        [
+            {
+                "source": "fidelity",
+                "code": "gof_unavailable",
+                "detail": {"column": "age", "metric": "ks", "reason": "zero_mass"},
+            },
+            {
+                "source": "fidelity",
+                "code": "gof_unavailable",
+                "detail": {
+                    "column": "state",
+                    "metric": "chi_cramers_v",
+                    "reason": "insufficient_identifiable_support",
+                },
+            },
+        ]
+    )
+    lines = warning_lines(recs)
+    assert lines == [
+        "column age: ks goodness-of-fit unavailable (zero_mass)",
+        "column state: chi_cramers_v goodness-of-fit unavailable "
+        "(insufficient_identifiable_support)",
+    ]
+    assert all("(column, metric, reason)" not in line for line in lines)
+    assert [r["column"] for r in recs] == ["age", "state"]
+
+
+def test_gof_unavailable_without_detail_stays_readable() -> None:
+    lines = warning_lines(
+        report_warning_records([{"source": "fidelity", "code": "gof_unavailable", "detail": {}}])
+    )
+    assert lines == ["gof_unavailable"]

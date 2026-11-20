@@ -22,20 +22,23 @@
 # cannot freeze or downgrade a client.
 #
 # Usage:
-#   curl -LsSf https://decoy.dev/cli/install.sh | sh
+#   curl -LsSf https://trydecoy.com/cli/install.sh | sh
 #   sh install.sh [--version X.Y.Z] [uninstall]
 #
 # Env overrides (also used by the test harness):
 #   DECOY_HOME            install root (default: ~/.decoy)
 #   DECOY_BIN_DIR         launcher dir on PATH (default: ~/.local/bin)
 #   DECOY_VERSION_URL     version document URL (default: the hosted endpoint)
+#   DECOY_BUNDLE_BASE     base for pinned (non-latest) bundles: <base>/v<version>/decoy-<version>-<target>.tar.gz
+#                         (default: the GitHub release downloads of decoy-data/decoy)
 #   DECOY_RELEASE_PUBKEY_FILE  override the pinned key (dev/test builds ONLY: honored solely
 #                         while PINNED_PUBKEY below is still the placeholder, with a loud
 #                         warning; ignored with a warning once a release injects the real key)
 #   DECOY_LOCAL_BUNDLE    install from a local tarball instead of downloading (offline)
 set -eu
 
-DEFAULT_VERSION_URL="https://decoy.dev/cli/version.json"
+DEFAULT_VERSION_URL="https://trydecoy.com/cli/version.json"
+DEFAULT_BUNDLE_BASE="https://github.com/decoy-data/decoy/releases/download"
 DECOY_HOME="${DECOY_HOME:-$HOME/.decoy}"
 DECOY_BIN_DIR="${DECOY_BIN_DIR:-$HOME/.local/bin}"
 DECOY_VERSION_URL="${DECOY_VERSION_URL:-$DEFAULT_VERSION_URL}"
@@ -47,6 +50,21 @@ DECOY_VERSION_URL="${DECOY_VERSION_URL:-$DEFAULT_VERSION_URL}"
 PINNED_PUBKEY='-----BEGIN PUBLIC KEY-----
 __DECOY_RELEASE_PUBLIC_KEY__
 -----END PUBLIC KEY-----'
+
+# Same release key as PINNED_PUBKEY, as the base64 ssh-ed25519 blob that ssh-keygen -Y verify
+# reads (it cannot import the PEM). `packaging_tools/sign_release.py inject-keys` fills both and
+# `check-keys` proves they are one key.
+PINNED_SSH_PUBKEY='__DECOY_RELEASE_SSH_PUBLIC_KEY__'
+
+# Known answer for the SSHSIG route: a throwaway key (private half discarded) signed the one
+# byte 0x72 in namespace decoy-release. A verifier that accepts it and rejects 0x73 is real.
+KAT_SSH_PUBKEY='AAAAC3NzaC1lZDI1NTE5AAAAIH7vnyAF/LccI7MtEWXzWlBQ2gudYsUsOWkcHtw5FX25'
+KAT_SSHSIG='-----BEGIN SSH SIGNATURE-----
+U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAgfu+fIAX8txwjsy0RZfNaUFDaC5
+1ixSw5aRwe3DkVfbkAAAANZGVjb3ktcmVsZWFzZQAAAAAAAAAGc2hhNTEyAAAAUwAAAAtz
+c2gtZWQyNTUxOQAAAEB+iuN19bqZQ1G1GtU7swHFU6KZmfoimlg1V+XtaVZ0Sl2l+VEFk8
+8E3UhqgWQjknqU9A958r4mZ/pn8MmDXyUC
+-----END SSH SIGNATURE-----'
 
 die() { printf 'decoy install: %s\n' "$*" >&2; exit 1; }
 info() { printf 'decoy install: %s\n' "$*" >&2; }
@@ -225,8 +243,10 @@ else
   printf '%s\n' "$PINNED_PUBKEY" > "$PUBKEY"
 fi
 
-# Base URL for per-version bundles = the version-doc URL minus its filename.
-BASE_URL=$(printf '%s' "$DECOY_VERSION_URL" | sed 's#/[^/]*$##')
+# Base URL for pinned bundles: release assets, independent of where the version document is served.
+BASE_URL="${DECOY_BUNDLE_BASE:-$DEFAULT_BUNDLE_BASE}"
+BASE_SET="${DECOY_BUNDLE_BASE:-}"
+conv_url() { printf '%s' "${BASE_URL%"${BASE_URL##*[!/]}"}/v$VERSION/decoy-$VERSION-$TARGET.tar.gz"; }
 
 if [ -n "${DECOY_LOCAL_BUNDLE:-}" ]; then
   # Offline / air-gapped: install from a local tarball + its .sig + .sha256 sidecars.
@@ -295,6 +315,11 @@ else
     EXPECT_SHA=$(json_artifact_field "$VDOC" "$TARGET" sha256)
     SIGURL=$(json_artifact_field "$VDOC" "$TARGET" sig)
     [ -n "$URL" ] && [ -n "$EXPECT_SHA" ] && [ -n "$SIGURL" ] || die "version document lists no bundle for $TARGET"
+    if [ -n "$BASE_SET" ]; then
+      # A configured base (mirror, allowlist) wins for latest too; the signed sha256 still applies.
+      URL=$(conv_url)
+      SIGURL="$URL.sig"
+    fi
   else
     # Pinned to a non-latest version: the signed version document carries only the
     # latest release's checksum, so construct URLs by convention and take the checksum
@@ -306,7 +331,7 @@ else
     # Likewise the offline DECOY_LOCAL_BUNDLE path has no version document: its mandatory
     # .sha256 sidecar is unsigned corruption detection only, and yank status cannot be
     # checked (no network by design) -- the pinned-key signature is still enforced.
-    URL="$BASE_URL/$VERSION/decoy-$VERSION-$TARGET.tar.gz"
+    URL=$(conv_url)
     SIGURL="$URL.sig"
     EXPECT_SHA=""
   fi

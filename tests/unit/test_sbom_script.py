@@ -309,7 +309,9 @@ def test_no_arguments_sboms_the_certified_runtime_pin_list(tmp_path):
     assert r.returncode == 0, r.stderr
     sbom = json.loads((tmp_path / "sbom.cdx.json").read_text())
     assert missing_from_sbom(_RELEASE_PINS, sbom) == []
-    assert len(_pins(_RELEASE_PINS)) == 63
+    # The count follows the pin list: one `name==version` line per pin, counted without _pins.
+    pin_lines = re.findall(r"(?m)^[A-Za-z0-9._-]+==", _RELEASE_PINS.read_text())
+    assert len(_pins(_RELEASE_PINS)) == len(pin_lines)
     assert set(_sbom_components(sbom)) == set(_pins(_RELEASE_PINS))
     assert sbom["metadata"]["component"]["name"] == "decoy-cli"
     # No dev tooling in the runtime SBOM.

@@ -13,12 +13,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, NamedTuple
 
-import yaml as _yaml
-
-from decoy.cli._yaml_errors import sanitize_yaml_error
+from decoy._config_file import ConfigFileError, parse_config_mapping, read_config_text
 from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_OK, EXIT_USAGE, EXIT_WARNINGS
+
+if TYPE_CHECKING:
+    from decoy_engine.config import PipelineConfigError
+
+    from decoy.cli.io import OutputPlacement
 
 # Prefix of the capacity finding on the CHUNKED route, where it is advisory.
 _CHUNKED_CAPACITY_NOTE = (
@@ -87,17 +90,19 @@ def _plan_error_fields(error: Exception) -> tuple[str, str, str | None]:
 
 def parse_pipeline_yaml(
     config_path: Path, source_text: str | None = None
-) -> tuple[Any, list[GateFinding]]:
-    """Parse the pipeline YAML. Syntax only: `raw` comes back unchanged, including `None`,
-    lists and scalars, so the gate (not the parser) emits `yaml.empty` / `yaml.not_mapping`.
+) -> tuple[dict[str, Any] | None, list[GateFinding]]:
+    """The pipeline YAML as a mapping, through the one config loader.
 
-    On a syntax error returns `(None, [yaml.parse_error])`.
+    Reads `config_path` unless `source_text` is given. Returns `(raw, [])`, or `(None,
+    [finding])` when the file is not UTF-8, does not parse, is empty or is not a mapping: the
+    finding carries the loader's code (`yaml.not_utf8`, `yaml.parse_error`, `yaml.empty`,
+    `yaml.not_mapping`) and its text. An `OSError` from the read passes through.
     """
     try:
-        text = source_text if source_text is not None else config_path.read_text(encoding="utf-8")
-        return _yaml.safe_load(text), []
-    except _yaml.YAMLError as exc:
-        return None, [GateFinding("config", "error", "yaml.parse_error", sanitize_yaml_error(exc))]
+        text = read_config_text(config_path) if source_text is None else source_text
+        return parse_config_mapping(text), []
+    except ConfigFileError as exc:
+        return None, [GateFinding("config", "error", exc.code, exc.message)]
 
 
 def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:
@@ -111,12 +116,49 @@ def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:
     return findings
 
 
+def _schema_findings(refusal: PipelineConfigError) -> list[GateFinding]:
+    """The config-layer errors for a config the engine schema refused, one per problem.
+
+    The one construction of these findings: the gate's schema layer and
+    `shared_destination_findings` both call it, so `decoy run` and `decoy validate` report a
+    schema refusal in one shape.
+    """
+    return [
+        GateFinding("config", "error", p.code, p.text, p.location or None)
+        for p in refusal.problems
+    ]
+
+
+def shared_destination_findings(raw: Any) -> list[GateFinding]:
+    """The schema refusal when the engine finds two tables writing to one destination, else [].
+
+    `decoy run` refuses layout faults before the gate, but two targets the declarations already
+    prove equal are the engine's `target_shared_destination`, which `decoy validate` reports
+    from the schema. Run raises this first so both commands give the same first code. Any other
+    schema refusal returns [] and keeps the old order: the layout check still runs before a
+    `--duckdb-source` stage reads a source.
+    """
+    from decoy_engine import ConfigError, PipelineValidationError, parse_pipeline_config, reasons
+    from decoy_engine.config import PipelineConfigError
+
+    shared = str(reasons.config.TARGET_SHARED_DESTINATION)
+    try:
+        parse_pipeline_config(raw)
+    except PipelineConfigError as refusal:
+        if any(p.code == shared for p in refusal.problems):
+            return _schema_findings(refusal)
+    except (PipelineValidationError, ConfigError):
+        pass
+    return []
+
+
 def _run_config_base(
-    raw: Any, config_path: Path
+    raw: dict[str, Any], config_path: Path, placement: OutputPlacement | None = None
 ) -> tuple[dict[str, Any] | None, tuple[str, ...], list[GateFinding]]:
-    """The config layer: the empty and non-mapping refusals, schema validation, the
-    profile-free plan-compile checks, the target-overwrite advisory and the target format
-    contradictions (`target_format_issues`, the same rule `decoy run` refuses on).
+    """The config layer: schema validation, the profile-free plan-compile checks, the
+    target-overwrite advisory, the target format contradictions (`target_format_issues`, the
+    same rule `decoy run` refuses on) and the project layout checks (`layout_issues`). `raw`
+    is a mapping: the loader has already refused an empty or non-mapping file.
 
     `run_config_only_checks` is called here EXACTLY ONCE for the whole gate (F5 dedup).
     Returns `(config, checks_run, findings)`; `config` is None when the layer failed, so the
@@ -127,30 +169,10 @@ def _run_config_base(
     from decoy_engine.config import PipelineConfigError
     from decoy_engine.plan import PlanCompileError
 
-    if raw is None:
-        return None, (), [GateFinding("config", "error", "yaml.empty", "Pipeline YAML is empty.")]
-
-    if not isinstance(raw, dict):
-        return (
-            None,
-            (),
-            [
-                GateFinding(
-                    "config",
-                    "error",
-                    "yaml.not_mapping",
-                    f"Pipeline YAML must be a YAML mapping (object), not {type(raw).__name__}.",
-                )
-            ],
-        )
-
     try:
         validated = parse_pipeline_config(raw).model_dump()
     except PipelineConfigError as exc:
-        findings: list[GateFinding] = [
-            GateFinding("config", "error", p.code, p.text, p.location or None) for p in exc.problems
-        ]
-        return None, (), findings
+        return None, (), _schema_findings(exc)
     except (PipelineValidationError, ConfigError) as exc:
         return (
             None,
@@ -177,21 +199,45 @@ def _run_config_base(
         )
         return None, (), [finding]
 
-    from decoy.cli.io import target_format_issues
+    from decoy.cli.io import (
+        OutputPlacement,
+        fixed_target_overwrites,
+        target_format_issues,
+    )
     from decoy.cli.preflight import _check_target_overwrite, _PreflightAccumulator
 
     advisory = _PreflightAccumulator()
-    _check_target_overwrite(raw, advisory)
+    _check_target_overwrite(raw, advisory, config_path.parent)
     findings = _findings_from_checks(advisory, "config")
     # The route is unknown here, so only the route-free contradictions (chunked=False).
     findings.extend(
         GateFinding("config", "error", i.code, i.message, location=f"targets.{i.table}.format")
         for i in target_format_issues(raw, chunked=False)
     )
+    # Plan 3.14: the layout faults found without a write. One stops the gate here, so the
+    # preflight layer never reads a source for a run that cannot place its output.
+    placement = placement or OutputPlacement()
+    layout = layout_findings(config_path, raw, placement)
+    if layout:
+        return None, (), findings + layout
+    # A fixed --out-dir is overwritten in place, so each existing relative target is advised.
+    if placement.kind == "fixed" and placement.directory is not None:
+        findings.extend(
+            GateFinding(
+                "config",
+                "warning",
+                f"target.{table}.would_overwrite",
+                "Output target already exists in --out-dir and would be overwritten.",
+                location,
+            )
+            for table, location in fixed_target_overwrites(raw, placement.directory.resolve())
+        )
     return validated, tuple(checks_run), findings
 
 
-def _run_compile_layer(raw: dict[str, Any], config_dir: Path) -> list[GateFinding]:
+def _run_compile_layer(
+    raw: dict[str, Any], config_dir: Path, validated: dict[str, Any]
+) -> list[GateFinding]:
     """The compile layer: a no-profile compile and its plan-compile checks,
     composed from the same helpers `validate compile --no-profile` uses (the
     unique-cardinality detector, the empty sentinel profile, `compile_plan`,
@@ -203,6 +249,7 @@ def _run_compile_layer(raw: dict[str, Any], config_dir: Path) -> list[GateFindin
     """
     from decoy_engine import __version__ as engine_version
     from decoy_engine.plan import PlanCompileError, compile_plan
+    from decoy_engine.subset import SubsetError, split_subset_config
 
     from decoy.cli.plan import (
         empty_profile_for_no_profile,
@@ -233,8 +280,10 @@ def _run_compile_layer(raw: dict[str, Any], config_dir: Path) -> list[GateFindin
     try:
         # Inside the try: an unequal composite relationship raises `ValueError` here.
         profile = empty_profile_for_no_profile(raw, engine_version)
+        # `compile_plan` refuses a `subset:` block; the run applies it, so compile what it runs.
         plan = compile_plan(
-            raw,
+            # The split reads a validated dump (the config layer's), never the raw YAML.
+            split_subset_config(validated).run_config,
             profile,
             decoy_engine_version=engine_version,
             no_profile=True,
@@ -254,6 +303,16 @@ def _run_compile_layer(raw: dict[str, Any], config_dir: Path) -> list[GateFindin
             )
         )
         return findings
+    except SubsetError as exc:
+        # The config layer validated the block, so this is reachable only for a defect the
+        # validated shape cannot rule out; it stays a finding, never a crash.
+        where = getattr(exc, "path", None)
+        findings.append(
+            GateFinding(
+                "compile", "error", exc.code, exc.message, location=where, logical_path=where
+            )
+        )
+        return findings
     except Exception as exc:  # mirrors `compile`'s own broad compile-error catch
         findings.append(GateFinding("compile", "error", "compile_error", str(exc)))
         return findings
@@ -268,6 +327,9 @@ def _run_preflight_layer(
     config: Path,
     route: GateRoute,
     compile_errors: frozenset[tuple[str, str | None]] = frozenset(),
+    *,
+    validated: dict[str, Any] | None = None,
+    skip_subset: bool = False,
 ) -> tuple[list[GateFinding], bool]:
     """The preflight layer: source/file readiness, out-of-core-FK capacity, and native
     companion/eligibility -- the check functions `validate preflight` runs, reused as-is
@@ -281,6 +343,7 @@ def _run_preflight_layer(
     an error the compile layer already reports, so it becomes a not-checked warning. Matching
     the location too keeps a same-code failure at another config path.
     """
+    from decoy.cli._sources import remote_source_names
     from decoy.cli.preflight import (
         CAPACITY_CHECK,
         PLAN_UNCOMPILABLE_CHECK,
@@ -291,8 +354,25 @@ def _run_preflight_layer(
     )
 
     acc = _PreflightAccumulator()
+    # `--no-subset` reads every row, so price that: the engine's split returns a copy without
+    # the block, from the validated dump; the config itself is not edited.
+    capacity_raw = raw
+    if skip_subset and validated is not None:
+        from decoy_engine.subset import SubsetError, split_subset_config
+
+        try:
+            capacity_raw = split_subset_config(validated).run_config
+        except SubsetError:
+            pass  # the compile layer reports it; the estimate then says "not applicable"
     _check_source_files(raw, config.parent, acc)
-    _check_capacity(raw, config, acc)
+    for name in remote_source_names(raw):
+        acc.add_warn(
+            name=f"source.{name}.declared_columns",
+            code="source.declared_columns_not_checked",
+            message=f"Source {name!r}: declared columns not checked: remote source, checked at run.",
+            location=f"sources.{name}",
+        )
+    _check_capacity(capacity_raw, config, acc)
     _check_native(raw, acc)
 
     if route is GateRoute.CHUNKED:
@@ -313,21 +393,81 @@ def _run_preflight_layer(
     return _findings_from_checks(acc, "preflight"), acc.capacity_insufficient
 
 
+def layout_findings(
+    config_path: Path, raw: Any, placement: OutputPlacement | None = None
+) -> list[GateFinding]:
+    """The layout faults found without a write, as the config-layer errors the gate reports.
+
+    The one construction of these findings: the gate calls it, and `decoy run` calls it to
+    refuse a layout fault before it touches any source.
+    """
+    from decoy.cli.io import OutputPlacement as _Placement
+    from decoy.cli.io import layout_issues
+
+    return [
+        GateFinding("config", "error", refusal.code, refusal.message, location)
+        for location, refusal in layout_issues(config_path, raw, placement or _Placement())
+    ]
+
+
+class StaticGate(NamedTuple):
+    """The source-independent layers of the gate: config, then compile.
+
+    `config` is None when the config layer failed (compile did not run, so `compile_findings`
+    is empty)."""
+
+    config: dict[str, Any] | None
+    checks_run: tuple[str, ...]
+    config_findings: list[GateFinding]
+    compile_findings: list[GateFinding]
+
+    @property
+    def layers(self) -> frozenset[str]:
+        return frozenset({"config"}) if self.config is None else frozenset({"config", "compile"})
+
+
+def run_static_gate(
+    raw: dict[str, Any], config_path: Path, placement: OutputPlacement | None = None
+) -> StaticGate:
+    """The config layer, short-circuiting on failure, then the compile layer.
+
+    Neither layer reads a source row or opens a source file (preflight does), so a caller can
+    run this before any source is staged or acquired. `run_gate_on_config` calls it, so there
+    is one ordering."""
+    config, checks_run, config_findings = _run_config_base(raw, config_path, placement)
+    if config is None:
+        return StaticGate(None, (), config_findings, [])
+    return StaticGate(
+        config, checks_run, config_findings, _run_compile_layer(raw, config_path.parent, config)
+    )
+
+
 def run_gate_on_config(
-    raw: Any, config_path: Path, route: GateRoute = GateRoute.PLAIN
+    raw: dict[str, Any],
+    config_path: Path,
+    route: GateRoute = GateRoute.PLAIN,
+    placement: OutputPlacement | None = None,
+    *,
+    skip_subset: bool = False,
 ) -> GateResult:
     """Config + compile + preflight on an already-parsed YAML value, short-circuiting after a
-    failed config layer. `config_path` is used only for its directory."""
-    config, checks_run, config_findings = _run_config_base(raw, config_path)
+    failed config layer. `config_path` names the YAML; `placement` says where relative outputs
+    land (project placement when None). `skip_subset` (`--no-subset`) prices the capacity
+    estimate on the config without its `subset:` block, as the run will read it."""
+    static = run_static_gate(raw, config_path, placement)
+    config, checks_run = static.config, static.checks_run
+    config_findings, compile_findings = static.config_findings, static.compile_findings
     if config is None:
         return GateResult(config_findings, frozenset({"config"}), False)
-    compile_findings = _run_compile_layer(raw, config_path.parent)
     compile_errors = frozenset(
         (f.code, f.location) for f in compile_findings if f.severity == "error"
     )
     preflight_findings, capacity_insufficient = _run_preflight_layer(
-        raw, config_path, route, compile_errors
+        raw, config_path, route, compile_errors, validated=config, skip_subset=skip_subset
     )
+    from decoy.cli.gate._models import post_scan_model_findings
+
+    preflight_findings += post_scan_model_findings(config)
     return GateResult(
         config_findings + compile_findings + preflight_findings,
         frozenset({"config", "compile", "preflight"}),

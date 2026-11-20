@@ -12,6 +12,7 @@ Three rules, each over every module under `src/decoy/`:
     the sites in NAME_ALLOWLIST that later slices move there (shrink-only baseline
     tests/sentry/baselines/output-name-allow.json).
 (c) `write_targets` and `write_chunked_output` take their placement as a `RunLayout`.
+(d) `decoy validate`'s target check reaches a target path only through `place_target`.
 
 A syntax walk: a path built through a runtime-bound name, or a literal assembled from pieces, is
 not seen.
@@ -20,23 +21,24 @@ not seen.
 from __future__ import annotations
 
 import ast
-import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.io_policy._calls import call_sites, tally
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "output-placement-allow.json"
-NAME_BASELINE = ROOT / "tests" / "sentry" / "baselines" / "output-name-allow.json"
 PLACERS = ("cli/io/_layout.py", "cli/project/_scaffold.py")
 NAME_LITERALS = (".unmasked", ".detokenized", ".snapshot.json", ".masked")
 OUT_LITERAL = "out"
 BUILDERS = frozenset({"with_suffix", "with_name", "joinpath", "Path", "PurePath"})
 WRITERS = ("write_targets", "write_chunked_output")
 TARGETS = "cli/io/_targets.py"
+PREFLIGHT = "cli/preflight.py"
+TARGET_CHECK = "_check_target_overwrite"
 
 
 @dataclass(frozen=True)
@@ -47,58 +49,15 @@ class AllowedSite:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedSite, ...] = (
-    AllowedSite(
-        "cli/io/_layout.py",
-        "RunLayout.place_target",
-        1,
-        "The one placement site: a fixed layout and an absolute path resolve as the old code did.",
-    ),
-    AllowedSite(
-        "cli/io/_targets.py",
-        "_is_declared_target",
-        1,
-        "Compares a file with the declared target path; reads, writes nothing.",
-    ),
-    AllowedSite(
-        "cli/run/_execute.py",
-        "_run_chunked_mask",
-        1,
-        "Resolves the chunked source path for the empty-parquet schema; an input.",
-    ),
-    AllowedSite(
-        "cli/run/_prepare.py",
-        "prepare",
-        1,
-        "Resolves the --duckdb-source database path; an input.",
-    ),
+ALLOWLIST: tuple[AllowedSite, ...] = tuple(
+    AllowedSite(*key.split("::"), e["sites"], e["reason"])
+    for key, e in load_allowlist("output-placement-allow").items()
 )
 
-# Default side-file names built in place today. Each moves into `cli/io/_layout.py` in P9 (or
-# `cli/project/_scaffold.py` in P7) and leaves this list.
-NAME_ALLOWLIST: tuple[AllowedSite, ...] = (
-    AllowedSite("cli/fit.py", "fit", 1, "Default snapshot name beside the source; moves in P9."),
-    AllowedSite(
-        "cli/gen/_scaffold.py",
-        "layout_for",
-        1,
-        "Snapshot name in the generate scaffold; moves with the scaffold in P7.",
-    ),
-    AllowedSite(
-        "cli/init.py",
-        "_scaffold_from_file",
-        1,
-        "Default masked target name in the mask scaffold; moves in P7.",
-    ),
-    AllowedSite(
-        "cli/tokenize.py",
-        "detokenize",
-        1,
-        "Default detokenized name beside the input; moves in P9.",
-    ),
-    AllowedSite(
-        "cli/unmask.py", "unmask", 1, "Default unmasked name beside the input; moves in P9."
-    ),
+# Default names are built only in the placers; the P10 sweep emptied this list.
+NAME_ALLOWLIST: tuple[AllowedSite, ...] = tuple(
+    AllowedSite(*key.split("::"), e["sites"], e["reason"])
+    for key, e in load_allowlist("output-name-allow").items()
 )
 
 
@@ -179,17 +138,6 @@ def test_resolve_path_allowlist_is_live_and_exact() -> None:
     assert not stale, f"allowlist entries that no longer match the code: {sorted(stale)}"
 
 
-@pytest.mark.parametrize(
-    ("baseline", "allowlist"), [(BASELINE, ALLOWLIST), (NAME_BASELINE, NAME_ALLOWLIST)]
-)
-def test_baseline_json_records_the_same_entries_and_reasons(
-    baseline: Path, allowlist: tuple[AllowedSite, ...]
-) -> None:
-    entries = json.loads(baseline.read_text(encoding="utf-8"))["entries"]
-    expected = {f"{a.file}::{a.function}": {"reason": a.reason} for a in allowlist}
-    assert entries == expected
-
-
 def test_allowlist_has_reasons_and_unique_identities() -> None:
     assert len(_allowed(ALLOWLIST)) == len(ALLOWLIST)
     assert len(_allowed(NAME_ALLOWLIST)) == len(NAME_ALLOWLIST)
@@ -216,6 +164,78 @@ def test_default_names_and_out_are_built_only_by_the_placers() -> None:
     found, allowed = _name_tally(SRC), _allowed(NAME_ALLOWLIST)
     extra = {k: n for k, n in found.items() if allowed.get(k, 0) < n}
     assert not extra, f"path built from a layout literal outside the placers: {sorted(extra)}"
+
+
+SIDE_OWNER = "cli/io/_layout.py"
+SIDE_FUNCTION = "side_file_name"
+SIDE_TABLE = "_SIDE_SUFFIX"
+SIDE_SUFFIX_TEXT = re.compile(r"\.(unmasked|detokenized|snapshot)(\.[a-z]+)+")
+
+
+def side_suffix_uses(source: str) -> list[tuple[int, str]]:
+    """(line, scope) of each read of the suffix table and each side-file suffix literal.
+
+    The table's own definition and docstrings are not uses; prose that only mentions a name in
+    help text is not a suffix, so only a string that is a whole suffix counts.
+    """
+    found: list[tuple[int, str]] = []
+
+    def visit(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                visit(child, child.name if scope == "<module>" else f"{scope}.{child.name}")
+                continue
+            if isinstance(child, ast.Expr) and isinstance(child.value, ast.Constant):
+                continue  # a docstring
+            targets = (
+                [child.target]
+                if isinstance(child, ast.AnnAssign)
+                else getattr(child, "targets", [])
+            )
+            if any(isinstance(t, ast.Name) and t.id == SIDE_TABLE for t in targets):
+                continue  # the table's definition
+            if isinstance(child, ast.Name) and child.id == SIDE_TABLE:
+                found.append((child.lineno, scope))
+            elif (
+                isinstance(child, ast.Constant)
+                and isinstance(child.value, str)
+                and SIDE_SUFFIX_TEXT.fullmatch(child.value)
+            ):
+                found.append((child.lineno, scope))
+            visit(child, scope)
+
+    visit(ast.parse(source), "<module>")
+    return found
+
+
+def test_only_side_file_name_joins_a_side_file_suffix() -> None:
+    """The suffix table is read, and its suffixes spelled, only inside `side_file_name`."""
+    stray = []
+    for path in sorted(SRC.rglob("*.py")):
+        rel = path.relative_to(SRC).as_posix()
+        for line, scope in side_suffix_uses(path.read_text(encoding="utf-8")):
+            if (rel, scope) != (SIDE_OWNER, SIDE_FUNCTION):
+                stray.append(f"{rel}:{line} in {scope}")
+    assert not stray, f"a side-file suffix is used outside side_file_name: {stray}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "_SIDE_SUFFIX = {'a': '.unmasked.csv'}\ndef side_file_default(k, p):\n"
+        "    return p.with_suffix(_SIDE_SUFFIX[k])\n",
+        "def side_file_default(k, p, parquet):\n"
+        "    return p.with_suffix('.detokenized.parquet' if parquet else '.x')\n",
+    ],
+)
+def test_a_second_suffix_join_is_caught(source: str) -> None:
+    assert [scope for _l, scope in side_suffix_uses(source)] == ["side_file_default"]
+
+
+def test_no_default_name_is_built_outside_the_placers() -> None:
+    """The sweep is done: the baseline is empty and stays empty."""
+    assert NAME_ALLOWLIST == ()
+    assert _name_tally(SRC) == {}
 
 
 def test_name_allowlist_is_live_and_exact() -> None:
@@ -277,3 +297,38 @@ def test_each_writer_annotates_its_placement_parameter_as_run_layout(writer: str
 def test_a_writer_back_on_a_base_dir_is_caught() -> None:
     seeded = "def write_targets(config_dict, outputs, base_dir: Path):\n    pass\n"
     assert not _layout_annotated(seeded, "write_targets")
+
+
+# --- (d) validate's target check builds no path of its own ----------------------------------
+
+
+def _target_check_builds_path(source: str) -> bool | None:
+    """True when the target check skips `place_target`, builds a path or asks `os.path.isabs`.
+
+    None when the function is missing, so a rename fails the test instead of passing it.
+    """
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.FunctionDef) and node.name == TARGET_CHECK:
+            names = {_builder_name(c) for c in ast.walk(node) if isinstance(c, ast.Call)}
+            return "place_target" not in names or bool(names & (BUILDERS | {"isabs"}))
+    return None
+
+
+def test_validate_target_check_places_targets_only_through_place_target() -> None:
+    source = (SRC / PREFLIGHT).read_text(encoding="utf-8")
+    assert _target_check_builds_path(source) is False
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "out = Path(raw)",
+        "out = PurePath(raw)",
+        "out = layout.place_target(raw)\n    other = Path(raw)",
+        "out = layout.place_target(raw) if os.path.isabs(raw) else None",
+        "out = raw",
+    ],
+)
+def test_a_direct_path_in_the_target_check_is_caught(body: str) -> None:
+    seeded = f"def {TARGET_CHECK}(raw, layout):\n    {body}\n"
+    assert _target_check_builds_path(seeded) is True

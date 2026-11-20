@@ -1,4 +1,4 @@
-"""End-to-end tests for `decoy report integrity` (relocated from the storm group, S4b).
+"""End-to-end tests for `decoy report integrity` (relocated from the old scan group, S4b).
 
 The CLI verb wraps `decoy_engine.verification.postmask.run_post_mask` and
 returns the same post-scan-integrity report payload the platform persists
@@ -76,14 +76,14 @@ def test_integrity_clean_pair_exits_zero(clean_pair: tuple[Path, Path]):
     assert "residual_pii" in report
     assert "fk_preservation" in report
     assert "policy_validation" in report
-    assert report["schema_version"] == "post-scan-integrity/v2"
+    assert report["schema_version"] == "post-scan-integrity/v3"
     # fail + error counts are zero on the clean path.
     assert report.get("fail_count", 0) == 0
     assert report.get("error_count", 0) == 0
 
 
-def test_integrity_returns_jobstormreport_shape(clean_pair: tuple[Path, Path]):
-    """The wire shape matches what the platform's JobStormReport.report_json
+def test_integrity_returns_report_shape(clean_pair: tuple[Path, Path]):
+    """The wire shape matches what the platform's integrity report_json
     column carries: schema_version + 3 finding lists + 4 severity counters
     + pass_failed_with + generated_at. Pin this so a future engine refactor
     can't silently change the public contract."""
@@ -164,8 +164,8 @@ def test_integrity_quiet_suppresses_stdout(clean_pair: tuple[Path, Path]):
 
 
 class TestExitFourReachable:
-    """Audit H6/C1 (2026-06-12): with the pre-fix engine, `storm
-    integrity` could never exit 4 in the no-config path -- residual-PII
+    """Audit H6/C1 (2026-06-12): with the pre-fix engine, the old
+    integrity verb could never exit 4 in the no-config path -- residual-PII
     findings capped at 'warning' and real output==source leaks on
     faker-family strategies classified 'info'. The README's documented
     contract ('exit 4 on residual PII') is now reachable: a masked file
@@ -205,3 +205,28 @@ class TestExitFourReachable:
             app, ["report", "integrity", str(masked), "--source", str(src), "--json"]
         )
         assert result.exit_code == 0, result.output
+
+
+def test_the_demo_walkthrough_ends_green(tmp_path: Path) -> None:
+    """REPORT-INTEGRITY-DEMO: `decoy demo` then `report integrity` on its own output exits 0.
+
+    The demo redacts `customer_id`, and a redacted value can look like an identifier to a
+    detector. The engine grades name-hint-only residual PII by source identity (engine 0.28.0),
+    so a value that is not the source value no longer fails the check.
+    """
+    out = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "--dir", str(out)]).exit_code == 0
+    args = [
+        "report",
+        "integrity",
+        str(out / "customers_masked.csv"),
+        "--source",
+        str(out / "customers.csv"),
+    ]
+    plain = runner.invoke(app, [*args, "--json"])
+    assert plain.exit_code == 0, plain.output
+    configured = runner.invoke(app, [*args, "--config", str(out / "pipeline.yaml"), "--json"])
+    assert configured.exit_code == 0, configured.output
+    report = _json.loads(configured.stdout)["report"]
+    assert report["fail_count"] == 0
+    assert report["error_count"] == 0

@@ -7,8 +7,8 @@ import typer
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.extras import MissingExtraError, translate_missing_extra
 from decoy.cli.run._context import RunContext
-from decoy.ui.output import OutputMode, emit_json
-from decoy.ui.theme import error, warn
+from decoy.ui.output import OutputMode, emit_error
+from decoy.ui.theme import warn
 
 
 class _OtelSettingsUsageError(Exception):
@@ -64,6 +64,36 @@ def _start_telemetry(flag_endpoint: str | None, state):
         raise _OtelSettingsUsageError(str(exc)) from None
 
 
+def _begin_trace(otel):
+    """Open the `decoy.run` root span and its phase recorder; None when telemetry is off or
+    the tracer fails. Telemetry never changes the run, so any failure here is swallowed."""
+    if otel is None:
+        return None
+    try:
+        from decoy import telemetry
+
+        return telemetry.RunTrace(otel)
+    except Exception:
+        return None
+
+
+def _end_trace(otel, trace, *, ok: bool, error_class: str | None = None) -> None:
+    """Close the recorder, end the root and flush within the bounded budget. Runs on every
+    exit path after the exit code is decided, and can never raise into it."""
+    if otel is None:
+        return
+    try:
+        from decoy import telemetry
+
+        try:
+            if trace is not None:
+                trace.finish(ok=ok, error_class=error_class)
+        finally:
+            telemetry.flush_bounded(otel)
+    except Exception:
+        pass
+
+
 def parse_channels(ctx: RunContext) -> None:
     """Parse the `--notify` specs into `ctx.notify_channels`; a bad spec exits EXIT_USAGE."""
     # Parse --notify specs BEFORE the run (D3): a bad spec is a usage error
@@ -77,16 +107,10 @@ def parse_channels(ctx: RunContext) -> None:
         try:
             ctx.notify_channels = [parse_notify_spec(spec) for spec in ctx.notify]
         except NotifySpecError as exc:
-            msg = str(exc)
-            if ctx.state.mode is OutputMode.json:
-                emit_json(
-                    ctx.state,
-                    {"command": "run", "status": "error", "config": ctx.config_str, "error": msg},
-                )
-            elif ctx.state.mode is not OutputMode.quiet:
-                # The message quotes the user's spec: print it verbatim (no markup) and
-                # unfolded, like the run error prints below.
-                ctx.state.err_console.print(error("error:"), msg, markup=False)
+            # Fixed text, never the spec; `config` rides in the error object as before.
+            emit_error(
+                ctx.state, "run", str(exc), code=exc.code, context={"config": ctx.config_str}
+            )
             raise typer.Exit(code=EXIT_USAGE)
 
 

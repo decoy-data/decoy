@@ -10,8 +10,12 @@ columns and numbers only, never a cell value.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any
+from pathlib import Path
+from typing import Any, Protocol
 
+import typer
+
+from decoy.ui.output import OutputMode, OutputState, emit_error
 from decoy.ui.table import make_table
 from decoy.ui.theme import accent, code, error, hint, info, success, warn
 
@@ -29,11 +33,35 @@ def _score(value: object) -> str:
     return f"{value:.2f}" if isinstance(value, (int, float)) else "n/a"
 
 
+def _name_scores(value: object) -> list[tuple[str, object]]:
+    """Read the engine's joined `name=score, name=score` string (0.28.0) and the older
+    `[name, score]` pairs alike."""
+    items = [p for p in value.split(", ") if p] if isinstance(value, str) else (value or [])  # type: ignore[attr-defined]
+    out: list[tuple[str, object]] = []
+    for item in items:
+        if isinstance(item, str):
+            name, sep, score = item.rpartition("=")
+            try:
+                out.append((name, float(score)) if sep else (item, None))
+            except ValueError:
+                out.append((item, None))
+        else:
+            out.append((str(item[0]), item[1]))
+    return out
+
+
+def _column_names(value: object) -> list[str]:
+    """The engine joins a list of names with ", " in a warning's detail (0.28.0)."""
+    if isinstance(value, str):
+        return [n for n in value.split(", ") if n]
+    return [str(c) for c in value or []]  # type: ignore[attr-defined]
+
+
 def _fidelity_message(table: object, detail: Mapping[str, Any]) -> str:
     threshold = _score(detail.get("threshold"))
     overall = _score(detail.get("overall_score"))
     if detail.get("trigger") == "column":
-        below = [(str(n), s) for n, s in detail.get("below_columns") or []]
+        below = _name_scores(detail.get("below_columns"))
         if len(below) == 1:
             name, score = below[0]
             return (
@@ -46,7 +74,7 @@ def _fidelity_message(table: object, detail: Mapping[str, Any]) -> str:
             f"fidelity_warn_threshold {threshold} (overall {overall})"
         )
     text = f"table {table}: fidelity {overall} is below fidelity_warn_threshold {threshold}"
-    worst = detail.get("worst_columns") or []
+    worst = _name_scores(detail.get("worst_columns"))
     if worst:
         text += f"; lowest: {worst[0][0]} {_score(worst[0][1])}"
     return text
@@ -71,7 +99,7 @@ def _generic_message(code_: str, table: object, column: object, detail: Mapping[
 
 def _joint_cap_message(detail: Mapping[str, Any]) -> str:
     """`fit_joint_cells_truncated`: counts and column names only, never a kept or dropped label."""
-    pair = " x ".join(str(c) for c in detail.get("columns") or [])
+    pair = " x ".join(_column_names(detail.get("columns")))
     cap_dropped = detail.get("cap_dropped", 0)
     policy_dropped = detail.get("policy_dropped", 0)
     text = (
@@ -157,6 +185,8 @@ def warning_records(
 
 def report_warning_records(report_warnings: Iterable[Any]) -> list[dict[str, Any]]:
     """Turn a quality report's `warnings` into records, one per drifted column for the drifts."""
+    from decoy_engine.reasons.verification import GOF_UNAVAILABLE
+
     records: list[dict[str, Any]] = []
     for w in report_warnings:
         if not isinstance(w, dict):
@@ -181,6 +211,12 @@ def report_warning_records(report_warnings: Iterable[Any]) -> list[dict[str, Any
                     f"{d.get('output_kind')} in the output"
                 )
                 records.append(warning_record(code_, column=str(d.get("column")), message=text))
+        elif code_ == GOF_UNAVAILABLE and detail.get("column") is not None:
+            text = (
+                f"column {detail.get('column')}: {detail.get('metric')} goodness-of-fit "
+                f"unavailable ({detail.get('reason')})"
+            )
+            records.append(warning_record(code_, column=str(detail.get("column")), message=text))
         else:
             keys = ", ".join(sorted(str(k) for k in detail))
             text = f"{code_} ({keys})" if keys else code_
@@ -301,6 +337,29 @@ def render_fidelity(state, fidelity_reports: dict | None) -> None:
     )
 
 
+def _collision_lines(summary: Mapping[str, Any]) -> list[str]:
+    """One line per `cardinality_collisions` warning: names and counts, never a value.
+
+    A deterministic `faker` column that is not `unique` picks from a pool, so distinct source
+    values can share an output. The engine reports it under `quality_warnings`.
+    """
+    from decoy_engine.reasons.warning import CARDINALITY_COLLISIONS
+
+    lines: list[str] = []
+    for w in summary.get("quality_warnings") or []:
+        if not isinstance(w, Mapping) or w.get("code") != CARDINALITY_COLLISIONS:
+            continue
+        d = w.get("detail") or {}
+        where = ".".join(str(part) for part in (d.get("table"), w.get("column")) if part)
+        lines.append(
+            f"{where}: {d.get('source_distinct')} distinct source values map to "
+            f"{d.get('output_distinct')} distinct outputs ({d.get('distinct_lost')} merged, "
+            f"pool_size {d.get('pool_size')}). A larger pool_size or a unique column keeps "
+            "them apart."
+        )
+    return lines
+
+
 def render_post_validation(state, qm: dict, *, enforce: bool) -> None:
     """Render the post-execution validator results (--post-validate[-enforce]).
 
@@ -316,6 +375,9 @@ def render_post_validation(state, qm: dict, *, enforce: bool) -> None:
     if summary is None:
         state.console.print(hint("  "), "no post-validation summary was produced for this run.")
         return
+    for line in _collision_lines(summary):
+        # Table and column names come from the config: print them as plain text.
+        state.console.print(warn("  warning:"), line, markup=False, highlight=False)
     if not failed:
         state.console.print(success("  All post-validation checks passed."))
         return
@@ -341,6 +403,37 @@ def render_post_validation(state, qm: dict, *, enforce: bool) -> None:
 
 def _rate_text(rate: float | None) -> str:
     return "n/a" if rate is None else f"{rate:.1%}"
+
+
+def null_rate_pairs(
+    report: dict[str, Any], src_df: Any, out_df: Any
+) -> dict[str, tuple[float | None, float | None]]:
+    """Source and output null rates per column, only when some column's rates differ.
+
+    The report carries `missing_value_similarity` but not the rates behind it, so the two
+    frames are profiled again and each rate comes from the engine's `snapshot_null_fraction`.
+    Returns an empty map when every column scored 1 (or None), so the common case pays nothing.
+    """
+    columns = [c for c in report.get("marginal", {}).get("columns", []) if isinstance(c, dict)]
+    if not any(
+        isinstance(c.get("missing_value_similarity"), (int, float))
+        and c["missing_value_similarity"] < 1
+        for c in columns
+    ):
+        return {}
+    from decoy_engine import distribution_snapshot_document
+    from decoy_engine.quality import snapshot_null_fraction
+
+    # Only the counts are read. The redacting writer is the one snapshot builder the CLI uses.
+    src_cols = distribution_snapshot_document(src_df, source_label="source")["columns"]
+    out_cols = distribution_snapshot_document(out_df, source_label="output")["columns"]
+    return {
+        str(c.get("column")): (
+            snapshot_null_fraction(src_cols[c["column"]]) if c.get("column") in src_cols else None,
+            snapshot_null_fraction(out_cols[c["column"]]) if c.get("column") in out_cols else None,
+        )
+        for c in columns
+    }
 
 
 def render_fidelity_report(
@@ -430,3 +523,40 @@ def render_fidelity_report(
         state.console.print(table)
     elif verdict == "pass":
         state.console.print(success("OK"), "no policy violations.")
+
+
+class _ReportView(Protocol):
+    """What `announce_report` reads of a report target (`decoy.cli.io.ReportTarget`)."""
+
+    path: Path | None
+    implicit: bool
+    warning: _Fixed | None
+    error: str | None
+    exit_code: int
+
+
+class _Fixed(Protocol):
+    code: str
+    message: str
+
+
+def announce_report(state: OutputState, target: _ReportView) -> Path | None:
+    """Say how a report write ended; return the default path written, else None.
+
+    A typed path that failed is refused (`error:` and exit 1). A default that failed gets a fixed,
+    value-free warning on stderr (never under `--quiet`) and the command goes on. A default that
+    was written is named in default mode only; a typed path is not announced.
+    """
+    if target.error is not None:
+        emit_error(state, "report", target.error)
+        raise typer.Exit(code=target.exit_code)
+    if target.warning is not None:
+        if state.mode is not OutputMode.quiet:
+            line = f"{target.warning.code}: {target.warning.message}"
+            state.err_console.print(warn("warning:"), line, markup=False)
+        return None
+    if not target.implicit or target.path is None:
+        return None
+    if state.mode is OutputMode.default:
+        state.console.print("Report:", target.path, markup=False, soft_wrap=True)
+    return target.path

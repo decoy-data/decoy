@@ -28,17 +28,16 @@ The call scanner is shared with G-ONE-TARGET-WRITE (tests/sentry/io_policy/_call
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from tests.sentry.io_policy._calls import call_sites, tally
+from tests.sentry._ratchet import load_allowlist
+from tests.sentry.io_policy._calls import call_sites, is_raw_reader, tally
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "decoy"
 CHOKE_POINT = "cli/_sources.py"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "csv-read-allow.json"
 
 
 @dataclass(frozen=True)
@@ -49,61 +48,13 @@ class AllowedRead:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedRead, ...] = (
-    AllowedRead(
-        "cli/demo.py",
-        "_run_single_demo",
-        1,
-        "Reads the bundled demo sample for the STORM scan step; not a declared source.",
-    ),
-    AllowedRead(
-        "cli/gen/_fit.py",
-        "read_fit_csv",
-        1,
-        "A caller-named file with its own parse flags; not a declared source.",
-    ),
-    AllowedRead(
-        "cli/scan.py",
-        "_load_csv_with_sampling",
-        4,
-        "A caller-named file with its own sampling flags; not a declared source.",
-    ),
-    AllowedRead(
-        "cli/scan.py",
-        "_load_fixed_width_with_sampling",
-        3,
-        "A caller-named fixed-width file with its own layout flags; not a declared source.",
-    ),
+ALLOWLIST: tuple[AllowedRead, ...] = tuple(
+    AllowedRead(*key.split("::"), e["sites"], e["reason"])
+    for key, e in load_allowlist("csv-read-allow").items()
 )
 
 
-_ANY_MODULE = {"read_csv", "read_parquet"}
-_PYARROW_PARQUET = {
-    "read_table",
-    "read_pandas",
-    "ParquetFile",
-    "ParquetDataset",
-    "read_schema",
-    "read_metadata",
-}
-_PYARROW_DATASET = {"dataset", "parquet_dataset"}
-_ENGINE = {"read_csv_source", "read_fixed_width", "resolve_csv_dialect"}
-
-
-def _owns(package: str, name: str) -> bool:
-    """Whether `name` from `package` is a watched reader (see the module docstring)."""
-    if name in _ANY_MODULE:
-        return True
-    top = package.split(".")[0]
-    if top == "pandas":
-        return name.startswith("read_")
-    if top == "polars":
-        return name.startswith(("read_", "scan_"))
-    if package.startswith("pyarrow.parquet"):
-        return name in _PYARROW_PARQUET
-    if package == "pyarrow.dataset":
-        return name in _PYARROW_DATASET
-    return top == "decoy_engine" and name in _ENGINE
+_owns = is_raw_reader  # one qualified raw-reader predicate, shared with G-ONE-DECLARED-READ
 
 
 def _owns_csv(package: str, name: str) -> bool:
@@ -145,12 +96,6 @@ def test_allowlist_entries_are_live_and_exact() -> None:
 def test_allowlist_has_reasons_and_unique_identities() -> None:
     assert len(_allowed()) == len(ALLOWLIST)
     assert all(len(a.reason) >= 15 for a in ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_entries_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    expected = {f"{a.file}::{a.function}": {"reason": a.reason} for a in ALLOWLIST}
-    assert entries == expected
 
 
 # The callers of `cli/gen/_fit.py::read_fit_csv`, pinned by (file, function). The allowlist above

@@ -27,6 +27,7 @@ from tests.sentry.cli_text._banned_text import (
     CTX_GROUP_ARG,
     CTX_NAME_KWARG,
 )
+from tests.sentry.release.test_retired_name_residual import RETIRED_NAME, RETIRED_PATTERN
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -318,3 +319,35 @@ def test_bite_exempt_string_with_a_second_banned_pattern_fails_on_that_pattern()
     synthetic = {("cli/synthetic.py", "_scan (FC-1)", r"(?<!\w)_scan\b", CTX_NAME_KWARG): (1, "t")}
     hits = _constant_hits("cli/synthetic.py", "_scan (FC-1)", CTX_NAME_KWARG, synthetic)
     assert hits == [r"FC-\d"]
+
+
+@pytest.mark.parametrize(
+    ("text", "pattern"),
+    [
+        ("see report.py:97 for the call", r"\b\w+\.py:\d+"),
+        ("measured on the source (BF1)", r"\bBF\d+\b"),
+        ("the platform's mask job already runs", r"the platform's"),
+    ],
+)
+def test_bite_each_di_pattern_catches_its_seeded_text(text: str, pattern: str) -> None:
+    assert pattern in {p.pattern for p in BANNED_USER_TEXT}
+    assert _hits(text) == [pattern]
+    without = [p for p in BANNED_USER_TEXT if p.pattern != pattern]
+    assert not [p for p in without if p.search(text)]
+
+
+def test_the_retired_name_is_in_the_banned_user_text_registry() -> None:
+    """AT-C2b: one object holds the spelling, and the registry carries it."""
+    assert RETIRED_PATTERN in BANNED_USER_TEXT
+
+
+def test_bite_the_retired_name_in_a_help_string_is_caught(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        explain_mod._TOPICS,
+        "modes",
+        explain_mod._Topic(name="modes", summary=f"The {RETIRED_NAME.upper()} scan", body="x"),
+    )
+    assert _offenders(_explain_texts())
+    assert _hits(f"decoy {RETIRED_NAME} integrity") == [RETIRED_PATTERN.pattern]

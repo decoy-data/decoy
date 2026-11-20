@@ -23,6 +23,7 @@ from tests.ci_support import (
     write,
     write_clean_pipeline,
 )
+from tests.scan_docs import scan_set_doc
 
 PATTERN = {
     "id": "pii.seeded-test-identifier",
@@ -142,7 +143,7 @@ def test_precommit_context_marks_artifact_checks_not_applicable(tmp_path: Path) 
 
 def test_drift_inputs_that_cannot_be_compared_are_refused_not_ignored(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
-    good = {"fields": [{"name": "a", "pii_score": 0.1}], "quasi_identifier_groups": []}
+    good = scan_set_doc([{"name": "a", "pii_score": 0.1}])
     write(repo, "good.json", json.dumps(good))
     write(repo, "broken.json", "{not json")
     write(repo, "shape.json", json.dumps({"fields": 5}))
@@ -176,7 +177,7 @@ def test_a_pipeline_that_is_not_utf8_is_a_finding_not_a_crash(tmp_path: Path) ->
     proc = ci_check(repo, "--format", "json")
     report = parse_stdout(proc)
     assert proc.returncode == EXIT_USAGE, proc.stderr
-    assert [f["rule_id"] for f in report["findings"]] == ["validate.yaml.parse_error"]
+    assert [f["rule_id"] for f in report["findings"]] == ["validate.yaml.not_utf8"]
 
 
 def test_precommit_context_also_skips_drift_and_regression_visibly(tmp_path: Path) -> None:

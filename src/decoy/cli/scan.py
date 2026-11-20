@@ -1,13 +1,13 @@
-"""`decoy scan` -- one "look at my data" verb (merges `profile` + `storm analyze`).
+"""`decoy scan` -- one "look at my data" verb (merges the former `profile` and analyze verbs).
 
 `decoy scan SOURCE` profiles a CSV / Parquet / fixed-width file with the engine's
-STORM (Statistical Top-down Risk Mapping) detector and reports dataset shape,
+pre-scan detector and reports dataset shape,
 per-field stats, PII candidates, quasi-identifier groups, and a re-identification
 risk score. Saved-scan operations are subcommands: `scan fields SCAN`,
 `scan show SCAN FIELD`, `scan diff OLD NEW`.
 
 This command is the S3a merge of the former top-level `profile` command and the
-`storm analyze` verb. It keeps BOTH commands' capabilities while preserving the
+old analyze verb. It keeps BOTH commands' capabilities while preserving the
 former profile command's two
 non-negotiable disciplines:
 
@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import difflib
 import json as _json
-from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -38,8 +37,9 @@ import typer
 
 from decoy._row_sample import sample_frame
 from decoy.cli._default_group import make_default_group
-from decoy.cli.exit_codes import EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
+from decoy.cli.scanning import diff_scan_sets, pii_bucket, saved_field_facts
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 from decoy.ui.table import make_table
@@ -56,7 +56,7 @@ _SCAN_GROUP_HELP = (
 
 
 # PII score threshold to surface a field as a candidate. Mirrors the engine's
-# STORM internal threshold (>=0.6 is a "PII candidate" / "high" bucket).
+# scan internal threshold (>=0.6 is a "PII candidate" / "high" bucket).
 _PII_CANDIDATE_THRESHOLD = 0.6
 
 
@@ -96,8 +96,6 @@ _FIXED_WIDTH_EXTENSIONS: frozenset[str] = frozenset({".fwf", ".dat", ".fixed", "
 # File extensions that map to parquet format.
 _PARQUET_EXTENSIONS: frozenset[str] = frozenset({".parquet", ".pq"})
 
-_BUCKET_RANK: dict[str, int] = {"none": 0, "low": 1, "med": 2, "high": 3}
-
 # Suffixes that almost certainly mean "this is raw data, not a saved scan."
 # Used by `_emit_load_error` to swap the generic JSON parse hint for a
 # specific "scan it first" suggestion.
@@ -110,7 +108,8 @@ Examples:
   decoy scan data.csv --has-header
     Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
     A CSV always needs --has-header or --no-header: scan never guesses.
-    Reads the first 10 000 rows by default (--rows 0 for a full scan).
+    Reads the first 10 000 rows by default and labels the counts a sample, with
+    no key candidates (--rows 0 reads every row and gives whole-file numbers).
 
   decoy scan customers.csv orders.csv --has-header
     Scan several files in one run: one table each, named from the file stem.
@@ -134,7 +133,7 @@ Examples:
     Scan a fixed-width file using an explicit column layout.
     Layout YAML: columns: [{name: id, start: 0, width: 5}, ...]
 
-HONESTY: PII candidates are SUGGESTIONS based on STORM pattern matching. They
+HONESTY: PII candidates are SUGGESTIONS based on pattern matching. They
 are NOT authoritative classifications. You review each flagged field and decide
 what masking to apply. Decoy never auto-classifies PII.
 
@@ -142,7 +141,7 @@ No raw cell values appear in the inline output or in --output. Field stats
 include dtype, null_rate, distinct_count only.
 
 See also: decoy scan fields, decoy scan show, decoy scan diff,
-  decoy explain storm, decoy validate.
+  decoy explain scan, decoy validate.
 """
 
 
@@ -185,7 +184,7 @@ Examples:
     Print field-, PII-, QI-, and risk-level differences between two scans.
 
   decoy scan diff baseline.json new.json --strict
-    Same, but exit 1 on drift (PII bucket bumped up, new high-PII field, or
+    Same, but exit 4 on drift (PII bucket bumped up, new high-PII field, or
     new quasi-identifier group). Wire this into CI.
 
   decoy scan diff baseline.json new.json --json | jq '.drift'
@@ -205,7 +204,7 @@ scan_app = typer.Typer(
 
 
 # ---------------------------------------------------------------------------
-# Source loaders (format dispatch + sampling). Moved from storm.py with `scan`.
+# Source loaders (format dispatch + sampling). Moved from the old scan group with `scan`.
 # ---------------------------------------------------------------------------
 
 
@@ -383,34 +382,12 @@ def _load_data(
 
 
 # ---------------------------------------------------------------------------
-# Saved-scan helpers (used by fields/show/diff). Moved from storm.py.
+# Saved-scan helpers (used by fields/show/diff). Moved from the old scan group.
 # ---------------------------------------------------------------------------
-
-
-def _pii_bucket(score: float | None) -> str:
-    """Same buckets as the `scan` card uses (>=0.6 PII candidate count)."""
-    if score is None:
-        return "none"
-    if score >= 0.6:
-        return "high"
-    if score >= 0.3:
-        return "med"
-    if score > 0:
-        return "low"
-    return "none"
-
-
-def _bucket_rank(bucket: str) -> int:
-    return _BUCKET_RANK.get(bucket, 0)
 
 
 def _is_quasi(name: str, qi_groups: list) -> bool:
     return any(name in g for g in qi_groups)
-
-
-def _canon_qi(group: list) -> tuple[str, ...]:
-    """Canonical, hashable form of a QI group for set comparison."""
-    return tuple(sorted(str(x) for x in group))
 
 
 def _looks_like_raw_data(scan_path: str) -> bool:
@@ -449,7 +426,7 @@ def _emit_load_error(
     raw_data = _looks_like_raw_data(scan)
     if raw_data:
         label = Path(scan).name
-        message = f"{label} looks like raw data, not a STORM scan JSON."
+        message = f"{label} looks like raw data, not a saved scan JSON."
         scan_cmd = f"decoy scan {scan} --has-header --output scan.json"
     elif isinstance(exc, FileNotFoundError):
         message = f"could not open {scan}: file not found."
@@ -497,7 +474,7 @@ def _read_table(scan: str, table: str | None) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan SOURCE` -- the default command (merges profile + storm analyze)
+# `decoy scan SOURCE` -- the default command (merges profile and the old analyze verb)
 # ---------------------------------------------------------------------------
 
 
@@ -582,7 +559,7 @@ def _scan(
 ) -> None:
     """Profile source files: shape, field stats, PII candidates, reid risk.
 
-    Runs STORM detection on each file, one table per file. PII candidates are
+    Runs the scan detectors on each file, one table per file. PII candidates are
     surfaced as SUGGESTIONS for review, never as authoritative classifications.
     No raw cell values appear in the inline output or in `--output`. Save the
     scan with `--output scan.json`, then use `decoy scan fields/show/diff`.
@@ -608,13 +585,13 @@ def _scan(
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan fields SCAN` -- list fields from a saved scan (was the storm verb)
+# `decoy scan fields SCAN` -- list fields from a saved scan (was a verb of the old scan group)
 # ---------------------------------------------------------------------------
 
 
 def _fields(
     scan: str = typer.Argument(
-        ..., help="Path to a STORM scan JSON, or `-` for stdin."
+        ..., help="Path to a saved scan JSON, or `-` for stdin."
     ),
     pii: PiiLevel | None = typer.Option(
         None, "--pii",
@@ -654,7 +631,7 @@ def _fields(
     total = len(fields)
 
     if pii is not None:
-        fields = [f for f in fields if _pii_bucket(f.get("pii_score")) == pii.value]
+        fields = [f for f in fields if pii_bucket(f.get("pii_score")) == pii.value]
     if quasi:
         fields = [f for f in fields if _is_quasi(f.get("name", ""), qi_groups)]
 
@@ -662,7 +639,7 @@ def _fields(
         {
             "name": f.get("name"),
             "pii_score": f.get("pii_score"),
-            "pii_bucket": _pii_bucket(f.get("pii_score")),
+            "pii_bucket": pii_bucket(f.get("pii_score")),
             "quasi_identifier": _is_quasi(f.get("name", ""), qi_groups),
         }
         for f in fields
@@ -718,13 +695,13 @@ def _fields(
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan show SCAN FIELD` -- per-field detail (was the storm verb)
+# `decoy scan show SCAN FIELD` -- per-field detail (was a verb of the old scan group)
 # ---------------------------------------------------------------------------
 
 
 def _show(
     scan: str = typer.Argument(
-        ..., help="Path to a STORM scan JSON, or `-` for stdin."
+        ..., help="Path to a saved scan JSON, or `-` for stdin."
     ),
     field: str = typer.Argument(..., help="Field name to inspect."),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
@@ -788,7 +765,7 @@ def _show(
     qi_groups = data.get("quasi_identifier_groups", [])
     qi_member = [g for g in qi_groups if field in g]
     score = matched.get("pii_score")
-    bucket = _pii_bucket(score)
+    bucket = pii_bucket(score)
     detectors = matched.get("detector_hits") or []
 
     if state.mode is OutputMode.json:
@@ -799,6 +776,8 @@ def _show(
                 "status": "ok",
                 "scan": scan,
                 "field": matched,
+                "basis": data["basis"],
+                "scanned_rows": data["scanned_rows"],
                 "pii_bucket": bucket,
                 "quasi_identifier_groups": qi_member,
             },
@@ -813,13 +792,7 @@ def _show(
         facts.append(("PII score", f"{score:.2f} ({bucket})"))
     else:
         facts.append(("PII score", f"- ({bucket})"))
-    for key, label in (
-        ("dtype", "Type"),
-        ("null_count", "Nulls"),
-        ("distinct_count", "Distinct"),
-    ):
-        if key in matched and matched[key] is not None:
-            facts.append((label, str(matched[key])))
+    facts.extend(saved_field_facts(matched, data))
     if detectors:
         facts.append(("Detectors", ", ".join(str(d) for d in detectors)))
     if qi_member:
@@ -840,116 +813,20 @@ def _show(
 
 
 # ---------------------------------------------------------------------------
-# `decoy scan diff OLD NEW` -- compare two saved scans (was the storm verb)
+# `decoy scan diff OLD NEW` -- compare two saved scans (was a verb of the old scan group)
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class ScanDiff:
-    """The categorized difference between two saved STORM scans (pure, no I/O)."""
-
-    added_rows: list[dict]
-    removed_rows: list[dict]
-    pii_increased: list[dict]
-    pii_decreased: list[dict]
-    qi_added: list[tuple[str, ...]]
-    qi_removed: list[tuple[str, ...]]
-    risk_delta: float | None
-    new_high_pii: list[dict]
-
-    @property
-    def drift(self) -> bool:
-        return bool(self.pii_increased or self.new_high_pii or self.qi_added)
-
-
-def compute_scan_diff(old_data: dict, new_data: dict) -> ScanDiff:
-    """Categorize drift between two scan dicts. Shared by `scan diff` and `decoy ci check`."""
-    old_fields = {
-        f.get("name"): f for f in old_data.get("fields", []) if f.get("name")
-    }
-    new_fields = {
-        f.get("name"): f for f in new_data.get("fields", []) if f.get("name")
-    }
-
-    added_names = sorted(set(new_fields) - set(old_fields))
-    removed_names = sorted(set(old_fields) - set(new_fields))
-    common_names = sorted(set(old_fields) & set(new_fields))
-
-    pii_increased: list[dict] = []
-    pii_decreased: list[dict] = []
-    for name in common_names:
-        old_score = old_fields[name].get("pii_score") or 0
-        new_score = new_fields[name].get("pii_score") or 0
-        old_bucket = _pii_bucket(old_score)
-        new_bucket = _pii_bucket(new_score)
-        if _bucket_rank(new_bucket) > _bucket_rank(old_bucket):
-            pii_increased.append(
-                {
-                    "name": name,
-                    "old_score": old_score, "new_score": new_score,
-                    "old_bucket": old_bucket, "new_bucket": new_bucket,
-                }
-            )
-        elif _bucket_rank(new_bucket) < _bucket_rank(old_bucket):
-            pii_decreased.append(
-                {
-                    "name": name,
-                    "old_score": old_score, "new_score": new_score,
-                    "old_bucket": old_bucket, "new_bucket": new_bucket,
-                }
-            )
-
-    old_qi = {_canon_qi(g) for g in old_data.get("quasi_identifier_groups", [])}
-    new_qi = {_canon_qi(g) for g in new_data.get("quasi_identifier_groups", [])}
-    qi_added = sorted(new_qi - old_qi)
-    qi_removed = sorted(old_qi - new_qi)
-
-    old_risk = old_data.get("reid_risk_score")
-    new_risk = new_data.get("reid_risk_score")
-    risk_delta: float | None = None
-    if isinstance(old_risk, (int, float)) and isinstance(new_risk, (int, float)):
-        risk_delta = float(new_risk) - float(old_risk)
-
-    added_rows = [
-        {
-            "name": n,
-            "pii_score": new_fields[n].get("pii_score"),
-            "pii_bucket": _pii_bucket(new_fields[n].get("pii_score")),
-        }
-        for n in added_names
-    ]
-    removed_rows = [
-        {
-            "name": n,
-            "pii_score": old_fields[n].get("pii_score"),
-            "pii_bucket": _pii_bucket(old_fields[n].get("pii_score")),
-        }
-        for n in removed_names
-    ]
-
-    new_high_pii = [r for r in added_rows if r["pii_bucket"] == "high"]
-    return ScanDiff(
-        added_rows=added_rows,
-        removed_rows=removed_rows,
-        pii_increased=pii_increased,
-        pii_decreased=pii_decreased,
-        qi_added=qi_added,
-        qi_removed=qi_removed,
-        risk_delta=risk_delta,
-        new_high_pii=new_high_pii,
-    )
 
 
 def _diff(
     old: str = typer.Argument(
-        ..., help="Path to the older STORM scan JSON, or `-` for stdin."
+        ..., help="Path to the older saved scan JSON, or `-` for stdin."
     ),
     new: str = typer.Argument(
-        ..., help="Path to the newer STORM scan JSON, or `-` for stdin."
+        ..., help="Path to the newer saved scan JSON, or `-` for stdin."
     ),
     strict: bool = typer.Option(
         False, "--strict",
-        help="Exit 1 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.",
+        help="Exit 4 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.",
     ),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
     json_: bool = typer.Option(
@@ -1001,7 +878,7 @@ def _diff(
         _emit_load_error(state, new, exc, "scan diff")
         raise typer.Exit(code=EXIT_USAGE) from None
 
-    diff = compute_scan_diff(old_data, new_data)
+    diff = diff_scan_sets(old_data, new_data)
     added_rows, removed_rows = diff.added_rows, diff.removed_rows
     pii_increased, pii_decreased = diff.pii_increased, diff.pii_decreased
     qi_added, qi_removed = diff.qi_added, diff.qi_removed
@@ -1036,12 +913,12 @@ def _diff(
             },
         )
         if strict and drift:
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=EXIT_FINDINGS)
         return
 
     if state.mode is OutputMode.quiet:
         if strict and drift:
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=EXIT_FINDINGS)
         return
 
     facts: list[tuple[str, str]] = [
@@ -1141,7 +1018,7 @@ def _diff(
         state.console.print(success("No drift detected."))
 
     if strict and drift:
-        raise typer.Exit(code=EXIT_USAGE)
+        raise typer.Exit(code=EXIT_FINDINGS)
 
 
 # The hidden default command: `decoy scan SOURCE` (no subcommand) routes here

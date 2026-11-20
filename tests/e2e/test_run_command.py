@@ -2,8 +2,8 @@
 
 CLI.3 commit 3 (2026-06-02): rewritten against the V2 PipelineConfig
 spine. Pre-rewrite the file exercised V1 `mode: graph` YAML and V1
-`masking_rules:` shapes; both are dead under storm-reframe-C and
-S22-CL-V1GRAPHRUNNER. The new cells verify (a) help text renders,
+`masking_rules:` shapes; both are dead since the V1 scan rework and
+the V1 graph runner removal. The new cells verify (a) help text renders,
 (b) a minimal V2 mask config runs end-to-end and writes a masked CSV
 where faker columns differ from the source, (c) a V2 generate config
 runs end-to-end and produces the declared row_count, (d) V1 graph
@@ -358,7 +358,15 @@ class TestMixedConfigSuccess:
             "global_settings": {"seed": 1},
             "sources": {"t": csv_source(sample_csv)},
             "tables": [
-                {"name": "t", "columns": [{"name": "email", "strategy": "redact"}]},
+                {
+                    "name": "t",
+                    "columns": [
+                        {"name": "customer_id", "strategy": "passthrough"},
+                        {"name": "first_name", "strategy": "passthrough"},
+                        {"name": "email", "strategy": "redact"},
+                        {"name": "ssn", "strategy": "passthrough"},
+                    ],
+                },
                 {
                     "name": "synth",
                     "generate_columns": [

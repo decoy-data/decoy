@@ -16,6 +16,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, Literal, TypeGuard
 
 from decoy._atomic import (
     AtomicWriteError,
@@ -39,6 +40,9 @@ from decoy.cli.io._layout_errors import (
 )
 from decoy.cli.io._small_file import UnsafeFileError, read_small_file
 
+if TYPE_CHECKING:
+    from decoy.cli.io._project import Project
+
 # <UTC start YYYYMMDDTHHMMSSffffffZ>-<8 hex of the invocation id>, plus 4 more hex digits per
 # clash, up to all 32.
 _RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}(?:[0-9a-f]{4}){0,6}")
@@ -47,13 +51,23 @@ _RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}(?:[0-9a-f]{4}){0,6}")
 MAX_RUN_ID_LENGTH = 55
 WINDOWS_PATH_LIMIT = 259
 _CLAIM_NAME = "PIPELINE"
+PIPELINES_DIR = "pipelines"
+PIPELINE_YAML = "pipeline.yaml"
+
+
+def member_yaml(root: Path, name: str) -> Path:
+    """Where the member `name` lives: the one spelling of `pipelines/<name>/pipeline.yaml`."""
+    return root / PIPELINES_DIR / name / PIPELINE_YAML
+
+
 _CLAIM_MAX_BYTES = 4096
 _SLUG_MAX = 56
 _SLUG_BAD = re.compile(r"[^A-Za-z0-9_.-]+")
 _DASH_RUNS = re.compile(r"-{2,}")
+_URL_PATH = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
 
 
-def _valid_name(name: str) -> bool:
+def is_valid_name(name: str) -> bool:
     """The engine's pipeline name rule, imported on use: this package loads on every CLI start."""
     from decoy_engine import is_valid_pipeline_name
 
@@ -86,7 +100,7 @@ def same_path(a: Path, b: Path) -> bool:
         pass
     try:
         return a.resolve() == b.resolve()
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         return False
 
 
@@ -108,7 +122,7 @@ def owning_run(path: Path, root: Path, name: str) -> RunFolder | None:
     try:
         base = (root / "out" / name).resolve()
         resolved = path.resolve()
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError, ValueError):
         return None
     for ancestor in resolved.parents:
         if _same_dir(ancestor.parent, base):
@@ -118,40 +132,78 @@ def owning_run(path: Path, root: Path, name: str) -> RunFolder | None:
     return None
 
 
+SideKind = Literal["unmasked", "detokenized", "snapshot"]
+_SIDE_SUFFIX: dict[str, str] = {
+    "unmasked": ".unmasked.csv",
+    "detokenized": ".detokenized.csv",
+    "snapshot": ".snapshot.json",
+}
+
+
+def side_file_name(kind: SideKind, stem: str, *, parquet: bool = False) -> str:
+    """The default side-file name for a stem, the one place a suffix joins it. `parquet` picks
+    the Parquet form of a detokenized file; no other kind has one."""
+    suffix = ".detokenized.parquet" if parquet and kind == "detokenized" else _SIDE_SUFFIX[kind]
+    return f"{stem}{suffix}"
+
+
+def side_file_default(kind: SideKind, input_path: Path, *, parquet: bool = False) -> Path:
+    """The default side file beside its input; `current` is resolved first. Unknown kind: `KeyError`."""
+    real, plain = input_path.parent.resolve(), Path(os.path.abspath(input_path.parent))
+    beside = input_path if real == plain else real / input_path.name
+    return beside.with_name(side_file_name(kind, beside.stem, parquet=parquet))
+
+
 def placed_path(run: RunFolder, raw: str) -> Path | None:
     """`raw` placed inside `run` and resolved, or None when it does not stay inside.
 
-    Refused: any backslash (a declared path uses "/" only, so it means the same on every
-    OS), an anchor or drive (`/x`, `C:x`, `//host/share/x`), a trailing separator (a
-    directory, not a file), a `..` that climbs above the run at any step (even to come back
-    in), and a result that lands outside the run through an existing symlink. Containment is
-    by file identity, so another spelling of the run folder still counts. The result is
-    resolved, so it compares with a resolved input path. A path that cannot be resolved
-    gives None.
+    The rule is `contained_path` with the run folder as the base.
     """
-    if not raw or "\\" in raw or raw.endswith("/"):
+    return contained_path(run.path, raw)
+
+
+def contained_path(base: Path, raw: str) -> Path | None:
+    """`raw`, a relative path written with "/", placed under `base` and resolved; None when
+    it does not stay inside. The one parser of stored and declared relative paths.
+
+    Refused: any backslash (a stored or declared path uses "/" only, so it means the same on
+    every OS), an anchor or drive (`/x`, `C:x`, `//host/share/x`), a trailing separator (a
+    directory, not a file), a `..` that climbs above `base` at any step (even to come back
+    in), and a result that lands outside `base` through an existing symlink. Containment is
+    by file identity, so another spelling of `base` still counts. The result is resolved, so
+    it compares with a resolved input path. A path that cannot be resolved gives None.
+    """
+    if not names_a_file_inside(raw):
         return None
+    try:
+        resolved = Path(os.path.normpath(base / raw)).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    if any(_same_dir(ancestor, base) for ancestor in resolved.parents):
+        return resolved
+    return None
+
+
+def names_a_file_inside(raw: str) -> bool:
+    """The lexical half of `contained_path`: True when `raw` names a file below its base.
+
+    Reads only the text, so the gate can run it before any folder exists.
+    """
+    if not raw or "\x00" in raw or "\\" in raw or raw.endswith("/"):
+        return False
     for style in (PurePosixPath, PureWindowsPath):
         pure = style(raw)
         if pure.anchor or pure.drive:
-            return None
+            return False
     depth = 0
     for part in PurePosixPath(raw).parts:
         if part == "..":
             depth -= 1
             if depth < 0:
-                return None
+                return False
         elif part != ".":
             depth += 1
-    if depth == 0:
-        return None
-    try:
-        resolved = Path(os.path.normpath(run.path / raw)).resolve()
-    except (OSError, RuntimeError):
-        return None
-    if any(_same_dir(ancestor, run.path) for ancestor in resolved.parents):
-        return resolved
-    return None
+    return depth > 0
 
 
 def _on_windows() -> bool:
@@ -167,16 +219,18 @@ def _utf16_units(text: str) -> int:
     return len(text.encode("utf-16-le", "surrogatepass")) // 2
 
 
-def check_path_budget(name_dir: Path, rel: str) -> None:
+def check_path_budget(name_dir: Path, rel: str, *, run_folder: bool = True) -> None:
     """Refuse on Windows a placed path that can pass 259 characters with the longest run id.
 
     `name_dir` is `<root>/out/<name>`; the run id is counted at its maximum length so a path
     that fits today does not fail on a run-id clash later. POSIX has no such limit here.
+    `run_folder=False` is a fixed `--out-dir`: `name_dir` is that folder and no run id follows.
     Raises `LayoutError`.
     """
     if not _on_windows():
         return
-    length = _utf16_units(str(name_dir)) + 1 + MAX_RUN_ID_LENGTH + 1 + _utf16_units(rel)
+    run_id = MAX_RUN_ID_LENGTH + 1 if run_folder else 0
+    length = _utf16_units(str(name_dir)) + 1 + run_id + _utf16_units(rel)
     if length > WINDOWS_PATH_LIMIT:
         raise PATH_TOO_LONG.error(length=length, limit=WINDOWS_PATH_LIMIT)
 
@@ -224,7 +278,7 @@ class PipelineName:
     yaml_rel: str
 
 
-def _rel_posix(root: Path, yaml: Path) -> str:
+def project_relative_posix(root: Path, yaml: Path) -> str:
     resolved = yaml.resolve()
     try:
         return resolved.relative_to(root.resolve()).as_posix()
@@ -232,7 +286,8 @@ def _rel_posix(root: Path, yaml: Path) -> str:
         return resolved.as_posix()
 
 
-def _slug(stem: str) -> str:
+def name_slug(stem: str) -> str:
+    """A file stem as a pipeline-name candidate: safe characters only, at most 56. May be empty."""
     slug = _DASH_RUNS.sub("-", _SLUG_BAD.sub("-", stem))
     slug = slug.lstrip("-._")[:_SLUG_MAX]
     return slug.rstrip("-.")
@@ -240,10 +295,10 @@ def _slug(stem: str) -> str:
 
 def _derived(root: Path, yaml_rel: str, stem: str) -> str:
     digest = hashlib.sha256(yaml_rel.encode()).hexdigest()[:6]
-    slug = _slug(stem)
+    slug = name_slug(stem)
     for base in (slug or "pipeline", "pipeline"):
         candidate = f"{base}-{digest}"
-        if _valid_name(candidate):
+        if is_valid_name(candidate):
             return candidate
     return f"pipeline-{digest}"
 
@@ -273,8 +328,8 @@ def _taken(root: Path, name: str, yaml_rel: str) -> str | None:
     claimed = read_claim(root / "out", name)
     if claimed is not None and claimed != yaml_rel:
         return claimed
-    member = f"pipelines/{name}/pipeline.yaml"
-    if (root / "pipelines" / name).exists() and member != yaml_rel:
+    member = f"{PIPELINES_DIR}/{name}/{PIPELINE_YAML}"
+    if member_yaml(root, name).parent.exists() and member != yaml_rel:
         return member
     return None
 
@@ -290,17 +345,17 @@ def pipeline_name_for(root: Path, yaml: Path, declared: object) -> PipelineName:
 
     Raises `LayoutError`.
     """
-    yaml_rel = _rel_posix(root, yaml)
+    yaml_rel = project_relative_posix(root, yaml)
     parts = yaml_rel.split("/")
-    if len(parts) == 3 and parts[0] == "pipelines" and parts[2] == "pipeline.yaml":
+    if len(parts) == 3 and parts[0] == PIPELINES_DIR and parts[2] == PIPELINE_YAML:
         folder = parts[1]
-        if not _valid_name(folder):
+        if not is_valid_name(folder):
             raise PIPELINE_NAME_INVALID.error(name=folder)
         if declared is not None and declared != folder:
             raise PIPELINE_NAME_MISMATCH.error(path=yaml_rel, declared=declared, folder=folder)
         return PipelineName(folder, True, yaml_rel)
     if declared is not None:
-        if not _valid_name(declared):
+        if not is_valid_name(declared):
             raise PIPELINE_NAME_INVALID.error(name=declared)
         assert isinstance(declared, str)
         other = _taken(root, declared, yaml_rel)
@@ -310,10 +365,20 @@ def pipeline_name_for(root: Path, yaml: Path, declared: object) -> PipelineName:
             )
         return PipelineName(declared, True, yaml_rel)
     stem = yaml.name.rsplit(".", 1)[0] if "." in yaml.name else yaml.name
-    slug = _slug(stem)
-    if slug == stem and _valid_name(slug) and _taken(root, slug, yaml_rel) is None:
+    slug = name_slug(stem)
+    if slug == stem and is_valid_name(slug) and _taken(root, slug, yaml_rel) is None:
         return PipelineName(slug, False, yaml_rel)
     return PipelineName(_derived(root, yaml_rel, stem), False, yaml_rel)
+
+
+def project_out_folder(root: Path) -> Path:
+    """`<root>/out/` as a path only: nothing is made, read or resolved."""
+    return root / "out"
+
+
+def pipeline_folder(root: Path, name: str) -> Path:
+    """`<root>/out/<name>/` as a path only: nothing is made, read or resolved."""
+    return project_out_folder(root) / name
 
 
 def name_dir(out: Path, name: str) -> Path:
@@ -387,12 +452,23 @@ def mint_invocation_id() -> str:
     return str(uuid.uuid4())
 
 
+def target_parent_writable(path: Path) -> bool:
+    """True when `path` has an existing, writable directory ancestor.
+
+    `os.access` checks the process's effective access. On Windows it does not evaluate ACLs,
+    so this remains an advisory preflight check rather than a write guarantee.
+    """
+    ancestor = next((parent for parent in path.parents if parent.exists()), None)
+    return ancestor is not None and ancestor.is_dir() and os.access(ancestor, os.W_OK | os.X_OK)
+
+
 class RunLayout:
     """Where one command writes its files: a run folder, or a fixed base folder.
 
     `RunLayout.open` makes `out/<name>/<run-id>/` (claim, `.gitignore`, private folder) and
     `RunLayout.fixed(base)` places relative paths against `base` as the pre-layout code did
-    (`demo`, `mask()`): no claim, no run id, no `LATEST` or `current`. `place_target` and
+    (`demo`, `mask()`): no claim, no run id, no `LATEST` or `current`. `RunLayout.out_dir`
+    is `--out-dir`: a fixed folder that relative paths must stay inside. `place_target` and
     `place_quarantine` are the only way a command turns a declared path into a file path.
     """
 
@@ -403,10 +479,16 @@ class RunLayout:
         run: RunFolder | None = None,
         pipeline_dir: Path | None = None,
         warnings: tuple[LayoutWarning, ...] = (),
+        project: Project | None = None,
+        pipeline: PipelineName | None = None,
+        contained: bool = False,
     ) -> None:
         self._base = base
         self._run = run
         self._pipeline_dir = pipeline_dir
+        self._project = project
+        self._pipeline = pipeline
+        self._contained = contained
         self.warnings = warnings
 
     @classmethod
@@ -415,19 +497,43 @@ class RunLayout:
         return cls(base)
 
     @classmethod
+    def out_dir(cls, folder: Path, *, create: bool = False) -> RunLayout:
+        """`--out-dir DIR` (plan 3.6): `DIR` stands in for the run folder.
+
+        A relative `DIR` is taken from the current folder. Only its shape is checked here: it
+        must be a directory (or a link to one), or be missing with an existing parent. A missing
+        `DIR` is made owner-only by `place_target`, after the gate, for the first relative
+        output; an existing one is used as it is and its files are overwritten. No claim, run
+        id, `LATEST` or `.gitignore`. A relative target must stay inside `DIR`, through
+        existing links too. `create=True` (the first relative placement) makes a missing `DIR`.
+        Raises `NotADirectoryError` for an unusable shape, or `PrivateFileError`.
+        """
+        base = Path(os.path.abspath(folder))
+        if not (base.is_dir() if os.path.lexists(base) else base.parent.is_dir()):
+            raise NotADirectoryError
+        if create and not base.exists():
+            create_private_directory(base)
+        return cls(base, contained=True)
+
+    @classmethod
     def open(
         cls,
         root: Path,
         name: PipelineName,
         invocation_id: str,
         started: datetime | None = None,
+        *,
+        project: Project | None = None,
     ) -> RunLayout:
         """Make the run folder for pipeline `name` in project `root` (plan 3.6).
 
         Runs after the gate passes and before the first write: `out/` and its `.gitignore`,
         the claim, then `out/<name>/<run-id>/` (0700). A claim naming another YAML is a
-        collision. Raises `LayoutError`, `AtomicWriteError` or `PrivateFileError`.
+        collision. `project` is what `find_project` returned, kept for `describe`. Raises
+        `LayoutError`, `AtomicWriteError` or `PrivateFileError`.
         """
+        from decoy.cli.io._project import Project
+
         out, warnings = prepare_out(root)
         folder = name_dir(out, name.name)
         other = write_claim(folder, name.yaml_rel)
@@ -438,7 +544,14 @@ class RunLayout:
                 claim=f"out/{name.name}/{_CLAIM_NAME}",
             )
         run = create_run_folder(folder, started or datetime.now(timezone.utc), invocation_id)
-        return cls(root, run=run, pipeline_dir=folder, warnings=warnings)
+        return cls(
+            root,
+            run=run,
+            pipeline_dir=folder,
+            warnings=warnings,
+            project=project or Project(root=root),
+            pipeline=name,
+        )
 
     @property
     def run(self) -> RunFolder | None:
@@ -459,13 +572,19 @@ class RunLayout:
         """
         from decoy.cli._sources import resolve_path
 
-        if self._run is None or Path(raw).is_absolute():
+        if is_absolute_local(raw) or (self._run is None and not self._contained):
             return resolve_path(raw, self._base)
+        if self._run is None and not self._base.exists():
+            RunLayout.out_dir(self._base, create=True)
         if self._pipeline_dir is not None:
             check_path_budget(self._pipeline_dir, raw)
-        placed = placed_path(self._run, raw)
+        placed = (
+            placed_path(self._run, raw)
+            if self._run is not None
+            else contained_path(self._base, raw)
+        )
         if placed is None:
-            raise OUTPUT_PATH_ESCAPES.error(path=raw, base=self._run.path)
+            raise OUTPUT_PATH_ESCAPES.error(path=raw, base=self.base)
         return placed
 
     def place_quarantine(self, config_dict: dict) -> str | None:
@@ -475,10 +594,9 @@ class RunLayout:
         own rule. The engine applies the path after it hashes the config, so the plan hash
         matches the path as declared and the caller's dict is never edited.
         """
-        quarantine = config_dict.get("quarantine")
-        if not isinstance(quarantine, dict) or not quarantine.get("enabled"):
+        if not quarantine_enabled(config_dict):
             return None
-        raw = quarantine.get("output_path")
+        raw = config_dict["quarantine"].get("output_path")
         if not isinstance(raw, str):
             return None
         return str(self.place_target(raw))
@@ -494,7 +612,7 @@ class RunLayout:
             return ()
         folder, run_id = self._pipeline_dir, self._run.run_id
         warnings: list[LayoutWarning] = []
-        current = _read_latest(folder)
+        current = read_latest(folder)
         if current is not None and not is_run_id(current):
             warnings.append(LATEST_INVALID.warning(path=folder))
         elif current is not None and current > run_id:
@@ -509,6 +627,59 @@ class RunLayout:
             except (AtomicWriteError, OSError):
                 warnings.append(LATEST_LINK_FAILED.warning(path=folder))
         return tuple(warnings)
+
+    def output_dir(self) -> Path | None:
+        """The folder this run writes relative paths into: the run folder or `--out-dir`.
+
+        None for a plain fixed layout (only absolute targets, `demo`, `mask()`), and None
+        once `abandon` has removed an empty run folder, so no output names a folder that is gone.
+        """
+        if self._run is None and not self._contained:
+            return None
+        folder = self.base
+        return folder.resolve() if folder.is_dir() else None
+
+    def describe(self, given_as: str = "path") -> dict[str, object]:
+        """The run `--json` members of plan 7.6 that come from the layout, every path absolute.
+
+        `output_dir` is not one of them: it follows the publication ledger (plan 3.6.1 C).
+        `project` is `{root, implicit, skipped}` and `pipeline` is `{name, yaml, given_as}`;
+        both are None when no run folder was opened (only absolute targets, or `--out-dir`).
+        `given_as` is "name" when the run was started with a pipeline name, else "path".
+        """
+        project = pipeline = None
+        if self._project is not None:
+            project = {
+                "root": str(self._project.root.resolve()),
+                "implicit": self._project.implicit,
+                "skipped": [str(p.resolve()) for p in self._project.skipped],
+            }
+        if self._pipeline is not None:
+            yaml = self._project.root.resolve() if self._project is not None else Path.cwd()
+            pipeline = {
+                "name": self._pipeline.name,
+                "yaml": str((yaml / self._pipeline.yaml_rel).resolve()),
+                "given_as": given_as,
+            }
+        return {"project": project, "pipeline": pipeline}
+
+    def summary_facts(self) -> list[tuple[str, str]]:
+        """The summary lines: project, run folder and the latest pointer.
+
+        A path under the current folder prints relative to it, any other path absolute.
+        """
+        facts: list[tuple[str, str]] = []
+        if self._project is not None:
+            facts.append(("Project", shown_path(self._project.root.resolve())))
+        folder = self.output_dir()
+        if folder is not None:
+            facts.append(
+                ("Run folder" if self._run is not None else "Output folder", shown_path(folder))
+            )
+        if self._pipeline_dir is not None:
+            pointer = _LATEST_LINK if os.name == "posix" else _LATEST_FILE
+            facts.append(("Latest", shown_path(self._pipeline_dir / pointer)))
+        return facts
 
     def abandon(self) -> None:
         """Remove the run folder when it holds no file (a run that failed before any write).
@@ -525,7 +696,19 @@ class RunLayout:
                 pass
 
 
-def _read_latest(folder: Path) -> str | None:
+def shown_path(path: Path) -> str:
+    """`path` for human output: relative to the current folder when under it, else absolute."""
+    try:
+        here = Path.cwd().resolve()
+    except (OSError, RuntimeError):
+        return str(path)
+    try:
+        return str(path.relative_to(here))
+    except ValueError:
+        return str(path)
+
+
+def read_latest(folder: Path) -> str | None:
     """The run id `LATEST` names; None when absent, "" when something unreadable is there."""
     path = folder / _LATEST_FILE
     raw = _read_small(path)
@@ -535,22 +718,57 @@ def _read_latest(folder: Path) -> str | None:
     return raw.decode("utf-8", errors="replace").strip() or None
 
 
-def has_placed_output(config_dict: dict) -> bool:
-    """True when the config has a relative local file target or a relative enabled quarantine path.
+def is_placed_relative(raw: object) -> bool:
+    """True when `raw` is a local path that placement resolves below its output folder.
 
-    Only such a config gets an `out/<name>/` folder and a claim (plan 3.5).
+    Empty strings count so the layout gate can refuse them. A URL is only a string whose
+    scheme and `://` start at offset zero; URL-like text later in a relative path is local.
     """
+    return isinstance(raw, str) and not is_absolute_local(raw) and _URL_PATH.match(raw) is None
+
+
+def is_absolute_local(raw: object) -> TypeGuard[str]:
+    """True when `raw` is a path that placement leaves where it is.
+
+    `pathlib` decides, as in `place_target`. `os.path.isabs` disagrees with it on Windows for a
+    rooted path with no drive (`\\x`, `/x`) and differs between Python versions.
+    """
+    return isinstance(raw, str) and Path(raw).is_absolute()
+
+
+def quarantine_enabled(cfg: object) -> bool:
+    """True when `cfg` has a `quarantine` block with a truthy `enabled`.
+
+    The one reader of this fact. The engine's schema check owns the value's type, so a
+    non-bool `enabled` is judged by truthiness here, as it always was.
+    """
+    block = cfg.get("quarantine") if isinstance(cfg, dict) else None
+    return isinstance(block, dict) and bool(block.get("enabled"))
+
+
+def relative_outputs(config_dict: dict) -> list[tuple[str, str]]:
+    """Enumerate every string path the local target writers can place.
+
+    The predicate `is_placed_relative` decides which entries receive relative placement.
+    Keeping absolute paths and URLs in this one enumeration lets the gate distinguish them
+    without a second target walk. An empty path is retained so the gate refuses it.
+    """
+    found: list[tuple[str, object]] = []
     targets = config_dict.get("targets")
-    entries = (
-        [e for e in targets.values() if isinstance(e, dict)] if isinstance(targets, dict) else []
-    )
-    paths = [e.get("path") for e in entries if e.get("type", "file") == "file"]
-    quarantine = config_dict.get("quarantine")
-    if isinstance(quarantine, dict) and quarantine.get("enabled"):
-        paths.append(quarantine.get("output_path"))
-    return any(
-        isinstance(p, str) and p and not Path(p).is_absolute() and "://" not in p for p in paths
-    )
+    if isinstance(targets, dict):
+        found.extend(
+            (f"targets.{table}.path", entry.get("path"))
+            for table, entry in targets.items()
+            if isinstance(entry, dict) and entry.get("type", "file") in ("file", None)
+        )
+    if quarantine_enabled(config_dict):
+        found.append(("quarantine.output_path", config_dict["quarantine"].get("output_path")))
+    return [(location, raw) for location, raw in found if isinstance(raw, str)]
+
+
+def has_placed_output(config_dict: dict) -> bool:
+    """True when the config has a non-empty relative local output."""
+    return any(raw and is_placed_relative(raw) for _location, raw in relative_outputs(config_dict))
 
 
 def open_run_layout(
@@ -561,11 +779,22 @@ def open_run_layout(
     The project root is the marker folder above the YAML, or the YAML's folder when none is
     found. Raises `LayoutError`, `AtomicWriteError` or `PrivateFileError`.
     """
-    from decoy.cli.io._project import find_project
-
     yaml = config.resolve()
     if not has_placed_output(config_dict):
         return RunLayout.fixed(yaml.parent)
-    root = find_project(yaml.parent, project).root
-    name = pipeline_name_for(root, yaml, config_dict.get("name"))
-    return RunLayout.open(root, name, invocation_id)
+    found, name = pipeline_identity(yaml, config_dict.get("name"), project)
+    return RunLayout.open(found.root, name, invocation_id, project=found)
+
+
+def pipeline_identity(
+    config: Path, declared: object, project: Project | Path | None = None
+) -> tuple[Project, PipelineName]:
+    """The project and run-folder name of a pipeline YAML: the one place both are decided.
+
+    `project` is a found project, a root to read (`--project`), or None to walk up. Raises `LayoutError`.
+    """
+    from decoy.cli.io._project import find_project
+
+    walk = project is None or isinstance(project, Path)
+    found = find_project(config.resolve().parent, project) if walk else project
+    return found, pipeline_name_for(found.root, config.resolve(), declared)

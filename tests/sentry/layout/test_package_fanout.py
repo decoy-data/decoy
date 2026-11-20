@@ -13,6 +13,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.layout import FANOUT_TERMS, direct_modules, ratchet_verdict, section
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -22,8 +23,7 @@ TOPS = ("src/decoy", "scripts", "packaging_tools")
 
 # Frozen packages: exact direct-module count at the build base; may only shrink.
 FANOUT_ALLOWLIST: dict[str, int] = {
-    # next command: a named sub-package, src/decoy/cli/<command>/_<noun>.py.
-    "src/decoy/cli": 30,
+    key: e["max"] for key, e in load_allowlist("package-fanout").items()
 }
 
 
