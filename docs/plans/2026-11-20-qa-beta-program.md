@@ -281,7 +281,7 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher 
 
 Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus` and `invariants` concerns use named subpackages.
 
-Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent.
+Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines. S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again.
 
 ## 10. Design notes
 
@@ -290,6 +290,36 @@ Expected size: 30 to 36 new or changed files and at most 3,600 hand-written line
 - **Why per-strategy leak rules.** A blanket "no marker anywhere" fails on documented behaviour (passthrough, truncate, text_redact) and misses same-domain leaks (fpe); the strategy in the config says what may survive.
 - **Why docs-only testers.** A tester who reads the code tests the code's intent, not the user's experience. Doc mismatches are real V1 findings (REL-DOCS).
 - **Why triage reproduces.** Agent reports have been wrong before (a docs agent claimed fixes not in files; a builder reported a passing ratchet that failed). One clean repro is the gate.
+
+### 10a. Tester provisioning model (added after S2 review round 2)
+
+Two Codex rounds on S2 found the same class each time: root changing paths that a tester can write. This section fixes the model so S2 round 3 builds against it.
+
+Rule 1. Root never writes, chmods, chowns or touches a path inside a directory that a tester can write. Every root change happens in a root-owned directory, on a path root created in the same run, before any tester can reach it.
+
+Rule 2. All root file-system changes in `setup-testers.sh` go through three functions: `qa_root_dir` (make a root-owned directory, refuse a symlink), `qa_stage_swap` (copy a source tree into a fresh root-made stage, then rename it over the target) and `qa_new_file` (create a new file with `O_EXCL` semantics in a root-owned directory). A static test fails on any raw `mkdir`, `chown`, `chmod`, `cp`, `touch`, `mv` or redirect outside those functions.
+
+Rule 3. Sources must be QA-owned. Bundle, docs and corpus sources must resolve, after `realpath`, under `/var/lib/decoy-qa/src/`, which is root-owned and not group- or world-writable. Any other path is refused. A source entry that is a symlink pointing outside its own tree, or a regular file with a link count above 1, is refused.
+
+Per-tester layout (`<qa>` is `/var/lib/decoy-qa`, `<t>` is `<qa>/testers/<user>`):
+
+| Path | Owner and mode | Written by |
+|---|---|---|
+| `<t>` | root:`<user>` 0750 | root, once |
+| `<t>/bundle`, `<t>/docs` | root:`<user>` 0750, files 0640 or 0750 | root through `qa_stage_swap` on every setup |
+| `<t>/secret/ci-secret` (P3 only) | dir root:`<user>` 0750, file root:`<user>` 0640 | root through `qa_new_file`, replaced by a stage swap |
+| `<t>/fault.ok` (P5 only) | root:root 0644 | root, after the bounded volume mounts |
+| `<t>/fault` (P5 only) | mount point root-owned; the mounted root is `<user>` 0700, set once on the fresh volume | root at mount time |
+| `<t>/work` (the tester's HOME) | `<user>` 0700 | root creates it once when absent; on a rerun root only checks owner and mode with `lstat` and never changes it |
+| `<t>/work/inbox` | `<user>` 0700 | the tester (findings.py write) |
+
+On macOS the fault image file sits in a root-owned directory with mode 0600.
+
+Corpus: `<qa>/corpus` is root:`qatesters` 0750, replaced only through `qa_stage_swap`.
+
+Launcher: it runs no `mkdir` or `chmod` as the tester. It lists `<t>/work/inbox` as the tester and fails closed when that listing exits nonzero. It checks the bundle as the tester: `realpath "$(command -v decoy)"` must sit under `realpath <t>/bundle`, and `decoy --version` must equal the version in the bundle manifest. Errors are raised after the `except` block, with no cause or context.
+
+S3 proves this layout with the unrelated-user probe (AT-10): an unrelated tester cannot read another tester's work, secret or fault volume, or the checkout.
 
 ## 11. Owner questions
 
@@ -309,9 +339,9 @@ None. No product surface changes. The tooling reads the exit registry and schema
 | Slice | Dates and estimate | Contents | Risk | Review |
 |---|---|---|---|---|
 | S0 | 2026-11-21, 1 day, 5 files, 300 lines | merge this plan; add the roadmap row, current method, checklist pointer and CODEMAP rows | R1 docs | Codex |
-| S1a | 2026-11-22 to 2026-11-25, 4 days, 11 files, 1,200 lines | add `io.py`, corpus manifest and tools, matrices, `allpairspy`, surface registry and AT-1, AT-6 and AT-8; run M3 on the final head | R2 data and atomic writes | Dennis then Codex |
+| S1a | 2026-11-22 to 2026-11-25, 4 days, 11 files, 1,200 lines (actual about 27 files, 3,500 lines; re-baselined 2026-11-20) | add `io.py`, corpus manifest and tools, matrices, `allpairspy`, surface registry and AT-1, AT-6 and AT-8; run M3 on the final head | R2 data and atomic writes | Dennis then Codex |
 | S1b | 2026-11-26 to 2026-12-01, 6 days, 15 files, 1,700 lines | add the shared sweep, I1 to I7, `findings.py`, `repro.py`, AT-2 to AT-5, AT-7, AT-9 and AT-11 to AT-13; run M1, M2 and M4 on the final head | R2 oracle and publication controls | Dennis then Codex |
-| S2 | 2026-11-22 to 2026-11-27, 6 days, 10 files, 700 lines | add five charters, checklist, doc-walk and triager briefs, finding template, launcher, tester setup script and AT-10 | R1 launcher and docs | Codex |
+| S2 | 2026-11-22 to 2026-11-27, 6 days, 10 files, 700 lines (actual about 20 files, 1,900 lines; section 10a added after review round 2) | add five charters, checklist, doc-walk and triager briefs, finding template, launcher, tester setup script and AT-10 | R1 launcher and docs | Codex |
 | S3 | 2026-12-02 to 2026-12-03, 2 days, 1 record | run the dry run on Linux and macOS; run the real OS-user probes; build S and M on both systems and L on Linux; run a 10-cell matrix smoke and one 30-minute charter; triage one finding | R2 operational proof | Codex reads the record |
 | Reserve | 2026-12-04, 1 day | correct dry-run failures only; defer new scope | same as the failed slice | required review for the changed slice |
 
