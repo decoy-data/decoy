@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 import yaml
@@ -150,6 +151,99 @@ def test_f5_validate_rejects_withheld_column_until_refit_with_values(tmp_path: P
     assert refit.exit_code == 0, refit.output
     ok = runner.invoke(app, ["validate", "config", str(_gen_config(tmp_path, snap, real=True))])
     assert ok.exit_code == 0, ok.output
+
+
+_QA_DIAGNOSES = ["Hypertension", "Asthma", "Diabetes", "Migraine", "Arthritis", "Anemia"]
+_QA_NOTES = [f"patient Surname{i} called" for i in range(30)]
+_QA_CANARIES = ["RARE-HIV-B20", "987654", "1921", *_QA_NOTES]
+
+
+def _qa_csv(tmp_path: Path) -> Path:
+    """The DI models QA frame: 1,000 rows, seed 31, one rare cell in each of four columns.
+
+    The profiler flags every date column, so `visit_date` is withheld on its own and the other
+    three columns reach the unflagged floor."""
+    rng = np.random.default_rng(31)
+    n = 1000
+    salary = rng.integers(40, 150, n) * 1000.0
+    salary[0] = 987654.0
+    diagnosis = rng.choice(_QA_DIAGNOSES, n).astype(object)
+    diagnosis[1] = "RARE-HIV-B20"
+    days = rng.integers(0, 3650, n)
+    visit = pd.Series(pd.Timestamp("2015-01-01") + pd.to_timedelta(days, unit="D"))
+    visit[3] = pd.Timestamp("1921-06-15")
+    src = tmp_path / "qa.csv"
+    pd.DataFrame(
+        {
+            "salary": salary,
+            "diagnosis": diagnosis,
+            "note": [_QA_NOTES[i % 30] for i in range(n)],
+            "visit_date": visit.dt.strftime("%Y-%m-%d"),
+        }
+    ).to_csv(src, index=False)
+    return src
+
+
+def test_at_c1_plain_fit_floors_unflagged_columns_and_takes_numeric_bins(tmp_path: Path) -> None:
+    out = tmp_path / "snap.json"
+    result = runner.invoke(
+        app,
+        [
+            "fit",
+            str(_qa_csv(tmp_path)),
+            "--numeric-bins",
+            "17",
+            "--parse-dates",
+            "visit_date",
+            "--json",
+            "-o",
+            str(out),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    text = out.read_text(encoding="utf-8")
+    doc = json.loads(text)
+    assert [c for c in _QA_CANARIES if c in text] == []
+    assert [c for c in _QA_CANARIES if c in result.stdout] == []
+    ranges = doc["columns"]["visit_date"]["stats"]["year_bins"]
+    assert ranges
+    assert all(set(r) == {"start_year", "end_year", "count"} for r in ranges)
+    assert len(doc["columns"]["salary"]["stats"]["bin_counts"]) >= 17
+    assert doc["columns"]["note"]["kind"] == "freetext"
+    assert json.loads(result.stdout)["value_policy"] == "flagged-redacted/v2"
+
+
+def test_at_c2_validate_refuses_a_column_too_small_to_floor(tmp_path: Path) -> None:
+    src = tmp_path / "small.csv"
+    states = ["CA"] * 6 + ["NY"] * 5 + ["TX"] * 4
+    pd.DataFrame({"state": states, "amount": [float(i) for i in range(15)]}).to_csv(
+        src, index=False
+    )
+    snap = tmp_path / "small.snapshot.json"
+    fit = runner.invoke(app, ["fit", str(src), "-o", str(snap)])
+    assert fit.exit_code == 0, fit.output
+    assert "state" in json.loads(snap.read_text(encoding="utf-8"))["redacted_columns"]
+
+    col: dict[str, Any] = {
+        "name": "state",
+        "type": "statistical",
+        "snapshot_file": str(snap),
+        "allow_real_categories": True,
+    }
+    cfg = {
+        "version": 2,
+        "global_settings": {"seed": 1},
+        "tables": [{"name": "synthetic", "row_count": 10, "generate_columns": [col]}],
+        "targets": {
+            "synthetic": {"type": "file", "format": "csv", "path": str(tmp_path / "o.csv")}
+        },
+    }
+    path = tmp_path / "gen.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    result = runner.invoke(app, ["validate", "config", str(path)])
+    assert result.exit_code == 1, result.output
+    assert "statistical_snapshot_values_redacted" in result.output
+    assert "--include-values" in result.output
 
 
 def test_f6_include_values_with_epsilon_is_a_usage_error_before_read(

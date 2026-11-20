@@ -171,22 +171,95 @@ class TestFitDpModeSelectionFailClosed:
         assert result.exit_code == EXIT_USAGE
         assert "dp_mode_not_selected" in result.output
 
-    def test_numeric_bins_without_epsilon_exits_usage(self, tmp_path: Path) -> None:
-        src = _dp_source_csv(tmp_path)
-        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "5"])
-        assert result.exit_code == EXIT_USAGE
-        assert "dp_mode_not_selected" in result.output
-        assert "--numeric-bins" in result.output
+    def test_plain_numeric_bins_reaches_the_snapshot_writer(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import decoy_engine
 
-    @pytest.mark.parametrize("bins", ["2", "100000"])
-    def test_plain_numeric_bins_stays_refused_at_any_size(self, tmp_path: Path, bins: str) -> None:
-        """A large plain bin count would print exact values in one-row interior bins (the engine
-        floors only the end bins), so plain mode refuses the option until the engine floors them."""
-        src = _dp_source_csv(tmp_path)
+        real = decoy_engine.distribution_snapshot_document
+        seen: list[dict[str, Any]] = []
+
+        def _spy(df: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs)
+            return real(df, **kwargs)
+
+        monkeypatch.setattr("decoy_engine.distribution_snapshot_document", _spy)
         out = tmp_path / "snap.json"
-        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", bins, "-o", str(out)])
+        result = runner.invoke(
+            app, ["fit", str(_dp_source_csv(tmp_path)), "--numeric-bins", "17", "-o", str(out)]
+        )
+        assert result.exit_code == 0, result.output
+        assert [kw["numeric_bins"] for kw in seen] == [17]
+        assert out.exists()
+
+    def test_plain_fit_without_numeric_bins_leaves_the_engine_default(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import decoy_engine
+
+        real = decoy_engine.distribution_snapshot_document
+        seen: list[dict[str, Any]] = []
+
+        def _spy(df: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs)
+            return real(df, **kwargs)
+
+        monkeypatch.setattr("decoy_engine.distribution_snapshot_document", _spy)
+        result = runner.invoke(
+            app, ["fit", str(_dp_source_csv(tmp_path)), "-o", str(tmp_path / "snap.json")]
+        )
+        assert result.exit_code == 0, result.output
+        assert len(seen) == 1
+        assert "numeric_bins" not in seen[0]
+
+    def test_dp_numeric_bins_still_reaches_fit_dp_snapshot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from decoy_engine.quality.dp import DpError
+
+        seen: list[dict[str, Any]] = []
+
+        def _capture(df: Any, column_schema: Any, **kwargs: Any) -> Any:
+            seen.append(kwargs)
+            raise DpError(code="capture_stop", message="captured for the test")
+
+        _pass_gate(monkeypatch)
+        monkeypatch.setattr("decoy_engine.quality.dp.fit_dp_snapshot", _capture)
+        runner.invoke(
+            app,
+            [
+                "fit",
+                str(_dp_source_csv(tmp_path)),
+                "--epsilon",
+                "1.0",
+                "--delta",
+                "1e-6",
+                "--dp-number",
+                "amount:0:200",
+                "--dp-allow-omit",
+                "--numeric-bins",
+                "17",
+            ],
+        )
+        assert [kw["numeric_bins"] for kw in seen] == [17]
+
+    @pytest.mark.parametrize("bins", ["0", "1", "-3"])
+    def test_plain_numeric_bins_below_two_is_a_usage_error(self, tmp_path: Path, bins: str) -> None:
+        out = tmp_path / "snap.json"
+        result = runner.invoke(
+            app,
+            [
+                "fit",
+                str(_dp_source_csv(tmp_path)),
+                "--numeric-bins",
+                bins,
+                "-o",
+                str(out),
+                "--json",
+            ],
+        )
         assert result.exit_code == EXIT_USAGE
-        assert "dp_mode_not_selected" in result.output
+        assert json.loads(result.stdout)["code"] == "fit_numeric_bins_invalid"
         assert not out.exists()
 
     def test_allow_omit_without_epsilon_exits_usage(self, tmp_path: Path) -> None:
