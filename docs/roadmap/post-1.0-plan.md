@@ -65,6 +65,7 @@ before and after numbers.
 | 1.x | PIP-NATIVE-EXTRA | [release](groups/release.md) |
 | 1.x | OOC-QUARANTINE, then OOC-DATE-BUCKET | [run](groups/run.md) |
 | 1.x, on demand | FK-CHUNKED-HASH-CHILD | [run](groups/run.md) |
+| 1.x, last | STRUCTURE-REVIEW (not a speed slot; owner 2026-11-20) | [health](groups/health.md) |
 
 ## Corrective backlog (vault)
 
