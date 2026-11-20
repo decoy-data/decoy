@@ -60,11 +60,15 @@ tester that reads the source tests the code's intent, not the user's experience.
   launcher does not create users.
 - The launcher captures tester stdout and stderr in a node-local file. The coordinator gets only
   finding ids and counts.
-- The tester starts in its own workspace (`<home>/work`). `decoy` must resolve inside the bundle
-  as the tester user, or the launcher refuses to start. The launcher also refuses without the
-  marker file that the S3 sandbox probe writes for the node and tester.
-- Each tester submits into its own inbox, `<pass>/inbox/<slug>`, mode 0700. Capture and issued ids
-  are coordinator-only. The launcher exits nonzero when the tester does.
+- Tester files live in `/var/lib/decoy-qa/testers/qatester-<slug>` (plan section 10a). The
+  bundle, docs and corpus come from `/var/lib/decoy-qa/src/`, which only the owner can write.
+  Setup copies them as whole trees and refuses links that point outside a tree.
+- The tester starts in its own workspace, `<home>/work`. As the tester, `decoy` must resolve
+  inside the bundle at the bundle's version, or the launcher refuses to start. The launcher also
+  refuses without the marker file that the S3 sandbox probe writes for the node and tester.
+- Each tester submits into its own inbox, `<home>/work/inbox`, which the tester owns. The launcher
+  makes no folder as the tester, lists the inbox, and fails closed when the listing fails. Capture
+  and issued ids are coordinator-only. The launcher exits nonzero when the tester does.
 - Briefs forbid values in messages.
 
 ## Corpus
