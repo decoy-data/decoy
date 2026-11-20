@@ -30,7 +30,7 @@ from decoy.cli.io import (
     quarantine_enabled,
 )
 from decoy.cli.io import resolve_path as _resolve_path
-from decoy.cli.run._context import RunContext, UsageRefusal
+from decoy.cli.run._context import RunContext, UsageRefusal, output_placement
 from decoy.cli.run._execute import (
     _check_chunked_tables,
     _ChunkedFixedWidthError,
@@ -235,19 +235,6 @@ def _guard_mask_secret_ref(raw: object) -> None:
         raise _MaskSecretUsageError(_problem)
 
 
-def _placement(ctx: RunContext) -> OutputPlacement:
-    """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
-    project run folder; the typed side files join the collision rule either way."""
-    typed = tuple(
-        (flag, path)
-        for flag, path in (("--evidence-out", ctx.evidence_out), ("--vault", ctx.vault))
-        if path is not None
-    )
-    if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
-    return OutputPlacement(typed=typed, chunked=ctx.chunked)
-
-
 def _refuse_layout_faults(ctx: RunContext) -> None:
     """Raise the gate's own refusal for an output layout fault, before any source is touched.
 
@@ -259,7 +246,7 @@ def _refuse_layout_faults(ctx: RunContext) -> None:
     if shared:
         raise PreRunCheckError.from_findings(shared)
     try:
-        findings = layout_findings(ctx.config, ctx.raw, _placement(ctx))
+        findings = layout_findings(ctx.config, ctx.raw, output_placement(ctx))
     except Exception:
         return
     if findings:
@@ -361,7 +348,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         # The source-independent gate layers (config, compile) run on the placeholder config
         # first (r13): an invalid config keeps the gate's own error, and no database is opened.
         _probe = check_static_before_acquire(
-            duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
+            duckdb_probe_raw(ctx.raw, _flags), ctx.config, output_placement(ctx)
         )
         check_declared_before_acquire(_probe, _flags, ctx.config.parent)
         import tempfile
@@ -387,7 +374,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         ctx.config,
         GateRoute.CHUNKED if ctx.chunked else GateRoute.PLAIN,
         ctx.state,
-        _placement(ctx),
+        output_placement(ctx),
         skip_subset=ctx.no_subset,
     )
 

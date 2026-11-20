@@ -61,7 +61,7 @@ class OutputPlacement:
 
     `project` is normal placement under `<root>/out/<name>/<run-id>/`; `fixed` is a typed
     `--out-dir` (`directory`); `preview` is a `--rows` run that writes nothing. `typed` holds
-    the `(flag, path)` side files (`--evidence-out`, `--vault`) that join the collision rule.
+    the `(flag, path)` side files (`--evidence-out`, `--vault`, `--result`) that join the collision rule.
     `chunked` is the route, which the cloud kind cannot use.
     """
 
@@ -82,8 +82,8 @@ class OutputPlacement:
 
 
 # The one policy for a destination's final path component. A writer either follows a final
-# symlink (file targets, quarantine and `--evidence-out`, which use `write_local_target`
-# REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
+# symlink (file targets, quarantine, `--evidence-out` and `--result`, which use
+# `write_local_target` REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
 # root, the side-file check and the collision rule all read this, so none decides alone.
 _REPLACES_FINAL = frozenset({"--vault"})
 

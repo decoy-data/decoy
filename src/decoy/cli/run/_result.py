@@ -15,6 +15,7 @@ Named limit: a `--chunked` run emits no progress events, so its tables carry no 
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -24,10 +25,11 @@ from typing import Any
 
 import typer
 
+from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
-from decoy.cli.run._context import RunContext
+from decoy.cli.run._context import RunContext, output_placement
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
@@ -243,6 +245,63 @@ def build(
     return Document(payload, dict(_BUILT), code)
 
 
+def _placement_refused(ctx: RunContext) -> bool:
+    """True when the gate's layout rules refuse this run's outputs with `--result` among them.
+
+    The same check the gate runs before a source is read, run again here because a refusal that
+    came before the gate (a bad `--notify`, a bad key) never reached it, and because the gate's
+    own refusal for a colliding `--result` must not then write the file it refused. Any layout
+    fault blocks the write: the result path is then not known to be clear of the outputs. Fails
+    closed on an error.
+    """
+    from decoy.cli.gate import layout_findings, parse_pipeline_yaml
+
+    try:
+        raw = getattr(ctx, "raw", None)
+        raw = raw if raw is not None else parse_pipeline_yaml(ctx.config)[0]
+        config = raw if isinstance(raw, dict) and ctx.rows is None else {}
+        return bool(layout_findings(ctx.config, config, output_placement(ctx)))
+    except Exception:
+        return True
+
+
+def _write_file(ctx: RunContext, document: Document) -> Document:
+    """Write the document to `--result` and return it with `result_status.file` filled.
+
+    The one writer of the file: `emit` and `report_error` call it before the envelope is
+    written, so the envelope can say whether the file landed. The path goes through the
+    placement rules first, then `write_local_target` (replace, atomic). A failure is one stderr
+    line with the code and no path, and never changes the exit integer.
+    """
+    if ctx.result is None:
+        return document
+    status = dict(document.status)
+    code = None
+    if document.payload is None:
+        code = status["code"]
+    elif _placement_refused(ctx):
+        code = "output_path_refused"
+    else:
+        try:
+            body = json.dumps(document.payload, indent=2).encode("utf-8")
+            write_local_target(ctx.result, body, WriteMode.REPLACE)
+        except (AtomicWriteError, OSError) as exc:
+            code = describe(exc) if isinstance(exc, AtomicWriteError) else type(exc).__name__
+    if code is None:
+        status["file"] = "written"
+        if ctx.state.mode is OutputMode.default:
+            ctx.state.console.print("Result:", str(ctx.result), markup=False)
+    else:
+        status["file"] = "failed"
+        if document.payload is not None:
+            status["code"] = "run_result_write_failed"
+            if ctx.state.mode is not OutputMode.quiet:
+                ctx.state.err_console.print(
+                    warn("warning:"), f"run_result_write_failed ({code})", markup=False
+                )
+    return replace(document, status=status)
+
+
 def members(document: Document) -> dict:
     """The `--json` members the document adds to an envelope: `result` (when built) and
     `result_status`."""
@@ -257,6 +316,7 @@ def emit(ctx: RunContext, document: Document, payload: dict | None) -> None:
     A no-op outside `--json` and when `payload` is None. This and `finish` are the only places
     under `cli/run/` that write the envelope or end the process (G-RUN-ONE-EXIT).
     """
+    document = _write_file(ctx, document)
     if payload is not None:
         emit_json(ctx.state, {**payload, **members(document)})
 
@@ -289,6 +349,7 @@ def report_error(
     its own). `stderr_line` keeps the stderr line under `--json` too, for a run whose outputs
     are already written. Does not end the run; `finish_error` does.
     """
+    document = _write_file(ctx, document)
     if ctx.state.mode is OutputMode.json:
         if stderr_line:
             # The same emitter in its human form: one `error:` line on stderr, then the envelope.

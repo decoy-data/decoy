@@ -56,6 +56,7 @@ FORWARD_SWITCHES = (  # sent when on
 REFUSED_WITH_ALL = (
     ("--evidence-out", "evidence_out"),
     ("--vault", "vault"),
+    ("--result", "result"),
     ("--out-dir", "out_dir"),
 )
 # Handled apart from forwarding: `ctx`, `config` and `all_` pick the pipelines; the child always

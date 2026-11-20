@@ -16,7 +16,7 @@ import typer
 
 from decoy import _native_gate, _resources
 from decoy.cli.gate import GateFinding
-from decoy.cli.io import PipelineRef, RunLayout
+from decoy.cli.io import OutputPlacement, PipelineRef, RunLayout
 from decoy.ui.output import OutputState
 
 # Rows per chunk when `--chunk-size` is not given. The option has no default of its own so a
@@ -26,7 +26,7 @@ DEFAULT_CHUNK_SIZE = 100_000
 # The machine-readable `code` of each warning the CLI raises itself. Closed: a new code is
 # added here, so the `--json` `warnings` vocabulary has one list.
 CLI_WARNING_CODES: frozenset[str] = frozenset(
-    {"chunked_key_check_not_run", "run_result_build_failed"}
+    {"chunked_key_check_not_run", "run_result_build_failed", "run_result_write_failed"}
 )
 
 
@@ -90,6 +90,7 @@ class RunContext:
     vault: Path
     key_label: str
     evidence_out: Path
+    result: Path | None
     out_dir: Path | None
     notify: list[str]
     notify_on: NotifyOn
@@ -209,3 +210,20 @@ class RunContext:
         if folder is not None and any(folder in f.parents for f in files):
             members["output_dir"] = str(folder)
         return members
+
+
+def output_placement(ctx: RunContext) -> OutputPlacement:
+    """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
+    project run folder; the typed side files join the collision rule either way."""
+    typed = tuple(
+        (flag, path)
+        for flag, path in (
+            ("--evidence-out", ctx.evidence_out),
+            ("--vault", ctx.vault),
+            ("--result", ctx.result),
+        )
+        if path is not None
+    )
+    if ctx.out_dir is not None:
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
+    return OutputPlacement(typed=typed, chunked=ctx.chunked)

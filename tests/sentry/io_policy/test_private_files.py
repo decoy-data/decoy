@@ -129,6 +129,8 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/report.py::_render::write_local_target::1": _REPORT,
     "cli/run/_evidence.py::write_evidence::write_local_target::1": _E2E
     + "test_run_vault_and_evidence_are_private",
+    "cli/run/_result.py::_write_file::write_local_target::1": _E2E
+    + "test_run_result_file_is_private",
     "cli/tokenize.py::detokenize::write_private_table::1": _RESTORED,
     "cli/unmask.py::unmask::write_private_table::1": _RESTORED,
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
@@ -599,10 +601,10 @@ def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
     assert run(files) == []
 
 
-def test_the_census_is_60_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_61_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 60
-    assert len([s for s in sinks if is_entry(s)]) == 26
+    assert len(sinks) == 61
+    assert len([s for s in sinks if is_entry(s)]) == 27
     counts: dict[str, int] = {}
     for r in ROWS:
         counts[r.disposition] = counts.get(r.disposition, 0) + 1
