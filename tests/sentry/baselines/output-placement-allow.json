@@ -18,5 +18,8 @@
    "reason": "Resolves the chunked source path for the empty-parquet schema; an input.",
    "sites": 1
   }
+ },
+ "moved_from": {
+  "cli/run/_context.py::output_placement": "cli/run/_prepare.py::prepare"
  }
 }
