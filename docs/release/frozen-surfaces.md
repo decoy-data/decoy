@@ -27,9 +27,9 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | `decoy-ci-report/v1` CI report tag | tag census | `src/decoy/ci/__init__.py` | `tests/unit/test_ci_reporting.py` |
 | `primary/v1` SARIF fingerprint key | tag census | `src/decoy/ci/reporting.py` | `tests/e2e/test_ci_sarif.py` |
 | `decoy-project/v1` project marker kind | tag census | `src/decoy/cli/io/_project.py` | `tests/unit/project_layout/test_layout.py` |
-| `scan-set/v1` saved scan tag | tag census | `src/decoy/cli/io/_scan_set.py` | `tests/sentry/test_scan_reader.py` |
-| Tag literals built with f-strings, and tags outside Python files | tag census | `tests/sentry/release/_tags.py` | accepted-known-limit: S7B-KL-1 |
-| Public renames before 1.0 | the engine taxonomy rename | `docs/release/public-renames.md` | `tests/sentry/release/test_public_renames.py` |
+| `scan-set/v1` saved scan tag | tag census | `src/decoy/cli/io/_scan_set.py` | `tests/e2e/test_scan_command.py` |
+| Tag literals built with f-strings or concatenation | tag census | `tests/sentry/release/_tags.py` | accepted-known-limit: S7B-KL-1 |
+| Public renames before 1.0 (pointer to the engine contract) | the engine taxonomy rename | `docs/release/public-renames.md` | `tests/sentry/release/test_retired_name_residual.py` |
 
 ## Limits of the `--json` snapshot
 

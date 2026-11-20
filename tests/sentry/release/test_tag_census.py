@@ -1,10 +1,9 @@
-"""AT-S7b: every `"<name>/vN"` literal in `src/decoy` is classified.
+"""AT-S7b: every `"<name>/vN"` tag in `src/decoy` is a frozen format with a map row.
 
-A new tag literal fails the build until it is a frozen format (a row in
-`docs/release/frozen-surfaces.md`), a derivation label or an internal tag with a reason. The
-three classes stay disjoint, and a map row or table entry with no literal in the source is stale
-and fails too. The scan is an AST walk, so a tag in a comment or docstring is not a literal.
-Known limit S7B-KL-1: f-string tags and tags outside Python files are not scanned.
+A new tag literal fails the build until `docs/release/frozen-surfaces.md` has a row for it, and a
+row whose tag has left the source is stale and fails too. The scan is an AST walk over Python
+files, so a tag in a comment or docstring is not a literal, plus a line scan of the shipped data
+files. Known limit S7B-KL-1: tags built with f-strings or concatenation are not scanned.
 """
 
 from __future__ import annotations
@@ -23,43 +22,39 @@ def test_the_scan_finds_the_known_tags() -> None:
     assert len(found) >= FLOOR
 
 
-def test_every_tag_literal_is_classified() -> None:
-    frozen, labels, internal = t.classes()
-    missing = t.unclassified(set(t.source_tags()), frozen, labels, internal)
-    assert missing == set(), f"classify these tags (map row or INTERNAL_TAGS): {sorted(missing)}"
+def test_every_tag_is_a_frozen_format_with_a_row() -> None:
+    missing = t.unclassified(set(t.source_tags()), t.frozen_tags())
+    assert missing == set(), f"add a frozen-surfaces row for: {sorted(missing)}"
 
 
-def test_the_three_classes_are_disjoint() -> None:
-    assert t.overlaps(*t.classes()) == set()
-
-
-def test_no_class_names_a_tag_the_source_lost() -> None:
-    frozen, labels, internal = t.classes()
-    stale = (frozen | labels | internal) - set(t.source_tags())
-    assert stale == set(), f"no literal in src/decoy for: {sorted(stale)}"
-
-
-def test_every_internal_tag_has_an_owner_and_a_reason() -> None:
-    for tag, (owner, reason) in t.INTERNAL_TAGS.items():
-        assert reason.strip(), tag
-        assert owner in t.source_tags().get(tag, []), f"{tag} is not literal in {owner}"
-
-
-def test_every_derivation_label_names_its_owner() -> None:
-    for tag, owner in t.DERIVATION_LABELS.items():
-        assert owner in t.source_tags().get(tag, []), f"{tag} is not literal in {owner}"
+def test_no_row_names_a_tag_the_source_lost() -> None:
+    stale = t.frozen_tags() - set(t.source_tags())
+    assert stale == set(), f"no tag in src/decoy for: {sorted(stale)}"
 
 
 # Seeds: each must be reported, or the census misses that surface.
 def test_seed_a_new_tag_literal_is_found() -> None:
     assert t.literals('x = "x.tag/v1"\n') == {"x.tag/v1"}
     assert t.literals("x = b'x.tag/v1'\n") == {"x.tag/v1"}
-    assert t.unclassified({"x.tag/v1"}, set(), set(), set()) == {"x.tag/v1"}
+    assert t.unclassified({"x.tag/v1"}, set()) == {"x.tag/v1"}
 
 
 @pytest.mark.parametrize("text", ['"""the x.tag/v1 doc"""\n', "# x.tag/v1\n", 'x = "a x.tag/v1"\n'])
-def test_seed_prose_is_not_a_tag(text: str) -> None:
+def test_seed_prose_is_not_a_python_tag(text: str) -> None:
     assert t.literals(text) == set()
+
+
+def test_seed_a_data_file_tag_is_found() -> None:
+    assert t.data_tags("kind: y.tag/v1\n") == {"y.tag/v1"}
+    assert t.data_tags('{"schema": "y.tag/v1"}\n') == {"y.tag/v1"}
+    assert t.data_tags("url: https://example.test/api/v1/x\n") == set()
+    assert t.data_tags("path: a/v1/b\n") == set()
+
+
+def test_seed_a_shipped_data_file_tag_reaches_the_census(tmp_path) -> None:
+    (tmp_path / "t.yaml").write_text("kind: y.tag/v1\n", encoding="utf-8")
+    (tmp_path / "t.py").write_text('x = "x.tag/v1"\n', encoding="utf-8")
+    assert set(t.source_tags(tmp_path)) == {"x.tag/v1", "y.tag/v1"}
 
 
 def test_seed_a_dropped_map_row_leaves_a_tag_unclassified() -> None:
@@ -68,14 +63,8 @@ def test_seed_a_dropped_map_row_leaves_a_tag_unclassified() -> None:
         for ln in t.MAP.read_text(encoding="utf-8").splitlines()
         if not (ln.startswith("|") and "`scan-set/v1`" in ln.split("|")[1])
     )
-    labels, internal = set(t.DERIVATION_LABELS), set(t.INTERNAL_TAGS)
-    missing = t.unclassified(set(t.source_tags()), t.map_tags(kept), labels, internal)
+    missing = t.unclassified(set(t.source_tags()), t.map_tags(kept))
     assert missing == {"scan-set/v1"}
-
-
-def test_seed_a_class_overlap_is_found() -> None:
-    assert t.overlaps({"a/v1"}, {"a/v1"}, set()) == {"a/v1"}
-    assert t.overlaps({"a/v1"}, set(), {"a/v1"}) == {"a/v1"}
 
 
 def test_the_map_reader_reads_the_surface_cell_only() -> None:
