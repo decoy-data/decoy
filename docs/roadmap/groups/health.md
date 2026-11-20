@@ -25,7 +25,9 @@ Blocks the 1.0 release.
 
 Additive. Not scheduled until a 1.x release picks it up.
 
-None.
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| STRUCTURE-REVIEW | One strict maintainability review of the engine and CLI, run at the end of 1.x (owner 2026-11-20). The brief follows the Cursor team kit's thermo-nuclear code quality review, rewritten in our own words because that repo shows no licence: look for restructurings that delete whole branches or layers, ad-hoc conditionals added to unrelated flows, refactors that move complexity without removing it, thin wrappers, silent fallbacks that hide an invariant, logic in the wrong layer. It folds in the H-1 Wave B structure review. Output is a ranked backlog of 1.x patch and 2.0 items, not direct PRs. No behavior change | engine, CLI | NOT STARTED | source: `https://github.com/cursor/plugins/blob/main/cursor-team-kit/skills/thermo-nuclear-code-quality-review/SKILL.md` | every other 1.x slot in `post-1.0-plan.md` |
 
 ## Maintenance
 
