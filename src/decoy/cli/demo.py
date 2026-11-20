@@ -158,7 +158,7 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
     }
     run = scan_descriptors(descriptors, rows=None, strategy="full")
     core = run.core
-    scan_json.write_bytes(core_bytes(core))
+    scan_json.write_text(core_bytes(core).decode("utf-8"))
     scanned = core["tables"][0]
 
     if state.mode is OutputMode.default:
