@@ -11,6 +11,11 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-20: library commands (rows 39 and 40)
+
+- `decoy library list`, `show`, `diff` and `ref` (CLI #215) and `prune`, `clean` and `export` (CLI #219) are merged. Paths print as plain text, never as Rich markup.
+- OS lanes: Linux and macOS ran. The Windows lane (`test_clean_with_a_file_held_open_on_windows`) is written and skip-marked; it runs with the Windows chain (row 89 WIN-FEAS).
+
 Moved here from `decoy-platform/docs/backlog/RECENTLY-SHIPPED.md` on 2026-11-05 with the roadmap
 ([ROADMAP.md](ROADMAP.md)). The platform copy is frozen at that date. Entries below 2026-11-05 are
 copied unchanged; paths in them are relative to the repo they name.
