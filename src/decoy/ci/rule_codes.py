@@ -237,6 +237,7 @@ _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
         "present-ok",  # execution/native/_companion_status.py:384
         "process_exited",  # execution/_isolated_memwatch.py:44
         "read_error",  # execution/_isolated_memwatch.py:44
+        "scan_core_table",  # profiling/_scan_core.py:98
         "scan_diff_unknown_kind",  # profiling/scan_diff.py:287
         "stopped",  # execution/_isolated_memwatch.py:44
         "thread_start_failed",  # execution/_isolated_memwatch.py:44
