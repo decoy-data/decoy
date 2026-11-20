@@ -84,7 +84,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-52 rows block 1.0, 33 are Later and 12 are Maintenance (2026-11-20). Each cell lists the row
+53 rows block 1.0, 33 are Later and 12 are Maintenance (2026-11-20). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its v1+
 candidates that have no plan yet (83 in all), and the health file lists 31 maintenance candidates. The named 1.x speed slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md).
 
@@ -98,7 +98,7 @@ candidates that have no plan yet (83 in all), and the health file lists 31 maint
 | [Local record library](roadmap/groups/library.md) | 36 L2-cli, 37 L3a-cli | 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02 | none |
 | [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10 | none |
-| [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, UPGRADE-KEY, 89 WIN-FEAS, 6 WIN-RUNNER, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER | 90a REL-IMAGE, PIP-NATIVE-EXTRA (1.x) | 24zr SETUP-NER-JSON |
+| [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, UPGRADE-KEY, 89 WIN-FEAS, 6 WIN-RUNNER, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER, QA-BETA | 90a REL-IMAGE, PIP-NATIVE-EXTRA (1.x) | 24zr SETUP-NER-JSON |
 | [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, 24zx MAC-WHEEL-RUNNERS, FREEZE-SURFACE | none | 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
 
 Build order inside 1.0 follows each row's After column and the sequencing rules in
