@@ -8,7 +8,7 @@ import typer
 
 from decoy.cli.io import LayoutError, mint_invocation_id, open_out_dir
 from decoy.cli.project import only_pipeline, run_all
-from decoy.cli.run import _errors, _evidence, _execute, _prepare, _progress, _render
+from decoy.cli.run import _errors, _evidence, _execute, _prepare, _progress, _render, _result
 from decoy.cli.run._context import RunContext
 from decoy.cli.run._notify import (
     _begin_trace,
@@ -126,6 +126,7 @@ def execute(ctx: RunContext) -> None:
         _trace = _begin_trace(_otel)
         # One sink for the engine; the display is one consumer of it (a job log joins in L5b).
         ctx.progress = _progress.build()
+        ctx.progress.add(_result.collect(ctx))
         with (
             run_progress(ctx.state, f"Running {ctx.yaml_mode}...") as display,
             contextlib.ExitStack() as _scopes,
