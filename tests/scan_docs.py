@@ -20,10 +20,13 @@ def scan_set_doc(
     row_count: int = 5,
     reid_risk_score: float | None = None,
     quasi_identifier_groups: Sequence[Sequence[str]] = (),
+    basis: str | None = None,
+    scanned_rows: int | None = None,
 ) -> dict[str, Any]:
     """One-table `scan-set/v1` document. Each field names `name`, and may set `pii_score`
-    and `detector_hits`."""
-    return {
+    and `detector_hits`. Without `basis` the table has neither it nor `scanned_rows`, the shape
+    of a scan saved before the basis labels."""
+    doc = {
         "scan_schema": "scan-set/v1",
         "engine_version": "",
         "scanned_at": "",
@@ -44,6 +47,10 @@ def scan_set_doc(
         ],
         "relationships": [],
     }
+    if basis is not None:
+        doc["tables"][0]["basis"] = basis
+        doc["tables"][0]["scanned_rows"] = scanned_rows
+    return doc
 
 
 def _field(spec: Mapping[str, Any]) -> dict[str, Any]:

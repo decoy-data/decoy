@@ -23,10 +23,12 @@ import typer
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy.cli._sources import csv_file_source
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.scanning import _detectors
 from decoy.ui.card import render_card
 from decoy.ui.output import (
     OutputMode,
     OutputState,
+    detector_log,
     emit_error,
     emit_json,
     emit_json_document,
@@ -90,6 +92,57 @@ def safe_field_record(field: Mapping[str, Any]) -> dict[str, Any]:
         "pii_candidate": field["pii_candidate"],
         "detector_hits": list(field["detector_hits"]),
     }
+
+
+def is_sample(table: Mapping[str, Any]) -> bool:
+    """True unless the read reached the end of the source. An unknown basis reads as a sample,
+    as the engine read model does."""
+    return table.get("basis") != "whole"
+
+
+def rows_scanned_text(table: Mapping[str, Any]) -> str:
+    """The one rows label: `10,000 of about 28,058 (sample, head)` or `4,812 (whole file)`."""
+    scanned = table["scanned_rows"]
+    if not is_sample(table):
+        return f"{scanned:,} (whole file)"
+    total = table["row_count"]
+    about = "" if table["row_count_exact"] else "about "
+    return f"{scanned:,} of {about}{total:,} (sample, {table['sample_strategy']})"
+
+
+def key_candidates_text(table: Mapping[str, Any]) -> str:
+    """A claimed key needs counts over every row, so a sampled scan lists none."""
+    if is_sample(table):
+        return "not checked (sampled scan; --rows 0 reads every row)"
+    return ", ".join(table["key_candidates"]) or "none"
+
+
+def scanned_rows_note(table: Mapping[str, Any]) -> str | None:
+    """The suffix a sampled saved scan puts on a count: "in 10,000 scanned rows".
+
+    None for a whole read. A saved scan written before the basis labels has no `scanned_rows`
+    (the read model fills `basis` with `sample`, so only that member tells it apart): it says
+    so instead of naming a row count it never recorded.
+    """
+    if not is_sample(table):
+        return None
+    scanned = table.get("scanned_rows")
+    if scanned is None:
+        return "basis not recorded; read as a sample"
+    return f"in {scanned:,} scanned rows"
+
+
+def saved_field_facts(field: Mapping[str, Any], table: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """The Type, Nulls and Distinct rows of `decoy scan show`, labelled with the table's basis."""
+    note = scanned_rows_note(table)
+    facts: list[tuple[str, str]] = []
+    for key, label in (("dtype", "Type"), ("null_count", "Nulls"), ("distinct_count", "Distinct")):
+        value = field.get(key)
+        if value is None:
+            continue
+        counted = key != "dtype" and note is not None
+        facts.append((label, f"{value} ({note})" if counted else str(value)))
+    return facts
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +302,10 @@ def _table_summary(core_table: Mapping[str, Any], scan: Any, shown_path: str, sh
     summary: dict[str, Any] = {
         "name": core_table["name"],
         "source": shown_path,
-        "row_count": scan.profile.row_count,
+        "row_count": core_table["row_count"],
+        "row_count_exact": core_table["row_count_exact"],
+        "scanned_rows": core_table["scanned_rows"],
+        "basis": core_table["basis"],
         "field_count": len(fields),
         "sample_strategy": scan.profile.sample_strategy,
         "pii_candidate_count": sum(1 for f in fields if f["pii_candidate"]),
@@ -264,19 +320,25 @@ def _table_summary(core_table: Mapping[str, Any], scan: Any, shown_path: str, sh
     return summary
 
 
-def _flat_payload(t: Mapping[str, Any], saved: str | None, show: bool) -> dict[str, Any]:
+def _flat_payload(
+    t: Mapping[str, Any], saved: str | None, show: bool, detectors: list[dict[str, Any]]
+) -> dict[str, Any]:
     """The long-standing single-file `--json` keys, unchanged."""
     payload: dict[str, Any] = {
         "command": "scan",
         "status": "ok",
         "source": t["source"],
         "row_count": t["row_count"],
+        "row_count_exact": t["row_count_exact"],
+        "scanned_rows": t["scanned_rows"],
+        "basis": t["basis"],
         "field_count": t["field_count"],
         "sample_strategy": t["sample_strategy"],
         "pii_candidate_count": t["pii_candidate_count"],
         "pii_note": PII_NOTE,
         "reid_risk_score": t["reid_risk_score"],
         "quasi_identifier_groups": t["quasi_identifier_groups"],
+        "detectors": detectors,
         "saved": saved,
     }
     if show:
@@ -286,7 +348,9 @@ def _flat_payload(t: Mapping[str, Any], saved: str | None, show: bool) -> dict[s
     return payload
 
 
-def _multi_payload(tables: list[dict], saved: str | None) -> dict[str, Any]:
+def _multi_payload(
+    tables: list[dict], saved: str | None, detectors: list[dict[str, Any]]
+) -> dict[str, Any]:
     return {
         "command": "scan",
         "status": "ok",
@@ -294,14 +358,26 @@ def _multi_payload(tables: list[dict], saved: str | None) -> dict[str, Any]:
         "pii_note": PII_NOTE,
         "tables": tables,
         "relationships": [],
+        "detectors": detectors,
         "saved": saved,
     }
 
 
-def render_fields(state: OutputState, field_records: list[dict], pii_candidate_count: int) -> None:
-    """The privacy-safe per-field table, then the honesty framing (H4)."""
+def render_fields(
+    state: OutputState,
+    field_records: list[dict],
+    pii_candidate_count: int,
+    *,
+    sample: bool = False,
+    models: bool = False,
+) -> None:
+    """The privacy-safe per-field table, then the honesty framing (H4).
+
+    On a sampled scan the null and distinct columns say so in their headers.
+    """
     state.console.print(accent(f"Fields ({len(field_records)}):"))
-    tbl = make_table("Field", "Type", "Null rate", "Distinct", "PII candidate")
+    tag = " (sample)" if sample else ""
+    tbl = make_table("Field", "Type", f"Null rate{tag}", f"Distinct{tag}", "PII candidate")
     for f in field_records:
         pii_cell = ""
         if f["pii_candidate"]:
@@ -319,14 +395,15 @@ def render_fields(state: OutputState, field_records: list[dict], pii_candidate_c
     state.console.print(tbl)
     state.console.print()
     if pii_candidate_count > 0:
-        render_pii_honesty(state, pii_candidate_count)
+        render_pii_honesty(state, pii_candidate_count, models)
 
 
-def render_pii_honesty(state: OutputState, pii_candidate_count: int) -> None:
+def render_pii_honesty(state: OutputState, pii_candidate_count: int, models: bool = False) -> None:
     """The profile-honesty framing block (H4): candidates are suggestions."""
+    how = "pattern matching and the detector models" if models else "pattern matching"
     state.console.print(
         warn("PII candidates:"),
-        f"{pii_candidate_count} field(s) flagged by pattern matching.",
+        f"{pii_candidate_count} field(s) flagged by {how}.",
     )
     state.console.print(
         " ", hint("These are SUGGESTIONS for review -- NOT authoritative classifications.")
@@ -352,12 +429,12 @@ def _pii_fact(count: int) -> str:
 
 
 def _render_single(
-    state: OutputState, t: Mapping[str, Any], saved: str | None, header_flag: str
+    state: OutputState, t: Mapping[str, Any], saved: str | None, header_flag: str, line: str
 ) -> None:
     k = t["k_anonymity"]
     facts: list[tuple[str, str]] = [
         ("Source", Path(t["source"]).name),
-        ("Rows scanned", f"{t['row_count']:,} ({t['sample_strategy']})"),
+        ("Rows scanned", rows_scanned_text(t)),
         ("Columns", str(t["field_count"])),
         ("PII candidates", _pii_fact(t["pii_candidate_count"])),
         ("Reid risk", f"{_score(t['reid_risk_score'])} / 100 (k={k if k is not None else 'n/a'})"),
@@ -365,7 +442,8 @@ def _render_single(
     if t["quasi_identifier_groups"]:
         qi = ", ".join("(" + " + ".join(g) + ")" for g in t["quasi_identifier_groups"])
         facts.append(("Quasi-identifiers", qi))
-    facts.append(("Key candidates", ", ".join(t["key_candidates"]) or "none"))
+    facts.append(("Key candidates", key_candidates_text(t)))
+    facts.append(("Detectors", line))
     if saved is not None:
         facts.append(("Saved", saved))
         next_hint = f"decoy scan fields {saved}"
@@ -378,11 +456,12 @@ def _render_single(
     render_card(state, command="decoy scan", facts=facts, next_hint=next_hint, status="ok")
 
 
-def _render_multi(state: OutputState, tables: list[dict], saved: str | None) -> None:
+def _render_multi(state: OutputState, tables: list[dict], saved: str | None, line: str) -> None:
     facts = [
         ("Tables", str(len(tables))),
-        ("Rows scanned", f"{sum(t['row_count'] for t in tables):,}"),
+        ("Rows scanned", f"{sum(t['scanned_rows'] for t in tables):,}"),
         ("PII candidates", _pii_fact(sum(t["pii_candidate_count"] for t in tables))),
+        ("Detectors", line),
     ]
     if saved is not None:
         facts.append(("Saved", saved))
@@ -394,11 +473,11 @@ def _render_multi(state: OutputState, tables: list[dict], saved: str | None) -> 
     for t in tables:
         tbl.add_row(
             f"{t['name']} <- {t['source']}",
-            f"{t['row_count']:,} ({t['sample_strategy']})",
+            rows_scanned_text(t),
             str(t["field_count"]),
             str(t["pii_candidate_count"]),
             _score(t["reid_risk_score"]),
-            ", ".join(t["key_candidates"]) or "-",
+            key_candidates_text(t),
         )
     state.console.print(tbl)
 
@@ -415,6 +494,8 @@ def run_scan(
     layout: Path | None,
     has_header: bool | None,
     column_names: str | None,
+    detectors: str | None = None,
+    ner_model: str | None = None,
 ) -> None:
     """The body of `decoy scan SOURCES...`. Exits through `typer.Exit`."""
     given = [str(p) for p in sources]
@@ -431,9 +512,12 @@ def run_scan(
         descriptors, paths = resolve_sources(
             sources, fmt=fmt, layout=layout, has_header=has_header, column_names=column_names
         )
-    except ScanUsageError as exc:
-        _emit_error(state, where, str(exc), exc.hint_text)
+        pre_scan = _detectors.resolve_pre_scan(detectors, ner_model)
+    except (ScanUsageError, _detectors.DetectorsUsageError) as exc:
+        _emit_error(state, where, str(exc), getattr(exc, "hint_text", None))
         raise typer.Exit(code=EXIT_USAGE) from None
+    # A model that cannot run refuses here, before the first table is read.
+    _detectors.preflight(state, where, pre_scan)
 
     # --rows 0 reads the whole file; otherwise --strategy picks the bounded sample.
     row_cap: int | None = None if rows == 0 else rows
@@ -442,11 +526,15 @@ def run_scan(
     try:
         from decoy_engine import scan_set_to_dict, scan_sources
 
-        with scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms:
+        with (
+            detector_log(state, state.verbose),
+            scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms,
+        ):
             result = scan_sources(
                 descriptors,
                 sample_rows=row_cap,
                 strategy=effective,  # type: ignore[arg-type]
+                pre_scan=pre_scan,
             )
             ms.complete()
             core = scan_set_to_dict(result, detail=False)
@@ -473,6 +561,9 @@ def run_scan(
         return
 
     saved = str(out_path) if out_path else None
+    members = _detectors.detector_members(core)
+    line = _detectors.detectors_line(members)
+    models = _detectors.has_models(members)
     tables = [
         _table_summary(ct, st, paths[ct["name"]], show_fields)
         for ct, st in zip(core["tables"], result.tables, strict=True)
@@ -481,9 +572,9 @@ def run_scan(
     if state.mode is OutputMode.json:
         emit_json(
             state,
-            _flat_payload(tables[0], saved, show_fields)
+            _flat_payload(tables[0], saved, show_fields, members)
             if single
-            else _multi_payload(tables, saved),
+            else _multi_payload(tables, saved, members),
         )
         return
     if state.mode is OutputMode.quiet:
@@ -496,17 +587,19 @@ def run_scan(
         header_flag = (
             "" if has_header is None else (" --has-header" if has_header else " --no-header")
         )
-        _render_single(state, tables[0], saved, header_flag)
+        _render_single(state, tables[0], saved, header_flag, line)
     else:
-        _render_multi(state, tables, saved)
+        _render_multi(state, tables, saved, line)
     total_pii = sum(t["pii_candidate_count"] for t in tables)
     if show_fields:
         for t in tables:
             state.console.print()
             if not single:
                 state.console.print(accent(f"Table {t['name']}"))
-            render_fields(state, t["fields"], t["pii_candidate_count"])
+            render_fields(
+                state, t["fields"], t["pii_candidate_count"], sample=is_sample(t), models=models
+            )
     elif total_pii > 0:
         state.console.print()
-        render_pii_honesty(state, total_pii)
+        render_pii_honesty(state, total_pii, models)
         state.console.print(hint("Tip:"), "add", code("--show-fields"), "for per-field detail.")

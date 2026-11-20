@@ -129,6 +129,10 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/report.py::_render::write_local_target::1": _REPORT,
     "cli/run/_evidence.py::write_evidence::write_local_target::1": _E2E
     + "test_run_vault_and_evidence_are_private",
+    "cli/run/_result.py::_write_file::write_local_target::1": _E2E
+    + "test_run_result_file_is_private",
+    "cli/io/_integrity_report.py::_write::write_local_target::1": _E2E
+    + "test_run_post_scan_report_is_private",
     "cli/tokenize.py::detokenize::write_private_table::1": _RESTORED,
     "cli/unmask.py::unmask::write_private_table::1": _RESTORED,
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
@@ -599,14 +603,14 @@ def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
     assert run(files) == []
 
 
-def test_the_census_is_63_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_62_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 63
-    assert len([s for s in sinks if is_entry(s)]) == 26
+    assert len(sinks) == 62
+    assert len([s for s in sinks if is_entry(s)]) == 28
     counts: dict[str, int] = {}
     for r in ROWS:
         counts[r.disposition] = counts.get(r.disposition, 0) + 1
-    assert counts == {"public": 23, "private": 4, "staged": 3, "temp": 2, "read": 5}
+    assert counts == {"public": 20, "private": 4, "staged": 3, "temp": 2, "read": 5}
 
 
 def test_the_baseline_has_two_rows_with_exits() -> None:

@@ -178,6 +178,17 @@ class TestFitDpModeSelectionFailClosed:
         assert "dp_mode_not_selected" in result.output
         assert "--numeric-bins" in result.output
 
+    @pytest.mark.parametrize("bins", ["2", "100000"])
+    def test_plain_numeric_bins_stays_refused_at_any_size(self, tmp_path: Path, bins: str) -> None:
+        """A large plain bin count would print exact values in one-row interior bins (the engine
+        floors only the end bins), so plain mode refuses the option until the engine floors them."""
+        src = _dp_source_csv(tmp_path)
+        out = tmp_path / "snap.json"
+        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", bins, "-o", str(out)])
+        assert result.exit_code == EXIT_USAGE
+        assert "dp_mode_not_selected" in result.output
+        assert not out.exists()
+
     def test_allow_omit_without_epsilon_exits_usage(self, tmp_path: Path) -> None:
         src = _dp_source_csv(tmp_path)
         result = runner.invoke(app, ["fit", str(src), "--dp-allow-omit"])

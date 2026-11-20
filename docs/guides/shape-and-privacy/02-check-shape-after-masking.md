@@ -14,7 +14,7 @@ on purpose. This page shows what to expect and how to measure it.
 | `passthrough` | Unchanged. |
 | `shuffle` | Same values and same counts. The link between this column and the rest of the row is broken. |
 | `hash`, `fpe`, `tokenize` | Values change, but each distinct input maps to one distinct output. The number of distinct values and their frequencies are kept. |
-| `date_shift` | Each date moves by an offset inside the range you set. The overall shape is kept, shifted slightly. |
+| `date_shift` | Each date moves by an offset inside the range you set. The overall shape is kept, shifted slightly. Set `date_format` to the format the dates use. |
 | `bucketize`, `truncate`, `geo_generalize`, `bucket_perturb` | Many values collapse into fewer, coarser ones. |
 | `faker`, `categorical` without source weights | The source distribution is not carried over. |
 | `redact`, `text_redact` | Collapses to a constant or near-constant. |
@@ -63,6 +63,7 @@ tables:
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
       - name: is_active
         strategy: passthrough
 targets:

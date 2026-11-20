@@ -85,24 +85,30 @@ tables:
       # C: Dates more specific than a year. A shared namespace keeps the
       # same source date shifting by the same offset across columns, so
       # admission -> discharge intervals stay plausible.
+      # Set date_format to the format your dates use (strptime, e.g. %m/%d/%Y).
       - name: dob
         strategy: date_shift
         namespace: patient_dates
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
+      # Set date_format to the format your dates use (strptime, e.g. %m/%d/%Y).
       - name: admission_date
         strategy: date_shift
         namespace: patient_dates
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
+      # Set date_format to the format your dates use (strptime, e.g. %m/%d/%Y).
       - name: discharge_date
         strategy: date_shift
         namespace: patient_dates
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
 
       # D/E/F: Telephone, fax, email
       - name: phone
