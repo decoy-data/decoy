@@ -1,28 +1,31 @@
-"""Start one QA tester as its own pre-provisioned OS user (QA-BETA plan 5.1, 5.6).
+"""Start one QA tester as its own pre-provisioned OS user (QA-BETA plan 5.1, 5.6 and 10a).
 
-The owner runs `setup-testers.sh` once per node. The launcher never creates users. It runs the
-tester's agent as `qatester-<slug>` with a clean environment:
+The owner runs `setup-testers.sh` once per node. The launcher never creates users and makes no
+directory as the tester. It runs the tester's agent as `qatester-<slug>` with a clean environment:
 
-- the tester starts in its own workspace (`<home>/work`), never in the coordinator's folder;
-- the bundle's `bin` folder is first on PATH, and before launch `command -v decoy` is checked
-  as the tester user and must resolve inside the bundle, or the launch fails closed;
+- the tester starts in its own workspace (`<t>/work`, its HOME), never in the coordinator's folder;
+- the bundle's `bin` folder is first on PATH. Before launch, as the tester, `realpath` of
+  `command -v decoy` must sit under `realpath <t>/bundle`, and `decoy --version` must end with the
+  version in `<t>/bundle/VERSION`, or the launch fails closed;
 - stdout and stderr go to a coordinator-only capture file whose descriptor the central writer
   opens (`open_private_capture`), so this module never opens a file for writing itself;
-- the tester submits only into its own inbox `<pass_dir>/inbox/<slug>`, owned by the tester,
-  mode 0700. Capture and issued ids are coordinator-only. The coordinator gets one line of
-  counts and finding ids, and a nonzero exit when the tester exited nonzero.
+- the tester submits into `<t>/work/inbox`, which the tester owns and `findings.py write` makes.
+  The launcher lists it as the tester and fails closed when the listing exits nonzero. Capture and
+  issued ids are coordinator-only. The coordinator gets one line of counts and finding ids, and a
+  nonzero exit when the tester exited nonzero.
 
-S3 notes. The checkout-read probe belongs to slice S3. After the probe shows, as the tester
-user on this node, that a planted checkout read fails, S3 writes the marker file named by
+`<t>` is `/var/lib/decoy-qa/testers/qatester-<slug>`.
+
+S3 notes. The checkout-read probe belongs to slice S3. After the probe shows, as the tester user on
+this node, that a planted checkout read fails, S3 writes the marker file named by
 `probe_marker_path(node, slug)` (default `/var/lib/decoy-qa/probes/<node>/<slug>.ok`) through
-`publish_private_once`. The launcher refuses to start without it. S3 also registers the
-tester's secret file content with the needles set, and picks `pass_dir` under a folder the
-tester user can traverse, for example `/var/lib/decoy-qa/pass-<name>`.
+`publish_private_once`. The launcher refuses to start without it. S3 also registers the tester's
+secret file content with the needles set.
 
 Import dependency: the writer functions come from `scripts/qa/io.py` (slice S1a):
 `publish_private_once(path, data)`, `make_private_dir(path, mode=0o700)` and
-`open_private_capture(path) -> int`. This module loads that file by path only when no `IoApi`
-is passed, and the load fails with a clear error until S1a lands. No product code is imported.
+`open_private_capture(path) -> int`. This module loads that file by path only when no `IoApi` is
+passed, and the load fails with a clear error until S1a lands. No product code is imported.
 """
 
 from __future__ import annotations
@@ -41,14 +44,14 @@ from pathlib import Path
 
 USER_PREFIX = "qatester-"
 SLUG = re.compile(r"[a-z0-9]{2,16}")
-HOME_ROOTS = {"linux": "/home", "darwin": "/Users"}
+QA_ROOT = "/var/lib/decoy-qa"
 SYSTEM_PATHS = {
     "linux": "/usr/local/bin:/usr/bin:/bin",
     "darwin": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
 }
 ID_PREFIX = "f-"
 PROBE_MARKER_ROOT = Path("/var/lib/decoy-qa/probes")
-FAULT_MARKER = ".qa-bounded"
+FAULT_MARKER = "fault.ok"
 BRIEFS = (
     "p1-solo-developer",
     "p2-data-engineer",
@@ -94,12 +97,11 @@ def default_io() -> IoApi:
         raise LaunchError("scripts/qa/io.py cannot be loaded")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    try:
-        return IoApi(
-            module.publish_private_once, module.make_private_dir, module.open_private_capture
-        )
-    except AttributeError as exc:
-        raise LaunchError("scripts/qa/io.py lacks a writer the launcher needs") from exc
+    names = ("publish_private_once", "make_private_dir", "open_private_capture")
+    funcs = [getattr(module, name, None) for name in names]
+    if not all(callable(f) for f in funcs):
+        raise LaunchError("scripts/qa/io.py lacks a writer the launcher needs")
+    return IoApi(*funcs)
 
 
 def _check_slug(slug: str) -> str:
@@ -112,10 +114,10 @@ def tester_user(slug: str) -> str:
     return USER_PREFIX + _check_slug(slug)
 
 
-def tester_home(system: str, slug: str, home_root: str | None = None) -> str:
-    if system not in HOME_ROOTS:
+def tester_home(system: str, slug: str, qa_root: str | None = None) -> str:
+    if system not in SYSTEM_PATHS:
         raise LaunchError("system must be linux or darwin")
-    return f"{home_root or HOME_ROOTS[system]}/{tester_user(slug)}"
+    return f"{qa_root or QA_ROOT}/testers/{tester_user(slug)}"
 
 
 def probe_marker_path(node: str, slug: str, root: Path = PROBE_MARKER_ROOT) -> Path:
@@ -135,14 +137,13 @@ def build_command(
     system: str,
     slug: str,
     agent_argv: Sequence[str],
-    pass_dir: Path,
     ids: Sequence[str],
     findings_tool: str,
-    home_root: str | None = None,
+    qa_root: str | None = None,
     fault_dir: str | None = None,
 ) -> list[str]:
     """The full argv. The inner shell enters the tester's workspace before it runs the agent."""
-    home = tester_home(system, slug, home_root)
+    home = tester_home(system, slug, qa_root)
     work = f"{home}/work"
     env = [
         "env",
@@ -151,8 +152,7 @@ def build_command(
         f"PATH={home}/bundle/bin:{SYSTEM_PATHS[system]}",
         f"DECOY_HOME={work}/.decoy-home",
         f"QA_TESTER={slug}",
-        f"QA_PASS_DIR={pass_dir}",
-        f"QA_INBOX={pass_dir}/inbox/{slug}",
+        f"QA_INBOX={work}/inbox",
         f"QA_FINDING_IDS={','.join(ids)}",
         f"QA_FINDINGS_TOOL={findings_tool}",
     ]
@@ -164,10 +164,8 @@ def build_command(
     return ["sudo", "-n", "-u", tester_user(slug), "-H", "--", *env, *inner]
 
 
-def as_tester(
-    system: str, slug: str, argv: Sequence[str], home_root: str | None = None
-) -> list[str]:
-    home = tester_home(system, slug, home_root)
+def as_tester(system: str, slug: str, argv: Sequence[str], qa_root: str | None = None) -> list[str]:
+    home = tester_home(system, slug, qa_root)
     env = ["env", "-i", f"HOME={home}/work", f"PATH={home}/bundle/bin:{SYSTEM_PATHS[system]}"]
     return ["sudo", "-n", "-u", tester_user(slug), "-H", "--", *env, *argv]
 
@@ -231,12 +229,13 @@ def _run(argv: list[str], capture_fd: int, brief_text: str) -> int:
     ).returncode
 
 
-def _fault_dir(system: str, slug: str, home_root: str | None, probe: Probe) -> str | None:
+def _fault_dir(system: str, slug: str, qa_root: str | None, probe: Probe) -> str | None:
     """The P5 bounded volume, if setup made it. The tester user checks, since the home is private."""
     if slug != "p5":
         return None
-    path = f"{tester_home(system, slug, home_root)}/fault"
-    code, _ = probe(as_tester(system, slug, ["test", "-f", f"{path}/{FAULT_MARKER}"], home_root))
+    t = tester_home(system, slug, qa_root)
+    code, _ = probe(as_tester(system, slug, ["test", "-f", f"{t}/{FAULT_MARKER}"], qa_root))
+    path = f"{t}/fault"
     return path if code == 0 else None
 
 
@@ -254,7 +253,7 @@ def launch(
     probe: Probe = _probe,
     node: str | None = None,
     marker_root: Path = PROBE_MARKER_ROOT,
-    home_root: str | None = None,
+    qa_root: str | None = None,
     brief_dir: Path = BRIEF_DIR,
 ) -> LaunchResult:
     """Check the node, issue ids, run the tester with captured output, return the hand-back."""
@@ -265,40 +264,35 @@ def launch(
     if not probe_marker_path(node or socket.gethostname(), slug, marker_root).is_file():
         raise LaunchError("no S3 sandbox probe marker for this node and tester: run the probe")
     api = io or default_io()
-    inbox = pass_dir / "inbox" / slug
+    t = tester_home(system, slug, qa_root)
 
-    # The tester resolves `decoy` inside its own bundle, or nothing starts.
-    code, out = probe(as_tester(system, slug, ["sh", "-c", "command -v decoy"], home_root))
-    if code != 0 or not out.strip().startswith(f"{tester_home(system, slug, home_root)}/bundle/"):
-        raise LaunchError("decoy does not resolve inside the tester's bundle")
+    # The tester resolves `decoy` inside its own bundle at the expected version, or nothing starts.
+    check = 'p=$(command -v decoy) && realpath "$p" && realpath "$1" && "$p" --version && cat "$1/VERSION"'
+    code, out = probe(as_tester(system, slug, ["sh", "-c", check, "sh", f"{t}/bundle"], qa_root))
+    lines = out.splitlines()
+    if (
+        code != 0
+        or len(lines) != 4
+        or not lines[0].startswith(lines[1].rstrip("/") + "/")
+        or not lines[3].strip()
+        or lines[2].split()[-1:] != [lines[3].strip()]
+    ):
+        raise LaunchError("decoy does not resolve inside the tester's bundle at its version")
 
-    # Traverse-only folders for the tester; capture and issued ids stay coordinator-only.
-    api.make_private_dir(pass_dir, mode=0o711)
-    api.make_private_dir(pass_dir / "inbox", mode=0o711)
+    # Capture and issued ids are coordinator-only. The tester's inbox is made by the tester.
+    api.make_private_dir(pass_dir, mode=0o700)
     api.make_private_dir(pass_dir / "issued", mode=0o700)
     api.make_private_dir(pass_dir / "capture", mode=0o700)
-    # The tester makes its own inbox, so only that user can write or read it.
-    code, _ = probe(
-        as_tester(
-            system,
-            slug,
-            ["sh", "-c", 'mkdir -p -m 0700 "$1" && chmod 0700 "$1"', "sh", str(inbox)],
-            home_root,
-        )
-    )
-    if code != 0:
-        raise LaunchError("the tester inbox could not be made")
 
     ids = allocate_ids(pass_dir, slug, id_count, publish=api.publish_private_once)
-    fault = _fault_dir(system, slug, home_root, probe)
+    fault = _fault_dir(system, slug, qa_root, probe)
     argv = build_command(
         system=system,
         slug=slug,
         agent_argv=[*AGENT_BASE, *extras],
-        pass_dir=pass_dir,
         ids=ids,
         findings_tool=findings_tool,
-        home_root=home_root,
+        qa_root=qa_root,
         fault_dir=fault,
     )
     brief_text = (brief_dir / f"{brief}.md").read_text(encoding="utf-8")
@@ -307,7 +301,12 @@ def launch(
         exit_code = runner(argv, fd, brief_text)
     finally:
         os.close(fd)
-    _, listing = probe(as_tester(system, slug, ["ls", "-1", str(inbox)], home_root))
+    list_inbox = 'if [ -d "$1" ]; then ls -1 "$1"; fi'
+    code, listing = probe(
+        as_tester(system, slug, ["sh", "-c", list_inbox, "sh", f"{t}/work/inbox"], qa_root)
+    )
+    if code != 0:
+        raise LaunchError("the tester inbox could not be listed")
     skipped = "disk-full" if slug == "p5" and fault is None else ""
     line = handback(slug, ids, listing.split(), exit_code=exit_code, skipped=skipped)
     return LaunchResult(line, exit_code)
