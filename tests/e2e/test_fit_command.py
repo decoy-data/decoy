@@ -171,12 +171,47 @@ class TestFitDpModeSelectionFailClosed:
         assert result.exit_code == EXIT_USAGE
         assert "dp_mode_not_selected" in result.output
 
-    def test_numeric_bins_without_epsilon_exits_usage(self, tmp_path: Path) -> None:
+    def test_numeric_bins_without_epsilon_reaches_the_plain_snapshot(self, tmp_path: Path) -> None:
+        """Plain mode takes `--numeric-bins` and forwards it (QA-FIT-REDACT C1); it is no
+        longer a DP-only option."""
+        src = tmp_path / "wide.csv"
+        pd.DataFrame({"score": [(i % 60) * 1.5 for i in range(600)]}).to_csv(src, index=False)
+        out = tmp_path / "snap.json"
+        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "17", "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        assert "dp_mode_not_selected" not in result.output
+        counts = json.loads(out.read_text(encoding="utf-8"))["columns"]["score"]["stats"][
+            "bin_counts"
+        ]
+        assert len(counts) >= 17
+        default = tmp_path / "default.json"
+        assert runner.invoke(app, ["fit", str(src), "-o", str(default)]).exit_code == 0
+        stats = json.loads(default.read_text(encoding="utf-8"))["columns"]["score"]["stats"]
+        assert len(stats["bin_counts"]) < len(counts)
+
+    @pytest.mark.parametrize("bins", ["0", "1", "-3"])
+    def test_a_plain_numeric_bins_below_two_exits_usage(self, tmp_path: Path, bins: str) -> None:
         src = _dp_source_csv(tmp_path)
-        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "5"])
+        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", bins])
         assert result.exit_code == EXIT_USAGE
-        assert "dp_mode_not_selected" in result.output
-        assert "--numeric-bins" in result.output
+        assert "--numeric-bins must be a whole number of 2 or more" in " ".join(
+            result.output.split()
+        )
+
+    def test_numeric_bins_with_epsilon_still_reaches_the_dp_fit(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _pass_gate(monkeypatch)
+        seen: dict[str, Any] = {}
+
+        def spy(*args: Any, **kwargs: Any) -> Any:
+            seen.update(kwargs)
+            raise SystemExit(0)
+
+        monkeypatch.setattr("decoy_engine.quality.dp.fit_dp_snapshot", spy)
+        args = ["fit", str(_dp_source_csv(tmp_path)), *_DP_ARGS]
+        runner.invoke(app, [*args, "--dp-number", "amount:0:200", "--numeric-bins", "5"])
+        assert seen.get("numeric_bins") == 5
 
     def test_allow_omit_without_epsilon_exits_usage(self, tmp_path: Path) -> None:
         src = _dp_source_csv(tmp_path)

@@ -27,6 +27,7 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-20
 
+- **CLI** (CLI #NNN, stacked on #327): the CLI halves that wait on engine 0.28.1, closing five rows. PROFILE-SAMPLE-LABELS C1: `decoy scan` labels a sampled count (`10,000 of about 28,058 (sample, head)`), lists no key on a sample, and `--json` gains `basis`, `scanned_rows` and `row_count_exact` with `row_count` now the source count; `scan show` labels a sampled saved scan. Row 24f C1: `decoy fit --numeric-bins` works without `--epsilon`, and the fit guide describes the 10-row floor. Row 24zm C1: `decoy.scan()` and `explain security` say the saved profile and snapshot are floored. Row 24z Z-C1: `decoy run --post-validate` prints a line for a deterministic `faker` column whose distinct sources merged. Row 24zu: a test pins that `decoy demo` then `decoy report integrity` exits 0.
 - **Roadmap**: row 32b INIT-WIZARD closed under the owner's 2026-11-19 decision to stop the guided wizard. 1.0 keeps today's `decoy init` (presets, and `decoy init <file>` with `# REVIEW:` comments) plus the engine pieces E3 (engine #407), E1 (engine #653, `56a06f1b3`, 2026-11-19: `column_entry` and `apply_review`) and E2 (engine #654, `40e2bb275`, 2026-11-19: `finding_edits`). E1 and E2 ship in the experimental tier. The rest of `C:plan/init-wizard-v1-rest` is stopped; pipeline authoring moves to DECOY-LANG.
 
 ## 2026-11-19

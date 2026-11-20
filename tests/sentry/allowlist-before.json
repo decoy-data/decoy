@@ -70,7 +70,7 @@
   "cli/run/_errors.py::uniqueness_impossible": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/run/_execute.py::fidelity_report": {"count": 1, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/run/_execute.py::post_validation": {"count": 1, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
-  "cli/scanning/_multi.py::row_count": {"count": 6, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
+  "cli/scanning/_multi.py::row_count": {"count": 5, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/scanning/_multi.py::scan_header_suspect": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/scanning/_multi.py::scan_key_type_mismatch": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/subset.py::subset_config_missing": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
@@ -138,10 +138,10 @@
   "src/decoy/cli/report.py::compare_manifests::_fp_changes": {"reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."}
  },
  "module-size": {
-  "src/decoy/cli/fit.py": {"max": 818, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
+  "src/decoy/cli/fit.py": {"max": 816, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/report.py": {"max": 2299, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/scan.py": {"max": 1037, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
+  "src/decoy/cli/scan.py": {"max": 1034, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
  },
  "output-name-allow": {
  },
