@@ -16,7 +16,6 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
-from decoy.cli.scanning import resolve_sources
 
 runner = CliRunner()
 _EPOCH = "1970-01-01T00:00:00+00:00"
@@ -80,6 +79,8 @@ def _expected(
 ) -> dict[str, Any]:
     """The pre-refactor call, spelled out: what `run_scan` did before `scan_descriptors`."""
     from decoy_engine import scan_set_to_dict, scan_sources
+
+    from decoy.cli.scanning import resolve_sources
 
     descriptors, _ = resolve_sources(
         [path], fmt=None, layout=layout, has_header=has_header, column_names=None
