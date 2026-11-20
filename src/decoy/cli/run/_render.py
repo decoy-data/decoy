@@ -221,3 +221,4 @@ def finish_preview(ctx: RunContext) -> None:
     gen.render_preview(ctx.state, ctx._preview_tables)
     if ctx.state.mode is not OutputMode.quiet:
         render_warnings(ctx.state, warnings)
+    _result.finish(ctx, document)

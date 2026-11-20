@@ -210,8 +210,23 @@ def _side_file_in_out(out: Path, typed: tuple[tuple[str, Path], ...]) -> str | N
     return None
 
 
+def protected_inputs(config: Path, config_dict: dict) -> tuple[tuple[str, Path], ...]:
+    """The pipeline file and each local file source, as `(label, path)`, that no typed side
+    file may be written onto. A source path is relative to the pipeline file's folder."""
+    found: list[tuple[str, Path]] = [("the pipeline file", Path(config))]
+    sources = config_dict.get("sources")
+    for name, spec in sources.items() if isinstance(sources, dict) else ():
+        raw = spec.get("path") if isinstance(spec, dict) else None
+        if isinstance(raw, str) and raw and "://" not in raw and "\x00" not in raw:
+            found.append((f"sources.{name}.path", Path(config).parent / raw))
+    return tuple(found)
+
+
 def resolved_output_collisions(
-    config_dict: dict, base: Path | None, typed: tuple[tuple[str, Path], ...] = ()
+    config_dict: dict,
+    base: Path | None,
+    typed: tuple[tuple[str, Path], ...] = (),
+    protected: tuple[tuple[str, Path], ...] = (),
 ) -> tuple[str, str] | None:
     """The first two outputs that resolve to one destination, as `(first, second)` labels.
 
@@ -244,6 +259,16 @@ def resolved_output_collisions(
             return first, label
         seen[key] = label
         entries[entry] = label
+    # A side file never lands on an input: the same key, so links and hard links are covered.
+    for label, path in protected:
+        held = {_destination_key(path), _destination_key(path, replaces_final=True)}
+        for flag, side in typed:
+            keys = {
+                _destination_key(Path(side).absolute(), replaces_final=replaces_final(flag)),
+                _destination_key(Path(side).absolute(), replaces_final=True),
+            }
+            if keys & held:
+                return label, flag
     return None
 
 
@@ -348,7 +373,9 @@ def layout_issues(
         issues.append((None, SIDE_FILE_IN_OUT.error(flag=flag, base="the project's out/ folder")))
     if not issues:
         where = folder if fixed is not None else folder and folder / "<run-id>"
-        clash = resolved_output_collisions(config_dict, where, placement.typed)
+        clash = resolved_output_collisions(
+            config_dict, where, placement.typed, protected_inputs(config, config_dict)
+        )
         if clash is not None:
             first_location = next((c for c in clash if not c.startswith("--")), None)
             issues.append(

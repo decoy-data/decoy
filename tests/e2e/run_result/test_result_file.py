@@ -75,6 +75,74 @@ def test_every_end_writes_the_file(tmp_path: Path, end: str, exit_code: int) -> 
         assert json.loads(result.stdout)["result"] == document
 
 
+@pytest.mark.parametrize("flag", [[], ["-q"]])
+def test_preview_writes_the_file_in_every_mode(tmp_path: Path, flag: list[str]) -> None:
+    cfg = _gen_config(tmp_path)
+    out = tmp_path / "out.json"
+    result = runner.invoke(app, ["run", str(cfg), "--rows", "2", *flag, "--result", str(out)])
+    assert result.exit_code == 0, result.output
+    _model(_file(out))
+
+
+def _gen_config(tmp_path: Path) -> Path:
+    cfg = tmp_path / "gen.yaml"
+    cfg.write_text(
+        yaml.safe_dump(
+            {
+                "version": 2,
+                "global_settings": {"seed": 7},
+                "sources": {},
+                "tables": [
+                    {
+                        "name": "g",
+                        "row_count": 3,
+                        "generate_columns": [
+                            {"name": "id", "type": "sequence", "start": 1, "step": 1}
+                        ],
+                    }
+                ],
+                "targets": {
+                    "g": {"type": "file", "format": "csv", "path": str(tmp_path / "g.csv")}
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return cfg
+
+
+@pytest.mark.parametrize("kind", ["generate", "mask"])
+def test_preview_result_does_not_replace_a_target(tmp_path: Path, kind: str) -> None:
+    cfg = _gen_config(tmp_path) if kind == "generate" else _write(tmp_path)
+    target = tmp_path / ("g.csv" if kind == "generate" else "out1.csv")
+    target.write_text("zz_keep\n", encoding="utf-8")
+    result = runner.invoke(app, ["run", str(cfg), "--rows", "2", "--json", "--result", str(target)])
+    assert target.read_text(encoding="utf-8") == "zz_keep\n", result.output
+
+
+@posix_only
+@pytest.mark.parametrize("flag", ["--result", "--evidence-out"])
+@pytest.mark.parametrize("what", ["source", "config", "symlink"])
+@pytest.mark.parametrize("early", [False, True])
+def test_side_file_never_lands_on_an_input(
+    tmp_path: Path, flag: str, what: str, early: bool
+) -> None:
+    cfg = _write(tmp_path)
+    source = tmp_path / "in1.csv"
+    victim = cfg if what == "config" else source
+    path = victim
+    if what == "symlink":
+        path = tmp_path / "alias.json"
+        path.symlink_to(source)
+    before = victim.read_bytes()
+    args = ["run", str(cfg), "--json", flag, str(path)]
+    if early:
+        args += ["--notify", "bogus"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1, result.output
+    assert victim.read_bytes() == before
+
+
 @pytest.mark.parametrize(("end", "exit_code"), [("success", 0), ("runtime", 3)])
 def test_write_failure_keeps_exit(tmp_path: Path, end: str, exit_code: int) -> None:
     cfg = _write(tmp_path)
