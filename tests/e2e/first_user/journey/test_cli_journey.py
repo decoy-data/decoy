@@ -41,6 +41,7 @@ import pandas as pd
 import polars as pl
 import pytest
 import yaml
+from scripts.qa import sweep as qa_sweep
 
 from tests.cli_journey import allowed_exit_codes, journey_step, step_by_id
 
@@ -216,20 +217,21 @@ def _not_data(shop: Path) -> list[Path]:
 
 
 def _sweep(shop: Path, runs: list[Run], secret: str) -> tuple[tuple[str, ...], int]:
-    captures: dict[str, bytes] = {}
+    """Look for a marker or the secret in every capture, through the one QA sweep."""
+    captures: dict[str, tuple[str, bytes]] = {}
     for n, run in enumerate(runs):
-        captures[f"stdout of command {n}"] = run.out.encode()
-        captures[f"stderr of command {n}"] = run.err.encode()
+        captures[f"stdout of command {n}"] = ("stdout", run.out.encode())
+        captures[f"stderr of command {n}"] = ("stderr", run.err.encode())
     for path in _not_data(shop):
-        captures[f"file {path.relative_to(shop).as_posix()}"] = path.read_bytes()
-    needles = {"marker": b"jmark", "secret": secret.encode(), "secret bytes": bytes.fromhex(secret)}
-    leaks = tuple(
-        f"{what} in {name}"
-        for name, blob in captures.items()
-        for what, n in needles.items()
-        if n in blob
-    )
-    return leaks, sum(len(blob) for blob in captures.values())
+        # Files that are not data are not one registry surface; `logs` is the generic text one.
+        captures[f"file {path.relative_to(shop).as_posix()}"] = ("logs", path.read_bytes())
+    labels = ("marker", "secret", "secret bytes")
+    needles = (b"jmark", secret.encode(), bytes.fromhex(secret))
+    swept = sum(len(blob) for _, blob in captures.values())
+    if not swept:
+        return (), 0
+    found = qa_sweep.sweep(captures, needles, qa_sweep.load_registry())
+    return tuple(f"{labels[int(lk.coordinate[1:])]} in {lk.name}" for lk in found), swept
 
 
 def _tree(path: Path, depth: int = 2) -> frozenset[str]:
