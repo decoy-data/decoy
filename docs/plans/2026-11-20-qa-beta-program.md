@@ -296,7 +296,7 @@ Expected size: 30 to 36 new or changed files and at most 3,600 hand-written line
 Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS users, groups and file modes, changed by root, where every rerun and every path is a new attack surface. A codex-fix pass closed the gaps, but only by adding more of the same machinery (per-pass generations, private groups, mount tables, disk images). Rev 3 removes the class. Isolation comes from established tools that start from a clean image each time.
 
 **Linux (Dell): one rootless Podman container per tester per pass.** `podman run --rm` from a pinned base image (`ubuntu:22.04` by digest), as an unprivileged user inside a user namespace, with:
-- `--network none`. P3 is the exception and runs in the GitHub sandbox repo, not here;
+- one internal Podman network whose only way out is the egress proxy below. The proxy allows `api.anthropic.com` on port 443 and nothing else, so the CLI under test has no egress and the agent reaches only the model. P3 is the exception and runs in the GitHub sandbox repo, not here;
 - read-only bind mounts for the bundle, the docs copy and the tester's corpus items (`:ro`);
 - a writable `--tmpfs /work:size=2g` as HOME and cwd, plus `--tmpfs /fault:size=64m` for P5 only;
 - the inbox at `/work/inbox`, copied out by the launcher after the container exits, through `io.py`;
@@ -304,23 +304,23 @@ Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS us
 
 The checkout and other testers do not exist inside the container. A rerun starts from the same clean image, so there is no rerun state.
 
-**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (owner approved 2026-11-20, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
+**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (owner approved 2026-11-20, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), points the guest's HTTPS proxy at the same allow-list proxy, runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
 
 **What remains ours.**
 - `scripts/qa/launch.py` builds the podman or tart argv from one table. The table is the only place that lists mounts and limits.
 - The launcher captures output through `io.open_private_capture`, and copies the inbox out through `io.publish_private_once`.
-- `scripts/qa/nodes.md` gives the one-time node setup: install Podman (apt) on the Dell and Tart (brew) on the Mac, and pull or clone the pinned images.
+- `scripts/qa/nodes.md` gives the one-time node setup: install Podman (apt) on the Dell and Tart (from the checksummed release) on the Mac, pull or clone the pinned images, and run the egress proxy. The proxy is a stock forward proxy (Squid or tinyproxy from the distribution packages) with a one-line allow list, not our code.
 
 No setup script runs as root on a schedule. No tester OS users exist. `setup-testers.sh` and `provision.py` are dropped.
 
-**Agent inside the sandbox.** The agent runtime runs inside the container or guest with only the brief, the docs and the bundle. The launcher passes only the model API credential, through a mounted secret file, never argv. The credential is a separate low-limit QA key. Getting it is an owner step (Q4).
+**Agent inside the sandbox.** Each tester is Claude Code in headless mode (`claude -p`, pinned version, baked into the image) with only the brief, the docs and the bundle. It runs on the owner's Claude subscription, not on a paid API key (owner 2026-11-20): the launcher passes a subscription token made once with `claude setup-token` (an owner step, Q4), through a mounted secret file read into `CLAUDE_CODE_OAUTH_TOKEN`, never argv. No metered API spend. Tester sessions use the subscription's usage limits, which the builders share, so QA passes run when builder slots are free (section 7, at most 4 testers) and usage is checked each tick. Threat model: accidental leaks only (V1); the token is readable inside the sandbox, but the proxy lets it reach only the model API.
 
 **Tests.** Unit tests check the argv table: every listed mount is read-only except /work and /fault; there is no network except where a row says so; the security flags are present; the secret is mounted, not passed as an argument. S3 proves the isolation for real: a probe inside the container and the guest cannot read the checkout path, the other testers' inboxes or the host home, and a write to `/fault` stops at 64 MiB.
 
 ## 11. Owner questions
 
 - Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Answered: yes, owner 2026-11-20. Tart 2.42.0 installed on the Mac from the checksummed release (FSL-1.1, internal use allowed).
-- Q4 (added 2026-11-20, rev 3): a separate low-limit model API key for QA testers, used only inside the sandbox. Answered: yes, owner 2026-11-20. The owner creates the key and sets its spend cap.
+- Q4 (added 2026-11-20, rev 3): model access for testers. Answered by the owner 2026-11-20: use the Claude subscription, not the API. Testers run Claude Code in local containers and Tart guests. Owner step: run `claude setup-token` once and give the token to the orchestrator as a file on the devbox.
 
 | Id | Question | Recommendation |
 |---|---|---|
