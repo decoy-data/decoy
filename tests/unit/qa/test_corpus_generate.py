@@ -95,6 +95,24 @@ def test_written_files_are_identical_and_a_rerun_is_a_no_op(tmp_path: Path) -> N
         generate.generate_item(item, tmp_path / "a", SEED + 1)
 
 
+def test_a_duckdb_rerun_compares_tables_and_refuses_a_mismatch(tmp_path: Path) -> None:
+    item = BY_ID["parent-child-duckdb-s"]
+    first = generate.generate_item(item, tmp_path, SEED)
+    generate.generate_item(item, tmp_path, SEED)  # same tables, different bytes: allowed
+    with pytest.raises(generate.RegenerationDiffers):
+        generate.generate_item(item, tmp_path, SEED + 1)
+    import duckdb
+
+    con = duckdb.connect(str(first[0]))
+    con.execute("DELETE FROM children WHERE id = 1")
+    con.close()
+    with pytest.raises(generate.RegenerationDiffers):
+        generate.generate_item(item, tmp_path, SEED)
+    first[0].write_bytes(b"not a database")
+    with pytest.raises(generate.RegenerationDiffers):
+        generate.generate_item(item, tmp_path, SEED)
+
+
 def structured(item: Item) -> bool:
     return "empty_file" not in item.shapes
 

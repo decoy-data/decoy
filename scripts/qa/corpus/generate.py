@@ -50,23 +50,36 @@ def render_item(item: Item, seed: int) -> dict[str, bytes]:
     return files
 
 
-def _publish(path: Path, data: bytes, same_content_ok: bool) -> None:
+def _publish(path: Path, data: bytes) -> None:
     try:
         publish_private_once(path, data)
     except AlreadyPublished:
-        # A DuckDB file carries build-time identifiers, so its bytes differ between runs even
-        # with the same seed. Its tables are deterministic, so an existing file is kept.
-        if not same_content_ok and path.read_bytes() != data:
+        if path.read_bytes() != data:
             raise RegenerationDiffers(f"{path.name} exists with different bytes") from None
+
+
+def _check_existing_duckdb(item: Item, path: Path, seed: int) -> None:
+    """A DuckDB file has build-time identifiers, so compare its tables, not its bytes."""
+    expected = formats.duckdb_expected(build_item(item, seed).tables)
+    try:
+        same = formats.duckdb_snapshot(path) == expected
+    except Exception:  # an unreadable or foreign file is a mismatch; keep its text out of the error
+        same = False
+    if not same:
+        raise RegenerationDiffers(f"{path.name} exists with different tables") from None
 
 
 def generate_item(item: Item, out: Path, seed: int = DEFAULT_SEED) -> list[Path]:
     if not item.generated:
         raise ValueError(f"item {item.id!r} is not generated; use fetch.py")
+    tables_only = item.format == "duckdb" and not {"empty_file", "malformed"} & set(item.shapes)
     written = []
     for name, data in render_item(item, seed).items():
         target = out / item.id / name
-        _publish(target, data, item.format == "duckdb")
+        if tables_only and target.exists():
+            _check_existing_duckdb(item, target, seed)
+        else:
+            _publish(target, data)
         written.append(target)
     return written
 

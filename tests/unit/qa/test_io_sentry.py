@@ -40,10 +40,64 @@ def _mode_is_write(call: ast.Call, position: int) -> bool:
     return True  # a mode the scan cannot read is treated as a write
 
 
+def _aliases(tree: ast.AST) -> dict[str, str]:
+    """Local name to the dotted thing it stands for: `import os as o` gives o -> os,
+    `from os import replace as r` gives r -> os.replace."""
+    found: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                found[a.asname or a.name.split(".")[0]] = (
+                    a.name if a.asname else a.name.split(".")[0]
+                )
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            for a in node.names:
+                found[a.asname or a.name] = f"{node.module}.{a.name}"
+    return found
+
+
+def _memory_names(tree: ast.AST) -> set[str]:
+    """Names assigned an in-memory buffer, so `write_table(t, buf)` is not a file write."""
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Call):
+            fn = node.value.func
+            if (isinstance(fn, ast.Attribute) and fn.attr == "BytesIO") or (
+                isinstance(fn, ast.Name) and fn.id == "BytesIO"
+            ):
+                names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return names
+
+
+def _is_memory_dest(node: ast.expr, memory: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in memory
+    return (
+        isinstance(node, ast.Call)
+        and getattr(node.func, "attr", getattr(node.func, "id", "")) == "BytesIO"
+    )
+
+
+def _connect_writes(call: ast.Call, source_line: str) -> bool:
+    """`x.connect(path)` creates a file unless it is `:memory:`, read-only, or marked scratch."""
+    if "qa-io: scratch" in source_line:
+        return False  # built inside io.private_scratch_dir(); the bytes then go through io.py
+    if not call.args and not call.keywords:
+        return False
+    first = call.args[0] if call.args else None
+    if isinstance(first, ast.Constant) and first.value == ":memory:":
+        return False
+    read_only = next((k.value for k in call.keywords if k.arg == "read_only"), None)
+    return not (isinstance(read_only, ast.Constant) and read_only.value is True)
+
+
 def write_sites(source: str) -> list[str]:
     """Every open-for-write spelling in `source`, as `line: what`."""
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    alias, memory = _aliases(tree), _memory_names(tree)
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.ImportFrom) and node.module:
             top = node.module.split(".")[0]
@@ -55,16 +109,25 @@ def write_sites(source: str) -> list[str]:
                 found.append(f"{line}: SQL that writes a file")
         elif isinstance(node, ast.Call):
             fn = node.func
-            if isinstance(fn, ast.Name) and fn.id == "open" and _mode_is_write(node, 1):
-                found.append(f"{line}: open() for write")
+            if isinstance(fn, ast.Name):
+                target = alias.get(fn.id, fn.id)
+                if target == "open" and _mode_is_write(node, 1):
+                    found.append(f"{line}: open() for write")
+                elif target.startswith("io.open") and _mode_is_write(node, 1):
+                    found.append(f"{line}: io.open() for write")
             elif isinstance(fn, ast.Attribute):
-                owner = fn.value.id if isinstance(fn.value, ast.Name) else ""
+                owner = (
+                    alias.get(fn.value.id, fn.value.id) if isinstance(fn.value, ast.Name) else ""
+                )
                 if owner == "os" and fn.attr in OS_WRITERS:
                     found.append(f"{line}: os.{fn.attr}")
                 elif fn.attr == "open" and owner in {"io", "codecs"} and _mode_is_write(node, 1):
                     found.append(f"{line}: {owner}.open() for write")
                 elif (
-                    fn.attr == "open" and owner not in {"io", "codecs"} and _mode_is_write(node, 0)
+                    fn.attr == "open"
+                    and owner not in {"io", "codecs"}
+                    and not owner.lower().endswith("opener")  # urllib: open(url), not a file
+                    and _mode_is_write(node, 0)
                 ):
                     found.append(f"{line}: .open() for write")
                 elif owner in WHOLE_MODULES:
@@ -73,6 +136,13 @@ def write_sites(source: str) -> list[str]:
                     found.append(f"{line}: .{fn.attr}()")
                 elif fn.attr == "urlretrieve":
                     found.append(f"{line}: urlretrieve")
+                elif fn.attr == "write_table":
+                    dest = node.args[1] if len(node.args) > 1 else None
+                    where = next((k.value for k in node.keywords if k.arg == "where"), dest)
+                    if where is None or not _is_memory_dest(where, memory):
+                        found.append(f"{line}: write_table to a path")
+                elif fn.attr == "connect" and _connect_writes(node, lines[line - 1]):
+                    found.append(f"{line}: .connect(path)")
     return found
 
 
@@ -145,6 +215,17 @@ def test_no_qa_module_imports_a_private_product_module() -> None:
         "from os import replace",
         "con.execute(\"COPY t TO 'x.csv'\")",
         "con.execute('EXPORT DATABASE out')",
+        "import os as o\no.replace(a, b)",
+        "import shutil as sh\nsh.copyfile(a, b)",
+        "import tempfile as t\nt.mkstemp()",
+        "from os import replace as r\nr(a, b)",
+        "import io as i\ni.open(p, 'w')",
+        "from io import open as o\no(p, 'wb')",
+        "pq.write_table(t, 'x.parquet')",
+        "pq.write_table(t, where=path)",
+        "pq.write_table(t, buf)",
+        "duckdb.connect(path)",
+        "duckdb.connect(str(db))",
     ],
 )
 def test_the_scan_catches_each_spelling(snippet: str) -> None:
@@ -159,9 +240,17 @@ def test_the_scan_catches_each_spelling(snippet: str) -> None:
         "open(p, 'rb')",
         "path.open('rb')",
         "path.read_text()",
+        "_OPENER.open(url, timeout=60)",
         "os.path.join(a, b)",
         "name.replace('a', 'b')",
         "urllib.request.urlopen(u)",
+        "import io\nbuf = io.BytesIO()\npq.write_table(t, buf, compression='NONE')",
+        "buf = BytesIO()\npq.write_table(t, buf)",
+        "pq.write_table(t, io.BytesIO())",
+        "duckdb.connect(':memory:')",
+        "duckdb.connect(str(db), read_only=True)",
+        "duckdb.connect(str(db))  # qa-io: scratch",
+        "import os as o\no.path.join(a, b)",
     ],
 )
 def test_the_scan_leaves_reads_alone(snippet: str) -> None:

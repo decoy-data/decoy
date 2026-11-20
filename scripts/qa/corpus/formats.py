@@ -92,7 +92,7 @@ def duckdb_file(tables: list[Table]) -> bytes:
 
     with private_scratch_dir() as scratch:
         db = scratch / "corpus.duckdb"
-        con = duckdb.connect(str(db))
+        con = duckdb.connect(str(db))  # qa-io: scratch
         try:
             for t in tables:
                 arrow = _arrow(t)  # noqa: F841  (duckdb reads the local name `arrow`)
@@ -100,6 +100,36 @@ def duckdb_file(tables: list[Table]) -> bytes:
         finally:
             con.close()
         return Path(db).read_bytes()
+
+
+def _snapshot(con) -> dict[str, list]:  # type: ignore[no-untyped-def]
+    names = sorted(r[0] for r in con.execute("SHOW TABLES").fetchall())
+    return {n: con.execute(f'SELECT * FROM "{n}" ORDER BY ALL').fetchall() for n in names}
+
+
+def duckdb_snapshot(db: Path) -> dict[str, list]:
+    """The tables of an existing DuckDB file, opened read-only, as sorted row lists."""
+    import duckdb
+
+    con = duckdb.connect(str(db), read_only=True)
+    try:
+        return _snapshot(con)
+    finally:
+        con.close()
+
+
+def duckdb_expected(tables: list[Table]) -> dict[str, list]:
+    """The same snapshot for tables that are still in memory, with no file written."""
+    import duckdb
+
+    con = duckdb.connect(":memory:")
+    try:
+        for t in tables:
+            arrow = _arrow(t)  # noqa: F841  (duckdb reads the local name `arrow`)
+            con.execute(f'CREATE TABLE "{t.name}" AS SELECT * FROM arrow')
+        return _snapshot(con)
+    finally:
+        con.close()
 
 
 def render(tables: list[Table], fmt: str, item_id: str) -> dict[str, bytes]:
