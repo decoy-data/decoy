@@ -45,6 +45,27 @@ Where the source says "V2", "V2-LOG", "post-V1" or "V1+", read the bucket on thi
 | 1.x patch | "Maintenance candidates" in [groups/health.md](groups/health.md) |
 | 2.0, and "2.0 only if built the other way" | [2.0-holding.md](2.0-holding.md) |
 
+## Named 1.x speed slots
+
+Owner 2026-11-19: work from the engine speed and route record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) that had no row became named slots.
+Each slot is a row in the Later table of its group file, tagged with its release. The rule for every
+1.x speed release: same input, same seed, same output. A slot that cannot keep the output bytes
+identical is not 1.x and goes back to the owner. The release notes and the proof manifest carry the
+before and after numbers.
+
+| Release | Slot | Group |
+|---|---|---|
+| 1.0.x | GEN-VECTOR-STREAMS | [generate](groups/generate.md) |
+| 1.0.x | TEXT-REDACT-RUST-SPLICE, FPE-CHECKSUM-NATIVE | [mask](groups/mask.md) |
+| 1.0.x if no V1 slot | FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN (1.0 rows) | [mask](groups/mask.md) |
+| 1.0.x if its plan is not small | NONFK-OOM part (b) (1.0 row) | [run](groups/run.md) |
+| 1.1 | PER-COLUMN-ROUTING, with the SEAM-REASONS candidate | [run](groups/run.md) |
+| 1.2 | RUST-DATE-TEXT | [mask](groups/mask.md) |
+| 1.3 | CHUNK-PARALLEL | [run](groups/run.md) |
+| 1.x | PIP-NATIVE-EXTRA | [release](groups/release.md) |
+| 1.x | OOC-QUARANTINE, then OOC-DATE-BUCKET | [run](groups/run.md) |
+| 1.x, on demand | FK-CHUNKED-HASH-CHILD | [run](groups/run.md) |
+
 ## Corrective backlog (vault)
 
 The vault holds the corrective backlog in one file, `handoffs/V2-CORRECTIVE-BACKLOG.md`, merged on 2026-11-16 from two

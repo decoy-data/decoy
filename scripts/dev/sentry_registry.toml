@@ -164,3 +164,9 @@ id = "banned-text-allow"
 baseline = "tests/sentry/baselines/banned-text-allow.json"
 kind = "json"
 consumer = "tests/sentry/cli_text/_banned_text.py"
+
+[[sentry]]
+id = "outbound-network-owners"
+baseline = "tests/sentry/baselines/outbound-network-owners.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/outbound/test_outbound_choke_point.py"

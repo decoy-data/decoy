@@ -4,6 +4,23 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-19 (init wizard stops).** The `decoy init` guided wizard (row 32b) is not developed further. Finish
+  what is open (engine #653 E1 and #654 E2) and stop; that is the 1.0 scope for this surface. If the surface
+  is incomplete as it stands, 1.0 reduces it to simple table structures only. The owner is building a different
+  way to author pipelines. E1 and E2 ship in the experimental tier, since no 1.0 command calls them. The rest of
+  `C:plan/init-wizard-v1-rest` is stopped.
+- **2026-11-19 (physical seam and Faker).**
+  - Physical seam: option C. The physical-plan compiler stays and becomes a "what would run and why"
+    explainer for every route; execution stays in today's routes. The shadow-only execution branches
+    and audit C4 and C5 may be deleted. Work: SEAM-REASONS, then SEAM-EXPLAIN (run group, 1.x).
+    Handoff: `handoffs/2026-11-19-engine-physical-seam.md`.
+  - FAKER-REPRO owner questions: recommended on Q1 and Q3 to Q6. Q2: no upstream Faker pull requests.
+  - Engine speed and route record (engine #715): recommended on Q1 to Q6. M1 blocks 1.0 (parts (a)
+    and (c); part (b) only if small). F1, F3, F4 and M3 are V1. C1 and C4 are V1 if a slot is free,
+    else 1.0.x. F2 is held to 2.0. `date_shift` requires `date_format`. GEN providers, types and
+    catalog are V1. pip installs get a warning in V1 and a `native` extra in 1.x. Work with no row
+    became named slots (1.0.x, 1.1, 1.2, 1.3); scheduled work stays where it is. Every 1.x speed
+    release keeps output byte-identical.
 - **2026-11-18 (owner calls on the bucket list).**
   - Opt-in defaults: F11 output ordering, F38 dataset metadata and F08 free-text identity binding stay
     opt-in for 1.0 (option A). The docs tell users to turn F08 on for free-text columns.

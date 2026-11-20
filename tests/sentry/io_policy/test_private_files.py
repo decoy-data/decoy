@@ -134,7 +134,7 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
     "cli/_token_vault.py::LocalTokenVault.__init__::sqlite3.connect::1": _VAULT,
     "_resources.py::write_settings::write_atomic::1": _E2E + "test_setup_settings_file_is_private",
-    "distribution/installer.py::check_document_freshness::write_atomic::1": _UNIT
+    "distribution/trust_state.py::write_trust_state::write_atomic::1": _UNIT
     + "test_installer_trust_state_is_owner_only_under_umask_zero",
     "cli/io/_layout.py::create_run_folder::create_private_directory::1": _UNIT
     + "test_create_private_directory_is_0700_under_umask_000",
@@ -152,7 +152,7 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/library/_fs.py::_write::write_atomic::1": _LIBRARY,
     "cli/library/_fs.py::open_database::open_private::1": _LIBRARY_LOCK,
     "cli/library/_fs.py::open_database::sqlite3.connect::1": _LIBRARY_LOCK,
-    "cli/library/_fs.py::write_dotfile_once::write_local_target::1": _LIBRARY,
+    "cli/library/_fs.py::_write_local::write_local_target::1": _LIBRARY,
 }
 _CASE_MODULES = {
     "e2e:test_private_surfaces.py": ROOT / "tests/e2e/private_file/test_private_surfaces.py",

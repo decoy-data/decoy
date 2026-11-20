@@ -48,6 +48,7 @@ EXEMPT: dict[str, str] = {
 # `/`; arrays are walked without a segment.
 DYNAMIC: dict[str, list[str]] = {
     "fit": ["/columns", "/null_rates"],
+    "library show": ["/record/payload/table_rows", "/record/payload/subset_seed_counts"],
     "report show": [
         "/manifest/input_fingerprints",
         "/manifest/output_fingerprints",
@@ -388,10 +389,47 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("demo", ["demo"]),
         ("init", ["init", "--preset", "minimal", "-o", "minimal.yaml"]),
         ("fit", ["fit", "patients.csv"]),
+        ("library list", ["library", "list", "--library", "lib"]),
+        ("library show", ["library", "show", "sample-run/latest", "--library", "lib"]),
+        (
+            "library diff",
+            ["library", "diff", "sample-run/latest~1", "sample-run/latest", "--library", "lib"],
+        ),
         ("project new", ["project", "new", "proj"]),
         ("project list", ["project", "list", "."]),
         ("project show", ["project", "show"]),
     ]
+
+
+def _seed_library(root: Path) -> None:
+    """Two `sample-run` records, a day apart, for `library list`, `show` and `diff`."""
+    from datetime import datetime, timezone
+
+    from decoy_engine import records
+
+    from decoy.cli.library import open_library
+
+    library = open_library(root)
+    for n in (1, 2):
+        payload = {
+            "sample_size": n,
+            "root_table": MARKER_COL,
+            "table_rows": {MARKER_COL: n},
+            "subset_seed_counts": {MARKER_COL: n},
+            "approximate_columns": (),
+            "scratch_dir": "scratch/sample",
+            "outputs": (),
+            "ttl_seconds": 60,
+        }
+        library.put(
+            records.build(
+                "sample-run",
+                payload,
+                producer={"name": "decoy-cli", "version": "0.0.0", "engine_version": "0.0.0"},
+                invocation_id="0b6c9a3e-1d2f-4c5b-8a7e-9f0e1d2c3b4a",
+                created_at=datetime(2026, 11, n, tzinfo=timezone.utc),
+            )
+        )
 
 
 def capture(root: Path) -> dict[str, Any]:
@@ -427,6 +465,8 @@ def capture(root: Path) -> dict[str, Any]:
                 )
             if name == "report vault":
                 runner.invoke(app, ["run", "vaulted.yaml", "--vault", "vault.bin"])
+            if name == "library list":
+                _seed_library(root / "lib")
             if name == "project show":
                 os.chdir(root / "proj")
             if name == "models install":
