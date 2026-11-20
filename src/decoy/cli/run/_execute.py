@@ -18,8 +18,11 @@ from decoy.cli.io import (
     prepared_sources,
     quarantine_enabled,
     read_source,
+    refuse_unchecked_chunked,
+    report_file,
     resolve_target_format,
     resolved_source_config,
+    run_report,
     source_schema_and_chunks,
     table_records,
     write_chunked_output,
@@ -158,6 +161,7 @@ def _refuse_chunked_integrity_requested(validated: dict) -> None:
     """Raise when a validated config asks for post-scan integrity on the chunked route."""
     from decoy_engine.config import post_scan_integrity_requested
 
+    refuse_unchecked_chunked(validated)  # a model ask: the engine's route refusal, by code
     if post_scan_integrity_requested(validated):
         raise _ChunkedIntegrityError(_CHUNKED_INTEGRITY_MESSAGE)
 
@@ -351,6 +355,7 @@ def execute(ctx: RunContext) -> None:
             if ctx._report_flags
             else {}
         )
+        ctx._post_scan_file = report_file(ctx.integrity_out, layout, ctx.config_dict, ctx.config)
         result = run_pipeline(
             resolved_source_config(ctx.config_dict, ctx.config.parent),
             ctx.sources,
@@ -369,7 +374,9 @@ def execute(ctx: RunContext) -> None:
             **_native_gate.run_pipeline_kwargs(ctx.gate_result),
             **_resources.run_pipeline_kwargs(ctx._res),
         )
+        ctx._execution = result
         ctx._subset_metrics = result.quality_metrics.get("subset")
+        ctx._post_scan = run_report(ctx.config_dict, result.quality_metrics)
         ctx._native_route = _native_gate.classify_route(
             chunked=False,
             any_generate=ctx.any_generate,
@@ -420,6 +427,7 @@ def execute_preview(ctx: RunContext) -> None:
         quarantine_path=None,
         **_resources.run_pipeline_kwargs(ctx._res),
     )
+    ctx._execution = result
     order = [name for name, _parents in generation_order(ctx.config_dict)]
     ctx._preview_tables = gen.sample_tables(result.outputs, order, ctx.rows)
     ctx._ev_engine_warnings = result.warnings

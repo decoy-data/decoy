@@ -3,14 +3,23 @@
 Other packages import these names, never `decoy.cli.scanning._multi` or `._diff`.
 """
 
+from decoy.cli.scanning._detectors import DETECTORS_OPTION, NER_MODEL_OPTION
 from decoy.cli.scanning._diff import ScanDiff, diff_scan_sets, pii_bucket
-from decoy.cli.scanning._multi import ScanUsageError, run_scan, table_name_from_path
+from decoy.cli.scanning._multi import (
+    ScanUsageError,
+    run_scan,
+    saved_field_facts,
+    table_name_from_path,
+)
 
 __all__ = [
+    "DETECTORS_OPTION",
+    "NER_MODEL_OPTION",
     "ScanDiff",
     "ScanUsageError",
     "diff_scan_sets",
     "pii_bucket",
     "run_scan",
+    "saved_field_facts",
     "table_name_from_path",
 ]

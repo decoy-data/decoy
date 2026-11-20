@@ -20,9 +20,16 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | Bundled template set | versioning.md item 5 | `src/decoy/templates/` | `tests/e2e/test_release_smoke.py`, `tests/unit/test_bundled_templates.py` |
 | CI manifest | `docs/schemas/decoy-ci-v1.schema.json` | `src/decoy/ci/` | `tests/unit/test_ci_manifest.py` |
 | Python API: `mask`, `scan`, `MaskSecretConfigError`, `ConfigValidationError`, `UnsupportedCloudEndpointError` | `_LAZY_API` in `src/decoy/__init__.py` | `src/decoy/api.py` | `tests/unit/test_api.py` (the signature tests pin `mask` and `scan`) |
-| Version document and installer contract | `src/decoy/distribution/` | `src/decoy/distribution/` | `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py` |
+| Version document and installer contract (tags `cli-version-document/v1`, `cli-bundle-manifest/v1`) | `src/decoy/distribution/` | `src/decoy/distribution/` | `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py`, `tests/unit/test_version_document_schema.py` |
 | `cli-local-1` evidence payload | the evidence writer | `src/decoy/cli/evidence.py` | `tests/unit/test_evidence.py` |
 | CLI version literal | `src/decoy/_version.py` | `src/decoy/_version.py` | `tests/unit/release/test_version_agreement.py` |
+| `decoy-ci/v1` CI manifest tag | tag census | `src/decoy/ci/contracts.py` | `tests/unit/test_ci_manifest.py` |
+| `decoy-ci-report/v1` CI report tag | tag census | `src/decoy/ci/__init__.py` | `tests/unit/test_ci_reporting.py` |
+| `primary/v1` SARIF fingerprint key | tag census | `src/decoy/ci/reporting.py` | `tests/e2e/test_ci_sarif.py` |
+| `decoy-project/v1` project marker kind | tag census | `src/decoy/cli/io/_project.py` | `tests/unit/project_layout/test_layout.py` |
+| `scan-set/v1` saved scan tag | tag census | `src/decoy/cli/io/_scan_set.py` | `tests/e2e/test_scan_command.py` |
+| Tag literals built with f-strings or concatenation | tag census | `tests/sentry/release/_tags.py` | accepted-known-limit: S7B-KL-1 |
+| Public renames before 1.0 (pointer to the engine contract) | the engine taxonomy rename | `docs/release/public-renames.md` | `tests/sentry/release/test_retired_name_residual.py` |
 
 ## Limits of the `--json` snapshot
 

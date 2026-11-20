@@ -62,6 +62,8 @@ CREATED_IN = {
     "library-writer-allow": "L1b.2",
     "kind-canary-pending": "L1c.2",
     "one-error-emitter": "CL0",
+    "run-exit-owners": "RESULT-C-DOC2",
+    "run-exit-owners-io": "SCAN-ML-C2a",
     "env-reads": "CL2",
     "json-stdout-writes": "CL2",
     "exit-code-owner": "CL3",

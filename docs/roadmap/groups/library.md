@@ -12,11 +12,8 @@ Blocks the 1.0 release.
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
-| 34 | L1b-cli: store, atomic writes, refs, scratch (~700 lines); Linux, macOS and Windows lanes | CLI | L1b.1 shared atomic writer MERGED (#85, `c16a5fa`); L1b.2 local record store core MERGED (CLI #205, `16135525`, 2026-11-13); L1b.3 refs and the retention policy model MERGED (CLI #206, `f9f6b680`, 2026-11-15); L1d library scratch through the engine allocator MERGED (CLI #214, `b1478867`, 2026-11-16). DONE 2026-11-17 (all slices merged). The Windows lane runs when row 6 lands | same | L1a release and repin; WIN-RUNNER |
 | 36 | L2-cli: scan snapshots on the library (~380 lines; replaces SCAN-MULTI S1d) | CLI | NOT STARTED. Plan passed 2026-11-06. L1c and L1d are merged (rows 34 and 35); it now waits only on SCAN-MULTI S1c | same | SCAN-MULTI S1c (L1c and L1d merged) |
 | 37 | L3a-cli: evidence and run-result records (~520 lines) | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L1c; RESULT for the run-result half |
-| 39 | L4a-cli: library commands, first part (`list`, `show`, `diff`, `ref`, `export`) | CLI | IN REVIEW. CLI #215 is open (`list`, `show`, `diff`, `ref`). L1c is merged. `show --log` waits on L5b and `export` is in L4b (CLI #219) | same | L3a for run-result `diff` |
-| 40 | L4b-cli: library commands, second part (`prune`, `clean`, reachability); three OS lanes | CLI | IN REVIEW. CLI #219 is open (`prune`, `clean`, `export`), stacked on CLI #215 | same | L4a |
 
 ## Later (1.x)
 

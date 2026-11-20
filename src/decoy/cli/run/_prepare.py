@@ -9,8 +9,8 @@ import typer
 from rich.text import Text
 
 from decoy import _mask_secret, _mask_secret_guidance, _native_gate, _resources
+from decoy._config_file import read_config_bytes
 from decoy.cli import gen
-from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.gate import (
     GateFinding,
     GateRoute,
@@ -26,12 +26,13 @@ from decoy.cli.io import (
     OutputPlacement,
     acquire_relation,
     check_declared_before_acquire,
+    config_sha256,
     duckdb_probe_raw,
     parse_flags,
+    preflight_detectors,
     quarantine_enabled,
 )
-from decoy.cli.io import resolve_path as _resolve_path
-from decoy.cli.run._context import RunContext
+from decoy.cli.run._context import RunContext, UsageRefusal, output_placement
 from decoy.cli.run._execute import (
     _check_chunked_tables,
     _ChunkedFixedWidthError,
@@ -49,8 +50,8 @@ from decoy.cli.run._vault import (
     _VaultUsageError,
     refuse_existing_vault,
 )
-from decoy.ui.output import OutputMode, emit_json
-from decoy.ui.theme import error, hint, warn
+from decoy.ui.output import OutputMode
+from decoy.ui.theme import hint, warn
 
 
 class _MaskSecretUsageError(Exception):
@@ -59,19 +60,19 @@ class _MaskSecretUsageError(Exception):
 
 def _load_raw_config(
     config_path: Path,
-) -> tuple[object, list[GateFinding], Exception | None]:
-    """The run path's single YAML parse, through the gate's parser.
+) -> tuple[object, list[GateFinding], Exception | None, str | None]:
+    """The run path's single YAML read and parse, through the gate's parser.
 
-    Returns `(raw, findings, read_error)`: `findings` holds a YAML syntax error (the run
-    refuses it before any work), as do a non-UTF-8, empty or non-mapping file; `read_error`
-    an unreadable file (an `OSError`: it surfaces through the run-level handler as a runtime
-    error).
+    Returns `(raw, findings, read_error, sha256)`: `findings` holds a YAML syntax error (the run
+    refuses it before any work), as do a non-UTF-8, empty or non-mapping file; `read_error` an
+    unreadable file (an `OSError`, a runtime error); `sha256` hashes the bytes parsed.
     """
     try:
-        raw, findings = parse_pipeline_yaml(config_path)
+        data = read_config_bytes(config_path)
+        raw, findings = parse_pipeline_yaml(config_path, data)
     except (OSError, UnicodeDecodeError) as exc:
-        return None, [], exc
-    return raw, findings, None
+        return None, [], exc, None
+    return raw, findings, None, config_sha256(data)
 
 
 def _build_resolver(master_key_hex: str | None, key_label: str | None, raw_cfg: dict | None, state):
@@ -169,26 +170,14 @@ _PREVIEW_QUARANTINE = (
 )
 
 
-def _refuse_usage(state, config_str: str, text: str) -> None:
-    """Print a usage refusal in the active output mode and exit 1, before any engine call."""
-    if state.mode is OutputMode.json:
-        emit_json(
-            state,
-            {"command": "run", "status": "error", "config": config_str, "error": text},
-        )
-    elif state.mode is not OutputMode.quiet:
-        state.err_console.print(error("error:"), text, markup=False)
-    raise typer.Exit(code=EXIT_USAGE)
-
-
-def _refuse_fidelity_without_mask(state, config_str: str, raw_cfg: dict) -> None:
+def _refuse_fidelity_without_mask(raw_cfg: dict) -> None:
     """Exit 1 before any engine call when `--fidelity` is given and no table is a mask table.
 
     A config with no tables at all is left to the normal config check.
     """
     if not raw_cfg.get("tables"):
         return
-    _refuse_usage(state, config_str, _FIDELITY_NEEDS_MASK)
+    raise UsageRefusal(_FIDELITY_NEEDS_MASK)
 
 
 def refuse_preview(ctx: RunContext) -> None:
@@ -201,6 +190,7 @@ def refuse_preview(ctx: RunContext) -> None:
             ("--chunked", ctx.chunked),
             ("--chunk-size", ctx.chunk_size is not None),
             ("--evidence-out", ctx.evidence_out is not None),
+            ("--integrity-out", ctx.integrity_out is not None),
             ("--notify", bool(ctx.notify)),
             ("--vault", ctx.vault is not None),
             ("--fidelity", ctx.fidelity),
@@ -215,9 +205,9 @@ def refuse_preview(ctx: RunContext) -> None:
     ]
     text = gen.refusal(ctx.rows, flags, _has_kind(ctx.raw_cfg, "columns"))
     if text is not None:
-        _refuse_usage(ctx.state, ctx.config_str, text)
+        raise UsageRefusal(text)
     if quarantine_enabled(ctx.raw_cfg):
-        _refuse_usage(ctx.state, ctx.config_str, _PREVIEW_QUARANTINE)
+        raise UsageRefusal(_PREVIEW_QUARANTINE)
 
 
 def _guard_mask_secret_ref(raw: object) -> None:
@@ -248,19 +238,6 @@ def _guard_mask_secret_ref(raw: object) -> None:
         raise _MaskSecretUsageError(_problem)
 
 
-def _placement(ctx: RunContext) -> OutputPlacement:
-    """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
-    project run folder; the typed side files join the collision rule either way."""
-    typed = tuple(
-        (flag, path)
-        for flag, path in (("--evidence-out", ctx.evidence_out), ("--vault", ctx.vault))
-        if path is not None
-    )
-    if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
-    return OutputPlacement(typed=typed, chunked=ctx.chunked)
-
-
 def _refuse_layout_faults(ctx: RunContext) -> None:
     """Raise the gate's own refusal for an output layout fault, before any source is touched.
 
@@ -272,7 +249,7 @@ def _refuse_layout_faults(ctx: RunContext) -> None:
     if shared:
         raise PreRunCheckError.from_findings(shared)
     try:
-        findings = layout_findings(ctx.config, ctx.raw, _placement(ctx))
+        findings = layout_findings(ctx.config, ctx.raw, output_placement(ctx))
     except Exception:
         return
     if findings:
@@ -374,22 +351,27 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         # The source-independent gate layers (config, compile) run on the placeholder config
         # first (r13): an invalid config keeps the gate's own error, and no database is opened.
         _probe = check_static_before_acquire(
-            duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
+            duckdb_probe_raw(ctx.raw, _flags), ctx.config, output_placement(ctx)
         )
         check_declared_before_acquire(_probe, _flags, ctx.config.parent)
+        preflight_detectors(_probe)  # a model that cannot load refuses before any relation is read
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
-        for _flag in _flags:
+        # The databases resolve once, in `output_placement`, so the gate and the read agree.
+        for _flag, _db in zip(_flags, output_placement(ctx).inputs, strict=True):
             _tbl = _flag.table
-            _parquet = acquire_relation(
-                _resolve_path(_flag.db_path, ctx.config.parent), _tbl, ctx._duckdb_tmpdir
-            )
+            _parquet = acquire_relation(_db, _tbl, ctx._duckdb_tmpdir)
             _raw_sources[_tbl] = {
                 "type": "file",
                 "format": "parquet",
                 "path": str(_parquet),
             }
+
+    if not ctx.chunked and not ctx.duckdb_source and isinstance(ctx.raw, dict):
+        # The gate's preflight profiles source data, so a post-scan model that cannot load
+        # refuses first, on the config the static layers accept (the DuckDB route did it above).
+        preflight_detectors(check_static_before_acquire(ctx.raw, ctx.config, output_placement(ctx)))
 
     # The whole `decoy validate` gate (config, compile, preflight) before any source
     # row is read. A refusal raises into the one handler below; a pass hands back the
@@ -400,7 +382,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         ctx.config,
         GateRoute.CHUNKED if ctx.chunked else GateRoute.PLAIN,
         ctx.state,
-        _placement(ctx),
+        output_placement(ctx),
         skip_subset=ctx.no_subset,
     )
 

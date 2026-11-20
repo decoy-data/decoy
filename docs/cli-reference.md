@@ -52,7 +52,7 @@ Generate synthetic data: decoy fit source.csv, then decoy run pipeline.yaml, the
 * `unmask`: Recover fpe-masked columns from a masked...
 * `tokenize`: Run a tokenize masking job, writing the...
 * `detokenize`: Restore tokenized columns from a local...
-* `fit`: Fit a distribution-snapshot/v1 artifact...
+* `fit`: Fit a distribution-snapshot/v2 artifact...
 * `init`: Scaffold a starter pipeline in the current...
 * `demo`: Walk through scan -&gt; mask on a bundled...
 * `explain`: Explain a Decoy concept in plain English.
@@ -99,7 +99,7 @@ $ decoy run [OPTIONS] [CONFIG]
 
 **Options**:
 
-* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the first of 5 &gt; 3 &gt; 1 &gt; 6 &gt; 4 &gt; 2 &gt; 0 that any child produced. Takes no pipeline name and refuses --evidence-out, --vault and --out-dir.
+* `--all`: Run every pipeline of the project, one process each, in name order. The exit code is the first of 5 &gt; 3 &gt; 1 &gt; 6 &gt; 4 &gt; 2 &gt; 0 that any child produced. Takes no pipeline name and refuses --evidence-out, --vault, --result and --out-dir.
 * `-m, --mode [mask|generate]`: Operation: mask existing data or generate synthetic data.  [default: mask]
 * `--json`: Emit a structured JSON result on stdout. Progress goes to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries success.
@@ -113,6 +113,8 @@ $ decoy run [OPTIONS] [CONFIG]
 * `--vault PATH`: Write the token vault (encrypted source-to-masked map for vault: true columns) to this path. The vault plus the config re-identify every vaulted value: store them separately and never alongside the masked output. Needs the engine&#x27;s vault extra (cryptography). Not supported with --chunked.
 * `--key-label TEXT`: Stable namespace string for the --master-key generation key hierarchy (synthetic generation only, not masking). Required when --master-key is set. Pick something durable (e.g. &#x27;customers_q4&#x27;); changing it produces different generated output. CLI flag only -- PipelineConfig forbids unknown top-level keys, so there is no YAML equivalent.
 * `--evidence-out PATH`: Write a local evidence manifest (JSON) to this path after a successful run. The manifest records pipeline hash, input/output file fingerprints, run metadata, and row counts/timings/warnings where available (these are omitted for --chunked runs). It does NOT contain raw data values. Use `decoy report verify` to check the manifest against current files. See: decoy report show.
+* `--result PATH`: Write the run result document (JSON, the `result` member of --json) to this path, whatever the outcome: success, refusal, error or Ctrl-C. The path follows the same rules as --evidence-out: it may not equal an output, the quarantine file, --evidence-out or --vault, and may not sit under the project&#x27;s out/ folder. An existing file is replaced. A failed write is a warning and does not change the exit code. Not accepted with --all.
+* `--integrity-out PATH`: Write the post-scan integrity report (post_scan.integrity: true) to this path, replacing any file there. Default: &lt;first target&#x27;s folder&gt;/&lt;config stem&gt;.post-scan.json. Written for a blocked run too.
 * `--out-dir DIR`: Write relative output paths into DIR instead of a new run folder under out/&lt;pipeline&gt;/. DIR is relative to the current folder and is made owner-only if missing. No run id, LATEST or current link; files there are overwritten. Absolute output paths are unchanged.
 * `--notify TEXT`: Notify a channel after the run reaches its terminal state. Repeatable. Spec is &#x27;kind:target&#x27;: webhook:&lt;url&gt;, slack:&lt;url&gt;, email:&lt;address&gt;. Best-effort: a channel failure never changes the run&#x27;s exit code. Webhook signing key from DECOY_NOTIFY_WEBHOOK_SECRET (unsigned if unset); SMTP from DECOY_NOTIFY_SMTP_HOST/_PORT/_USER/_PASS/_FROM. Nothing is persisted to .decoy/workspace.json -- targets and secrets are flags/env only, never written to disk.
 * `--notify-on [success|failure|always]`: Which terminal outcome(s) to notify on: success, failure, or always.  [default: always]
@@ -379,7 +381,7 @@ See also: decoy tokenize, decoy explain tokenize.
 
 ## `decoy fit`
 
-Fit a distribution-snapshot/v1 artifact for statistical generation.
+Fit a distribution-snapshot/v2 artifact for statistical generation.
 
 Without --epsilon: reads the source CSV, captures per-column
 distribution shape (numeric histograms + quantiles, categorical top-k,
@@ -1296,7 +1298,8 @@ Examples:
   decoy scan data.csv --has-header
     Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
     A CSV always needs --has-header or --no-header: scan never guesses.
-    Reads the first 10 000 rows by default (--rows 0 for a full scan).
+    Reads the first 10 000 rows by default and labels the counts a sample, with
+    no key candidates (--rows 0 reads every row and gives whole-file numbers).
 
   decoy scan customers.csv orders.csv --has-header
     Scan several files in one run: one table each, named from the file stem.
@@ -1994,6 +1997,13 @@ $ decoy library [OPTIONS] COMMAND [ARGS]...
 
 * `path`: Print the library root, where it came...
 * `fsck`: Check every record, ref, link, the index,...
+* `list`: List stored records, oldest first, from...
+* `show`: Show one record: its envelope and, when...
+* `diff`: Compare two records of the same kind...
+* `ref`: Show a stored ref, or set it to a record...
+* `prune`: Delete records you no longer keep.
+* `clean`: Delete everything in `.decoy/scratch/`...
+* `export`: Export records as one self-verifying JSON...
 
 ### `decoy library path`
 
@@ -2025,6 +2035,146 @@ $ decoy library fsck [OPTIONS]
 **Options**:
 
 * `--repair`: Quarantine corrupt records, delete stale temp files, remove refs to missing records and rebuild the index. Never deletes a valid record.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library list`
+
+List stored records, oldest first, from the index (no record file is opened).
+
+**Usage**:
+
+```console
+$ decoy library list [OPTIONS]
+```
+
+**Options**:
+
+* `--kind KIND`: Only records of this kind (scan-set, evidence, run-result, sample-run, ...).
+* `--pipeline TEXT`: Only this pipeline&#x27;s records: its name in the project, or the path to its YAML.
+* `--table T`: Only records naming this table.
+* `--since D`: Only records made at or after D (YYYY-MM-DD or ISO time).
+* `--json`: Emit the records as JSON, oldest first.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library show`
+
+Show one record: its envelope and, when this version can read it, its payload.
+
+**Usage**:
+
+```console
+$ decoy library show [OPTIONS] ID|REF
+```
+
+**Arguments**:
+
+* `ID|REF`: An id, a unique 8+ hex prefix, KIND/NAME or KIND/latest~N.  [required]
+
+**Options**:
+
+* `--json`: Emit the record as JSON.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library diff`
+
+Compare two records of the same kind (scan-set, evidence and run-result have their own rules).
+
+**Usage**:
+
+```console
+$ decoy library diff [OPTIONS] A B
+```
+
+**Arguments**:
+
+* `A`: The older record: id, prefix, KIND/NAME or KIND/latest~N.  [required]
+* `B`: The newer record, in the same forms.  [required]
+
+**Options**:
+
+* `--json`: Emit the diff as JSON.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library ref`
+
+Show a stored ref, or set it to a record (under the library lock).
+
+**Usage**:
+
+```console
+$ decoy library ref [OPTIONS] NAME [ID]
+```
+
+**Arguments**:
+
+* `NAME`: KIND/NAME or KIND/SCOPE/NAME, for example scan-set/baseline.  [required]
+* `[ID]`: Set the ref to this record (id, prefix or ref).
+
+**Options**:
+
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library prune`
+
+Delete records you no longer keep. Never one a ref or a kept record links to, one younger
+than an hour, or one of a kind this Decoy does not know. With no options, applies the
+`keep_last` rules in `.decoy/library.yaml`.
+
+**Usage**:
+
+```console
+$ decoy library prune [OPTIONS]
+```
+
+**Options**:
+
+* `--kind K`: Only records of this kind.
+* `--keep-last N`: Keep the newest N records of each kind.
+* `--older-than D`: Only records older than D (90d, 12h, 30m).
+* `--yes`: Delete. Without it, prune only shows what it would delete.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library clean`
+
+Delete everything in `.decoy/scratch/` (sample output and staging). Records, logs and
+anything outside the library are never touched.
+
+**Usage**:
+
+```console
+$ decoy library clean [OPTIONS]
+```
+
+**Options**:
+
+* `--yes`: Delete. Without it, clean only shows what it would delete.
+* `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
+* `--help`: Show this message and exit.
+
+### `decoy library export`
+
+Export records as one self-verifying JSON Lines file the platform can import.
+
+**Usage**:
+
+```console
+$ decoy library export [OPTIONS]
+```
+
+**Options**:
+
+* `-o, --output FILE`: Write the export here (0600).  [required]
+* `--kind K`: Start from records of this kind; every record they link to is exported too.
+* `--since D`: Start from records made at or after D (YYYY-MM-DD or ISO time); every record they link to is exported too.
+* `--ref R`: Only R (a ref, id or KIND/latest) and every record it links to.
+* `--include-logs`: Add the job logs of the exported runs (none exist yet).
+* `--keep-paths`: Keep paths as recorded and export every record byte for byte. Without it, paths are reduced to file names and records this version cannot strip are withheld.
 * `--library DIR`: Use DIR as the library (else DECOY_LIBRARY, else the project&#x27;s .decoy/ folder).
 * `--help`: Show this message and exit.
 

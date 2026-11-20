@@ -48,6 +48,7 @@ EXEMPT: dict[str, str] = {
 # `/`; arrays are walked without a segment.
 DYNAMIC: dict[str, list[str]] = {
     "fit": ["/columns", "/null_rates"],
+    "library show": ["/record/payload/table_rows", "/record/payload/subset_seed_counts"],
     "report show": [
         "/manifest/input_fingerprints",
         "/manifest/output_fingerprints",
@@ -215,6 +216,15 @@ relationships:
     namespace: patient_ids
 """.replace("MARKER_COL", MARKER_COL)
 
+# The `run` step's pipeline: post-scan integrity on, so `run --json` carries its `post_scan`
+# block. `full_name` is hashed because a redacted name column is a regex `fail` that blocks.
+_INTEGRITY = (
+    _PIPELINE.replace(
+        "{name: full_name, strategy: redact}", "{name: full_name, strategy: hash, namespace: names}"
+    )
+    + "post_scan: {integrity: true}\n"
+)
+
 _TOKENIZE = """version: 2
 global_settings: {seed: 7, mask_secret_ref: "env:SECRET_ENV"}
 sources:
@@ -279,6 +289,7 @@ def build_workspace(root: Path) -> None:
         "patient_id,diagnosis\n" + "".join(f"{i},flu\n" for i in range(1, 6)), encoding="utf-8"
     )
     (root / "pipeline.yaml").write_text(_PIPELINE, encoding="utf-8")
+    (root / "integrity.yaml").write_text(_INTEGRITY, encoding="utf-8")
     (root / "tokenize.yaml").write_text(_TOKENIZE, encoding="utf-8")
     (root / "vaulted.yaml").write_text(_VAULTED, encoding="utf-8")
     (root / "subset.yaml").write_text(_SUBSET, encoding="utf-8")
@@ -361,7 +372,7 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("scan fields", ["scan", "fields", "scan.json"]),
         ("scan show", ["scan", "show", "scan.json", "ssn"]),
         ("scan diff", ["scan", "diff", "scan.json", "scan2.json"]),
-        ("run", ["run", "pipeline.yaml", *mask, "--evidence-out", "ev1.json"]),
+        ("run", ["run", "integrity.yaml", *mask]),
         ("report show", ["report", "show", "ev1.json"]),
         ("report render", ["report", "render", "ev1.json", "-o", "report.html"]),
         ("report verify", ["report", "verify", "ev1.json"]),
@@ -388,10 +399,47 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("demo", ["demo"]),
         ("init", ["init", "--preset", "minimal", "-o", "minimal.yaml"]),
         ("fit", ["fit", "patients.csv"]),
+        ("library list", ["library", "list", "--library", "lib"]),
+        ("library show", ["library", "show", "sample-run/latest", "--library", "lib"]),
+        (
+            "library diff",
+            ["library", "diff", "sample-run/latest~1", "sample-run/latest", "--library", "lib"],
+        ),
         ("project new", ["project", "new", "proj"]),
         ("project list", ["project", "list", "."]),
         ("project show", ["project", "show"]),
     ]
+
+
+def _seed_library(root: Path) -> None:
+    """Two `sample-run` records, a day apart, for `library list`, `show` and `diff`."""
+    from datetime import datetime, timezone
+
+    from decoy_engine import records
+
+    from decoy.cli.library import open_library
+
+    library = open_library(root)
+    for n in (1, 2):
+        payload = {
+            "sample_size": n,
+            "root_table": MARKER_COL,
+            "table_rows": {MARKER_COL: n},
+            "subset_seed_counts": {MARKER_COL: n},
+            "approximate_columns": (),
+            "scratch_dir": "scratch/sample",
+            "outputs": (),
+            "ttl_seconds": 60,
+        }
+        library.put(
+            records.build(
+                "sample-run",
+                payload,
+                producer={"name": "decoy-cli", "version": "0.0.0", "engine_version": "0.0.0"},
+                invocation_id="0b6c9a3e-1d2f-4c5b-8a7e-9f0e1d2c3b4a",
+                created_at=datetime(2026, 11, n, tzinfo=timezone.utc),
+            )
+        )
 
 
 def capture(root: Path) -> dict[str, Any]:
@@ -413,7 +461,8 @@ def capture(root: Path) -> dict[str, Any]:
             if name == "scan fields":
                 for out in ("scan.json", "scan2.json"):
                     runner.invoke(app, ["scan", "patients.csv", "--has-header", "-o", out])
-            if name == "report diff":
+            if name in ("report show", "report diff"):
+                evidence = "ev1.json" if name == "report show" else "ev2.json"
                 runner.invoke(
                     app,
                     [
@@ -422,11 +471,13 @@ def capture(root: Path) -> dict[str, Any]:
                         "--mask-secret",
                         f"env:{SECRET_ENV}",
                         "--evidence-out",
-                        "ev2.json",
+                        evidence,
                     ],
                 )
             if name == "report vault":
                 runner.invoke(app, ["run", "vaulted.yaml", "--vault", "vault.bin"])
+            if name == "library list":
+                _seed_library(root / "lib")
             if name == "project show":
                 os.chdir(root / "proj")
             if name == "models install":

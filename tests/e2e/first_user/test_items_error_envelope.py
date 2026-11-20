@@ -61,6 +61,9 @@ BAD_INPUT: dict[str, list[str]] = {
     ],
     "report diff": ["report", "diff", BAD_JSON, BAD_JSON],
     "report vault": ["report", "vault", GOOD_CSV, "--config", BAD_YAML],
+    "library list": ["library", "list", "--since", "not-a-date"],
+    "library show": ["library", "show", "deadbeefdeadbeef"],
+    "library diff": ["library", "diff", "deadbeefdeadbeef", "feedfacefeedface"],
     "models install": ["models", "install", "ner", "--from", BAD_JSON, "--yes"],
     "models list": ["models", "list", "--model", "Not/A-Model"],
 }

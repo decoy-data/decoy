@@ -11,17 +11,18 @@ Banned outside `_fs.py`, by any spelling the AST shows:
 
 - removes, renames and writes: `os.unlink`, `os.remove`, `os.rmdir`, `os.rename`, `os.replace`,
   `shutil.rmtree`, `shutil.move`, `shutil.copy`, `shutil.copy2`, `shutil.copyfile`,
-  `shutil.copytree`, `Path.unlink`, `Path.rmdir`, `Path.rename`, `Path.replace` (one argument;
-  `str.replace` takes two; `Path.replace(p, q)` on the name `Path` with any count),
-  `Path.write_text`, `Path.write_bytes`, `Path.touch`, `Path.mkdir`, `Path.chmod`,
-  `Path.symlink_to`, `Path.hardlink_to`, `os.mkdir`, `os.makedirs`, `os.chmod`, `os.symlink`,
-  `os.link`, `os.truncate`, `os.utime`, `tempfile.mkstemp`, `mkdtemp`, `NamedTemporaryFile` and
-  `TemporaryFile`; `open(...)`, `Path.open(...)`, `io.open(...)` and `os.fdopen(...)` with a mode
-  that writes; and `os.open` unless its flags are exactly `os.O_RDONLY`;
+  `shutil.copytree`, `Path.unlink`, `Path.rmdir`, `Path.rename`, `Path.replace` (one positional
+  argument; `str.replace` takes two, `datetime.replace` keywords; `Path.replace(p, q)` on the
+  name `Path` with any count), `Path.write_text`, `Path.write_bytes`, `Path.touch`, `Path.mkdir`,
+  `Path.chmod`, `Path.symlink_to`, `Path.hardlink_to`, `os.mkdir`, `os.makedirs`, `os.chmod`,
+  `os.symlink`, `os.link`, `os.truncate`, `os.utime`, `tempfile.mkstemp`, `mkdtemp`,
+  `NamedTemporaryFile` and `TemporaryFile`; `open(...)`, `Path.open(...)`, `io.open(...)` and
+  `os.fdopen(...)` with a mode that writes; and `os.open` unless its flags are exactly
+  `os.O_RDONLY`;
 - inspection, which follows links: `os.stat`, `os.lstat`, `os.scandir`, `os.listdir`,
   `os.walk`, `os.path.exists`, `isdir`, `isfile`, `islink`, `lexists`, `realpath`, `getsize`,
   and `Path.exists`, `is_dir`, `is_file`, `is_symlink`, `stat`, `lstat`, `iterdir`, `glob`,
-  `rglob`, `resolve`;
+  `rglob`, `resolve` (with no positional argument; `Library.resolve(text)` is an id lookup);
 - the repo's own file helpers: `write_atomic`, `write_local_target`, `open_private`,
   `create_private_directory`, `create_exclusive`, `read_small_file`, `sqlite3.connect`.
 
@@ -228,8 +229,12 @@ def bad(p: Path, q: Path) -> None:
     os.path.exists(p)
     os.stat(p)
     sqlite3.connect(str(p))
+    os.path.realpath(p)
+    os.path.islink(p)
 
-def fine(p: Path) -> None:
+def fine(p: Path, when: object, library: object) -> None:
+    when.replace(tzinfo=None)
+    library.resolve("abcd1234")
     open(p)
     p.open()
     "a".replace("a", "b")
@@ -255,6 +260,8 @@ def test_the_scan_fires_on_every_seeded_spelling() -> None:
         "os.path.exists",
         "os.stat",
         "sqlite3.connect",
+        "os.path.realpath",
+        "os.path.islink",
     ]
 
 

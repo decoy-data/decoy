@@ -2,12 +2,9 @@
 
 import os
 
-import typer
-
-from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.extras import MissingExtraError, translate_missing_extra
-from decoy.cli.run._context import RunContext
-from decoy.ui.output import OutputMode, emit_error
+from decoy.cli.run._context import RunContext, UsageRefusal
+from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
 
 
@@ -104,14 +101,14 @@ def parse_channels(ctx: RunContext) -> None:
     if ctx.notify:
         from decoy.notify import NotifySpecError, parse_notify_spec
 
+        refusal = None
         try:
             ctx.notify_channels = [parse_notify_spec(spec) for spec in ctx.notify]
         except NotifySpecError as exc:
-            # Fixed text, never the spec; `config` rides in the error object as before.
-            emit_error(
-                ctx.state, "run", str(exc), code=exc.code, context={"config": ctx.config_str}
-            )
-            raise typer.Exit(code=EXIT_USAGE)
+            # Fixed text, never the spec. Raised below, outside this block, so it has no context.
+            refusal = UsageRefusal(str(exc), code=exc.code)
+        if refusal is not None:
+            raise refusal
 
 
 def _dispatch_run_notifications(

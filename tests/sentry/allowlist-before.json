@@ -70,7 +70,7 @@
   "cli/run/_errors.py::uniqueness_impossible": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/run/_execute.py::fidelity_report": {"count": 1, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/run/_execute.py::post_validation": {"count": 1, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
-  "cli/scanning/_multi.py::row_count": {"count": 6, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
+  "cli/scanning/_multi.py::row_count": {"count": 5, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/scanning/_multi.py::scan_header_suspect": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/scanning/_multi.py::scan_key_type_mismatch": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/subset.py::subset_config_missing": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
@@ -140,8 +140,8 @@
  "module-size": {
   "src/decoy/cli/fit.py": {"max": 818, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/report.py": {"max": 2299, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/scan.py": {"max": 1037, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
+  "src/decoy/cli/report.py": {"max": 2295, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
+  "src/decoy/cli/scan.py": {"max": 1032, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
  },
  "output-name-allow": {
  },
@@ -149,7 +149,7 @@
   "cli/io/_layout.py::RunLayout.place_target": {"reason": "The one placement site: a fixed layout and an absolute path resolve as the old code did.", "sites": 1},
   "cli/io/_targets.py::_is_declared_target": {"reason": "Compares a file with the declared target path; reads, writes nothing.", "sites": 1},
   "cli/run/_execute.py::_run_chunked_mask": {"reason": "Resolves the chunked source path for the empty-parquet schema; an input.", "sites": 1},
-  "cli/run/_prepare.py::prepare": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
+  "cli/run/_context.py::output_placement": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
  },
  "package-fanout": {
   "src/decoy/cli": {"max": 29, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
