@@ -11,10 +11,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import yaml
+from tests.unit.api_scan.test_parity import write_csv, write_fixed
 
 import decoy
 from decoy.cli.scanning import resolve_sources
-from tests.unit.api_scan.test_parity import write_csv, write_fixed
 
 MARKER = "SECRETMARKER"
 

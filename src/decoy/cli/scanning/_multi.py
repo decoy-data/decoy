@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +148,45 @@ def saved_field_facts(field: Mapping[str, Any], table: Mapping[str, Any]) -> lis
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class ScanSpelling:
+    """How usage errors name the caller's own inputs: flags for the CLI, keywords for the API.
+
+    One message template per rule, so the two routes cannot drift apart; only these names differ.
+    """
+
+    has_header: str
+    no_header: str
+    column_names: str
+    column_names_example: str
+    names_shape: str
+    layout: str
+    layout_hint: str
+    format: str
+
+
+CLI_SPELLING = ScanSpelling(
+    has_header="--has-header",
+    no_header="--no-header",
+    column_names="--column-names",
+    column_names_example="--column-names a,b,c",
+    names_shape="a comma-separated list",
+    layout="--layout",
+    layout_hint="provide a layout file: decoy scan FILE --layout layout.yaml",
+    format="--format",
+)
+API_SPELLING = ScanSpelling(
+    has_header="has_header=True",
+    no_header="has_header=False",
+    column_names="column_names",
+    column_names_example="column_names=['a', 'b', 'c']",
+    names_shape="a list",
+    layout="layout=",
+    layout_hint="pass layout= a layout file path, or a list of {name, start, width} columns",
+    format="format",
+)
+
+
 def _kind(path: Path, fmt: str | None) -> str:
     if fmt is not None:
         return _FORMAT_FLAG[fmt]
@@ -158,12 +198,14 @@ def _kind(path: Path, fmt: str | None) -> str:
     return "csv"
 
 
-def _split_names(raw: str) -> list[str]:
-    names = [n.strip() for n in raw.split(",")]
+def _split_names(raw: str | Sequence[str], spelling: ScanSpelling) -> list[str]:
+    names = [n.strip() for n in (raw.split(",") if isinstance(raw, str) else raw)]
     if any(not n for n in names):
-        raise ScanUsageError("--column-names must be a comma-separated list of non-empty names.")
+        raise ScanUsageError(
+            f"{spelling.column_names} must be {spelling.names_shape} of non-empty names."
+        )
     if len(set(names)) != len(names):
-        raise ScanUsageError("--column-names must not repeat a name.")
+        raise ScanUsageError(f"{spelling.column_names} must not repeat a name.")
     return names
 
 
@@ -172,37 +214,55 @@ def _check_header_flags(
     kinds: Sequence[str],
     has_header: bool | None,
     names: list[str] | None,
+    spelling: ScanSpelling,
 ) -> None:
     csv_files = [p for p, k in zip(paths, kinds, strict=True) if k == "csv"]
     if names is not None:
         if has_header is not False:
-            raise ScanUsageError("--column-names requires --no-header.")
+            raise ScanUsageError(f"{spelling.column_names} requires {spelling.no_header}.")
         if len(paths) != 1 or len(csv_files) != 1:
-            raise ScanUsageError("--column-names applies to exactly one CSV file.")
+            raise ScanUsageError(f"{spelling.column_names} applies to exactly one CSV file.")
     if csv_files and has_header is None:
         raise ScanUsageError(
             f"{csv_files[0]}: say whether the first row is a header.",
-            "pass --has-header (row 1 holds the column names) or --no-header "
-            "(row 1 is data; give the names with --column-names a,b,c).",
+            f"pass {spelling.has_header} (row 1 holds the column names) or {spelling.no_header} "
+            f"(row 1 is data; give the names with {spelling.column_names_example}).",
         )
     if csv_files and has_header is False and names is None:
         raise ScanUsageError(
-            "--no-header needs --column-names a,b,c (one name per column).",
+            f"{spelling.no_header} needs {spelling.column_names_example} (one name per column).",
             "a headerless file has no column names to read.",
         )
+
+
+def _check_files(paths: Sequence[Path]) -> None:
+    for p in paths:
+        if p.is_dir():
+            raise ScanUsageError(f"{p}: is a directory, not a file.")
+        if not p.exists():
+            raise ScanUsageError(f"{p}: file not found.")
 
 
 def resolve_sources(
     paths: Sequence[Path],
     *,
     fmt: str | None,
-    layout: Path | None,
+    layout: Path | list[dict] | None,
     has_header: bool | None,
-    column_names: str | None,
+    column_names: str | Sequence[str] | None,
+    spelling: ScanSpelling = CLI_SPELLING,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-    """Positional files to `(name -> source descriptor, name -> path as given)`, in order."""
+    """Positional files to `(name -> source descriptor, name -> path as given)`, in order.
+
+    The one place that checks input rules, for `decoy scan` and for `decoy.scan()`.
+    """
+    if fmt is not None and fmt not in _FORMAT_FLAG:
+        raise ScanUsageError(
+            f"{spelling.format} must be one of {sorted(_FORMAT_FLAG)}, got {fmt!r}."
+        )
+    _check_files(paths)
     if len(paths) > 1 and (fmt is not None or layout is not None):
-        raise ScanUsageError("--format and --layout apply to exactly one file.")
+        raise ScanUsageError(f"{spelling.format} and {spelling.layout} apply to exactly one file.")
     shown: dict[str, str] = {}
     for p in paths:
         name = table_name_from_path(p)
@@ -213,9 +273,9 @@ def resolve_sources(
             )
         shown[name] = str(p)
     kinds = [_kind(p, fmt) for p in paths]
-    names = _split_names(column_names) if column_names is not None else None
-    _check_header_flags(paths, kinds, has_header, names)
-    layout_columns = _layout_columns(layout) if "fixed_width" in kinds else None
+    names = _split_names(column_names, spelling) if column_names is not None else None
+    _check_header_flags(paths, kinds, has_header, names, spelling)
+    layout_columns = _layout_columns(layout, spelling) if "fixed_width" in kinds else None
     sources: dict[str, dict[str, Any]] = {}
     for name, p, kind in zip(shown, paths, kinds, strict=True):
         absolute = p.resolve()
@@ -238,27 +298,31 @@ def resolve_sources(
     return sources, shown
 
 
-def _layout_columns(layout: Path | None) -> list[dict]:
+def _layout_columns(layout: Path | list[dict] | None, spelling: ScanSpelling) -> list[dict]:
     if layout is None:
         raise ScanUsageError(
-            "Fixed-width input requires --layout: column boundaries are ambiguous "
+            f"Fixed-width input requires {spelling.layout}: column boundaries are ambiguous "
             "without an explicit layout spec.",
-            "provide a layout file: decoy scan FILE --layout layout.yaml",
+            spelling.layout_hint,
         )
-    if not layout.exists():
+    if isinstance(layout, Path) and not layout.exists():
         raise ScanUsageError(f"Layout file not found: {layout}")
-    from decoy.cli.scan import _parse_layout
+    from decoy.cli.scan import _check_layout_columns, _parse_layout
 
+    what = f"layout file {layout.name}" if isinstance(layout, Path) else "the layout list"
     columns: list[dict] | None = None
     try:
-        columns = _parse_layout(layout)
+        if isinstance(layout, Path):
+            columns = _parse_layout(layout)
+        else:
+            columns = _check_layout_columns(layout)
     except Exception:
         columns = None
     # Raised outside the handler with fixed text: the parser's message quotes the rejected
     # layout literal, and the error must not chain to it.
     if columns is None:
         raise ScanUsageError(
-            f"Could not parse layout file {layout.name}: it must be a mapping with a "
+            f"Could not parse {what}: it must be a mapping with a "
             "'columns' list, each column with a string 'name' and integer 'start' and 'width'."
         )
     return columns

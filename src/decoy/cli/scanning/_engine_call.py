@@ -28,7 +28,7 @@ class SampleStrategy(str, Enum):
     random = "random"
 
 
-class ScanUsageError(Exception):
+class ScanUsageError(ValueError):
     """A bad invocation, found before any file is read. The message is fixed text plus names."""
 
     def __init__(self, message: str, hint_text: str | None = None) -> None:
