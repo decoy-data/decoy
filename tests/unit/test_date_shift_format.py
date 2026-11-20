@@ -12,7 +12,12 @@ from dataclasses import dataclass, field
 import pytest
 import yaml
 
-from decoy.cli._init_inference import _FALLBACK, _infer_strategy_for_column
+from decoy.cli._init_inference import (
+    _DATE_REDACT,
+    _FALLBACK,
+    _INFERENCE_TABLE,
+    _infer_strategy_for_column,
+)
 from decoy.cli.project._columns import emit_column_yaml
 from decoy.templates import get_template, template_names
 
@@ -81,31 +86,62 @@ def test_complete_variant_writes_its_format(detector: str, fmt: str):
     inf = _infer_strategy_for_column(fs)
     assert inf.strategy == "date_shift"
     assert inf.date_format == fmt
-    body = emit_column_yaml("d", inf)
-    col = yaml.safe_load(body)[0]
+    col = yaml.safe_load(emit_column_yaml("d", inf))[0]
     assert col["provider_config"]["date_format"] == fmt
     assert col["provider_config"]["min_days"] == -365
 
 
-@pytest.mark.parametrize("detector", ["iso_date", "us_date", "eu_date"])
-def test_incomplete_column_falls_back_to_redact(detector: str):
-    """Mixed variants, an invalid calendar date (31.02.2024) or padded values:
-    the engine reports format_pattern_complete false, so no date_shift."""
-    fs = _StatsComplete("d", [_Match(detector, "%d.%m.%Y")], format_pattern_complete=False)
-    assert _infer_strategy_for_column(fs) is _FALLBACK
+def test_flag_on_top_match_wins_over_field_stats():
+    @dataclass
+    class _M(_Match):
+        format_pattern_complete: bool = True
+
+    fs = _StatsComplete("d", [_M("iso_date", "%Y-%m-%d")], format_pattern_complete=False)
+    assert _infer_strategy_for_column(fs).date_format == "%Y-%m-%d"
 
 
 @pytest.mark.parametrize("detector", ["iso_date", "us_date", "eu_date"])
-def test_no_detected_format_falls_back_to_redact(detector: str):
-    assert _infer_strategy_for_column(_Stats("d", [_Match(detector, None)])) is _FALLBACK
-    assert _infer_strategy_for_column(_Stats("d", [_Match(detector, "  ")])) is _FALLBACK
+@pytest.mark.parametrize("fmt", ["%d.%m.%Y", None, "  "])
+def test_present_but_not_true_gets_date_redact(detector: str, fmt):
+    """Mixed variants, 31.02.2024, padded values, or no format: the engine says
+    no single format fits, so redact with the date-specific note."""
+    fs = _StatsComplete("d", [_Match(detector, fmt)], format_pattern_complete=False)
+    inf = _infer_strategy_for_column(fs)
+    assert inf is _DATE_REDACT
+    assert inf.strategy == "redact"
+    assert "no single format fits every value" in inf.review
+    assert "passthrough" not in inf.review
 
 
-def test_engine_without_complete_flag_uses_detected_format():
-    """0.28.x reports format_pattern but not format_pattern_complete."""
-    inf = _infer_strategy_for_column(_Stats("d", [_Match("iso_date", "%Y-%m-%d")]))
+def test_complete_true_without_a_format_gets_date_redact():
+    fs = _StatsComplete("d", [_Match("iso_date", None)], format_pattern_complete=True)
+    assert _infer_strategy_for_column(fs) is _DATE_REDACT
+
+
+def test_date_redact_review_is_value_free_and_emits():
+    body = emit_column_yaml("d", _DATE_REDACT)
+    assert "strategy: redact" in body and "date_format" in body  # the note names the key
+
+
+def test_engine_without_flag_keeps_origin_main_output_for_dd_mm_slash_data():
+    """0.28.1: DD/MM slash data is detected us_date with %m/%d/%Y. Writing that
+    format fails 603/1000 rows; today's init writes date_shift with no
+    date_format and the engine guesses. That output must not change."""
+    inf = _infer_strategy_for_column(_Stats("d", [_Match("us_date", "%m/%d/%Y")]))
     assert inf.strategy == "date_shift"
-    assert inf.date_format == "%Y-%m-%d"
+    assert inf.date_format is None
+    assert inf == _INFERENCE_TABLE["us_date"]
+    body = emit_column_yaml("d", inf)
+    assert "date_format" not in body.split("# REVIEW", 1)[-1].split("\n", 1)[-1]
+    # unchanged strategy block, as origin/main writes it
+    assert "      - name: d\n        strategy: date_shift\n        namespace: d\n" in body
+    assert "          min_days: -365\n          max_days: 365" in body
+
+
+def test_engine_without_flag_iso_date_has_no_format_and_eu_date_falls_back():
+    iso = _infer_strategy_for_column(_Stats("d", [_Match("iso_date", "%Y-%m-%d")]))
+    assert iso.strategy == "date_shift" and iso.date_format is None
+    assert _infer_strategy_for_column(_Stats("d", [_Match("eu_date", "%d.%m.%Y")])) is _FALLBACK
 
 
 def test_ambiguous_date_column_keeps_format():
@@ -118,16 +154,27 @@ def test_ambiguous_date_column_keeps_format():
     assert inf.strategy == "date_shift" and inf.date_format == "%Y-%m-%d"
 
 
-def test_init_scan_of_real_dates_writes_format(tmp_path):
-    """Real profile_columns output (installed engine) through the writer."""
+def test_emit_allows_date_shift_without_format_only_for_absent_flag_path():
+    """Guard (L2): the writer does not raise on a format-less date_shift. That
+    shape is produced only when the engine reports no completeness flag
+    (0.28.x), and the engine release that refuses it also reports the flag."""
+    no_flag = _infer_strategy_for_column(_Stats("d", [_Match("iso_date", "%Y-%m-%d")]))
+    assert no_flag.date_format is None
+    assert "date_format" not in yaml.safe_load(emit_column_yaml("d", no_flag))[0]["provider_config"]
+    flagged = _infer_strategy_for_column(
+        _StatsComplete("d", [_Match("iso_date", "%Y-%m-%d")], format_pattern_complete=False)
+    )
+    assert flagged.strategy != "date_shift"
+
+
+def test_init_scan_of_real_dates_follows_engine_flag():
     import pandas as pd
     from decoy_engine import profile_columns
 
     df = pd.DataFrame({"signup": ["2020-01-15", "2020-02-20", "2020-03-05", "2020-04-30"]})
     fs = profile_columns(df, source_label="t").fields[0]
     inf = _infer_strategy_for_column(fs)
-    assert inf.strategy == "date_shift"
-    assert (
-        yaml.safe_load(emit_column_yaml("signup", inf))[0]["provider_config"]["date_format"]
-        == "%Y-%m-%d"
-    )
+    if hasattr(fs, "format_pattern_complete") and fs.format_pattern_complete:
+        assert inf.date_format == "%Y-%m-%d"
+    elif not hasattr(fs, "format_pattern_complete"):
+        assert inf.strategy == "date_shift" and inf.date_format is None

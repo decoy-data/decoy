@@ -54,9 +54,9 @@ class Inference:
             `deterministic: true` (used for FK-preservation paths,
             e.g. customer_id-shaped columns).
         date_format: the strptime format of a date_shift column, written
-            as `provider_config.date_format`. The engine refuses a
-            date_shift without one, so `_infer_strategy_for_column` only
-            returns date_shift with this set.
+            as `provider_config.date_format`. Set only when the engine
+            reports the format fits every value; engines that predate that
+            report get date_shift without it.
     """
 
     strategy: str
@@ -238,22 +238,42 @@ _AMBIGUOUS_TEMPLATE = (
 _MISSING = object()
 
 
-def _date_shift_format(field_stats, top) -> str | None:
-    """The date format to write for a date_shift column, or None.
+_DATE_REDACT = Inference(
+    strategy="redact",
+    review=(
+        "The scan found dates, but no single format fits every value. redact "
+        "removes the value; use date_shift with provider_config.date_format "
+        "once the column uses one format."
+    ),
+)
 
-    The engine reports `format_pattern_complete` on FieldStats: true only
-    when every detector hit has the winning shape and parses with it. The
-    CLI reads that verdict and never recomputes it. Engines that predate
-    the field (0.28.x) do not report it; for those the detected
-    `format_pattern` alone is used, which is what they could always give.
+
+def _complete_flag(field_stats, top):
+    """`format_pattern_complete` from the top match first, then FieldStats."""
+    for obj in (top, field_stats):
+        value = getattr(obj, "format_pattern_complete", _MISSING)
+        if value is not _MISSING:
+            return value
+    return _MISSING
+
+
+def _date_inference(base: Inference, detector_id: str, field_stats, top) -> Inference:
+    """Pick the date_shift entry (or a fallback) for a date detector.
+
+    The engine reports `format_pattern_complete`: true only when every hit
+    has the winning shape and parses with it. The CLI reads that verdict and
+    never recomputes it. A format is written only when it is True. Engines
+    that predate the field (0.28.x) keep their old output: iso_date and
+    us_date get date_shift with no format (the engine guesses one), eu_date
+    gets the generic fallback.
     """
+    complete = _complete_flag(field_stats, top)
+    if complete is _MISSING:
+        return base if detector_id != "eu_date" else _FALLBACK
     pattern = getattr(top, "format_pattern", None) or getattr(field_stats, "format_pattern", None)
-    if not isinstance(pattern, str) or not pattern.strip():
-        return None
-    complete = getattr(field_stats, "format_pattern_complete", _MISSING)
-    if complete is not _MISSING and complete is not True:
-        return None
-    return pattern
+    if complete is True and isinstance(pattern, str) and pattern.strip():
+        return replace(base, date_format=pattern)
+    return _DATE_REDACT
 
 
 def _infer_strategy_for_column(field_stats) -> Inference:
@@ -297,12 +317,7 @@ def _infer_strategy_for_column(field_stats) -> Inference:
         )
         base = _INFERENCE_TABLE.get(top_id, _FALLBACK)
         if base.strategy == "date_shift":
-            # No usable format: the engine would refuse date_shift, so
-            # fall back the way an unknown column does.
-            date_format = _date_shift_format(field_stats, top)
-            if date_format is None:
-                return _FALLBACK
-            base = replace(base, date_format=date_format)
+            base = _date_inference(base, top_id, field_stats, top)
         if ambiguous:
             signals = ", ".join(getattr(m, "detector_id", "?") for m in confident_matches[:3])
             review = _AMBIGUOUS_TEMPLATE.format(signals=signals, chosen=base.strategy)

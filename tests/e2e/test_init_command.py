@@ -230,9 +230,6 @@ def test_init_scaffold_round_trips_date_shift_truncate_fpe(
     parsed = yaml.safe_load(body)
     # No exception == the scaffold is admissible by the engine's own schema.
     PipelineConfig.model_validate(parsed)
-    # The engine refuses a date_shift with no format.
-    (date_col,) = [c for t in parsed["tables"] for c in t["columns"] if c["name"] == "signup_date"]
-    assert date_col["provider_config"]["date_format"] == "%Y-%m-%d"
 
 
 def test_init_scaffold_actually_runs_and_pan_stays_luhn_valid(
