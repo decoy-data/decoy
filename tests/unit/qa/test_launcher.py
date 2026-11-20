@@ -1,8 +1,12 @@
-"""AT-10 (launcher): command construction on Linux and macOS, tester-scoped ids, node-local
-capture and a hand-back of counts and ids only. The real OS-user probe is slice S3."""
+"""AT-10 (launcher): command construction, workspace and PATH behavior, probe gate, tester-scoped
+ids, capture through the central writer, and the counts-and-ids hand-back with a real exit
+status. The OS-user checkout probe itself is slice S3."""
 
 from __future__ import annotations
 
+import ast
+import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -11,162 +15,280 @@ from tests.unit.qa._paths import QA_SCRIPTS, load_qa_module
 launch = load_qa_module("launch")
 
 
-def _plain_writer(path: Path, data: bytes) -> None:
-    """Stand-in for scripts/qa/io.py publish_private_once: create once or raise."""
+def _publish(path: Path, data: bytes) -> None:
+    """Stand-in for io.publish_private_once: create once or raise."""
     with open(path, "xb") as fh:  # test double, not QA tooling
         fh.write(data)
 
 
-def _cmd(system: str, tmp_path: Path, slug: str = "p1", ids: tuple[str, ...] = ("f-p1-aaa",)):
+def _mkdir(path: Path, mode: int = 0o700) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(mode)
+
+
+def _capture(path: Path) -> int:
+    return os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+
+
+IO = launch.IoApi(_publish, _mkdir, _capture)
+
+
+class Node:
+    """A fake node: probe marker present, `decoy` resolving in the bundle, scripted probes."""
+
+    def __init__(self, tmp_path: Path, *, resolves: bool = True, marker: bool = True) -> None:
+        self.tmp = tmp_path
+        self.marker_root = tmp_path / "probes"
+        if marker:
+            m = launch.probe_marker_path("node1", "p1", self.marker_root)
+            m.parent.mkdir(parents=True)
+            m.write_text("")
+        self.resolves = resolves
+        self.calls: list[list[str]] = []
+        self.inbox_listing = ""
+
+    def probe(self, argv: list[str]) -> tuple[int, str]:
+        self.calls.append(argv)
+        tail = argv[argv.index("--") + 1 :]
+        if "command -v decoy" in tail:
+            home = tail[tail.index("-i") + 1].removeprefix("HOME=").removesuffix("/work")
+            return (0, f"{home}/bundle/bin/decoy\n") if self.resolves else (1, "")
+        if tail[-2:-1] == ["-1"] or "ls" in tail:
+            return 0, self.inbox_listing
+        return 0, ""
+
+    def run(self, **kw):
+        runner = kw.pop("runner", lambda argv, fd, text: 0)
+        return launch.launch(
+            system="linux",
+            slug="p1",
+            brief="p1-solo-developer",
+            pass_dir=self.tmp / "pass",
+            id_count=2,
+            findings_tool="/opt/decoy-qa/findings.py",
+            io=IO,
+            runner=runner,
+            probe=self.probe,
+            node="node1",
+            marker_root=self.marker_root,
+            **kw,
+        )
+
+
+def _cmd(system: str = "linux", slug: str = "p1", **kw):
     return launch.build_command(
         system=system,
         slug=slug,
-        agent_argv=["agent", "--brief", "b.md"],
-        pass_dir=tmp_path / "pass",
-        capture_path=tmp_path / "capture.log",
-        ids=ids,
+        agent_argv=["sh", "-c", "pwd"],
+        pass_dir=Path("/var/lib/decoy-qa/pass-x"),
+        ids=("f-p1-aaa",),
         findings_tool="/opt/decoy-qa/findings.py",
+        **kw,
     )
 
 
 @pytest.mark.parametrize(("system", "home_root"), [("linux", "/home"), ("darwin", "/Users")])
-def test_the_command_runs_the_agent_as_the_tester_user_with_a_clean_env(
-    system: str, home_root: str, tmp_path: Path
+def test_the_command_runs_as_the_tester_user_with_the_bundle_first_on_path(
+    system: str, home_root: str
 ) -> None:
-    cmd = _cmd(system, tmp_path)
-    assert cmd[cmd.index("sudo") :][:6] == ["sudo", "-n", "-u", "qatester-p1", "-H", "--"]
+    cmd = _cmd(system)
+    assert cmd[:6] == ["sudo", "-n", "-u", "qatester-p1", "-H", "--"]
     home = f"{home_root}/qatester-p1"
-    assert "env" in cmd and "-i" in cmd
-    assert f"HOME={home}" in cmd
-    assert f"DECOY_HOME={home}/.decoy-home" in cmd
-    assert cmd[-3:] == ["agent", "--brief", "b.md"]
+    assert f"PATH={home}/bundle/bin:" in " ".join(cmd)
+    assert f"HOME={home}/work" in cmd
 
 
-def test_the_linux_and_macos_commands_differ_in_home_and_path(tmp_path: Path) -> None:
-    linux, mac = _cmd("linux", tmp_path), _cmd("darwin", tmp_path)
-    assert linux != mac
-    assert any(a.startswith("PATH=") and "/opt/homebrew" in a for a in mac)
-    assert not any("/opt/homebrew" in a for a in linux)
-
-
-def test_an_unknown_system_is_refused(tmp_path: Path) -> None:
+def test_an_unknown_system_or_bad_slug_is_refused() -> None:
     with pytest.raises(launch.LaunchError):
-        _cmd("windows", tmp_path)
+        _cmd("windows")
+    for slug in ("", "P1", "p1;rm", "../p1", "x" * 40):
+        with pytest.raises(launch.LaunchError):
+            _cmd(slug=slug)
 
 
-@pytest.mark.parametrize("slug", ["", "P1", "p1;rm", "../p1", "p1 ", "x" * 40])
-def test_a_bad_tester_slug_is_refused(slug: str, tmp_path: Path) -> None:
+def _inner(cmd: list[str]) -> list[str]:
+    return cmd[cmd.index("env") :]
+
+
+def test_the_agent_starts_in_the_tester_workspace_not_the_callers_folder(tmp_path: Path) -> None:
+    root = tmp_path / "homes"
+    (root / "qatester-p1" / "work").mkdir(parents=True)
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    cmd = _cmd(home_root=str(root))
+    done = subprocess.run(_inner(cmd), cwd=checkout, capture_output=True, text=True, check=True)
+    assert Path(done.stdout.strip()).resolve() == (root / "qatester-p1" / "work").resolve()
+
+
+def test_the_bundle_bin_is_first_on_the_clean_path(tmp_path: Path) -> None:
+    root = tmp_path / "homes"
+    (root / "qatester-p1" / "work").mkdir(parents=True)
+    cmd = launch.build_command(
+        system="linux",
+        slug="p1",
+        agent_argv=["sh", "-c", 'printf %s "$PATH"; printf " %s" "${SLACK_TOKEN-unset}"'],
+        pass_dir=tmp_path,
+        ids=(),
+        findings_tool="x",
+        home_root=str(root),
+    )
+    env = {**os.environ, "SLACK_TOKEN": "leak"}
+    done = subprocess.run(_inner(cmd), capture_output=True, text=True, check=True, env=env)
+    path, token = done.stdout.rsplit(" ", 1)
+    assert path.split(":")[0] == f"{root}/qatester-p1/bundle/bin"
+    assert token == "unset"
+
+
+def test_the_secret_file_is_for_p3_only_and_never_in_argv_as_a_value() -> None:
+    assert any(a.startswith("QA_SECRET_FILE=") for a in _cmd(slug="p3"))
+    assert not any(a.startswith("QA_SECRET_FILE=") for a in _cmd(slug="p1"))
+
+
+@pytest.mark.parametrize("bad", ["--mask-secret=abc", "--api-key", "TOKEN", "a b", "$(x)", "--x=1"])
+def test_extra_agent_args_must_pass_the_allowlist(bad: str) -> None:
     with pytest.raises(launch.LaunchError):
-        _cmd("linux", tmp_path, slug=slug)
+        launch.check_agent_extras([bad])
+    assert launch.check_agent_extras(["--model", "sonnet"]) == ["--model", "sonnet"]
 
 
-def test_the_environment_carries_ids_and_the_findings_tool_and_no_host_secrets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("SLACK_TOKEN", "do-not-pass")
-    cmd = _cmd("linux", tmp_path, ids=("f-p1-aaa", "f-p1-bbb"))
-    assert "QA_FINDING_IDS=f-p1-aaa,f-p1-bbb" in cmd
-    assert "QA_FINDINGS_TOOL=/opt/decoy-qa/findings.py" in cmd
-    assert "QA_TESTER=p1" in cmd
-    assert not any("do-not-pass" in a or "SLACK" in a for a in cmd)
+def test_launch_refuses_without_the_s3_probe_marker(tmp_path: Path) -> None:
+    node = Node(tmp_path, marker=False)
+    with pytest.raises(launch.LaunchError, match="probe"):
+        node.run()
+    assert not (tmp_path / "pass").exists()
 
 
-def test_stdout_and_stderr_go_to_the_node_local_capture_file_by_shell_redirect(
+def test_launch_fails_closed_when_decoy_does_not_resolve_in_the_bundle(tmp_path: Path) -> None:
+    node = Node(tmp_path, resolves=False)
+    with pytest.raises(launch.LaunchError, match="bundle"):
+        node.run(runner=lambda *a: pytest.fail("must not start"))
+
+
+def test_pass_folders_have_the_right_modes_and_a_tester_inbox_is_made_by_the_tester(
     tmp_path: Path,
 ) -> None:
-    cmd = _cmd("linux", tmp_path)
-    assert cmd[:2] == ["sh", "-c"]
-    assert ">>" in cmd[2] and "2>&1" in cmd[2]
-    assert cmd[3] == str(tmp_path / "capture.log")
-
-
-def test_ids_are_tester_scoped_opaque_and_unique(tmp_path: Path) -> None:
+    node = Node(tmp_path)
+    node.run()
     pass_dir = tmp_path / "pass"
-    a = launch.allocate_ids(pass_dir, "p1", 5, writer=_plain_writer)
-    b = launch.allocate_ids(pass_dir, "p2", 5, writer=_plain_writer)
-    assert len(set(a) | set(b)) == 10
-    assert all(i.startswith("f-p1-") for i in a)
-    assert all(i.startswith("f-p2-") for i in b)
-    assert all("qamark" not in i for i in a + b)
+    mode = lambda p: (pass_dir / p).stat().st_mode & 0o777  # noqa: E731
+    assert mode("capture") == 0o700 and mode("issued") == 0o700
+    assert mode("inbox") & 0o022 == 0 and mode(".") & 0o022 == 0, (
+        "nothing is group or world writable"
+    )
+    mkdir_calls = [c for c in node.calls if "mkdir" in " ".join(c)]
+    assert mkdir_calls and "qatester-p1" in mkdir_calls[0]
 
 
-def test_an_id_collision_is_retried_not_reissued(tmp_path: Path) -> None:
-    pass_dir = tmp_path / "pass"
+def test_ids_are_tester_scoped_opaque_unique_and_retried_on_collision(tmp_path: Path) -> None:
+    (tmp_path / "issued").mkdir()
     tokens = iter(["aaaa", "aaaa", "bbbb"])
-    ids = launch.allocate_ids(pass_dir, "p1", 2, writer=_plain_writer, token=lambda: next(tokens))
+    ids = launch.allocate_ids(tmp_path, "p1", 2, publish=_publish, token=lambda: next(tokens))
     assert ids == ["f-p1-aaaa", "f-p1-bbbb"]
 
 
-def test_the_writer_is_called_for_every_id_and_nothing_else_writes(tmp_path: Path) -> None:
-    calls: list[Path] = []
-
-    def spy(path: Path, data: bytes) -> None:
-        calls.append(path)
-        _plain_writer(path, data)
-
-    ids = launch.allocate_ids(tmp_path / "pass", "p3", 3, writer=spy)
-    assert [p.name for p in calls] == ids
-
-
-def test_handback_is_counts_and_ids_only_and_never_reads_record_contents(
+def test_the_capture_goes_through_the_writer_fd_and_the_tester_output_stays_in_it(
     tmp_path: Path,
 ) -> None:
-    pass_dir = tmp_path / "pass"
-    ids = launch.allocate_ids(pass_dir, "p1", 3, writer=_plain_writer)
-    findings = pass_dir / "findings"
-    findings.mkdir()
-    (findings / f"{ids[0]}.toml").write_text("actual = 'SECRET-CELL-VALUE'\n")
-    (findings / "f-p2-zzzz.toml").write_text("x = 1\n")  # another tester's record
-    text = launch.handback(pass_dir, "p1", exit_code=0)
-    assert text == f"tester=p1 findings=1 issued=3 exit=0 ids={ids[0]}"
-    assert "SECRET" not in text
+    node = Node(tmp_path)
 
-
-def test_handback_with_no_findings_has_empty_ids(tmp_path: Path) -> None:
-    pass_dir = tmp_path / "pass"
-    launch.allocate_ids(pass_dir, "p5", 2, writer=_plain_writer)
-    assert launch.handback(pass_dir, "p5", exit_code=130) == (
-        "tester=p5 findings=0 issued=2 exit=130 ids="
-    )
-
-
-def test_launch_runs_the_built_command_and_returns_only_the_handback(tmp_path: Path) -> None:
-    seen: list[list[str]] = []
-
-    def fake_run(argv: list[str]) -> int:
-        seen.append(argv)
+    def runner(argv: list[str], fd: int, text: str) -> int:
+        assert "Mission" in text, "the brief goes in on stdin"
+        assert not any("Mission" in a for a in argv)
+        os.write(fd, b"tester said something with a value\n")
         return 0
 
-    out = launch.launch(
-        system="linux",
-        slug="p2",
-        agent_argv=["agent"],
-        pass_dir=tmp_path / "pass",
-        id_count=2,
-        findings_tool="/opt/decoy-qa/findings.py",
-        writer=_plain_writer,
-        runner=fake_run,
+    result = node.run(runner=runner)
+    assert "value" not in result.line
+    log = (tmp_path / "pass" / "capture" / "p1.log").read_bytes()
+    assert log.startswith(b"tester said")
+    assert (tmp_path / "pass" / "capture" / "p1.log").stat().st_mode & 0o777 == 0o600
+
+
+def test_handback_is_counts_and_ids_only_and_never_reads_records(tmp_path: Path) -> None:
+    node = Node(tmp_path)
+    node.inbox_listing = ""
+    first = node.run().line
+    assert first.startswith("tester=p1 findings=0 issued=2 exit=0 ids=")
+    assert (
+        launch.handback("p1", ["f-p1-a", "f-p1-b"], ["f-p1-a.toml", "f-p2-z.toml"], exit_code=0)
+        == "tester=p1 findings=1 issued=2 exit=0 ids=f-p1-a"
     )
-    assert len(seen) == 1 and "qatester-p2" in seen[0]
-    assert out.startswith("tester=p2 findings=0 issued=2 exit=0")
-    assert (tmp_path / "pass" / "capture" / "p2.log").exists()
 
 
-def test_the_launcher_does_not_create_users_or_open_files_for_writing() -> None:
-    source = (QA_SCRIPTS / "launch.py").read_text()
-    for banned in (
-        "useradd",
-        "dscl",
-        "adduser",
-        "sysadminctl",
-        "open(",
+def test_a_tester_exit_of_three_gives_a_nonzero_launcher_exit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    node = Node(tmp_path)
+    result = node.run(runner=lambda *a: 3)
+    assert result.exit_code == 3 and "exit=3" in result.line
+
+    monkeypatch.setattr(launch, "launch", lambda **kw: result)
+    code = launch.main(["p1", "--brief", "p1-solo-developer", "--pass-dir", str(tmp_path)])
+    assert code != 0
+    assert capsys.readouterr().out.strip() == result.line
+
+
+def test_a_real_subprocess_exit_of_three_reaches_the_result(tmp_path: Path) -> None:
+    root = tmp_path / "homes"
+    (root / "qatester-p1" / "work").mkdir(parents=True)
+
+    def real(argv: list[str], fd: int, text: str) -> int:
+        # Drop the sudo prefix and swap the fixed agent argv for a shell that exits 3.
+        inner = _inner(argv)
+        assert inner[-2:] == ["claude", "-p"]
+        return subprocess.run(
+            [*inner[:-2], "sh", "-c", "exit 3"], stdout=fd, check=False
+        ).returncode
+
+    node = Node(tmp_path)
+    assert node.run(runner=real, home_root=str(root)).exit_code == 3
+
+
+def test_p5_without_a_bounded_volume_skips_the_disk_full_cell(tmp_path: Path) -> None:
+    node = Node(tmp_path)
+    m = launch.probe_marker_path("node1", "p5", node.marker_root)
+    m.parent.mkdir(parents=True, exist_ok=True)
+    m.write_text("")
+    skipping = launch.launch(
+        system="linux", slug="p5", brief="p5-careless-user", pass_dir=tmp_path / "p5pass",
+        id_count=1, findings_tool="x", io=IO, runner=lambda *a: 0,
+        probe=lambda argv: (1, "") if "test" in argv else node.probe(argv),
+        node="node1", marker_root=node.marker_root,
+    )  # fmt: skip
+    assert "skipped=disk-full" in skipping.line
+
+
+def _calls(tree: ast.AST) -> list[str]:
+    names = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call):
+            f = n.func
+            names.append(f.id if isinstance(f, ast.Name) else getattr(f, "attr", ""))
+    return names
+
+
+def test_the_launcher_has_no_direct_file_writes_user_creation_or_product_imports() -> None:
+    tree = ast.parse((QA_SCRIPTS / "launch.py").read_text())
+    banned_calls = {
+        "open",
+        "mkdir",
+        "makedirs",
         "write_text",
         "write_bytes",
-    ):
-        assert banned not in source, banned
-
-
-def test_the_launcher_imports_no_private_product_module() -> None:
-    source = (QA_SCRIPTS / "launch.py").read_text()
-    assert "import decoy" not in source and "from decoy" not in source
-    assert source.count("\n") < 400
+        "touch",
+        "copy",
+        "copytree",
+        "rmtree",
+        "chmod",
+        "chown",
+    }
+    assert banned_calls.isdisjoint(_calls(tree)), banned_calls & set(_calls(tree))
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            assert not any(a.name.split(".")[0] == "decoy" for a in n.names)
+        if isinstance(n, ast.ImportFrom):
+            assert (n.module or "").split(".")[0] != "decoy"
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            for word in ("useradd", "dscl", "adduser", "sysadminctl"):
+                assert word not in n.value
+    assert (QA_SCRIPTS / "launch.py").read_text().count("\n") < 400

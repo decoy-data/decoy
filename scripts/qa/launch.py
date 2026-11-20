@@ -1,30 +1,43 @@
 """Start one QA tester as its own pre-provisioned OS user (QA-BETA plan 5.1, 5.6).
 
-The launcher never creates users: the owner runs `setup-testers.sh` once per node. It builds one
-command that runs the tester's agent as `qatester-<slug>` with a clean environment, whose home
-holds only the bundle, a docs copy and a read-only corpus mount. Stdout and stderr go to a
-node-local capture file through a shell redirect, so this module never opens a file for writing
-and the tester never sees the capture. All files are published through the private writer in
-`scripts/qa/io.py` (`publish_private_once`), taken as a function argument. The coordinator gets
-back one line of counts and finding ids.
+The owner runs `setup-testers.sh` once per node. The launcher never creates users. It runs the
+tester's agent as `qatester-<slug>` with a clean environment:
 
-Import dependency: this module loads `io.py` from its own folder by path, only when no writer
-is passed. Until slice S1a lands, that load fails with a clear error. Tests pass their own
-writer. The module imports no product code.
+- the tester starts in its own workspace (`<home>/work`), never in the coordinator's folder;
+- the bundle's `bin` folder is first on PATH, and before launch `command -v decoy` is checked
+  as the tester user and must resolve inside the bundle, or the launch fails closed;
+- stdout and stderr go to a coordinator-only capture file whose descriptor the central writer
+  opens (`open_private_capture`), so this module never opens a file for writing itself;
+- the tester submits only into its own inbox `<pass_dir>/inbox/<slug>`, owned by the tester,
+  mode 0700. Capture and issued ids are coordinator-only. The coordinator gets one line of
+  counts and finding ids, and a nonzero exit when the tester exited nonzero.
+
+S3 notes. The checkout-read probe belongs to slice S3. After the probe shows, as the tester
+user on this node, that a planted checkout read fails, S3 writes the marker file named by
+`probe_marker_path(node, slug)` (default `/var/lib/decoy-qa/probes/<node>/<slug>.ok`) through
+`publish_private_once`. The launcher refuses to start without it. S3 also registers the
+tester's secret file content with the needles set, and picks `pass_dir` under a folder the
+tester user can traverse, for example `/var/lib/decoy-qa/pass-<name>`.
+
+Import dependency: the writer functions come from `scripts/qa/io.py` (slice S1a):
+`publish_private_once(path, data)`, `make_private_dir(path, mode=0o700)` and
+`open_private_capture(path) -> int`. This module loads that file by path only when no `IoApi`
+is passed, and the load fails with a clear error until S1a lands. No product code is imported.
 """
 
 from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import re
 import secrets
+import socket
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-
-Writer = Callable[[Path, bytes], None]
 
 USER_PREFIX = "qatester-"
 SLUG = re.compile(r"[a-z0-9]{2,16}")
@@ -34,10 +47,59 @@ SYSTEM_PATHS = {
     "darwin": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
 }
 ID_PREFIX = "f-"
+PROBE_MARKER_ROOT = Path("/var/lib/decoy-qa/probes")
+FAULT_MARKER = ".qa-bounded"
+BRIEFS = (
+    "p1-solo-developer",
+    "p2-data-engineer",
+    "p3-ci-engineer",
+    "p4-compliance-reviewer",
+    "p5-careless-user",
+    "checklist-pass",
+    "doc-walk",
+)
+AGENT_BASE = ("claude", "-p")  # the brief goes in on stdin, never in argv
+EXTRA_ARG = re.compile(r"--?[a-z][a-z-]{0,30}|[A-Za-z0-9._:/-]{1,60}")
+EXTRA_DENY = re.compile(r"secret|token|passw|key|=", re.IGNORECASE)
+BRIEF_DIR = Path(__file__).resolve().parents[2] / "docs" / "qa" / "briefs"
 
 
 class LaunchError(Exception):
-    """A launch input is invalid. The message never holds data."""
+    """A launch input or the node is not ready. The message never holds data."""
+
+
+@dataclass(frozen=True)
+class IoApi:
+    publish_private_once: Callable[[Path, bytes], None]
+    make_private_dir: Callable[..., None]
+    open_private_capture: Callable[[Path], int]
+
+
+@dataclass(frozen=True)
+class LaunchResult:
+    line: str
+    exit_code: int
+
+
+Probe = Callable[[list[str]], tuple[int, str]]
+Runner = Callable[[list[str], int, str], int]
+
+
+def default_io() -> IoApi:
+    path = Path(__file__).with_name("io.py")
+    if not path.is_file():
+        raise LaunchError("scripts/qa/io.py is missing: slice S1a must land first")
+    spec = importlib.util.spec_from_file_location("_qa_io", path)
+    if spec is None or spec.loader is None:
+        raise LaunchError("scripts/qa/io.py cannot be loaded")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        return IoApi(
+            module.publish_private_once, module.make_private_dir, module.open_private_capture
+        )
+    except AttributeError as exc:
+        raise LaunchError("scripts/qa/io.py lacks a writer the launcher needs") from exc
 
 
 def _check_slug(slug: str) -> str:
@@ -50,10 +112,22 @@ def tester_user(slug: str) -> str:
     return USER_PREFIX + _check_slug(slug)
 
 
-def tester_home(system: str, slug: str) -> str:
+def tester_home(system: str, slug: str, home_root: str | None = None) -> str:
     if system not in HOME_ROOTS:
         raise LaunchError("system must be linux or darwin")
-    return f"{HOME_ROOTS[system]}/{tester_user(slug)}"
+    return f"{home_root or HOME_ROOTS[system]}/{tester_user(slug)}"
+
+
+def probe_marker_path(node: str, slug: str, root: Path = PROBE_MARKER_ROOT) -> Path:
+    return root / node / f"{_check_slug(slug)}.ok"
+
+
+def check_agent_extras(extra: Sequence[str]) -> list[str]:
+    """Extra agent args go after the fixed argv. Each one is short, plain and secret-free."""
+    for arg in extra:
+        if not EXTRA_ARG.fullmatch(arg) or EXTRA_DENY.search(arg):
+            raise LaunchError("an extra agent argument is not on the allowlist")
+    return list(extra)
 
 
 def build_command(
@@ -62,37 +136,40 @@ def build_command(
     slug: str,
     agent_argv: Sequence[str],
     pass_dir: Path,
-    capture_path: Path,
     ids: Sequence[str],
     findings_tool: str,
+    home_root: str | None = None,
+    fault_dir: str | None = None,
 ) -> list[str]:
-    """The full argv. The outer `sh` is the coordinator, so it owns the capture file."""
-    home = tester_home(system, slug)
+    """The full argv. The inner shell enters the tester's workspace before it runs the agent."""
+    home = tester_home(system, slug, home_root)
+    work = f"{home}/work"
     env = [
         "env",
         "-i",
-        f"HOME={home}",
-        f"PATH={SYSTEM_PATHS[system]}",
-        f"DECOY_HOME={home}/.decoy-home",
+        f"HOME={work}",
+        f"PATH={home}/bundle/bin:{SYSTEM_PATHS[system]}",
+        f"DECOY_HOME={work}/.decoy-home",
         f"QA_TESTER={slug}",
         f"QA_PASS_DIR={pass_dir}",
+        f"QA_INBOX={pass_dir}/inbox/{slug}",
         f"QA_FINDING_IDS={','.join(ids)}",
         f"QA_FINDINGS_TOOL={findings_tool}",
     ]
-    inner = ["sudo", "-n", "-u", tester_user(slug), "-H", "--", *env, *agent_argv]
-    return ["sh", "-c", 'exec "$@" >>"$0" 2>&1', str(capture_path), *inner]
+    if slug == "p3":
+        env.append(f"QA_SECRET_FILE={home}/secret/ci-secret")
+    if fault_dir:
+        env.append(f"QA_FAULT_DIR={fault_dir}")
+    inner = ["sh", "-c", 'cd "$HOME" && exec "$@"', "sh", *agent_argv]
+    return ["sudo", "-n", "-u", tester_user(slug), "-H", "--", *env, *inner]
 
 
-def _default_writer() -> Writer:
-    path = Path(__file__).with_name("io.py")
-    if not path.is_file():
-        raise LaunchError("scripts/qa/io.py is missing: slice S1a must land first")
-    spec = importlib.util.spec_from_file_location("_qa_io", path)
-    if spec is None or spec.loader is None:
-        raise LaunchError("scripts/qa/io.py cannot be loaded")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.publish_private_once  # type: ignore[no-any-return]
+def as_tester(
+    system: str, slug: str, argv: Sequence[str], home_root: str | None = None
+) -> list[str]:
+    home = tester_home(system, slug, home_root)
+    env = ["env", "-i", f"HOME={home}/work", f"PATH={home}/bundle/bin:{SYSTEM_PATHS[system]}"]
+    return ["sudo", "-n", "-u", tester_user(slug), "-H", "--", *env, *argv]
 
 
 def allocate_ids(
@@ -100,73 +177,140 @@ def allocate_ids(
     slug: str,
     count: int,
     *,
-    writer: Writer,
+    publish: Callable[[Path, bytes], None],
     token: Callable[[], str] = lambda: secrets.token_hex(6),
 ) -> list[str]:
-    """Issue `count` ids for one tester. Each id is reserved once with the private writer.
+    """Issue `count` ids for one tester, each reserved once through the private writer.
 
-    An id is `f-<slug>-<random hex>`: it holds nothing derived from data. A name that is
-    already reserved is skipped and a fresh token is drawn.
+    An id is `f-<slug>-<random hex>` and holds nothing derived from data. A reserved name is
+    skipped and a fresh token is drawn. `pass_dir/issued` must exist.
     """
     _check_slug(slug)
-    issued = pass_dir / "issued"
-    issued.mkdir(parents=True, exist_ok=True)
     ids: list[str] = []
     while len(ids) < count:
         candidate = f"{ID_PREFIX}{slug}-{token()}"
         try:
-            writer(issued / candidate, b"")
+            publish(pass_dir / "issued" / candidate, b"")
         except FileExistsError:
             continue
         ids.append(candidate)
     return ids
 
 
-def handback(pass_dir: Path, slug: str, *, exit_code: int) -> str:
-    """One line: counts and ids. It reads file names only, never a record."""
-    _check_slug(slug)
-    prefix = f"{ID_PREFIX}{slug}-"
-    issued = sorted(p.name for p in (pass_dir / "issued").glob(prefix + "*"))
-    findings = pass_dir / "findings"
-    written = [i for i in issued if (findings / f"{i}.toml").exists()]
+def handback(
+    slug: str,
+    issued: Sequence[str],
+    inbox_names: Sequence[str],
+    *,
+    exit_code: int,
+    skipped: str = "",
+) -> str:
+    """One line of counts and ids. It reads file names only, never a record."""
+    written = [i for i in issued if f"{i}.toml" in set(inbox_names)]
+    tail = f" skipped={skipped}" if skipped else ""
     return (
         f"tester={slug} findings={len(written)} issued={len(issued)} "
-        f"exit={exit_code} ids={','.join(written)}"
+        f"exit={exit_code}{tail} ids={','.join(written)}"
     )
 
 
-def _run(argv: list[str]) -> int:
-    return subprocess.run(argv, check=False).returncode
+def _probe(argv: list[str]) -> tuple[int, str]:
+    done = subprocess.run(argv, capture_output=True, text=True, check=False, cwd="/")
+    return done.returncode, done.stdout
+
+
+def _run(argv: list[str], capture_fd: int, brief_text: str) -> int:
+    return subprocess.run(
+        argv,
+        input=brief_text,
+        text=True,
+        stdout=capture_fd,
+        stderr=capture_fd,
+        check=False,
+        cwd="/",
+    ).returncode
+
+
+def _fault_dir(system: str, slug: str, home_root: str | None, probe: Probe) -> str | None:
+    """The P5 bounded volume, if setup made it. The tester user checks, since the home is private."""
+    if slug != "p5":
+        return None
+    path = f"{tester_home(system, slug, home_root)}/fault"
+    code, _ = probe(as_tester(system, slug, ["test", "-f", f"{path}/{FAULT_MARKER}"], home_root))
+    return path if code == 0 else None
 
 
 def launch(
     *,
     system: str,
     slug: str,
-    agent_argv: Sequence[str],
+    brief: str,
     pass_dir: Path,
     id_count: int,
     findings_tool: str,
-    writer: Writer | None = None,
-    runner: Callable[[list[str]], int] = _run,
-) -> str:
-    """Issue ids, create the capture file, run the tester, return the hand-back line."""
-    write = writer or _default_writer()
-    ids = allocate_ids(pass_dir, slug, id_count, writer=write)
-    capture_dir = pass_dir / "capture"
-    capture_dir.mkdir(parents=True, exist_ok=True)
-    capture = capture_dir / f"{slug}.log"
-    write(capture, b"")
+    extra_args: Sequence[str] = (),
+    io: IoApi | None = None,
+    runner: Runner = _run,
+    probe: Probe = _probe,
+    node: str | None = None,
+    marker_root: Path = PROBE_MARKER_ROOT,
+    home_root: str | None = None,
+    brief_dir: Path = BRIEF_DIR,
+) -> LaunchResult:
+    """Check the node, issue ids, run the tester with captured output, return the hand-back."""
+    _check_slug(slug)
+    if brief not in BRIEFS:
+        raise LaunchError("unknown brief")
+    extras = check_agent_extras(extra_args)
+    if not probe_marker_path(node or socket.gethostname(), slug, marker_root).is_file():
+        raise LaunchError("no S3 sandbox probe marker for this node and tester: run the probe")
+    api = io or default_io()
+    inbox = pass_dir / "inbox" / slug
+
+    # The tester resolves `decoy` inside its own bundle, or nothing starts.
+    code, out = probe(as_tester(system, slug, ["sh", "-c", "command -v decoy"], home_root))
+    if code != 0 or not out.strip().startswith(f"{tester_home(system, slug, home_root)}/bundle/"):
+        raise LaunchError("decoy does not resolve inside the tester's bundle")
+
+    # Traverse-only folders for the tester; capture and issued ids stay coordinator-only.
+    api.make_private_dir(pass_dir, mode=0o711)
+    api.make_private_dir(pass_dir / "inbox", mode=0o711)
+    api.make_private_dir(pass_dir / "issued", mode=0o700)
+    api.make_private_dir(pass_dir / "capture", mode=0o700)
+    # The tester makes its own inbox, so only that user can write or read it.
+    code, _ = probe(
+        as_tester(
+            system,
+            slug,
+            ["sh", "-c", 'mkdir -p -m 0700 "$1" && chmod 0700 "$1"', "sh", str(inbox)],
+            home_root,
+        )
+    )
+    if code != 0:
+        raise LaunchError("the tester inbox could not be made")
+
+    ids = allocate_ids(pass_dir, slug, id_count, publish=api.publish_private_once)
+    fault = _fault_dir(system, slug, home_root, probe)
     argv = build_command(
         system=system,
         slug=slug,
-        agent_argv=agent_argv,
+        agent_argv=[*AGENT_BASE, *extras],
         pass_dir=pass_dir,
-        capture_path=capture,
         ids=ids,
         findings_tool=findings_tool,
+        home_root=home_root,
+        fault_dir=fault,
     )
-    return handback(pass_dir, slug, exit_code=runner(argv))
+    brief_text = (brief_dir / f"{brief}.md").read_text(encoding="utf-8")
+    fd = api.open_private_capture(pass_dir / "capture" / f"{slug}.log")
+    try:
+        exit_code = runner(argv, fd, brief_text)
+    finally:
+        os.close(fd)
+    _, listing = probe(as_tester(system, slug, ["ls", "-1", str(inbox)], home_root))
+    skipped = "disk-full" if slug == "p5" and fault is None else ""
+    line = handback(slug, ids, listing.split(), exit_code=exit_code, skipped=skipped)
+    return LaunchResult(line, exit_code)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -174,29 +318,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Start one QA tester (see docs/qa/beta-program.md)."
     )
     parser.add_argument("slug", help="tester slug, for example p1 or checklist")
+    parser.add_argument("--brief", required=True, choices=BRIEFS)
     parser.add_argument("--pass-dir", type=Path, required=True)
     parser.add_argument("--ids", type=int, default=20, help="finding ids to issue")
     parser.add_argument("--findings-tool", default="/opt/decoy-qa/findings.py")
-    parser.add_argument("agent", nargs=argparse.REMAINDER, help="agent command after --")
+    parser.add_argument("extra", nargs="*", help="extra agent arguments, allowlisted")
     args = parser.parse_args(argv)
-    agent = args.agent[1:] if args.agent[:1] == ["--"] else args.agent
-    if not agent:
-        parser.error("give the agent command after --")
     system = "darwin" if sys.platform == "darwin" else "linux"
     try:
-        line = launch(
+        result = launch(
             system=system,
             slug=args.slug,
-            agent_argv=agent,
+            brief=args.brief,
             pass_dir=args.pass_dir,
             id_count=args.ids,
             findings_tool=args.findings_tool,
+            extra_args=args.extra,
         )
     except LaunchError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(line)
-    return 0
+    print(result.line)
+    return 1 if result.exit_code != 0 else 0
 
 
 if __name__ == "__main__":
