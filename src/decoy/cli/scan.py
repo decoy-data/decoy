@@ -39,7 +39,7 @@ from decoy._row_sample import sample_frame
 from decoy.cli._default_group import make_default_group
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
-from decoy.cli.scanning import diff_scan_sets, pii_bucket
+from decoy.cli.scanning import diff_scan_sets, pii_bucket, saved_field_facts
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 from decoy.ui.table import make_table
@@ -108,7 +108,8 @@ Examples:
   decoy scan data.csv --has-header
     Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
     A CSV always needs --has-header or --no-header: scan never guesses.
-    Reads the first 10 000 rows by default (--rows 0 for a full scan).
+    Reads the first 10 000 rows by default and labels the counts a sample, with
+    no key candidates (--rows 0 reads every row and gives whole-file numbers).
 
   decoy scan customers.csv orders.csv --has-header
     Scan several files in one run: one table each, named from the file stem.
@@ -775,6 +776,8 @@ def _show(
                 "status": "ok",
                 "scan": scan,
                 "field": matched,
+                "basis": data["basis"],
+                "scanned_rows": data["scanned_rows"],
                 "pii_bucket": bucket,
                 "quasi_identifier_groups": qi_member,
             },
@@ -789,13 +792,7 @@ def _show(
         facts.append(("PII score", f"{score:.2f} ({bucket})"))
     else:
         facts.append(("PII score", f"- ({bucket})"))
-    for key, label in (
-        ("dtype", "Type"),
-        ("null_count", "Nulls"),
-        ("distinct_count", "Distinct"),
-    ):
-        if key in matched and matched[key] is not None:
-            facts.append((label, str(matched[key])))
+    facts.extend(saved_field_facts(matched, data))
     if detectors:
         facts.append(("Detectors", ", ".join(str(d) for d in detectors)))
     if qi_member:

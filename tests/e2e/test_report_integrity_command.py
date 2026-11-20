@@ -205,3 +205,28 @@ class TestExitFourReachable:
             app, ["report", "integrity", str(masked), "--source", str(src), "--json"]
         )
         assert result.exit_code == 0, result.output
+
+
+def test_the_demo_walkthrough_ends_green(tmp_path: Path) -> None:
+    """REPORT-INTEGRITY-DEMO: `decoy demo` then `report integrity` on its own output exits 0.
+
+    The demo redacts `customer_id`, and a redacted value can look like an identifier to a
+    detector. The engine grades name-hint-only residual PII by source identity (engine 0.28.0),
+    so a value that is not the source value no longer fails the check.
+    """
+    out = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "--dir", str(out)]).exit_code == 0
+    args = [
+        "report",
+        "integrity",
+        str(out / "customers_masked.csv"),
+        "--source",
+        str(out / "customers.csv"),
+    ]
+    plain = runner.invoke(app, [*args, "--json"])
+    assert plain.exit_code == 0, plain.output
+    configured = runner.invoke(app, [*args, "--config", str(out / "pipeline.yaml"), "--json"])
+    assert configured.exit_code == 0, configured.output
+    report = _json.loads(configured.stdout)["report"]
+    assert report["fail_count"] == 0
+    assert report["error_count"] == 0
