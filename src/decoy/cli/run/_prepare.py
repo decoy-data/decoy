@@ -29,7 +29,6 @@ from decoy.cli.io import (
     parse_flags,
     quarantine_enabled,
 )
-from decoy.cli.io import resolve_path as _resolve_path
 from decoy.cli.run._context import RunContext, UsageRefusal, output_placement
 from decoy.cli.run._execute import (
     _check_chunked_tables,
@@ -354,11 +353,10 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
-        for _flag in _flags:
+        # The databases resolve once, in `output_placement`, so the gate and the read agree.
+        for _flag, _db in zip(_flags, output_placement(ctx).inputs, strict=True):
             _tbl = _flag.table
-            _parquet = acquire_relation(
-                _resolve_path(_flag.db_path, ctx.config.parent), _tbl, ctx._duckdb_tmpdir
-            )
+            _parquet = acquire_relation(_db, _tbl, ctx._duckdb_tmpdir)
             _raw_sources[_tbl] = {
                 "type": "file",
                 "format": "parquet",
