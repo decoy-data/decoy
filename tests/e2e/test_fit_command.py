@@ -177,13 +177,13 @@ class TestFitDpModeSelectionFailClosed:
         src = tmp_path / "wide.csv"
         pd.DataFrame({"score": [(i % 60) * 1.5 for i in range(600)]}).to_csv(src, index=False)
         out = tmp_path / "snap.json"
-        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "17", "-o", str(out)])
+        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "40", "-o", str(out)])
         assert result.exit_code == 0, result.output
         assert "dp_mode_not_selected" not in result.output
         counts = json.loads(out.read_text(encoding="utf-8"))["columns"]["score"]["stats"][
             "bin_counts"
         ]
-        assert len(counts) >= 17
+        assert len(counts) >= 40
         default = tmp_path / "default.json"
         assert runner.invoke(app, ["fit", str(src), "-o", str(default)]).exit_code == 0
         stats = json.loads(default.read_text(encoding="utf-8"))["columns"]["score"]["stats"]
