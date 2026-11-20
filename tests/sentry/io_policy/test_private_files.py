@@ -599,9 +599,9 @@ def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
     assert run(files) == []
 
 
-def test_the_census_is_63_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_60_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 63
+    assert len(sinks) == 60
     assert len([s for s in sinks if is_entry(s)]) == 26
     counts: dict[str, int] = {}
     for r in ROWS:
