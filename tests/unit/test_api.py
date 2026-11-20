@@ -1,16 +1,15 @@
 """Unit tests for the S6 library one-liner API (`decoy.mask` / `decoy.scan`).
 
-`decoy.api` is a thin wrapper over `decoy_engine.run_pipeline` /
-`decoy_engine.profile_columns` -- the SAME entrypoints `decoy run` /
-`decoy scan` call. These tests prove:
+`decoy.mask` wraps `decoy_engine.run_pipeline`, the entrypoint `decoy run` calls; `decoy.scan`
+calls the shared scan function behind `decoy scan`. These tests prove:
 
   1. Basic mask/scan behavior (round-trip, keyed determinism, generate
      tables, multi-table dict data, error handling for malformed
      mask-secret / target / data shapes).
   2. Parity: `decoy.mask(...)` on a config produces byte-identical output
-     to `decoy run <same config>.yaml` (test_mask_parity_with_cli_run*),
-     and `decoy.scan(...)` on a file produces the identical ColumnProfile
-     to `decoy scan <same file>` (test_scan_parity_with_cli*).
+     to `decoy run <same config>.yaml` (test_mask_parity_with_cli_run*).
+     The matching `decoy.scan(...)` parity with `decoy scan --output` is in
+     `tests/unit/api_scan/`.
 
 See src/decoy/api.py for the design notes (why `data`/`out` need staged
 placeholder sources/targets before PipelineConfig validation).
@@ -396,38 +395,22 @@ def test_mask_parity_dataframe_matches_cli_csv_source(
 
 
 # --------------------------------------------------------------------------
-# decoy.scan -- basic behavior
+# decoy.scan -- basic behavior (the parity matrix and the input rules are in tests/unit/api_scan/)
 # --------------------------------------------------------------------------
-
-
-def test_scan_dataframe_returns_profile(sample_df: pd.DataFrame):
-    profile = decoy.scan(sample_df, source_label="customers")
-
-    assert profile.source_label == "customers"
-    assert profile.row_count == len(sample_df)
-    field_names = {f.name for f in profile.fields}
-    assert field_names == set(sample_df.columns)
-    ssn_field = next(f for f in profile.fields if f.name == "ssn")
-    assert ssn_field.pii_score > 0.5
 
 
 def test_scan_profile_keeps_a_rare_label_but_the_saved_document_floors_it():
     """AT-C2 (row 24zm): the in-memory profile holds every value, as its docstring says, and
-    `profile_document` is what drops a label held by fewer than 10 rows before a save."""
-    from decoy_engine import profile_document
+    `profile_document` is what drops a label held by fewer than 10 rows before a save. It calls
+    the engine directly: `decoy.scan()` no longer returns the value-bearing profile."""
+    from decoy_engine import profile_columns, profile_document
 
     df = pd.DataFrame({"tier": ["gold"] * 30 + ["silver"] * 29 + ["ZQRARELABEL"]})
-    profile = decoy.scan(df, source_label="tiers")
+    profile = profile_columns(df, source_label="tiers", sample_strategy="head", sample_row_cap=None)
     assert "ZQRARELABEL" in _json.dumps(profile.to_dict())
     saved = _json.dumps(profile_document(profile))
     assert "ZQRARELABEL" not in saved
     assert "gold" in saved
-
-
-def test_scan_path_csv(sample_csv: Path):
-    profile = decoy.scan(sample_csv)
-    assert profile.source_label == sample_csv.name
-    assert profile.row_count == 3
 
 
 def test_scan_invalid_strategy_raises():
@@ -438,28 +421,6 @@ def test_scan_invalid_strategy_raises():
 def test_scan_invalid_data_type_raises():
     with pytest.raises(TypeError):
         decoy.scan(12345)
-
-
-# --------------------------------------------------------------------------
-# decoy.scan -- parity with `decoy scan`
-# --------------------------------------------------------------------------
-
-
-def test_scan_parity_with_cli_scan(sample_csv: Path, tmp_path: Path):
-    scan_out = tmp_path / "scan.json"
-    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--output", str(scan_out)])
-    assert result.exit_code == 0, result.stdout
-    # --output holds the value-free scan-set/v1 core; its table is named from the file stem.
-    cli_profile = _json.loads(scan_out.read_text())["tables"][0]
-
-    lib_profile = decoy.scan(sample_csv).to_dict()
-
-    assert lib_profile["row_count"] == cli_profile["row_count"]
-    assert Path(lib_profile["source_label"]).stem == cli_profile["name"]
-    assert lib_profile["reid_risk_score"] == cli_profile["reid_risk_score"]
-    lib_fields = {f["name"]: f["pii_score"] for f in lib_profile["fields"]}
-    cli_fields = {f["name"]: f["pii_score"] for f in cli_profile["fields"]}
-    assert lib_fields == cli_fields
 
 
 # --------------------------------------------------------------------------

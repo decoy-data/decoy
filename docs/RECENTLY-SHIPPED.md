@@ -11,6 +11,10 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-20: `decoy.scan()` returns the scan document (FREEZE-SURFACE item 3)
+
+- FREEZE-SURFACE item 3 (audit J2) is done. CLI C1 #354 put `decoy scan` and `decoy demo` behind one shared scan call, `decoy.cli.scanning.scan_descriptors`. C2 ports `decoy.scan()` onto it: it returns the value-free `scan-set/v1` document that `decoy scan --output` writes, with the CLI's input rules (a CSV states `has_header`, `.tsv` is tab-delimited, the default is 10,000 rows). This is a breaking Python API change, owner-approved before GA. A sentry now fails on any other first-party call of `scan_sources`, `scan_set_to_dict` or `profile_columns`, except `decoy init`.
+
 ## 2026-11-20: optional ML detectors in scans (row 32a)
 
 - Row 32a (SCAN-ML) is closed. Engine: M0 #396, M1 #405, M5 #508, M4 #512 and M3a #602. CLI: C1 #298 (`decoy models`, the setup step, the model preflight and `decoy doctor` rows), C2a #301 (the run post-scan report and the exit 4 block) and C2b #351 (`decoy scan --detectors`; a model that is not installed is refused before any data is read). The last slice, M3b (classifier suggestions in a starter config), moves to the DECOY-LANG row as S8 (owner 2026-11-20), because the init wizard it was planned onto stopped on 2026-11-19.

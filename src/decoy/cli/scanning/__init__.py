@@ -15,6 +15,9 @@ from decoy.cli.scanning._engine_call import (
     scan_descriptors,
 )
 from decoy.cli.scanning._multi import (
+    API_SPELLING,
+    CLI_SPELLING,
+    ScanSpelling,
     resolve_sources,
     run_scan,
     saved_field_facts,
@@ -22,12 +25,15 @@ from decoy.cli.scanning._multi import (
 )
 
 __all__ = [
+    "API_SPELLING",
+    "CLI_SPELLING",
     "DEFAULT_SCAN_ROWS",
     "DETECTORS_OPTION",
     "NER_MODEL_OPTION",
     "SampleStrategy",
     "ScanDiff",
     "ScanRun",
+    "ScanSpelling",
     "ScanUsageError",
     "check_scan_options",
     "core_bytes",

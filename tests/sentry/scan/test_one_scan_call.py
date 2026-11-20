@@ -94,8 +94,8 @@ def test_every_allowlist_entry_is_still_live() -> None:
     assert set(ALLOWED) - live == set()
 
 
-def test_allowlist_holds_exactly_the_c1_entries() -> None:
-    assert set(ALLOWED) == {"cli/init.py::_scaffold_from_file", "api.py::scan"}
+def test_allowlist_holds_only_the_init_entry() -> None:
+    assert set(ALLOWED) == {"cli/init.py::_scaffold_from_file"}
     assert all(len(e["reason"]) >= 15 for e in ALLOWED.values())
 
 
