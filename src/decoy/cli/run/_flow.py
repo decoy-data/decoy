@@ -3,13 +3,14 @@
 import contextlib
 import time
 from datetime import datetime, timezone
+from typing import NoReturn
 
 import typer
 
 from decoy.cli.io import LayoutError, mint_invocation_id, open_out_dir
 from decoy.cli.project import only_pipeline, run_all
 from decoy.cli.run import _errors, _evidence, _execute, _prepare, _progress, _render, _result
-from decoy.cli.run._context import RunContext
+from decoy.cli.run._context import RunContext, RunRefusal
 from decoy.cli.run._notify import (
     _begin_trace,
     _dispatch_run_notifications,
@@ -77,29 +78,55 @@ def _child_flags(ctx: RunContext) -> list[str]:
     return flags + [flag for flag, field in FORWARD_SWITCHES if getattr(ctx, field)]
 
 
+def _fan_out(ctx: RunContext) -> NoReturn:
+    """Run every pipeline of the project in its own child for `--all`, then exit.
+
+    Outside the envelope: the parent binds no pipeline, and each child writes its own document.
+    """
+    refused = [flag for flag, field in REFUSED_WITH_ALL if getattr(ctx, field) is not None]
+    key = {"DECOY_MASTER_KEY": ctx.master_key} if ctx.master_key is not None else {}
+    run_all(
+        ctx.state,
+        ctx.cli,
+        named=ctx.named,
+        refused=refused,
+        flags=_child_flags(ctx),
+        env=key,
+    )
+
+
 def _bind_pipeline(ctx: RunContext) -> None:
-    """Fan out for `--all`, else settle which YAML this process runs (given, or the only one)."""
-    if ctx.all_:
-        refused = [flag for flag, field in REFUSED_WITH_ALL if getattr(ctx, field) is not None]
-        key = {"DECOY_MASTER_KEY": ctx.master_key} if ctx.master_key is not None else {}
-        run_all(
-            ctx.state,
-            ctx.cli,
-            named=ctx.named,
-            refused=refused,
-            flags=_child_flags(ctx),
-            env=key,
-        )
+    """Settle which YAML this process runs (given, or the project's only one)."""
     ref = ctx.pipeline if ctx.pipeline is not None else only_pipeline(ctx.state, ctx.cli)
     ctx.config, ctx.given_as = ref.yaml, ref.given_as
 
 
 def execute(ctx: RunContext) -> None:
-    """Run the phases in order. Everything after the `try` runs only on success."""
+    """Run the phases in order, and give every end of the run its document.
+
+    A typed refusal (a bad `--notify`, a `--rows` that cannot run, the evidence write) and
+    Ctrl-C end here with the envelope; the errors inside the run end in `_errors.fail`.
+    """
+    if ctx.all_:
+        _fan_out(ctx)
+    # Bound before the envelope, so every document it writes names the run's config.
     _bind_pipeline(ctx)
     ctx.invocation_id = mint_invocation_id()
     ctx.config_str = str(ctx.config)
+    # First, so a refusal before the run starts has timings.
+    ctx._run_started_at = datetime.now(timezone.utc)
+    ctx.started = time.perf_counter()
+    try:
+        _phases(ctx)
+    except RunRefusal as refusal:
+        _errors.refused(ctx, refusal)
+    except KeyboardInterrupt:
+        _errors.interrupted(ctx)
+        raise
 
+
+def _phases(ctx: RunContext) -> None:
+    """The phases in order. Everything after the `try` runs only on success."""
     parse_channels(ctx)
 
     ctx.raw, ctx.saved_findings, ctx.config_read_error = _load_raw_config(ctx.config)
@@ -109,15 +136,18 @@ def execute(ctx: RunContext) -> None:
     if ctx.rows is not None:
         _prepare.refuse_preview(ctx)
 
-    ctx.resolver = _build_resolver(ctx.master_key, ctx.key_label, ctx.raw_cfg, ctx.state)
+    try:
+        ctx.resolver = _build_resolver(ctx.master_key, ctx.key_label, ctx.raw_cfg, ctx.state)
+    except typer.BadParameter as exc:
+        # Click prints its own message and exits 2; the envelope carries the same 2.
+        _errors.bad_parameter(ctx, exc)
+        raise
     if ctx.fidelity and ctx.raw_cfg is not None and not _has_kind(ctx.raw_cfg, "columns"):
-        _refuse_fidelity_without_mask(ctx.state, ctx.config_str, ctx.raw_cfg)
+        _refuse_fidelity_without_mask(ctx.raw_cfg)
 
     ctx.post_validation = ctx.post_validate or ctx.post_validate_enforce
     ctx._report_flags = ctx.explain_plan or ctx.fidelity or ctx.post_validation
 
-    ctx._run_started_at = datetime.now(timezone.utc)
-    ctx.started = time.perf_counter()
     finished = False
     _otel = _trace = _failed_with = None
     try:

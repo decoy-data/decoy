@@ -17,16 +17,18 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import typer
 
 from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
 from decoy.cli.run._context import RunContext
-from decoy.ui.output import OutputMode
+from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
 _FORMATS = ("csv", "parquet", "fixed_width")
@@ -161,6 +163,7 @@ def _build(
     error_class: str | None,
     blocking_failed: bool,
     vault_failed: bool,
+    early: bool,
 ) -> tuple[dict, int]:
     from decoy_engine import route_summary
     from decoy_engine.run_result import (
@@ -170,7 +173,8 @@ def _build(
         project_tables,
     )
 
-    config = _config(ctx)
+    # A refusal before the run starts has read no config: it names none and holds no table.
+    config = {} if early else _config(ctx)
     failed = category is not None
     facts = None if ctx._collector is None else ctx._collector.snapshot()
     execution = ctx._execution
@@ -189,7 +193,7 @@ def _build(
         tables=tables,
         execution_result=execution,
         failure=FailureInput(category, reason, error_class) if failed else None,  # type: ignore[arg-type]
-        config_ref=_config_ref(ctx, config),
+        config_ref=None if early else _config_ref(ctx, config),
         producer=_cli_version,
         invocation_id=ctx.invocation_id,
         exit_map=exit_codes.RUN_EXIT_MAP,
@@ -214,14 +218,20 @@ def build(
     error_class: str | None = None,
     blocking_failed: bool = False,
     vault_failed: bool = False,
+    early: bool = False,
 ) -> Document:
     """The document of this run and its exit integer. `reason` is the engine's `ReasonRecord`.
+
+    `early` marks a refusal that came before the config was read: the document has no config,
+    no table and no route.
 
     Never raises for a document defect: the exit then comes straight from `derive_outcome` with
     the same inputs, and the one stderr line names the exception class and the code only.
     """
     try:
-        payload, code = _build(ctx, category, reason, error_class, blocking_failed, vault_failed)
+        payload, code = _build(
+            ctx, category, reason, error_class, blocking_failed, vault_failed, early
+        )
     except Exception as exc:
         if ctx.state.mode is not OutputMode.quiet:
             ctx.state.err_console.print(
@@ -239,3 +249,58 @@ def members(document: Document) -> dict:
     added: dict = {} if document.payload is None else {"result": document.payload}
     added["result_status"] = document.status
     return added
+
+
+def emit(ctx: RunContext, document: Document, payload: dict | None) -> None:
+    """Write the run's one `--json` envelope: `payload` with the document's members added.
+
+    A no-op outside `--json` and when `payload` is None. This and `finish` are the only places
+    under `cli/run/` that write the envelope or end the process (G-RUN-ONE-EXIT).
+    """
+    if payload is not None:
+        emit_json(ctx.state, {**payload, **members(document)})
+
+
+def finish(ctx: RunContext, document: Document, payload: dict | None = None) -> None:
+    """Write the envelope, then end the run with the document's exit integer when it is not 0.
+
+    Every exit of `decoy run` that has a document comes through here, so the integer in the
+    document is the integer of the process.
+    """
+    emit(ctx, document, payload)
+    if document.exit_code != 0:
+        raise typer.Exit(code=document.exit_code)
+
+
+def report_error(
+    ctx: RunContext,
+    document: Document,
+    text: str,
+    *,
+    code: str | None = None,
+    context: dict | None = None,
+    human: bool = True,
+    stderr_line: bool = False,
+) -> None:
+    """Write a run that ended outside the error arm, through the one error emitter.
+
+    `--json`: the `decoy-error-v1` object with `context` and the document's members added.
+    Other modes: the one stderr line, unless `human` is False (Click or the interrupt prints
+    its own). `stderr_line` keeps the stderr line under `--json` too, for a run whose outputs
+    are already written. Does not end the run; `finish_error` does.
+    """
+    if ctx.state.mode is OutputMode.json:
+        if stderr_line:
+            # The same emitter in its human form: one `error:` line on stderr, then the envelope.
+            emit_error(replace(ctx.state, mode=OutputMode.default), "run", text, code=code)
+        emit_error(
+            ctx.state, "run", text, code=code, context={**(context or {}), **members(document)}
+        )
+    elif human:
+        emit_error(ctx.state, "run", text, code=code)
+
+
+def finish_error(ctx: RunContext, document: Document, text: str, **kwargs: Any) -> None:
+    """`report_error`, then the exit of the document."""
+    report_error(ctx, document, text, **kwargs)
+    raise typer.Exit(code=document.exit_code)

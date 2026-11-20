@@ -3,15 +3,11 @@
 import json as _json
 from pathlib import Path
 
-import typer
-
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
-from decoy.cli.exit_codes import EXIT_RUNTIME
 from decoy.cli.io import LayoutError, find_project
-from decoy.cli.run._context import RunContext
+from decoy.cli.run._context import EvidenceWriteRefusal, RunContext
 from decoy.ui.output import OutputMode
-from decoy.ui.theme import error
 
 
 def _marked_project_root(config: Path) -> Path | None:
@@ -28,7 +24,7 @@ def _marked_project_root(config: Path) -> Path | None:
 
 
 def write_evidence(ctx: RunContext) -> None:
-    """Write the manifest when `--evidence-out` is set; a failed write exits EXIT_RUNTIME."""
+    """Write the manifest when `--evidence-out` is set; a failed write raises EvidenceWriteRefusal."""
     # Evidence manifest (--evidence-out), for plain and chunked runs; chunked runs have
     # no row_counts/timings/warnings (see the flag help).
     if ctx.evidence_out is not None and ctx._ev_config_dict is not None:
@@ -48,13 +44,16 @@ def write_evidence(ctx: RunContext) -> None:
             timings=ctx._ev_timings,
             engine_warnings=ctx._ev_engine_warnings,
         )
+        failed = None
         try:
             write_local_target(
                 ctx.evidence_out, _json.dumps(manifest, indent=2).encode("utf-8"), WriteMode.REPLACE
             )
         except AtomicWriteError as exc:
-            ctx.state.err_console.print(error("error:"), describe(exc), markup=False)
-            raise typer.Exit(code=EXIT_RUNTIME)
+            failed = describe(exc)
+        if failed is not None:
+            # Outside the block: the refusal has no context. `_errors.refused` prints and exits.
+            raise EvidenceWriteRefusal(failed)
         if ctx.state.mode is not OutputMode.json and ctx.state.mode is not OutputMode.quiet:
             from decoy.ui.theme import success as _success
 

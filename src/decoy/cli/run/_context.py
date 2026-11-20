@@ -30,6 +30,33 @@ CLI_WARNING_CODES: frozenset[str] = frozenset(
 )
 
 
+class RunRefusal(Exception):
+    """A refusal `decoy run` raises itself, before or after the engine runs.
+
+    `_errors.refused` turns it into the run result document, the one stderr line and the exit.
+    The text names flags and codes, never a value. Raise one only after any `except` block has
+    closed, so it carries no `__context__` (the document never holds the cause).
+    """
+
+    category = "usage"  # the run result's failure category; the exit integer comes from the map
+
+    def __init__(self, text: str, *, code: str | None = None) -> None:
+        super().__init__(text)
+        self.text = text
+        self.code = code
+
+
+class UsageRefusal(RunRefusal):
+    """A request the CLI refuses before the run starts (exit 1): a bad `--notify`, a `--rows`
+    preview that cannot run, `--fidelity` with no mask table."""
+
+
+class EvidenceWriteRefusal(RunRefusal):
+    """The `--evidence-out` manifest could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
+
+
 class Mode(str, Enum):
     mask = "mask"
     generate = "generate"
