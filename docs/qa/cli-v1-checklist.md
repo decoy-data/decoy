@@ -15,6 +15,9 @@ engine section that owns the behaviour is named in the group's notes.
 It is not a roadmap and tracks no work. Results go to a dated record (see "Recording a run").
 A check that fails becomes a roadmap row in `docs/ROADMAP.md`, as the 2026-11-08 QA findings did.
 
+Agent testers, the shared test corpus and the invariant oracle that run beside these checks are
+described in [beta-program.md](beta-program.md) (roadmap row QA-BETA).
+
 ## When a group is ready for QA
 
 Owner rule (2026-11-11, standing): QA runs only on a feature group that is V1 complete. A group is
