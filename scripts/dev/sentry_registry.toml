@@ -170,3 +170,9 @@ id = "outbound-network-owners"
 baseline = "tests/sentry/baselines/outbound-network-owners.json"
 kind = "json"
 consumer = "tests/sentry/io_policy/outbound/test_outbound_choke_point.py"
+
+[[sentry]]
+id = "run-exit-owners"
+baseline = "tests/sentry/baselines/run-exit-owners.json"
+kind = "json"
+consumer = "tests/sentry/run/test_one_run_exit.py"

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -280,14 +280,19 @@ def report_error(
     code: str | None = None,
     context: dict | None = None,
     human: bool = True,
+    stderr_line: bool = False,
 ) -> None:
     """Write a run that ended outside the error arm, through the one error emitter.
 
     `--json`: the `decoy-error-v1` object with `context` and the document's members added.
     Other modes: the one stderr line, unless `human` is False (Click or the interrupt prints
-    its own). Does not end the run; `finish_error` does.
+    its own). `stderr_line` keeps the stderr line under `--json` too, for a run whose outputs
+    are already written. Does not end the run; `finish_error` does.
     """
     if ctx.state.mode is OutputMode.json:
+        if stderr_line:
+            # The same emitter in its human form: one `error:` line on stderr, then the envelope.
+            emit_error(replace(ctx.state, mode=OutputMode.default), "run", text, code=code)
         emit_error(
             ctx.state, "run", text, code=code, context={**(context or {}), **members(document)}
         )

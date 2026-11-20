@@ -101,6 +101,22 @@ def test_every_path_has_one_document(name: str, tmp_path: Path) -> None:
     assert MARKER not in json.dumps(doc)
 
 
+# What each path wrote to stderr under `--json` on the base head. The envelope is added; the
+# terminal text is not changed, and the evidence failure keeps its `error:` line.
+JSON_STDERR = {"x5": "must be valid hex", "x8": "error:"}
+
+
+@pytest.mark.parametrize("name", ["x3", "x4", "x5", "x6", "x8", "x10", "x11"])
+def test_json_mode_stderr_matches_base(name: str, tmp_path: Path) -> None:
+    argv, patcher, _ = _case(name, tmp_path)
+    result = _invoke(argv, patcher)
+    expected = JSON_STDERR.get(name)
+    if expected is None:
+        assert result.stderr == ""
+    else:
+        assert expected in result.stderr
+
+
 def test_ctrl_c(tmp_path: Path) -> None:
     argv, patcher, _ = _case("x11", tmp_path)
     result = _invoke(argv, patcher)

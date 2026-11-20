@@ -354,7 +354,9 @@ def refused(ctx: RunContext, refusal: RunRefusal) -> NoReturn:
     )
     if isinstance(refusal, EvidenceWriteRefusal):
         # The outputs are already written, so the error shows in every mode, `--quiet` included.
-        _result.finish_error(ctx, document, refusal.text, context=_inside_run(ctx))
+        _result.finish_error(
+            ctx, document, refusal.text, context=_inside_run(ctx), stderr_line=True
+        )
     # A refusal with no code was silent under `--quiet`; one with a code was not.
     silent = ctx.state.mode is OutputMode.quiet and refusal.code is None
     _result.finish_error(

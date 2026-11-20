@@ -1,15 +1,21 @@
-"""G-RUN-ONE-EXIT: one module under `src/decoy/cli/run/` writes the envelope and ends the run.
+"""G-RUN-ONE-EXIT: one module writes the envelope of a `decoy run` and ends it.
 
-`emit_json(` and every form that ends the process appear only in `cli/run/_result.py` (the
-`emit` and `finish` functions). Every other module raises a typed refusal or calls
-`_result.finish`, so the exit integer of a run is the integer in its document.
+`emit_json(`, `emit_error(` and every form that ends the process appear only in
+`cli/run/_result.py` (`emit`, `finish`, `report_error`, `finish_error`). Every other module
+raises a typed refusal or calls `_result.finish`, so the exit integer of a run is the integer in
+its document.
 
-Covered exit forms, matched by what the name resolves to through the module's imports:
-`typer.Exit`, `typer.Abort`, `click.exceptions.Exit`, `click.exceptions.Abort`, `click.Abort`,
-`SystemExit`, and a call of `sys.exit` or the `exit` builtin; each raised or called, bare or
-constructed, and reached through `from typer import Exit`, an `as` alias or a module alias
-(`import sys as s; s.exit(1)`, `import typer as t; raise t.Exit()`). A bare re-raise inside
-`except typer.Exit` is not a new exit and is not matched.
+Scope: every module that can end `decoy run`: all of `cli/run/` (recursive) and
+`cli/project/_run_all.py`, the `--all` fan-out. The `--all` summary has no single run and so no
+document; its two functions are the reasoned, shrink-only entries of `run-exit-owners.json`. A
+stale entry fails, so the list only shrinks.
+
+Covered forms, matched by what the name resolves to through the module's imports:
+`typer.Exit`, `typer.Abort`, `click.Abort`, `click.exceptions.Exit`, `click.exceptions.Abort`,
+`SystemExit` (each raised, bare or constructed), a call of `sys.exit` or the `exit` builtin,
+and a call of `emit_json` or `emit_error`; reached through `from typer import Exit`, an `as`
+alias or a module alias (`import sys as s; s.exit(1)`, `import typer as t; raise t.Exit()`).
+A bare re-raise inside `except typer.Exit` is not a new exit and is not matched.
 
 Named limit: `getattr` and `importlib` are invisible.
 """
@@ -19,10 +25,12 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from tests.sentry._ratchet import load_allowlist
+
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
-PKG = "cli/run/"
 OWNER = "cli/run/_result.py"
+RUN_ALL = "cli/project/_run_all.py"
 EXIT_FORMS = frozenset(
     {
         "typer.Exit",
@@ -31,12 +39,14 @@ EXIT_FORMS = frozenset(
         "click.exceptions.Exit",
         "click.exceptions.Abort",
         "SystemExit",
-        "sys.exit",
-        "exit",
     }
 )
-RAISE_ONLY = frozenset({"typer.Exit", "typer.Abort", "click.Abort", "SystemExit"})
-EMIT = "emit_json"
+CALL_FORMS = frozenset({"sys.exit", "exit"})
+WRITERS = ("emit_json", "emit_error")
+
+
+def in_scope(rel: str) -> bool:
+    return (rel.startswith("cli/run/") or rel == RUN_ALL) and rel != OWNER
 
 
 def _bindings(tree: ast.Module) -> dict[str, str]:
@@ -61,88 +71,134 @@ def _dotted(node: ast.AST, bound: dict[str, str]) -> str | None:
         node = node.value
     if not isinstance(node, ast.Name):
         return None
-    base = bound.get(node.id, node.id)
-    return ".".join([base, *reversed(parts)])
+    return ".".join([bound.get(node.id, node.id), *reversed(parts)])
 
 
-def _canon(name: str) -> str:
-    # `typer` re-exports Click's classes; `click.exceptions.X` and `click.X` are one name.
-    return name.replace("click.exceptions.Abort", "click.Abort")
-
-
-def violations(source: str, rel: str) -> list[str]:
-    """Every breach of the rule in one module, as `rel:line: what`."""
-    if rel == OWNER or not rel.startswith(PKG):
-        return []
+def _hits(source: str) -> list[tuple[str, int, str]]:
+    """`(enclosing function, line, what)` for every exit form and writer call in the source."""
     tree = ast.parse(source)
     bound = _bindings(tree)
-    found: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Raise) and node.exc is not None:
-            target = node.exc.func if isinstance(node.exc, ast.Call) else node.exc
-            name = _dotted(target, bound)
-            if name is not None and _canon(name) in EXIT_FORMS | {"click.exceptions.Exit"}:
-                found.append(f"{rel}:{node.lineno}: raises {name}")
-        elif isinstance(node, ast.Call):
-            name = _dotted(node.func, bound)
-            if name is None:
-                continue
-            if name.endswith(EMIT) and name.split(".")[-1] == EMIT:
-                found.append(f"{rel}:{node.lineno}: calls {EMIT}")
-            elif name in {"sys.exit", "exit"}:
-                found.append(f"{rel}:{node.lineno}: calls {name}")
+    found: list[tuple[str, int, str]] = []
+
+    def walk(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = (
+                child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else scope
+            )
+            if isinstance(child, ast.Raise) and child.exc is not None:
+                target = child.exc.func if isinstance(child.exc, ast.Call) else child.exc
+                name = _dotted(target, bound)
+                if name in EXIT_FORMS:
+                    found.append((scope, child.lineno, f"raises {name}"))
+            elif isinstance(child, ast.Call):
+                name = _dotted(child.func, bound)
+                if name in CALL_FORMS:
+                    found.append((scope, child.lineno, f"calls {name}"))
+                elif name is not None and name.split(".")[-1] in WRITERS:
+                    found.append((scope, child.lineno, f"calls {name.split('.')[-1]}"))
+            walk(child, inner)
+
+    walk(tree, "")
     return found
 
 
-def _scan() -> list[str]:
+def violations(source: str, rel: str, allowed: frozenset[str] = frozenset()) -> list[str]:
+    """Every breach in one module that is not an allowlisted `file::function`."""
+    if not in_scope(rel):
+        return []
+    return [
+        f"{rel}:{line}: {what} in {scope or '<module>'}"
+        for scope, line, what in _hits(source)
+        if f"{rel}::{scope}" not in allowed
+    ]
+
+
+def _modules() -> list[Path]:
+    return [
+        *sorted((SRC / "cli" / "run").rglob("*.py")),
+        SRC / RUN_ALL,
+    ]
+
+
+def _allowed() -> frozenset[str]:
+    return frozenset(load_allowlist("run-exit-owners"))
+
+
+def test_no_exit_or_writer_outside_the_owner() -> None:
     out: list[str] = []
-    for path in sorted((SRC / "cli" / "run").glob("*.py")):
+    for path in _modules():
         rel = path.relative_to(SRC).as_posix()
-        out.extend(violations(path.read_text(encoding="utf-8"), rel))
-    return out
+        out.extend(violations(path.read_text(encoding="utf-8"), rel, _allowed()))
+    assert out == []
 
 
-def test_no_exit_or_envelope_outside_the_owner() -> None:
-    assert _scan() == []
+def test_the_scope_reaches_every_run_module() -> None:
+    rels = {p.relative_to(SRC).as_posix() for p in _modules()}
+    assert RUN_ALL in rels
+    assert {"cli/run/_flow.py", "cli/run/_errors.py", "cli/run/__init__.py"} <= rels
+    assert all(p.exists() for p in _modules())
+
+
+def test_the_allowlist_only_shrinks() -> None:
+    live: set[str] = set()
+    for path in _modules():
+        rel = path.relative_to(SRC).as_posix()
+        if rel == OWNER:
+            continue
+        live |= {f"{rel}::{scope}" for scope, _, _ in _hits(path.read_text(encoding="utf-8"))}
+    assert _allowed() - live == set(), "stale allowlist entries: remove them"
 
 
 def test_the_owner_ends_the_run() -> None:
     text = (SRC / OWNER).read_text(encoding="utf-8")
     assert "emit_json(" in text
+    assert "emit_error(" in text
     assert "raise typer.Exit(" in text
 
 
 R = "cli/run/_flow.py"
+SEEDED = [
+    "import typer\nraise typer.Exit(code=1)\n",
+    "import typer\nraise typer.Exit\n",
+    "import typer\nraise typer.Abort()\n",
+    "from typer import Exit\nraise Exit(code=2)\n",
+    "from typer import Exit as E\nraise E()\n",
+    "import typer as t\nraise t.Exit()\n",
+    "import click\nraise click.exceptions.Exit(1)\n",
+    "from click.exceptions import Exit\nraise Exit(1)\n",
+    "import click\nraise click.Abort()\n",
+    "raise SystemExit(1)\n",
+    "import sys\nsys.exit(1)\n",
+    "import sys as s\ns.exit(1)\n",
+    "from sys import exit as leave\nleave(1)\n",
+    "from decoy.ui.output import emit_json\nemit_json(state, {})\n",
+    "from decoy.ui.output import emit_json as out\nout(state, {})\n",
+    "import decoy.ui.output as o\no.emit_json(state, {})\n",
+    "from decoy.ui.output import emit_error\nemit_error(state, 'run', 'm')\n",
+    "from decoy.ui.output import emit_error as err\nerr(state, 'run', 'm')\n",
+    "import decoy.ui.output as o\no.emit_error(state, 'run', 'm')\n",
+]
 
 
-def test_seeded_shapes_are_caught() -> None:
-    cases = [
-        "import typer\nraise typer.Exit(code=1)\n",
-        "import typer\nraise typer.Exit\n",
-        "import typer\nraise typer.Abort()\n",
-        "from typer import Exit\nraise Exit(code=2)\n",
-        "from typer import Exit as E\nraise E()\n",
-        "import typer as t\nraise t.Exit()\n",
-        "import click\nraise click.exceptions.Exit(1)\n",
-        "from click.exceptions import Exit\nraise Exit(1)\n",
-        "import click\nraise click.Abort()\n",
-        "raise SystemExit(1)\n",
-        "import sys\nsys.exit(1)\n",
-        "import sys as s\ns.exit(1)\n",
-        "from sys import exit as leave\nleave(1)\n",
-        "from decoy.ui.output import emit_json\nemit_json(state, {})\n",
-        "from decoy.ui.output import emit_json as out\nout(state, {})\n",
-        "import decoy.ui.output as o\no.emit_json(state, {})\n",
-    ]
-    for source in cases:
-        assert violations(source, R), source
+def test_seeded_shapes_are_caught_in_every_scoped_module() -> None:
+    for rel in (R, "cli/run/__init__.py", "cli/run/sub/_x.py", RUN_ALL):
+        for source in SEEDED:
+            assert violations(source, rel), (rel, source)
+
+
+def test_a_new_function_in_run_all_is_not_covered_by_the_allowlist() -> None:
+    allowed = frozenset({f"{RUN_ALL}::run_all"})
+    source = (
+        "from decoy.ui.output import emit_error\ndef other(s):\n    emit_error(s, 'run', 'm')\n"
+    )
+    assert violations(source, RUN_ALL, allowed)
+    listed = source.replace("def other", "def run_all")
+    assert violations(listed, RUN_ALL, allowed) == []
 
 
 def test_the_owner_and_other_code_are_not_flagged() -> None:
-    assert violations("import typer\nraise typer.Exit(code=1)\n", OWNER) == []
-    assert violations("import typer\nraise typer.Exit(code=1)\n", "cli/gate/_run.py") == []
+    assert violations(SEEDED[0], OWNER) == []
+    assert violations(SEEDED[0], "cli/gate/_run.py") == []
+    assert violations(SEEDED[0], "cli/project/_list.py") == []
     reraise = "import typer\ntry:\n    pass\nexcept typer.Exit:\n    raise\n"
     assert violations(reraise, R) == []
-    assert (
-        violations("from decoy.ui.output import emit_error\nemit_error(s, 'run', 'm')\n", R) == []
-    )
