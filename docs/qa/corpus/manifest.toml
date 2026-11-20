@@ -3,7 +3,7 @@
 # `scripts/qa/corpus/fetch.py` downloads the public ones, both into ~/decoy-qa-corpus/<id>/.
 # Generated items have no hash (same seed, same bytes). Public items need a recorded license
 # from the allow-list in scripts/qa/corpus/manifest.py and a SHA-256 of the exact file.
-# `marker_columns` lists table.column for every text column; the generator test keeps it true.
+# `max_bytes` caps a download. `marker_columns` lists table.column for every text column; the generator test keeps it true.
 
 schema_version = 1
 
@@ -16,6 +16,7 @@ tier = "M"
 format = "csv-zip"
 shapes = ["multi-table", "fk-chain", "real-world-mess", "dates", "heavy-nulls"]
 marker_columns = []
+max_bytes = 20000000
 
 [[items]]
 id = "chinook-sqlite"
@@ -26,6 +27,10 @@ tier = "S"
 format = "sqlite"
 shapes = ["multi-table", "fk-chain", "real-world-mess"]
 marker_columns = []
+max_bytes = 2000000
+# The DuckDB source reads DuckDB files; this SQLite file needs a conversion that slice S1b adds.
+# No pass uses the item before then.
+needs_conversion = "sqlite->duckdb"
 
 [[items]]
 id = "single-csv-s"

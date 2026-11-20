@@ -25,6 +25,7 @@ def item_for(src: Path, **change: str) -> Item:
         "format": "csv",
         "shapes": ("single",),
         "marker_columns": (),
+        "max_bytes": 10_000,
     }
     return Item(**{**base, **change})  # type: ignore[arg-type]
 
@@ -125,17 +126,72 @@ def test_main_tries_the_public_items_and_leaves_nothing_after_a_failed_download(
     manifest.write_text(
         "schema_version = 1\n[[items]]\n"
         'id = "pub-item"\norigin = "https://example.invalid/data.csv"\nlicense = "MIT"\n'
-        f'sha256 = "{"a" * 64}"\ntier = "S"\nformat = "csv"\nshapes = ["x"]\nmarker_columns = []\n',
+        f'sha256 = "{"a" * 64}"\nmax_bytes = 100\ntier = "S"\nformat = "csv"\nshapes = ["x"]\nmarker_columns = []\n',
         encoding="utf-8",
     )
     asked: list[str] = []
 
-    def refuse(url: str, timeout: int) -> None:
-        asked.append(url)
-        raise OSError("no network in tests")
+    class Down:
+        def open(self, url: str, timeout: int) -> None:
+            asked.append(url)
+            raise OSError("no network in tests")
 
-    monkeypatch.setattr(fetch.urllib.request, "urlopen", refuse)
+    monkeypatch.setattr(fetch, "_OPENER", Down())
     with pytest.raises(OSError):
         fetch.main(["--manifest", str(manifest), "--out", str(out)])
     assert asked == ["https://example.invalid/data.csv"]
     assert leftovers(out) == []
+
+
+def test_a_download_over_the_size_cap_is_refused_and_stores_nothing(src: Path, out: Path) -> None:
+    with pytest.raises(fetch.FetchRefused, match="size cap"):
+        fetch.fetch_item(item_for(src, max_bytes=len(PAYLOAD) - 1), out, SCHEMES)
+    assert leftovers(out) == []
+
+
+def test_an_item_with_no_size_cap_is_refused(src: Path, out: Path) -> None:
+    with pytest.raises(fetch.FetchRefused, match="size cap"):
+        fetch.fetch_item(item_for(src, max_bytes=0), out, SCHEMES)
+
+
+def test_the_cap_holds_when_the_server_gives_no_length(
+    src: Path, out: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Stream:
+        headers: dict[str, str] = {}
+
+        def __init__(self) -> None:
+            self.left = 5
+
+        def read(self, n: int) -> bytes:
+            self.left -= 1
+            return b"x" * 4000 if self.left > 0 else b""
+
+        def __enter__(self) -> Stream:
+            return self
+
+        def __exit__(self, *_a: object) -> None:
+            return None
+
+    class Fake:
+        def open(self, url: str, timeout: int) -> Stream:
+            return Stream()
+
+    monkeypatch.setattr(fetch, "_OPENER", Fake())
+    with pytest.raises(fetch.FetchRefused, match="size cap"):
+        fetch.fetch_item(item_for(src), out, SCHEMES)
+    assert leftovers(out) == []
+
+
+def test_a_redirect_to_plain_http_is_refused() -> None:
+    import urllib.request
+
+    handler = fetch._HttpsOnlyRedirects()
+    req = urllib.request.Request("https://example.invalid/a")
+    with pytest.raises(fetch.FetchRefused, match="non-https"):
+        handler.redirect_request(req, None, 302, "Found", {}, "http://mirror.invalid/a")
+    with pytest.raises(fetch.FetchRefused, match="non-https"):
+        handler.redirect_request(req, None, 302, "Found", {}, "ftp://mirror.invalid/a")
+    assert (
+        handler.redirect_request(req, None, 302, "Found", {}, "https://cdn.invalid/a") is not None
+    )

@@ -24,6 +24,7 @@ PUBLIC = {
     "origin": "https://example.com/a.zip",
     "license": "MIT",
     "sha256": "a" * 64,
+    "max_bytes": 100,
 }
 
 
@@ -34,6 +35,10 @@ def test_the_checked_in_manifest_loads_and_has_the_public_items() -> None:
     assert {i.license for i in public.values()} <= mf.ALLOWED_LICENSES
     assert all(i.sha256 and i.origin.startswith("https://") for i in public.values())
     assert all(i.sha256 == "" for i in items if i.generated)
+    assert all(i.max_bytes > 0 for i in public.values())
+    # Chinook is SQLite; no pass may use it until it is converted.
+    assert public["chinook-sqlite"].needs_conversion == "sqlite->duckdb"
+    assert public["synthea-csv-apr2020"].needs_conversion == ""
 
 
 def test_the_good_rows_parse() -> None:
@@ -67,6 +72,18 @@ def test_a_generated_item_with_a_hash_and_a_public_one_without_are_refused() -> 
         mf.parse_item({**GOOD, "sha256": "a" * 64})
     with pytest.raises(mf.ManifestError):
         mf.parse_item({**PUBLIC, "sha256": ""})
+
+
+@pytest.mark.parametrize("change", [{"max_bytes": 0}, {"max_bytes": True}, {"max_bytes": "9"}])
+def test_a_public_item_needs_a_real_size_cap(change: dict) -> None:
+    with pytest.raises(mf.ManifestError):
+        mf.parse_item({**PUBLIC, **change})
+
+
+def test_needs_conversion_must_be_a_string() -> None:
+    with pytest.raises(mf.ManifestError):
+        mf.parse_item({**GOOD, "needs_conversion": 1})
+    assert mf.parse_item({**GOOD, "needs_conversion": "sqlite->duckdb"}).needs_conversion
 
 
 def test_a_missing_field_is_refused() -> None:

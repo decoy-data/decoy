@@ -46,6 +46,8 @@ def check_item(item: Item, schemes: Sequence[str]) -> str:
     """Refuse an item that may not be fetched; return the file name to store it under."""
     if item.generated:
         raise FetchRefused(f"{item.id}: a generated item has no download")
+    if item.max_bytes <= 0:
+        raise FetchRefused(f"{item.id}: no size cap recorded")
     if not item.license:
         raise FetchRefused(f"{item.id}: no license recorded")
     if item.license not in ALLOWED_LICENSES:
@@ -59,9 +61,28 @@ def check_item(item: Item, schemes: Sequence[str]) -> str:
     return name
 
 
-def _download(url: str, staged: StagedFile) -> None:
-    with urllib.request.urlopen(url, timeout=60) as response:
+class _HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect only to https: a download must not be bounced to a plain-http mirror."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[no-untyped-def]
+        if urllib.parse.urlparse(newurl).scheme != "https":
+            raise FetchRefused("a redirect to a non-https URL was refused")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_HttpsOnlyRedirects)
+
+
+def _download(item: Item, staged: StagedFile) -> None:
+    with _OPENER.open(item.origin, timeout=60) as response:
+        length = response.headers.get("Content-Length")
+        if length is not None and length.isdigit() and int(length) > item.max_bytes:
+            raise FetchRefused(f"{item.id}: the server says the file is over the size cap")
+        total = 0
         while chunk := response.read(_CHUNK):
+            total += len(chunk)
+            if total > item.max_bytes:
+                raise FetchRefused(f"{item.id}: the download passed the size cap; nothing stored")
             staged.write(chunk)
 
 
@@ -73,7 +94,7 @@ def fetch_item(item: Item, out: Path, schemes: Sequence[str] = SCHEMES) -> Path:
             raise FetchRefused(f"{item.id}: the stored file does not match the manifest hash")
         return target
     with staged_private(target) as staged:
-        _download(item.origin, staged)
+        _download(item, staged)
         staged.close()
         if sha256_file(staged.path) != item.sha256:
             raise FetchRefused(f"{item.id}: SHA-256 differs from the manifest; nothing stored")
@@ -93,6 +114,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not i.generated and (not args.item or i.id in args.item)
     ]
     for item in items:
+        if item.needs_conversion and not args.item:
+            print(f"skipped {item.id}: needs {item.needs_conversion} before any pass uses it")
+            continue
         print(f"fetched {fetch_item(item, args.out)}")
     return 0
 

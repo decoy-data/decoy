@@ -27,6 +27,9 @@ ALLOWED_LICENSES = frozenset(
 ITEM_FIELDS = frozenset(
     {"id", "origin", "license", "sha256", "tier", "format", "shapes", "marker_columns"}
 )
+# `max_bytes` caps a public download; `needs_conversion` marks an item no pass may use until a
+# later slice converts it (a SQLite file the DuckDB source cannot read as is).
+OPTIONAL_FIELDS = frozenset({"max_bytes", "needs_conversion"})
 _ID = re.compile(r"[a-z0-9][a-z0-9-]*")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 
@@ -45,6 +48,8 @@ class Item:
     format: str
     shapes: tuple[str, ...]
     marker_columns: tuple[str, ...]
+    max_bytes: int = 0
+    needs_conversion: str = ""
 
     @property
     def generated(self) -> bool:
@@ -75,7 +80,7 @@ def parse_item(raw: dict[str, object]) -> Item:
     name = ident if type(ident) is str else "?"
     if type(ident) is not str or _ID.fullmatch(ident) is None:
         raise _fail(name, "id", "must match [a-z0-9][a-z0-9-]*")
-    extra = set(raw) - ITEM_FIELDS
+    extra = set(raw) - ITEM_FIELDS - OPTIONAL_FIELDS
     missing = ITEM_FIELDS - set(raw)
     if extra or missing:
         raise _fail(name, "fields", f"unknown {sorted(extra)} or missing {sorted(missing)}")
@@ -90,6 +95,14 @@ def parse_item(raw: dict[str, object]) -> Item:
             raise _fail(name, "sha256", "must be empty for a generated item")
     elif _SHA256.fullmatch(sha) is None:
         raise _fail(name, "sha256", "must be 64 lowercase hex characters")
+    max_bytes = raw.get("max_bytes", 0)
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise _fail(name, "max_bytes", "must be a non-negative integer")
+    if origin != GENERATED and max_bytes == 0:
+        raise _fail(name, "max_bytes", "is required for a public item")
+    convert = raw.get("needs_conversion", "")
+    if type(convert) is not str:
+        raise _fail(name, "needs_conversion", "must be a string")
     tier = _text(raw, name, "tier")
     if tier not in TIERS:
         raise _fail(name, "tier", f"must be one of {TIERS}")
@@ -104,6 +117,8 @@ def parse_item(raw: dict[str, object]) -> Item:
         format=_text(raw, name, "format"),
         shapes=_strings(raw, name, "shapes", empty_ok=False),
         marker_columns=_strings(raw, name, "marker_columns", empty_ok=True),
+        max_bytes=max_bytes,
+        needs_conversion=convert,
     )
 
 
