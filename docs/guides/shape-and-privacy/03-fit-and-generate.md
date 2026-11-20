@@ -104,8 +104,9 @@ Do not share a plain snapshot more widely than you would share the source.
 A column the profiler does not flag keeps the common part of its values and
 drops the rare part:
 
-- A category held by fewer than 10 rows is folded into `other_count`. The
-  generated file never holds it.
+- A text category held by fewer than 10 rows is folded into `other_count`. The
+  generated file never holds it. A true/false column is kept as it is, because
+  its two values are public.
 - A number column's exact `min` and `max` are replaced. The ends are top and
   bottom coded, so the extreme 10 cells on each side do not set a bound.
 - Dates are stored as year ranges with at least 10 rows each. A lone old date
@@ -347,7 +348,7 @@ Measured results from [the QA record](../../records/2026-11-10-cli-qa-generation
 | A column with blanks | Snapshots from older CLI versions dropped blanks (10% and 90% blank both came out 0%). Current `decoy fit` snapshots record the cell format and keep the blank rate. | See [blanks](#blanks). |
 | A date column | Only the year mix is kept. 66% January became 8%. | Generate dates another way if month or weekday matters. |
 | Codes with leading zeros (zip, account numbers) | Read as numbers; leading zeros are lost (10.9% of generated zips were short). | Not fixable at fit time today. Generate these with `faker` or a format rule. |
-| A category held by fewer than 10 rows | Folded into `other_count`. It is not stored and not generated. | None needed. Use `--include-values` only if you must keep it. |
+| A text category held by fewer than 10 rows | Folded into `other_count`. It is not stored and not generated. A true/false column is kept as it is. | None needed. Use `--include-values` only if you must keep it. |
 | A number column's largest or smallest value | Top and bottom coded: the extreme 10 cells on each side do not set `min` or `max`. | None needed. The generated range is a little narrower than the source. |
 | Short free text with 30 or fewer distinct values | Stored as free text: length shape only. Generated text is not the source text. | None needed. Generate the column another way if you need real-looking text. |
 
@@ -362,7 +363,7 @@ Measured results from [the QA record](../../records/2026-11-10-cli-qa-generation
 - **Free text content.** Only length is kept.
 - **Links between columns** unless you fit the pair with `--joint` and use
   `condition_on`.
-- **Rare categories** beyond the top 20, or held by fewer than 10 rows, are lumped into "other".
+- **Rare text categories** beyond the top 20, or held by fewer than 10 rows, are lumped into "other".
 - **Table relationships.** A snapshot describes one file. It does not make a
   child table follow the parent's real fan-out (for example orders per
   customer).

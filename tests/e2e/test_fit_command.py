@@ -25,6 +25,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pytest
 import yaml
@@ -261,6 +262,32 @@ class TestFitDpModeSelectionFailClosed:
         assert result.exit_code == EXIT_USAGE
         assert json.loads(result.stdout)["code"] == "fit_numeric_bins_invalid"
         assert not out.exists()
+
+    def test_plain_fit_keeps_both_values_of_a_true_false_column(self, tmp_path: Path) -> None:
+        src = tmp_path / "flags.csv"
+        pd.DataFrame({"active": [True] + [False] * 30, "n": range(31)}).to_csv(src, index=False)
+        out = tmp_path / "snap.json"
+        result = runner.invoke(app, ["fit", str(src), "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["active"]["stats"]
+        counts = {str(t["value"]): t["count"] for t in stats["top_values"]}
+        assert counts == {"False": 30, "True": 1}
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="engine 0.28.1 can release a numeric bin held by 1 to 9 rows; fixed by engine "
+        "PR #732 (interior bin floor). Remove this marker when the CLI pins the release with it.",
+    )
+    def test_plain_large_numeric_bins_release_no_bin_under_ten_rows(self, tmp_path: Path) -> None:
+        src = tmp_path / "small.csv"
+        # Round thousands, the shape the profiler leaves unflagged.
+        values = np.random.default_rng(5).integers(40, 150, 200) * 1000.0
+        pd.DataFrame({"salary": values}).to_csv(src, index=False)
+        out = tmp_path / "snap.json"
+        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "100000", "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["salary"]["stats"]
+        assert [c for c in stats["bin_counts"] if 0 < c < 10] == []
 
     def test_allow_omit_without_epsilon_exits_usage(self, tmp_path: Path) -> None:
         src = _dp_source_csv(tmp_path)

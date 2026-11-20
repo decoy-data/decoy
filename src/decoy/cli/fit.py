@@ -13,10 +13,10 @@ The snapshot is written through the engine's `distribution_snapshot_document`:
 columns the sensitivity profile flags have their cell values withheld
 (`value_policy: flagged-redacted/v2`, names in `redacted_columns`).
 `--include-values` keeps them and stamps `value_policy: raw`. Unflagged
-columns are floored at 10 rows (rare labels fold into `other_count`, extremes
-are top and bottom coded); the labels kept are still real source values, so
-statistical categorical columns require the `allow_real_categories: true`
-opt-in at run time.
+columns are floored at 10 rows (rare text labels fold into `other_count`, extremes
+are top and bottom coded, true/false columns stay as they are); the labels kept
+are still real source values, so statistical categorical columns require the
+`allow_real_categories: true` opt-in at run time.
 
 DPS-CLI rewire (docs/plans/2026-07-24-dps-cli-fit-rewire.md). `--epsilon`
 now selects a second, disjoint mode that calls the engine's
