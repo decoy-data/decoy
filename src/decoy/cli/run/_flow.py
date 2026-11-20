@@ -3,6 +3,7 @@
 import contextlib
 import time
 from datetime import datetime, timezone
+from typing import NoReturn
 
 import typer
 
@@ -77,19 +78,25 @@ def _child_flags(ctx: RunContext) -> list[str]:
     return flags + [flag for flag, field in FORWARD_SWITCHES if getattr(ctx, field)]
 
 
+def _fan_out(ctx: RunContext) -> NoReturn:
+    """Run every pipeline of the project in its own child for `--all`, then exit.
+
+    Outside the envelope: the parent binds no pipeline, and each child writes its own document.
+    """
+    refused = [flag for flag, field in REFUSED_WITH_ALL if getattr(ctx, field) is not None]
+    key = {"DECOY_MASTER_KEY": ctx.master_key} if ctx.master_key is not None else {}
+    run_all(
+        ctx.state,
+        ctx.cli,
+        named=ctx.named,
+        refused=refused,
+        flags=_child_flags(ctx),
+        env=key,
+    )
+
+
 def _bind_pipeline(ctx: RunContext) -> None:
-    """Fan out for `--all`, else settle which YAML this process runs (given, or the only one)."""
-    if ctx.all_:
-        refused = [flag for flag, field in REFUSED_WITH_ALL if getattr(ctx, field) is not None]
-        key = {"DECOY_MASTER_KEY": ctx.master_key} if ctx.master_key is not None else {}
-        run_all(
-            ctx.state,
-            ctx.cli,
-            named=ctx.named,
-            refused=refused,
-            flags=_child_flags(ctx),
-            env=key,
-        )
+    """Settle which YAML this process runs (given, or the project's only one)."""
     ref = ctx.pipeline if ctx.pipeline is not None else only_pipeline(ctx.state, ctx.cli)
     ctx.config, ctx.given_as = ref.yaml, ref.given_as
 
@@ -100,6 +107,8 @@ def execute(ctx: RunContext) -> None:
     A typed refusal (a bad `--notify`, a `--rows` that cannot run, the evidence write) and
     Ctrl-C end here with the envelope; the errors inside the run end in `_errors.fail`.
     """
+    if ctx.all_:
+        _fan_out(ctx)
     # First, so a refusal before the run starts has timings.
     ctx._run_started_at = datetime.now(timezone.utc)
     ctx.started = time.perf_counter()
