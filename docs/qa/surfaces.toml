@@ -1,0 +1,101 @@
+# The one list of output surfaces the QA oracle checks (plan 15.2.5, schema_version 1).
+# `scripts/qa/sweep.py` dispatches on it, the I1 sweep test (AT-2) takes its cases from it, and a
+# consistency test fails if those three do not use the same entries. Adding a surface here adds
+# a sweep case and a test case in the same change.
+#
+# check: "cells" means the per-column strategy rules of I1 apply (exact cell and same-row check);
+# "needles" means the needles sweep over the text; "needles-encrypted" is the same sweep, where
+# encrypted values in the file are expected and a needle is still a finding.
+
+schema_version = 1
+
+[[surface]]
+id = "output-data-files"
+name = "output data files (CSV, TSV, Parquet, fixed width)"
+check = "cells"
+
+[[surface]]
+id = "stdout"
+name = "stdout, including --json documents"
+check = "needles"
+
+[[surface]]
+id = "stderr"
+name = "stderr"
+check = "needles"
+
+[[surface]]
+id = "logs"
+name = "log files under the project and DECOY_HOME"
+check = "needles"
+
+[[surface]]
+id = "run-result-files"
+name = "run result files (--result)"
+check = "needles"
+
+[[surface]]
+id = "evidence-manifests"
+name = "evidence manifests (--evidence-out)"
+check = "needles"
+
+[[surface]]
+id = "integrity-reports"
+name = "post-scan and integrity reports (--integrity-out)"
+check = "needles"
+
+[[surface]]
+id = "scan-documents"
+name = "scan documents (decoy scan --output)"
+check = "needles"
+
+[[surface]]
+id = "vault-files"
+name = "vault files (encrypted values are expected)"
+check = "needles-encrypted"
+
+[[surface]]
+id = "notification-payloads"
+name = "notification payloads (--notify to a local sink)"
+check = "needles"
+
+[[surface]]
+id = "tester-capture"
+name = "node-local tester stdout and stderr capture"
+check = "needles"
+
+[[surface]]
+id = "finding-records"
+name = "finding records"
+check = "needles"
+
+[[surface]]
+id = "pass-records"
+name = "pass records"
+check = "needles"
+
+[[surface]]
+id = "slack-text"
+name = "Slack text from findings.py publish"
+check = "needles"
+
+# Documented behaviour that is not a leak. Each one needs a pass case in AT-2.
+[[exception]]
+id = "passthrough"
+applies_to = ["output-data-files"]
+rule = "passthrough columns keep their original cells"
+
+[[exception]]
+id = "truncate-prefix"
+applies_to = ["output-data-files"]
+rule = "a truncate column may keep the documented prefix and nothing more"
+
+[[exception]]
+id = "text-redact-context"
+applies_to = ["output-data-files"]
+rule = "a text_redact column may keep the surrounding text but no detected entity"
+
+[[exception]]
+id = "unmask-output"
+applies_to = ["output-data-files"]
+rule = "unmask and detokenize output files hold originals when the run has the vault file and the mask secret"
