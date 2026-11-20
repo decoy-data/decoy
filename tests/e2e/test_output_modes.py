@@ -242,7 +242,8 @@ def test_run_missing_source_json_envelope_is_unchanged(tmp_path: Path, monkeypat
     result = runner.invoke(app, ["run", str(path), "--json"])
     assert result.exit_code != 0
     payload = _json.loads(result.stdout)
-    assert set(payload) == {
+    # The legacy keys are exactly as before; the run result document adds only these two.
+    assert set(payload) - {"result", "result_status"} == {
         "command",
         "status",
         "config",
@@ -251,6 +252,7 @@ def test_run_missing_source_json_envelope_is_unchanged(tmp_path: Path, monkeypat
         "error_kind",
         "messages",
     }
+    assert {"result", "result_status"} <= set(payload)
     assert payload["command"] == "run" and payload["error_kind"] == "validation"
     assert str(absent) in payload["error"]
     first = payload["messages"][0]
