@@ -47,6 +47,7 @@ CREATED_IN = {
     "atomic-writer-allow": "L1b.1",
     "gate-single-entry-allow": "VALIDATE-ALWAYS-P1",
     "csv-read-allow": "CLI-DIALECT-C",
+    "scan-call-allow": "FREEZE-ITEM3-C1",
     "target-writes-allow": "CLI-FMT-A2",
     "manifest-path-forward-allow": "PROJECT-LAYOUT-P3",
     "output-placement-allow": "PROJECT-LAYOUT-P2b",
