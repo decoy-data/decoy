@@ -307,6 +307,21 @@ Size: C1 adds about 70 source lines, removes about 15, and adds about 200 test l
 | 6 | Untrusted input (caller-given paths, layouts, column names and DataFrames) | the CLI's `resolve_sources` checks apply to the API; the engine validates each descriptor | AT-4, AT-7, AT-11 | default `has_header=True` | C2 |
 | 7 | TOCTOU or check-then-use | not applicable beyond today: the engine opens the descriptor path it validated; the temp file is created owner-only by `create_private_temp` before the write | existing private-file sentries | none new | - |
 | 8 | Weak proof (a sentry that passes on an empty walk; a parity test that compares a few members) | the sentry self-tests seed each spelling and assert the walk finds `_engine_call.py` itself; parity compares whole documents byte for byte | AT-6 self-tests, AT-1 | make the walk return nothing | C1, C2 |
+| 9 | Refactor drift (C1 changes `decoy scan` or `decoy demo` bytes while moving the engine call) | C1 moves the call and the rows rule unchanged; bytes recorded from the base commit | AT-0, AT-9 | `sample_rows=None` always; `indent=None` in demo | C1 |
+| 10 | Frozen contract drift (signature pin, frozen-surface map, CHANGELOG and code disagree) | C2 changes the signature pin, the map row at `docs/release/frozen-surfaces.md:22` and the Breaking entry in the same commit as the code | AT-8; the existing frozen-surface map sentry `tests/sentry/release/test_frozen_surface_map.py` | remove `has_header` | C2 |
+
+## 15.2 Enumerations
+
+Callers of the engine scan functions under `src/decoy` (from the walk, `origin/main` `c87ab295`): `cli/scanning/_multi.py::run_scan` (`scan_sources`, `scan_set_to_dict`), `cli/demo.py` demo single run (`scan_sources`, `scan_set_to_dict`), `api.py::scan` (`profile_columns`), `cli/init.py::init` (`profile_columns`). After C2: only `_engine_call.py::scan_descriptors`, plus `cli/init.py::init` on the allowlist.
+
+Input kinds of `decoy.scan()`: CSV path (header, headerless with names), TSV path, Parquet path, fixed-width path (layout file or parsed list), DataFrame. Each has an AT-1 or AT-2 cell. Strategies: `head`, `random`, `full`; rows: default, positive, `0`, `None`, negative. Exit paths of `decoy.scan()`: returns the core; `ValueError` (usage, from `ScanUsageError`); `TypeError` (data type, Arrow conversion); engine errors (`ScanSourceError`, file-access errors, `PipelineConfigError`) unchanged.
+
+## 15.3 Frozen contracts
+
+- `decoy.scan` signature: `tests/unit/release/test_api_signatures.py:26`, changed in C2 (AT-8).
+- Frozen-surface map row `docs/release/frozen-surfaces.md:22`: text updated in C2.
+- `scan-set/v1` (engine contract 3.1): not changed; the API now returns it as `decoy scan --output` does.
+- `decoy scan` `--json` shapes (`tests/fixtures/release_freeze/json-shapes.json`) and `--output` bytes: not changed (AT-0).
 
 ## 16. Pre-mortem
 
