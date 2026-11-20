@@ -7,8 +7,9 @@ its document.
 
 Scope: every module that can end `decoy run`: all of `cli/run/` (recursive) and
 `cli/project/_run_all.py`, the `--all` fan-out. The `--all` summary has no single run and so no
-document; its two functions are the reasoned, shrink-only entries of `run-exit-owners.json`. A
-stale entry fails, so the list only shrinks.
+document; its two functions are the reasoned, shrink-only entries of `run-exit-owners.json`. Each
+entry pins the exact exits and writer calls its function holds (`hits`), so one more call inside a
+listed function fails too. A stale entry fails, so the list only shrinks.
 
 Covered forms, matched by what the name resolves to through the module's imports:
 `typer.Exit`, `typer.Abort`, `click.Abort`, `click.exceptions.Exit`, `click.exceptions.Abort`,
@@ -23,6 +24,8 @@ Named limit: `getattr` and `importlib` are invisible.
 from __future__ import annotations
 
 import ast
+from collections import Counter
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from tests.sentry._ratchet import load_allowlist
@@ -102,15 +105,21 @@ def _hits(source: str) -> list[tuple[str, int, str]]:
     return found
 
 
-def violations(source: str, rel: str, allowed: frozenset[str] = frozenset()) -> list[str]:
-    """Every breach in one module that is not an allowlisted `file::function`."""
+def violations(
+    source: str, rel: str, allowed: Mapping[str, Sequence[str]] | None = None
+) -> list[str]:
+    """Every breach in one module beyond the pinned `hits` of an allowlisted `file::function`."""
     if not in_scope(rel):
         return []
-    return [
-        f"{rel}:{line}: {what} in {scope or '<module>'}"
-        for scope, line, what in _hits(source)
-        if f"{rel}::{scope}" not in allowed
-    ]
+    budget = {key: Counter(hits) for key, hits in (allowed or {}).items()}
+    out: list[str] = []
+    for scope, line, what in _hits(source):
+        left = budget.get(f"{rel}::{scope}")
+        if left is not None and left[what] > 0:
+            left[what] -= 1
+            continue
+        out.append(f"{rel}:{line}: {what} in {scope or '<module>'}")
+    return out
 
 
 def _modules() -> list[Path]:
@@ -120,8 +129,8 @@ def _modules() -> list[Path]:
     ]
 
 
-def _allowed() -> frozenset[str]:
-    return frozenset(load_allowlist("run-exit-owners"))
+def _allowed() -> dict[str, list[str]]:
+    return {key: list(entry["hits"]) for key, entry in load_allowlist("run-exit-owners").items()}
 
 
 def test_no_exit_or_writer_outside_the_owner() -> None:
@@ -146,7 +155,7 @@ def test_the_allowlist_only_shrinks() -> None:
         if rel == OWNER:
             continue
         live |= {f"{rel}::{scope}" for scope, _, _ in _hits(path.read_text(encoding="utf-8"))}
-    assert _allowed() - live == set(), "stale allowlist entries: remove them"
+    assert set(_allowed()) - live == set(), "stale allowlist entries: remove them"
 
 
 def test_the_owner_ends_the_run() -> None:
@@ -187,7 +196,7 @@ def test_seeded_shapes_are_caught_in_every_scoped_module() -> None:
 
 
 def test_a_new_function_in_run_all_is_not_covered_by_the_allowlist() -> None:
-    allowed = frozenset({f"{RUN_ALL}::run_all"})
+    allowed = {f"{RUN_ALL}::run_all": ["calls emit_error"]}
     source = (
         "from decoy.ui.output import emit_error\ndef other(s):\n    emit_error(s, 'run', 'm')\n"
     )
@@ -202,3 +211,13 @@ def test_the_owner_and_other_code_are_not_flagged() -> None:
     assert violations(SEEDED[0], "cli/project/_list.py") == []
     reraise = "import typer\ntry:\n    pass\nexcept typer.Exit:\n    raise\n"
     assert violations(reraise, R) == []
+
+
+def test_one_more_call_inside_a_listed_function_is_caught() -> None:
+    allowed = {f"{RUN_ALL}::run_all": ["calls emit_error"]}
+    once = (
+        "from decoy.ui.output import emit_error\ndef run_all(s):\n    emit_error(s, 'run', 'm')\n"
+    )
+    assert violations(once, RUN_ALL, allowed) == []
+    twice = once + "    emit_error(s, 'run', 'n')\n"
+    assert violations(twice, RUN_ALL, allowed)

@@ -3,10 +3,19 @@
  "created_in": "RESULT-C-DOC2",
  "entries": {
   "cli/project/_run_all.py::_fail": {
-   "reason": "the `--all` fan-out refuses before any pipeline runs, so no run exists to hold a document; may only shrink"
+   "reason": "the `--all` fan-out refuses before any pipeline runs, so no run exists to hold a document; may only shrink",
+   "hits": [
+    "calls emit_error",
+    "raises typer.Exit"
+   ]
   },
   "cli/project/_run_all.py::run_all": {
-   "reason": "`--all` prints one summary of the child runs' exits (each child has its own run result document); may only shrink"
+   "reason": "`--all` prints one summary of the child runs' exits (each child has its own run result document); may only shrink",
+   "hits": [
+    "calls emit_error",
+    "calls emit_json",
+    "raises typer.Exit"
+   ]
   }
  }
 }
