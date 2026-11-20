@@ -337,6 +337,29 @@ def render_fidelity(state, fidelity_reports: dict | None) -> None:
     )
 
 
+def _collision_lines(summary: Mapping[str, Any]) -> list[str]:
+    """One line per `cardinality_collisions` warning: names and counts, never a value.
+
+    A deterministic `faker` column that is not `unique` picks from a pool, so distinct source
+    values can share an output. The engine reports it under `quality_warnings`.
+    """
+    from decoy_engine.reasons.warning import CARDINALITY_COLLISIONS
+
+    lines: list[str] = []
+    for w in summary.get("quality_warnings") or []:
+        if not isinstance(w, Mapping) or w.get("code") != CARDINALITY_COLLISIONS:
+            continue
+        d = w.get("detail") or {}
+        where = ".".join(str(part) for part in (d.get("table"), w.get("column")) if part)
+        lines.append(
+            f"{where}: {d.get('source_distinct')} distinct source values map to "
+            f"{d.get('output_distinct')} distinct outputs ({d.get('distinct_lost')} merged, "
+            f"pool_size {d.get('pool_size')}). A larger pool_size or a unique column keeps "
+            "them apart."
+        )
+    return lines
+
+
 def render_post_validation(state, qm: dict, *, enforce: bool) -> None:
     """Render the post-execution validator results (--post-validate[-enforce]).
 
@@ -352,6 +375,9 @@ def render_post_validation(state, qm: dict, *, enforce: bool) -> None:
     if summary is None:
         state.console.print(hint("  "), "no post-validation summary was produced for this run.")
         return
+    for line in _collision_lines(summary):
+        # Table and column names come from the config: print them as plain text.
+        state.console.print(warn("  warning:"), line, markup=False, highlight=False)
     if not failed:
         state.console.print(success("  All post-validation checks passed."))
         return

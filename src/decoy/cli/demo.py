@@ -4,20 +4,11 @@ Default flow: a small single-table CSV, scanned -> masked via the V2
 PipelineConfig spine. All artifacts land in `./decoy_demo/`. The legacy
 FORECAST recommender step was removed in the V1 scan rework; do not
 re-introduce.
-
-With `--ref`: deferred to a follow-up sprint and currently exits with a usage
-error. The V2 multi-table FK-preservation demo needs a single PipelineConfig
-with a `relationships:` block; the V1 three-pipeline implementation was retired
-with the V1 graph runner. `_generate_ref_datasets` (the FK-skewed CSV builder)
-is kept for that follow-up to reuse; the V1-shape YAML builders were deleted
-(they emitted configs the V2 validator rejects).
 """
 
 from __future__ import annotations
 
-import csv
 import json as _json
-import random
 from pathlib import Path
 
 import typer
@@ -311,234 +302,6 @@ def _write_mask_outputs(config_dict: dict, result, layout: RunLayout) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Referential-integrity demo (--ref)
-# ---------------------------------------------------------------------------
-
-
-_FIRST_NAMES = [
-    "Alice",
-    "Bob",
-    "Carol",
-    "David",
-    "Eve",
-    "Frank",
-    "Grace",
-    "Henry",
-    "Iris",
-    "Jack",
-    "Kate",
-    "Liam",
-    "Mia",
-    "Noah",
-    "Olivia",
-    "Paul",
-    "Quinn",
-    "Rosa",
-    "Sam",
-    "Tara",
-    "Uma",
-    "Vince",
-    "Wendy",
-    "Xavier",
-    "Yara",
-    "Zane",
-]
-_LAST_NAMES = [
-    "Anderson",
-    "Brown",
-    "Carter",
-    "Davis",
-    "Evans",
-    "Foster",
-    "Green",
-    "Harris",
-    "Ingram",
-    "Johnson",
-    "Klein",
-    "Lopez",
-    "Mitchell",
-    "Nash",
-    "Owens",
-    "Patel",
-    "Quinn",
-    "Rivera",
-    "Singh",
-    "Thomas",
-    "Underwood",
-    "Vance",
-    "Wright",
-    "Young",
-    "Zhang",
-]
-_DOMAINS = ["example.com", "acme.io", "samplecorp.net", "testmail.org"]
-_ZIPS = [
-    "10001",
-    "90210",
-    "60601",
-    "77001",
-    "94016",
-    "30301",
-    "20001",
-    "33101",
-    "75201",
-    "98101",
-    "02101",
-    "15201",
-    "43215",
-    "55401",
-    "80202",
-]
-_GENDERS = ["F", "M", "X"]
-_ORDER_STATUSES = ["pending", "shipped", "delivered", "cancelled", "refunded"]
-_PAYMENT_METHODS = ["card", "ach", "wire", "check", "crypto"]
-
-# Length we truncate the SHA-256 hex output to for FK columns. 12 hex chars
-# = 48 bits of entropy, comfortably collision-free at the demo's 1K-row
-# scale and still readable in the output.
-_FK_HASH_TRUNCATE = 12
-
-
-def _generate_ref_datasets(out_dir: Path, n_rows: int, seed: int = 42) -> tuple[int, int, int]:
-    """Build customers / orders / payments CSVs with FK relationships.
-
-    `n_rows` rows per table. customer_id and order_id are dense (`C00001`,
-    `O00001`, ...). Each order picks a random customer_id; each payment picks
-    a random order_id -- so the FK relationships have realistic many-to-one
-    structure (some customers have multiple orders, some orders have multiple
-    payments, some have none at all) instead of a degenerate 1:1:1.
-    """
-    rng = random.Random(seed)
-
-    customers_path = out_dir / "customers.csv"
-    orders_path = out_dir / "orders.csv"
-    payments_path = out_dir / "payments.csv"
-
-    # Customers -- the PK source.
-    customer_ids: list[str] = []
-    with customers_path.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(
-            [
-                "customer_id",
-                "first_name",
-                "last_name",
-                "email",
-                "ssn",
-                "dob",
-                "zip",
-                "phone",
-                "gender",
-            ]
-        )
-        for i in range(1, n_rows + 1):
-            cid = f"C{i:05d}"
-            customer_ids.append(cid)
-            fn = rng.choice(_FIRST_NAMES)
-            ln = rng.choice(_LAST_NAMES)
-            email = f"{fn.lower()}.{ln.lower()}{i}@{rng.choice(_DOMAINS)}"
-            ssn = f"{rng.randint(100, 999)}-{rng.randint(10, 99)}-{rng.randint(1000, 9999)}"
-            year = rng.randint(1950, 2005)
-            month = rng.randint(1, 12)
-            day = rng.randint(1, 28)
-            dob = f"{year:04d}-{month:02d}-{day:02d}"
-            zip_ = rng.choice(_ZIPS)
-            phone = f"({rng.randint(200, 999)}) {rng.randint(200, 999)}-{rng.randint(1000, 9999)}"
-            gender = rng.choice(_GENDERS)
-            w.writerow([cid, fn, ln, email, ssn, dob, zip_, phone, gender])
-
-    # Orders -- each row picks a customer_id (with replacement -> realistic FK skew).
-    order_ids: list[str] = []
-    with orders_path.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(["order_id", "customer_id", "amount", "order_date", "status"])
-        for i in range(1, n_rows + 1):
-            oid = f"O{i:05d}"
-            order_ids.append(oid)
-            cid = rng.choice(customer_ids)
-            amount = f"{rng.uniform(10, 5000):.2f}"
-            month = rng.randint(1, 12)
-            day = rng.randint(1, 28)
-            order_date = f"2025-{month:02d}-{day:02d}"
-            status = rng.choice(_ORDER_STATUSES)
-            w.writerow([oid, cid, amount, order_date, status])
-
-    # Payments -- each row picks an order_id (with replacement).
-    with payments_path.open("w", encoding="utf-8", newline="") as fh:
-        w = csv.writer(fh)
-        w.writerow(["payment_id", "order_id", "amount", "method", "paid_at"])
-        for i in range(1, n_rows + 1):
-            pid = f"P{i:05d}"
-            oid = rng.choice(order_ids)
-            amount = f"{rng.uniform(5, 5000):.2f}"
-            method = rng.choice(_PAYMENT_METHODS)
-            month = rng.randint(1, 12)
-            day = rng.randint(1, 28)
-            paid_at = f"2025-{month:02d}-{day:02d}"
-            w.writerow([pid, oid, amount, method, paid_at])
-
-    return n_rows, n_rows, n_rows
-
-
-def _run_ref_demo(state: OutputState, out_dir: Path, n_rows: int) -> int:
-    """3-table FK demo. CLI.3 commit 2 (2026-06-02): deferred per
-    Q-CLI3-1 (Dennis resolution: drop if effort exceeds 0.5 eng-days).
-
-    The pre-CLI.3 implementation built three V1-shape YAMLs and ran
-    `Masker(...).mask()` on each, joining via a shared SHA-256 hash on
-    the FK columns. The V2 equivalent needs a single multi-table
-    PipelineConfig with a `relationships:` block (the engine's V2 FK
-    coordinator owns the join contract end-to-end), the deterministic
-    HKDF/HMAC envelope replacing the truncated hash, and a verifying
-    golden. That is a focused follow-up sprint; clobbering it into
-    CLI.3 commit 2 would exceed the spec's 0.5-day budget.
-
-    The `_generate_ref_datasets` helper above stays in place so the
-    follow-up sprint can reuse it; the V1-shape YAML builders and the
-    integrity verifier were deleted (they emitted/read V1 artifacts the
-    V2 engine no longer produces).
-    """
-    if state.mode is OutputMode.json:
-        emit_json(
-            state,
-            {
-                "command": "demo",
-                "variant": "ref",
-                "status": "error",
-                "error": (
-                    "decoy demo --ref is deferred to a follow-up sprint. The "
-                    "V2 multi-table FK-preservation demo needs a single "
-                    "PipelineConfig with a `relationships:` block; the V1 "
-                    "shape (three V1 YAMLs joined by a shared truncated hash) "
-                    "no longer runs against the V2 engine. Use `decoy demo` "
-                    "(single-table walkthrough) until the multi-table follow-up "
-                    "lands."
-                ),
-            },
-        )
-        return 1
-
-    state.err_console.print(
-        error("error:"),
-        "decoy demo --ref is deferred to a follow-up sprint.",
-    )
-    state.err_console.print(
-        " ",
-        hint("why:"),
-        "The V2 multi-table FK-preservation demo needs a single",
-        "PipelineConfig with a `relationships:` block; the V1 shape",
-        "(three V1 YAMLs joined by a shared truncated hash) no longer",
-        "runs against the V2 engine.",
-    )
-    state.err_console.print(
-        " ",
-        hint("workaround:"),
-        "Use `decoy demo` (single-table walkthrough) until the",
-        "multi-table follow-up lands.",
-    )
-    return 1
-
-
-# ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
 
@@ -548,20 +311,6 @@ def _demo(
         Path("decoy_demo"),
         "--dir",
         help="Where to drop the demo artifacts.",
-    ),
-    ref: bool = typer.Option(
-        False,
-        "--ref",
-        help="Run the 3-table referential-integrity variant (customers + orders + payments).",
-        hidden=True,
-    ),
-    rows: int = typer.Option(
-        1000,
-        "--rows",
-        help="Rows per dataset when --ref is set. Default 1000.",
-        min=10,
-        max=100_000,
-        hidden=True,
     ),
     json_: bool = typer.Option(False, "--json", help="Emit a JSON summary instead of cards."),
     quiet: bool = typer.Option(
@@ -579,8 +328,6 @@ def _demo(
     """
     state = setup_output(json_, quiet, verbose)
 
-    if ref and out_dir == Path("decoy_demo"):
-        out_dir = Path("decoy_demo_ref")
     out_dir.mkdir(parents=True, exist_ok=True)
     # Resolve to absolute up front. Pre-fix the relative `out_dir` (e.g.
     # `decoy_demo`) flowed into `_build_pipeline_yaml`, which wrote
@@ -592,10 +339,7 @@ def _demo(
     out_dir = out_dir.resolve()
 
     try:
-        if ref:
-            exit_code = _run_ref_demo(state, out_dir, rows)
-        else:
-            exit_code = _run_single_demo(state, out_dir)
+        exit_code = _run_single_demo(state, out_dir)
     except typer.Exit:
         # CLI QA fix (2026-06-02, F7): preserve inner typer.Exit codes.
         raise

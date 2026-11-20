@@ -107,7 +107,11 @@ READERS: dict[str, FromFile | FromScan] = {
 
 # Committed data files a sentry reads besides its baseline. The snapshot goes with C-G2.
 DATA_FILES = frozenset(
-    {"tests/sentry/io_policy/file_sinks.toml", "tests/sentry/allowlist-before.json"}
+    {
+        "tests/sentry/io_policy/file_sinks.toml",
+        "tests/sentry/allowlist-before.json",
+        "tests/fixtures/release_freeze/json-shapes.json",
+    }
 )
 
 # Allowlist-shaped constants a sentry holds that are a closed contract, not a bypass list.

@@ -233,6 +233,73 @@ def test_post_validate_clean_reports_all_passed(clean_config: Path):
     assert payload["report"]["failed_checks"] == []
 
 
+@pytest.fixture
+def collision_config(tmp_path: Path) -> Path:
+    """A deterministic `faker` column over 40 distinct sources and a pool of 5: sources merge."""
+    src = tmp_path / "people.csv"
+    pd.DataFrame({"email": [f"zqmark{i}@example.com" for i in range(40)]}).to_csv(src, index=False)
+    cfg = {
+        "version": 2,
+        "global_settings": {"seed": 3},
+        "sources": {"people": csv_source(src)},
+        "tables": [
+            {
+                "name": "people",
+                "columns": [
+                    {
+                        "name": "email",
+                        "strategy": "faker",
+                        "provider": "person_email",
+                        "deterministic": True,
+                        "namespace": "email_ns",
+                        "provider_config": {"pool_size": 5},
+                    }
+                ],
+            }
+        ],
+        "targets": {
+            "people": {"type": "file", "format": "csv", "path": str(tmp_path / "pout.csv")}
+        },
+    }
+    p = tmp_path / "collide.yaml"
+    p.write_text(yaml.dump(cfg))
+    return p
+
+
+def test_post_validate_prints_the_collision_line_without_a_source_value(
+    collision_config: Path, mask_secret: str
+) -> None:
+    """AT-Z8: a merged deterministic `faker` column is named with table.column and counts."""
+    result = runner.invoke(
+        app,
+        ["run", str(collision_config), "--post-validate", "--mask-secret", mask_secret],
+        env={"COLUMNS": "10000"},
+    )
+    assert result.exit_code == 0, result.output
+    assert "people.email: 40 distinct source values map to" in result.stdout
+    assert "zqmark" not in result.stdout
+
+
+def test_post_validate_json_holds_the_collision_code(
+    collision_config: Path, mask_secret: str
+) -> None:
+    args = ["run", str(collision_config), "--json", "--post-validate", "--mask-secret", mask_secret]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.stdout)
+    warnings = payload["report"]["quality_summary"]["quality_warnings"]
+    found = [w for w in warnings if w["code"] == "cardinality_collisions"]
+    assert [w["column"] for w in found] == ["email"]
+    assert found[0]["detail"]["source_distinct"] == 40
+    assert "zqmark" not in result.stdout
+
+
+def test_post_validate_clean_run_prints_no_collision_line(clean_config: Path) -> None:
+    result = runner.invoke(app, ["run", str(clean_config), "--post-validate"])
+    assert result.exit_code == 0, result.output
+    assert "distinct source values" not in result.stdout
+
+
 # --------------------------------------------------------------------------
 # --post-validate-enforce: EXIT_FINDINGS iff failed_checks is non-empty
 # --------------------------------------------------------------------------

@@ -32,12 +32,6 @@
   "cli/demo.py::_demo::87afa7d60d67": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/demo.py::_run_ref_demo::b13d7338bad1": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/demo.py::_run_ref_demo::b834613f7c65": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
   "cli/explain.py::explain::7eab6fe5e7ac": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },

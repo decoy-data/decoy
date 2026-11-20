@@ -534,6 +534,7 @@
   },
   "scan show": {
     "paths": {
+      "/basis": "string",
       "/command": "string",
       "/field/detector_hits": "[]",
       "/field/distinct_count": "integer",
@@ -548,6 +549,7 @@
       "/pii_bucket": "string",
       "/quasi_identifier_groups": "[]",
       "/scan": "string",
+      "/scanned_rows": "integer",
       "/status": "string"
     }
   },

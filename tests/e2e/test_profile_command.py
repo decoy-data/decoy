@@ -322,18 +322,19 @@ def large_csv(tmp_path: Path) -> Path:
 
 
 def test_profile_rows_limits_row_count_in_json(large_csv: Path) -> None:
-    """--rows N must result in a row_count of at most N in the profile output.
+    """--rows N must result in scanned_rows of at most N in the profile output.
 
     Proves --rows is REAL: a 200-row file profiled with --rows 50 must
-    report row_count ~50, not 200.
+    scan ~50 rows, not 200. `row_count` is the source row count (200).
     """
     result = runner.invoke(app, ["scan", str(large_csv), "--has-header", "--rows", "50", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
-    assert payload["row_count"] <= 50, (
-        f"--rows 50 on a 200-row file reported row_count={payload['row_count']}. "
+    assert payload["scanned_rows"] <= 50, (
+        f"--rows 50 on a 200-row file scanned {payload['scanned_rows']} rows. "
         "--rows must bound the profile to at most N rows."
     )
+    assert payload["basis"] == "sample"
 
 
 def test_profile_rows_0_full_scan_in_json(large_csv: Path) -> None:
