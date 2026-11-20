@@ -96,13 +96,55 @@ doc = "docs/cli-reference.md:121"
 cites = ["--native", "--chunked"]
 expect = "exit 1 before any run"
 
+# Reading of the strategy mixes. The engine treats fpe, hash, date_shift, deterministic faker and
+# categorical (pool_size or categories set), and any `vault: true` column as keyed, so a run with
+# no mask secret is refused (decoy_engine/keyprovider.py `_ALWAYS_KEYED_STRATEGIES`, shipped text in
+# `decoy explain keys`). bucketize, truncate, text_redact and redact are not keyed. "passthrough
+# mixed in" means passthrough columns beside a hash column. `decoy run` rejects `strategy:
+# tokenize` itself (exit 3, `tokenize_requires_vault`; the `decoy tokenize` verb serves it), so
+# "tokenize with vault" is a `vault: true` column on a one-way strategy with a namespace.
 [[matrix.constraints]]
-id = "mask-unkeyed-date-shift"
+id = "mask-keyed-needs-secret"
 kind = "refused"
-when = { strategy_mix = "fpe and date_shift", mask_secret = "absent" }
-doc = "docs/cli-reference.md:108"
-cites = ["date_shift", "--mask-secret"]
-expect = "exit 1, a reason that says date_shift needs a mask secret"
+when = { mask_secret = "absent", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "tokenize with vault", "passthrough mixed in"] }
+doc = "src/decoy/cli/explain.py:210"
+cites = ["keyed_strategy_requires_secret"]
+expect = "exit 1, code keyed_strategy_requires_secret, before any data is read"
+
+[[matrix.constraints]]
+id = "mask-vault-flag-needs-vault-column"
+kind = "refused"
+when = { vault = "--vault", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "bucketize and truncate", "text_redact on free text", "passthrough mixed in"] }
+doc = "src/decoy/cli/run/_prepare.py:485"
+cites = ["vault_columns_declared"]
+expect = "exit 1, a reason that says no column declares vault: true"
+
+[[matrix.constraints]]
+id = "mask-native-vault-flag"
+kind = "refused"
+when = { native = "--native", vault = "--vault" }
+doc = "src/decoy/_native_gate.py:325"
+cites = ["vault_active"]
+expect = "exit 1 before any run, code native_require_vault_active"
+
+[[matrix.constraints]]
+id = "mask-native-vault-column"
+kind = "refused_after_run"
+when = { native = "--native", strategy_mix = "tokenize with vault" }
+doc = "src/decoy/_native_gate.py:247"
+cites = ["vault"]
+expect = "refusal before any output is written: a vault: true column never shows compiled-kernel evidence"
+
+# The docs name FK tables on the cited line, not a subset block. A subset run resolves its rows
+# through the relationship graph, so this is expected to refuse the same way. It was not proved
+# against a live native companion; the first QA pass on a node with the companion confirms it.
+[[matrix.constraints]]
+id = "mask-native-subset"
+kind = "refused_after_run"
+when = { native = "--native", subset = "config subset on" }
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "FK table"]
+expect = "refusal before any output is written, as for an FK table (unconfirmed for subset)"
 
 # Reading note: the docs name "passthrough/redact/truncate" as the strategies with no compiled
 # kernel evidence. The only mix that holds redact-family strategies alone is text_redact.
@@ -129,6 +171,16 @@ when = { chunked = "--chunked", threads = ["--threads 1", "--threads 4"] }
 doc = "docs/cli-reference.md:112"
 cites = ["--threads", "--chunked"]
 expect = "run succeeds; outputs equal the run without --threads (I3)"
+
+# FK tables are a property of the corpus item, not a matrix value, so this refusal is its own
+# check: `--native` on a mask config with relationships refuses after the run.
+[[matrix.standalone]]
+id = "mask-native-fk-tables"
+kind = "refused_after_run"
+flags = ["--native"]
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "FK table"]
+expect = "refusal before any output is written; run it on a parent and child corpus item"
 
 [[matrix]]
 name = "generate"

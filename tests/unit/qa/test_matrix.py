@@ -12,7 +12,6 @@ import pytest
 from scripts.qa import matrix as mx
 
 ROOT = Path(__file__).resolve().parents[3]
-REF = (ROOT / "docs/cli-reference.md").read_text(encoding="utf-8").splitlines()
 MATRICES = {m.name: m for m in mx.load(ROOT / "docs/qa/matrix.toml")}
 
 
@@ -118,8 +117,8 @@ def test_the_real_matrices_are_covered_or_removed_exactly(name: str) -> None:
 
 
 def test_run_counts_are_in_the_planned_range() -> None:
-    assert 40 <= len(mx.plan(MATRICES["mask"]).runs) <= 80
-    assert 8 <= len(mx.plan(MATRICES["generate"]).runs) <= 20
+    assert len(mx.plan(MATRICES["mask"]).runs) == 54
+    assert len(mx.plan(MATRICES["generate"]).runs) == 9
 
 
 def test_the_plan_is_deterministic_and_prints_json(tmp_path: Path) -> None:
@@ -140,14 +139,17 @@ def test_the_three_constraint_kinds_are_all_used() -> None:
     assert kinds == set(mx.KINDS)
 
 
+def cited_line(doc: str) -> str:
+    path, line = doc.rsplit(":", 1)
+    return (ROOT / path).read_text(encoding="utf-8").splitlines()[int(line) - 1]
+
+
 def test_every_constraint_cites_a_doc_line_that_says_what_it_claims() -> None:
     every = [*(c for m in MATRICES.values() for c in m.constraints)]
     every += [s for m in MATRICES.values() for s in m.standalone]
     for c in every:
-        line = int(c.doc.rsplit(":", 1)[1])
-        assert 1 <= line <= len(REF), c.id
         for needle in c.cites:
-            assert needle in REF[line - 1], f"{c.id}: {needle!r} not on {c.doc}"
+            assert needle in cited_line(c.doc), f"{c.id}: {needle!r} not on {c.doc}"
 
 
 def test_the_matrix_parameters_are_the_planned_ones() -> None:
@@ -177,7 +179,11 @@ def test_every_planned_refusal_example_is_a_constraint() -> None:
         "mask-chunked-post-validate",
         "mask-chunked-not-value-keyed",
         "mask-duckdb-evidence",
-        "mask-unkeyed-date-shift",
+        "mask-keyed-needs-secret",
+        "mask-vault-flag-needs-vault-column",
+        "mask-native-vault-flag",
+        "mask-native-vault-column",
+        "mask-native-subset",
         "mask-chunked-ignores-max-memory",
         "mask-chunked-ignores-threads",
         "mask-native-no-kernel-evidence",
@@ -215,3 +221,44 @@ def test_ignored_constraints_tag_runs_and_never_remove_pairs() -> None:
 def test_a_malformed_matrix_file_is_refused(text: str) -> None:
     with pytest.raises(mx.MatrixError):
         mx.parse(text)
+
+
+def test_no_expected_pass_run_matches_a_refusal_rule() -> None:
+    """Walk the printed run list against the rules read straight from the TOML, not the classes."""
+    import json
+
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10
+        import tomli as tomllib
+
+    raw = tomllib.loads((ROOT / "docs/qa/matrix.toml").read_text(encoding="utf-8"))
+    for block in raw["matrix"]:
+        matrix = MATRICES[block["name"]]
+        printed = json.loads(mx.to_json(matrix, mx.plan(matrix)))
+        rules = [c for c in block["constraints"] if c["kind"] in {"refused", "refused_after_run"}]
+        assert printed["runs"], block["name"]
+        for run in printed["runs"]:
+            assert run["expect"] == "pass"
+            for rule in rules:
+                hit = all(
+                    run["values"][p] in ([v] if isinstance(v, str) else v)
+                    for p, v in rule["when"].items()
+                )
+                assert not hit, f"run {run['index']} matches {rule['id']}"
+
+
+def test_the_walk_catches_a_run_that_matches_a_rule() -> None:
+    matrix = MATRICES["mask"]
+    run = dict(mx.plan(matrix).runs[0], vault="--vault", native="--native")
+    assert not valid(matrix, run)
+
+
+def test_a_doc_gap_citation_points_at_product_source() -> None:
+    sources = [c for c in MATRICES["mask"].constraints if c.doc.startswith("src/decoy/")]
+    assert {c.id for c in sources} >= {
+        "mask-keyed-needs-secret",
+        "mask-vault-flag-needs-vault-column",
+        "mask-native-vault-flag",
+        "mask-native-vault-column",
+    }

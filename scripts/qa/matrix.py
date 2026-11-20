@@ -33,7 +33,8 @@ SCHEMA_VERSION = 1
 KINDS = ("refused", "refused_after_run", "ignored")
 BLOCKING = ("refused", "refused_after_run")
 DEFAULT_MATRIX = Path(__file__).resolve().parents[2] / "docs/qa/matrix.toml"
-_DOC = re.compile(r"docs/cli-reference\.md:[0-9]+")
+# A docs line when the docs state the rule; the product source line when they do not (a doc gap).
+_DOC = re.compile(r"(docs/cli-reference\.md|src/decoy/[A-Za-z0-9_/]+\.py):[0-9]+")
 Pair = tuple[tuple[str, str], tuple[str, str]]
 
 
@@ -94,7 +95,9 @@ def _common(raw: dict[str, object], where: str) -> tuple[str, str, str, tuple[st
     if kind not in KINDS:
         raise MatrixError(f"{ident}: kind must be one of {KINDS}")
     if type(doc) is not str or _DOC.fullmatch(doc) is None:
-        raise MatrixError(f"{ident}: doc must look like docs/cli-reference.md:<line>")
+        raise MatrixError(
+            f"{ident}: doc must look like docs/cli-reference.md:<line> or src/decoy/<file>.py:<line>"
+        )
     if type(expect) is not str or not expect:
         raise MatrixError(f"{ident}: expect must be a non-empty string")
     return ident, kind, doc, _strs(raw.get("cites"), f"{ident}: cites"), expect
@@ -227,7 +230,7 @@ def to_json(matrix: Matrix, result: Plan) -> str:
     doc = {
         "matrix": matrix.name,
         "runs": [
-            {"index": i, "values": r, "ignored_flag_checks": ig}
+            {"index": i, "expect": "pass", "values": r, "ignored_flag_checks": ig}
             for i, (r, ig) in enumerate(zip(result.runs, result.ignored))
         ],
         "removed_pairs": result.removed,

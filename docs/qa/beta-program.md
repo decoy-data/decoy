@@ -164,8 +164,9 @@ Generate matrix:
 | evidence | off, `--evidence-out` |
 | `--json` | off, on |
 
-`allpairspy` covers every pair of values that a constraint does not remove. That is about 60
-mask runs and 15 generate runs per platform. Each QA pass writes its own run list. The run list
+`allpairspy` covers every pair of values that a constraint does not remove. That is 54
+mask runs and 9 generate runs per platform (the generator's output on 2026-11-20; a matrix edit
+changes it). Each QA pass writes its own run list. The run list
 is not committed.
 
 ### Constraint kinds
