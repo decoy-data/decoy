@@ -355,7 +355,7 @@ I6 classifies every exit the CLI can give:
 - `EXIT_USAGE` 1 (`src/decoy/cli/exit_codes.py:49`): the `error: internal error (<ClassName>)` form is always a crash. This applies with and without verbose output (`src/decoy/__main__.py:154`, `src/decoy/__main__.py:187`). Other documented `error:` reasons are refusals. A traceback or missing reason is a crash.
 - 2 (`src/decoy/cli/exit_codes.py:56` as `EXIT_WARNINGS`; also Click's usage error, `("failed", "parameter")` in `RUN_EXIT_MAP`, `src/decoy/cli/exit_codes.py:135`): pass when a documented warning code is present or the docs describe the usage refusal.
 - `EXIT_RUNTIME` 3 (`src/decoy/cli/exit_codes.py:66`): a pass only for the named read-only, disk-full and quota-fault cells. Each cell must also prove that no partial output became current. It is a finding elsewhere (`docs/qa/cli-v1-checklist.md:275`).
-- `EXIT_FINDINGS` 4 (`src/decoy/cli/exit_codes.py:74`): pass when the run used `--post-validate-enforce` or a gate and the report names findings.
+- `EXIT_FINDINGS` 4 (`src/decoy/cli/exit_codes.py:74`): pass for a documented findings exit (`run --post-validate-enforce`, `scan diff --strict`, `ci check`, a `report` check, `library fsck`, an incomplete `library prune` or `clean`) when the output names the findings.
 - `EXIT_CAPACITY` 5 (`src/decoy/cli/exit_codes.py:82`): a pass only for a named memory-capacity cell. It is a finding for disk and quota faults.
 - `EXIT_PARTIAL` 6 (`src/decoy/cli/exit_codes.py:103`): always a finding; it is reserved and no path reaches it in V1.
 - 130 (`_EXIT_INTERRUPTED`, `src/decoy/cli/exit_codes.py:111`): pass after a Ctrl-C in P5; a finding anywhere else.

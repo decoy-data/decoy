@@ -84,7 +84,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-52 rows block 1.0, 33 are Later and 12 are Maintenance (2026-11-20). Each cell lists the row
+53 rows block 1.0, 33 are Later and 12 are Maintenance (2026-11-20). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its v1+
 candidates that have no plan yet (83 in all), and the health file lists 31 maintenance candidates. The named 1.x speed slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md).
 

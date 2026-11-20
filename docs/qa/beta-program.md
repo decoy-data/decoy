@@ -30,7 +30,7 @@ needs judgement, docs reading and exploration.
 
 ### Command coverage
 
-L4 covers `decoy run` only. Every other command has a named layer:
+L4 covers `decoy run` only. The other commands have these layers:
 
 | Command | L1 | L2 | L3 persona |
 |---|---|---|---|
@@ -44,6 +44,8 @@ L4 covers `decoy run` only. Every other command has a named layer:
 | `ci check` | yes | yes | P3 |
 | `init`, `demo`, `explain`, `info`, `doctor`, `setup` | yes | yes | P1, P5 |
 | `library path`, `schema`, `list`, `show`, `project` | yes | yes | P1 |
+| `library fsck`, `diff`, `ref`, `prune`, `clean`, `export` | yes | yes | P2 |
+| `models list`, `models install` | yes | yes | P1 |
 | `upgrade` | yes | yes | P1 |
 
 ## Sandbox
@@ -117,7 +119,7 @@ checklist-pass, doc-walk and triager briefs. (Built by slice S2.)
 |---|---|---|
 | P1 Solo developer | install from the download page steps, run the demo, mask a mix of local files, change settings between runs, re-run, `fit` a table then generate from it and grade it with `report fidelity`, upgrade | Mac (macOS arm64), then Dell (Linux) |
 | P2 Data engineer | DuckDB sources, subsetting a three-level FK chain, chunked and native runs on M and L items, scans of a new source; connector sources and targets once their group closes | Dell |
-| P3 CI engineer | set Decoy up the way a company would in CI: pinned install, secrets from the environment, `decoy ci check`, exit codes as gates, evidence and result files kept as artifacts; write down every step a company would need | GitHub-hosted runner in a private sandbox repo (owner question Q2; fallback is a shell script on a test node) |
+| P3 CI engineer | Set Decoy up in CI the way a company would. Pin the install. Read secrets from the environment. Run `decoy ci check` and use exit codes as gates. Keep evidence and result files as artifacts. Write down every step a company needs. | GitHub-hosted runner in a private sandbox repo (owner question Q2; fallback is a shell script on a test node) |
 | P4 Compliance reviewer | evidence records, `decoy report verify`, the vault and `decoy unmask` with and without the vault file and mask secret, post-scan reports, what an auditor can and cannot see | Dell |
 | P5 Careless user | wrong flags, wrong file types, missing secret, interrupted runs (Ctrl-C mid-write), full disk, read-only output folder, re-running into an existing output | Dell, Mac |
 
@@ -244,7 +246,7 @@ I6 classifies every exit the CLI can give. The registry is `src/decoy/cli/exit_c
 | 1 | a documented `error:` reason is given (a refusal) | the `error: internal error (<ClassName>)` form, with or without verbose output; a traceback; no reason |
 | 2 | a documented warning code is present, or the docs describe the usage refusal | anything else |
 | 3 | only in a named read-only, disk-full or quota-fault cell, and no partial output became current | anywhere else |
-| 4 | the run used `--post-validate-enforce` or a gate, and the report names findings | anywhere else |
+| 4 | a documented findings exit: `run --post-validate-enforce`, `scan diff --strict`, `ci check`, a `report` check, `library fsck`, or an incomplete `library prune` or `clean`; the output names the findings | anywhere else |
 | 5 | only in a named memory-capacity cell | disk and quota faults, and anywhere else |
 | 6 | never: it is reserved and no V1 path reaches it | always |
 | 130 | after a Ctrl-C in a P5 cell | anywhere else |
