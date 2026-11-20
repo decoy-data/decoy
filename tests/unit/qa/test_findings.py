@@ -456,3 +456,18 @@ def test_artifacts_are_checked_as_utf16_too(tmp_path: Path) -> None:
         with pytest.raises(findings.Refused):
             put(tmp_path, record(), artifacts={"o.txt": blob})
     assert not (tmp_path / "pass-1").exists()
+
+
+def test_a_latin1_and_a_utf32_artifact_are_checked_too(tmp_path: Path) -> None:
+    refusal = sweep.RefusalSet.build(["José García"])
+    needles = sweep.read_needles("qamark0042\n")
+    for blob in (
+        "name José García".encode("latin-1"),
+        "name José García".encode("utf-32"),  # BOM
+        "id qamark0042".encode("utf-32"),
+    ):
+        with pytest.raises(findings.Refused):
+            findings.write(
+                tmp_path, "pass-1", record(), needles, refusal, artifacts={"o.txt": blob}
+            )
+    assert not (tmp_path / "pass-1").exists()

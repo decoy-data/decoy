@@ -71,9 +71,18 @@ class ReaderError(ValueError):
 
 
 def _decodings(blob: bytes) -> list[str]:
-    """The ways a byte string can read as text: UTF-8, and UTF-16 by BOM or when it holds NULs."""
-    texts = [blob.decode("utf-8", "replace")]
-    if blob[:2] in (b"\xff\xfe", b"\xfe\xff"):
+    """The ways a byte string can read as text.
+
+    UTF-8, plus Latin-1 when it is not valid UTF-8, plus UTF-32 or UTF-16 when a BOM says so (and
+    UTF-16 either way round when it holds NULs).
+    """
+    try:
+        texts = [blob.decode("utf-8")]
+    except UnicodeDecodeError:
+        texts = [blob.decode("utf-8", "replace"), blob.decode("latin-1")]
+    if blob[:4] in (b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff"):
+        texts.append(blob.decode("utf-32", "replace"))
+    elif blob[:2] in (b"\xff\xfe", b"\xfe\xff"):
         texts.append(blob.decode("utf-16", "replace"))
     elif b"\x00" in blob:
         texts += [blob.decode("utf-16-le", "replace"), blob.decode("utf-16-be", "replace")]

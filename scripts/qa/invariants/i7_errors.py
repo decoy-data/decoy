@@ -12,7 +12,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 
 from scripts.qa.invariants import Violation
-from scripts.qa.sweep import RefusalSet, hits
+from scripts.qa.sweep import RefusalSet, load_registry, sweep
 
 
 def check_text(
@@ -21,13 +21,18 @@ def check_text(
     refusal: RefusalSet | None = None,
     input_cells: Iterable[object] = (),
 ) -> list[Violation]:
-    """`texts` maps a surface id (`stdout`, `stderr`, `logs`) to its text."""
-    cells = RefusalSet.build(input_cells) if input_cells else None
-    found: list[Violation] = []
-    for surface, text in texts.items():
-        found += [Violation("I7", surface, f"n{i}", "needle") for i in hits(text.encode(), needles)]
-        if refusal is not None and refusal.found_in(text):
-            found.append(Violation("I7", surface, "s", "scalar"))
-        if cells is not None and cells.found_in(text):
-            found.append(Violation("I7", surface, "c", "input-cell"))
+    """`texts` maps a surface id (`stdout`, `stderr`, `logs`) to its text.
+
+    Raises `NothingRead` (through the sweep) when every text is empty, or when there is nothing
+    to look for: no needle, an empty refusal set and no input cells.
+    """
+    cells = RefusalSet.build(input_cells)
+    sets = [cells] if refusal is None else [refusal, cells]
+    captures = {surface: (surface, text.encode()) for surface, text in texts.items()}
+    kinds = {0: "scalar", 1: "input-cell"} if refusal is not None else {0: "input-cell"}
+    found = []
+    for leak in sweep(captures, needles, load_registry(), sets):
+        index = leak.coordinate[1:]
+        kind = "needle" if leak.coordinate[0] == "n" else kinds[int(index)]
+        found.append(Violation("I7", leak.surface, leak.coordinate, kind))
     return found

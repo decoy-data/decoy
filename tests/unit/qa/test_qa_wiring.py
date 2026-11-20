@@ -98,22 +98,69 @@ def test_the_checklist_sweep_step_calls_the_one_sweep() -> None:
     assert "grep -rFf" not in text
 
 
+COLLECTION = ("set", "frozenset", "dict", "Mapping", "Collection", "Sequence", "list", "tuple")
+COLLECTION_CALLS = {"set", "frozenset", "dict", "list", "tuple", "Counter", "defaultdict"}
+TEXT_CALLS = {"casefold", "lower", "upper", "decode", "encode", "str"}
+
+
+def _collection_names(tree: ast.AST) -> set[str]:
+    """Names that hold a collection of values, so `x in names` is set membership, not text search."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.arg | ast.AnnAssign):
+            note = node.annotation
+            target = node.arg if isinstance(node, ast.arg) else getattr(node.target, "id", "")
+            if note is not None and ast.unparse(note).startswith(COLLECTION):
+                names.add(target)
+        elif isinstance(node, ast.Assign):
+            value = node.value
+            kind = isinstance(
+                value, ast.Set | ast.SetComp | ast.Dict | ast.DictComp | ast.List | ast.Tuple
+            )
+            kind = kind or (isinstance(value, ast.BinOp) and isinstance(value.op, ast.BitOr))
+            fn = value.func if isinstance(value, ast.Call) else None
+            kind = kind or (isinstance(fn, ast.Name) and fn.id in COLLECTION_CALLS)
+            if kind:
+                names |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    return names
+
+
 def inline_text_matches(source: str) -> list[int]:
-    """Lines where a value is looked for inside text with `in`: `x in text.casefold()` and the like.
+    """Lines where an invariant searches text for a value itself instead of calling the sweep.
+
+    Covered shapes: `x in text.casefold()` (a text-method call on the right), `str(x) in y`,
+    `x in <name>` for a name that is not known to hold a collection, `text.find(x)`,
+    `re.search/match/fullmatch/findall(...)`, and `.__contains__(x)`. A constant on the left, such
+    as `'\\n' in text`, is exempt. A set or dict held in a name (a parameter annotated `set[...]`,
+    a set comprehension, `frozenset(...)`) is set membership and is exempt.
 
     Matching needles, cells or entities in text belongs to `scripts/qa/sweep.py`. A second matcher
     in an invariant is how `Bob` came to flag `Bobby`.
     """
+    tree = ast.parse(source)
+    known = _collection_names(tree)
     found = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(tree):
         if isinstance(node, ast.Compare) and any(
             isinstance(o, ast.In | ast.NotIn) for o in node.ops
         ):
-            right = node.comparators[-1]
-            if isinstance(right, ast.Call) and isinstance(right.func, ast.Attribute):
-                if right.func.attr in {"casefold", "lower", "upper", "decode", "encode"}:
-                    found.append(node.lineno)
-            elif isinstance(right, ast.Name) and right.id in {"text", "blob", "line", "haystack"}:
+            left, right = node.left, node.comparators[-1]
+            if isinstance(left, ast.Constant):
+                continue
+            as_text = isinstance(right, ast.Call) and getattr(right.func, "attr", "") in TEXT_CALLS
+            as_name = isinstance(right, ast.Name) and right.id not in known
+            as_str = isinstance(left, ast.Call) and getattr(left.func, "id", "") == "str"
+            if as_text or as_name or as_str:
+                found.append(node.lineno)
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            owner = node.func.value
+            if node.func.attr in {"find", "__contains__"}:
+                found.append(node.lineno)
+            elif (
+                isinstance(owner, ast.Name)
+                and owner.id == "re"
+                and node.func.attr in {"search", "match", "fullmatch", "findall", "finditer"}
+            ):
                 found.append(node.lineno)
     return found
 
@@ -126,10 +173,32 @@ def inline_text_matches(source: str) -> list[int]:
         "ok = needle not in blob",
         "bad = e in str(after).lower()",
         "hit = n in data.decode()",
+        "hit = str(n) in other",
+        "hit = n in other",
+        "pos = text.find(cell)",
+        "import re\nhit = re.search(cell, text)",
+        "import re\nhit = re.match(cell, text)",
+        "hit = text.__contains__(cell)",
     ],
 )
 def test_the_inline_match_scan_sees_each_spelling(snippet: str) -> None:
     assert inline_text_matches(snippet), snippet
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "x = '\\n' in text",
+        "def f(seen: set[str]):\n    return k in seen",
+        "def f(cfg: Mapping[str, int]):\n    return k in cfg",
+        "have = {k for k in rows}\nok = key not in have",
+        "kinds = frozenset({'a'})\nok = kind in kinds",
+        "ok = kind in {'a', 'b'}",
+        "ok = kind in KNOWN | {'x'}",
+    ],
+)
+def test_the_inline_match_scan_leaves_set_membership_alone(snippet: str) -> None:
+    assert inline_text_matches(snippet) == [], snippet
 
 
 def test_no_invariant_matches_needles_or_cells_in_text_itself() -> None:
@@ -140,4 +209,4 @@ def test_no_invariant_matches_needles_or_cells_in_text_itself() -> None:
     }
     assert offenders == {}, "use scripts/qa/sweep.py"
     i7 = (QA / "invariants" / "i7_errors.py").read_text(encoding="utf-8")
-    assert "from scripts.qa.sweep import" in i7 and "found_in" in i7
+    assert "from scripts.qa.sweep import" in i7 and "sweep(captures" in i7

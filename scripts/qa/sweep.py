@@ -76,7 +76,7 @@ class Registry:
 class Leak:
     surface: str
     name: str
-    coordinate: str  # `n<index>` for a needle, `s` for a refusal-set hit
+    coordinate: str  # `n<index>` for a needle, `s<index>` for a refusal-set hit
 
 
 def load_registry(path: Path = SURFACES) -> Registry:
@@ -202,13 +202,22 @@ class RefusalSet:
         publish_private_once(path, self.dumps().encode("utf-8"))
 
 
-def require_input(needles: Iterable[bytes], refusal: RefusalSet | None) -> None:
+Sets = RefusalSet | Sequence[RefusalSet] | None
+
+
+def _sets(refusal: Sets) -> list[RefusalSet]:
+    if refusal is None:
+        return []
+    return [refusal] if isinstance(refusal, RefusalSet) else list(refusal)
+
+
+def require_input(needles: Iterable[bytes], refusal: Sets) -> None:
     """The one not-run rule: no real needle and no usable refusal set means the input was not read.
 
     The sweep, the finding writer and `publish` all call this, so a pass whose needles file and
     refusal set came out empty can never read as clean.
     """
-    if not any(needles) and (refusal is None or refusal.is_empty()):
+    if not any(needles) and all(r.is_empty() for r in _sets(refusal)):
         raise NothingRead("no needles and no refusal set: a clean result would mean nothing")
 
 
@@ -225,7 +234,7 @@ def sweep(
     captures: Mapping[str, tuple[str, bytes]],
     needles: Sequence[bytes],
     registry: Registry,
-    refusal: RefusalSet | None = None,
+    refusal: Sets = None,
 ) -> list[Leak]:
     """Sweep named captures, each `(surface id, bytes)`. Raises `NothingRead` if all are empty.
 
@@ -239,8 +248,10 @@ def sweep(
         if surface not in registry.surfaces:
             raise RegistryError(f"{name}: unknown surface {surface!r}")
         leaks += [Leak(surface, name, f"n{i}") for i in hits(blob, needles)]
-        if refusal is not None and refusal.found_in(blob.decode("utf-8", "replace")):
-            leaks.append(Leak(surface, name, "s"))
+        text = blob.decode("utf-8", "replace")
+        leaks += [
+            Leak(surface, name, f"s{i}") for i, r in enumerate(_sets(refusal)) if r.found_in(text)
+        ]
     return leaks
 
 

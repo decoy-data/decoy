@@ -20,7 +20,6 @@ result holds a verdict word and no output.
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import os
 import secrets
@@ -81,24 +80,37 @@ def _real_decoy() -> list[str]:
     return []
 
 
-def _bypasses(argv: Sequence[str]) -> bool:
-    """True when the command reaches decoy by a route that skips the PATH shim.
+_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")"}
 
-    Looks at the argv and at the words inside any `sh -c` string: a path whose last part is
-    `decoy`, `-m decoy`, and `uv run`.
+
+def _commands(text: str) -> list[list[str]]:
+    """The commands inside a `sh -c` string, split on shell separators."""
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    commands: list[list[str]] = [[]]
+    try:
+        for word in lexer:
+            if word in _SEPARATORS:
+                commands.append([])
+            else:
+                commands[-1].append(word)
+    except ValueError:
+        return []
+    return [c for c in commands if c]
+
+
+def _bypasses(argv: Sequence[str]) -> bool:
+    """True when the command starts decoy by a route that skips the PATH shim.
+
+    Only the program position counts (argv[0], and the first word of each command inside a
+    `sh -c` string): a path whose last part is `decoy`, `uv run`, or `-m decoy`. A folder or flag
+    that merely ends in `decoy` is not a bypass.
     """
-    lines = [list(argv)]
-    for item in argv:
-        try:
-            lines.append(shlex.split(item))
-        except ValueError:
-            continue
+    lines = [list(argv)] + [c for item in argv for c in _commands(item)]
     for words in lines:
-        if words[:2] == ["uv", "run"]:
+        if words[:2] == ["uv", "run"] or ("-m" in words[:3] and "decoy" in words[1:4]):
             return True
-        if any(a == "-m" and b == "decoy" for a, b in itertools.pairwise(words)):
-            return True
-        if any("/" in w and w.rstrip("/").rsplit("/", 1)[-1] == "decoy" for w in words):
+        if "/" in words[0] and words[0].rstrip("/").rsplit("/", 1)[-1] == "decoy":
             return True
     return False
 
@@ -148,7 +160,10 @@ def run(
         cwd = home
         if folder is not None:
             cwd = home / "repro"
-            copy_private_tree(folder, cwd)
+            try:
+                copy_private_tree(folder, cwd)
+            except ValueError:  # a symlink in the folder, or over the size cap
+                return Result(False, "invalid")
         env = {
             "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
             "HOME": str(home),
@@ -156,14 +171,17 @@ def run(
         }
         # A new session lets the timeout kill the whole group, so a grandchild that keeps the
         # pipes open cannot hang the runner.
-        proc = subprocess.Popen(
-            list(argv),
-            env=env,
-            cwd=cwd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True,
-        )
+        try:
+            proc = subprocess.Popen(
+                list(argv),
+                env=env,
+                cwd=cwd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            )
+        except OSError:  # the program is missing or not executable
+            return Result(False, "invalid")
         try:
             proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -189,7 +207,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     cmd = args.command[1:] if args.command[:1] == ["--"] else args.command
     result = run(cmd, args.recorded_exit, args.signature, real=_real_decoy())
     sys.stdout.write(f"{result.reason}\n")
-    return 0 if result.reproduced else 2 if result.reason == "needs-manual-repro" else 1
+    if result.reproduced:
+        return 0
+    return 2 if result.reason in {"invalid", "bypass", "needs-manual-repro"} else 1
 
 
 if __name__ == "__main__":

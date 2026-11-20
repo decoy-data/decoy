@@ -9,12 +9,14 @@ An exact-cell check is used only where the output domain cannot overlap the inpu
 construction. Anywhere else a correct run can land on another row's input value, so the check
 would cry wolf:
 - `hash`, `tokenize`, `redact`: same-row plus exact-cell (the output equals no input cell of the
-  column). `faker` gets the same pair over marker inputs only; marker cells are ours, so a faker
+  column). an unpooled `faker` gets the same pair over marker inputs only; marker cells are ours, so a faker
   value can never equal one by chance.
 - `date_shift`: same-row, plus `0 < |out - in| <= Rule.range` days.
-- `fpe` and `faker` with a pool: same-row, plus a swap check. A correct permutation of a domain
-  lands in the input domain, so single hits prove nothing. The column fails when its output
-  multiset equals its input multiset on `SWAP_ROWS` or more rows, which is a row permutation.
+- `fpe` and `faker` with `Rule.pool`: same-row, plus a swap check. A correct permutation of a
+  domain lands in the input domain, so single hits prove nothing. On `SWAP_ROWS` or more non-null
+  rows the column fails when 90 percent or more of it is made of its own input values (the
+  multiset overlap, a null output counting as no match), so shifting a column by one row and
+  changing one cell still fails.
 - `categorical`, `bucketize`: no same-row or exact-cell check, because a legitimate mapping can
   return the input value. Each output must be in `Rule.allowed`, and equal canonical inputs must
   give equal outputs.
@@ -35,10 +37,10 @@ from scripts.qa.sweep import canonical, has_fragment
 
 EXACT = frozenset({"hash", "tokenize", "redact"})
 MARKER_ONLY = frozenset({"faker"})
-SWAPPED = frozenset({"fpe", "faker"})
 CLOSED = frozenset({"categorical", "bucketize"})
-KNOWN = EXACT | MARKER_ONLY | SWAPPED | CLOSED | {"date_shift", "truncate", "text_redact"}
+KNOWN = EXACT | MARKER_ONLY | CLOSED | {"fpe", "date_shift", "truncate", "text_redact"}
 SWAP_ROWS = 20
+SWAP_OVERLAP = 0.9  # a column this much made of its own input values has been shuffled
 MARKER = "qamark"
 # Registry exception id -> the strategy it exempts (or limits). Keep equal to surfaces.toml.
 EXCEPTION_RULES = {
@@ -111,7 +113,7 @@ def check_cells(
         before = [r.get(column) for r in source]
         after = [r.get(column) for r in output]
         domain = {canonical(v) for v in before if v is not None}
-        if rule.strategy in MARKER_ONLY:
+        if rule.strategy in MARKER_ONLY and not rule.pool:
             domain = {c for c in domain if has_fragment(c, MARKER)}
         allowed = {canonical(a) for a in rule.allowed}
         mapping: dict[str, str] = {}
@@ -119,17 +121,24 @@ def check_cells(
             kind = _violation(rule, src, out, domain, allowed, mapping, i)
             if kind:
                 found.append(Violation("I1", surface, f"{table}/{column}/{i}", kind))
-        if rule.strategy in SWAPPED and _is_permutation(before, after):
+        if _swap_checked(rule) and _is_shuffle(before, after):
             found.append(Violation("I1", surface, f"{table}/{column}/-", "permutation"))
     return found
 
 
-def _is_permutation(before: list[object], after: list[object]) -> bool:
-    """True when the output column is the input column reordered, on enough rows to be no accident."""
+def _swap_checked(rule: Rule) -> bool:
+    return rule.strategy == "fpe" or (rule.strategy in MARKER_ONLY and rule.pool)
+
+
+def _is_shuffle(before: list[object], after: list[object]) -> bool:
+    """True when the output column is made of the input column's own values, on enough rows."""
     pairs = [(b, a) for b, a in zip(before, after) if b is not None]
-    if len(pairs) < SWAP_ROWS or any(a is None for _, a in pairs):
+    if len(pairs) < SWAP_ROWS:
         return False
-    return Counter(canonical(b) for b, _ in pairs) == Counter(canonical(a) for _, a in pairs)
+    originals = Counter(canonical(b) for b, _ in pairs)
+    produced = Counter(canonical(a) for _, a in pairs if a is not None)  # a null matches nothing
+    overlap = sum((originals & produced).values())
+    return overlap >= SWAP_OVERLAP * len(pairs)
 
 
 def _day(value: object) -> datetime.date | None:
@@ -171,6 +180,11 @@ def _violation(
         was, now = _day(before), _day(after)
         spread = abs((now - was).days) if was and now else None
         return "" if spread is not None and 0 < spread <= (rule.range or 0) else "shift-range"
-    if rule.strategy in EXACT | MARKER_ONLY and after is not None and canonical(after) in domain:
+    if (
+        rule.strategy in EXACT | MARKER_ONLY
+        and not rule.pool
+        and after is not None
+        and canonical(after) in domain
+    ):
         return "exact-cell"
     return ""

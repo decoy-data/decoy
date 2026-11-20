@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 import pytest
+from scripts.qa import io as qio
 from scripts.qa import repro
 
 # A stand-in for the installed decoy: fails the way the recorded finding did.
@@ -95,6 +96,54 @@ def test_cli_exit_follows_the_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
 )
 def test_a_command_that_bypasses_the_shim_is_refused(cmd: list[str]) -> None:
     assert go(cmd) == repro.Result(False, "bypass")
+
+
+def test_an_executable_script_in_the_folder_runs_from_its_copy(tmp_path) -> None:
+    src = tmp_path / "finding"
+    src.mkdir()
+    script = src / "repro.sh"
+    script.write_text("#!/bin/sh\ndecoy run\n")
+    script.chmod(0o700)
+    assert go(["./repro.sh"], folder=src).reproduced
+
+
+def test_a_missing_program_is_invalid_and_exits_2(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert go(["./no-such-program"]) == repro.Result(False, "invalid")
+    monkeypatch.setattr(repro, "_real_decoy", lambda: REAL)
+    args = ["--recorded-exit", "3", "--signature", "disk full", "--", "./no-such-program"]
+    assert repro.main(args) == 2
+
+
+@pytest.mark.parametrize(
+    ("reason", "code"),
+    [("reproduced", 0), ("wrong-exit", 1), ("signature-missing", 1), ("stalled", 1),
+     ("invalid", 2), ("bypass", 2), ("needs-manual-repro", 2)],
+)  # fmt: skip
+def test_cli_exit_codes_by_reason(monkeypatch: pytest.MonkeyPatch, reason: str, code: int) -> None:
+    monkeypatch.setattr(repro, "run", lambda *a, **k: repro.Result(reason == "reproduced", reason))
+    assert repro.main(["--recorded-exit", "3", "--signature", "disk full", "--", "x"]) == code
+
+
+def test_only_the_program_position_counts_as_a_bypass() -> None:
+    for cmd in (
+        ["sh", "-c", "mkdir -p x/decoy && cd ./x/decoy && cd - && decoy run"],
+        ["sh", "-c", "decoy run --out out/decoy"],
+    ):
+        assert go(cmd).reproduced, cmd
+    assert go(["sh", "-c", "echo hi; /opt/bin/decoy run"]) == repro.Result(False, "bypass")
+
+
+def test_a_symlink_in_the_folder_is_refused_and_the_size_is_capped(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    src = tmp_path / "finding"
+    src.mkdir()
+    (src / "link").symlink_to("/etc/hosts")
+    assert go(["sh", "-c", "decoy run"], folder=src) == repro.Result(False, "invalid")
+    (src / "link").unlink()
+    (src / "big.bin").write_bytes(b"x" * 100)
+    monkeypatch.setattr(qio, "MAX_TREE_BYTES", 50)
+    assert go(["sh", "-c", "decoy run"], folder=src) == repro.Result(False, "invalid")
 
 
 def test_the_repro_runs_in_a_copy_of_its_folder(tmp_path) -> None:

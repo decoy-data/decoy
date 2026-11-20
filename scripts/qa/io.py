@@ -26,6 +26,7 @@ from pathlib import Path
 PRIVATE_FILE = 0o600
 PRIVATE_DIR = 0o700
 PRIVATE_EXEC = 0o700  # a launcher-owned script, runnable by this user only
+MAX_TREE_BYTES = 64 * 1024 * 1024  # the most `copy_private_tree` will copy
 
 
 class AlreadyPublished(FileExistsError):
@@ -172,18 +173,25 @@ def _holds(target: Path, data: bytes) -> bool:
 def copy_private_tree(source: Path, dest: Path) -> None:
     """Copy the regular files under `source` into a new private tree at `dest`.
 
-    Symlinks and special files are skipped, so a repro folder cannot pull in anything outside it.
+    A symlink or special file is refused (it could point outside the folder), the owner exec bit
+    is kept so a repro script still runs, and the total size is capped at `MAX_TREE_BYTES`.
     """
     source, dest = Path(source), Path(dest)
     _ensure_parents(dest)
+    total = 0
     for path in sorted(source.rglob("*")):
         relative = path.relative_to(source)
-        if path.is_symlink():
-            continue
+        if path.is_symlink() or not (path.is_dir() or path.is_file()):
+            raise ValueError(f"refused: {relative} is a symlink or special file")
         if path.is_dir():
             _ensure_parents(dest / relative)
-        elif path.is_file():
-            publish_private_once(dest / relative, path.read_bytes())
+            continue
+        info = path.stat()
+        total += info.st_size
+        if total > MAX_TREE_BYTES:
+            raise ValueError("refused: the folder is over the size cap")
+        mode = PRIVATE_EXEC if info.st_mode & stat.S_IXUSR else PRIVATE_FILE
+        publish_private_once(dest / relative, path.read_bytes(), mode=mode)
 
 
 @contextlib.contextmanager

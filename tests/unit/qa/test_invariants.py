@@ -231,3 +231,14 @@ def test_i7_matches_whole_tokens_not_substrings() -> None:
     assert [
         v.kind for v in i7_errors.check_text({"stderr": "who: bob."}, [b"qamark9"], None, ["Bob"])
     ] == ["input-cell"]
+
+
+def test_i7_goes_through_the_sweep_and_empty_input_is_not_a_pass() -> None:
+    with pytest.raises(sweep.NothingRead):
+        i7_errors.check_text({"stderr": "error: x"}, [], None, [])  # nothing to look for
+    with pytest.raises(sweep.NothingRead):
+        i7_errors.check_text({"stdout": "", "stderr": ""}, [b"qamark9"])  # nothing to read
+    refusal = sweep.RefusalSet.build(["Zelda Quinn"])
+    found = i7_errors.check_text({"stderr": "Zelda Quinn and Omar Fry"}, [], refusal, ["Omar Fry"])
+    assert sorted(v.kind for v in found) == ["input-cell", "scalar"]
+    assert i7_errors.check_text({"stderr": "ok"}, [], None, ["Omar Fry"]) == []  # cells are input

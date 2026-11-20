@@ -367,3 +367,37 @@ def test_no_needles_and_no_usable_refusal_set_means_not_run(refusal: str | None)
         sweep.sweep({"c": ("stdout", b"data")}, (), REGISTRY, ref)
     assert sweep.require_input([b"x"], ref) is None  # one real needle is enough
     assert sweep.require_input([], REFUSAL) is None
+
+
+def _rotation_with(change: int | None) -> tuple[list[dict], list[dict]]:
+    src, _, rotated = _codes()
+    out = [dict(r) for r in rotated]
+    if change is not None:
+        out[change] = {"c": "new"} if change % 2 else {"c": None}
+    return src, out
+
+
+@pytest.mark.parametrize("strategy", ["fpe", "faker"])
+@pytest.mark.parametrize("change", [None, 3, 4])
+def test_a_near_permutation_with_a_new_value_or_a_null_still_fails(
+    strategy: str, change: int | None
+) -> None:
+    src, out = _rotation_with(change)
+    found = check_cells("t", {"c": Rule(strategy, pool=True)}, src, out)
+    assert "permutation" in [v.kind for v in found]
+
+
+def test_a_pooled_faker_returning_other_rows_names_fails() -> None:
+    names = [f"Person Number{i}" for i in range(40)]
+    src = [{"c": n} for n in names]
+    out = [{"c": names[(i * 7 + 1) % 40]} for i in range(40)]  # a shuffle of the same names
+    found = check_cells("t", {"c": Rule("faker", pool=True)}, src, out)
+    assert [v.kind for v in found if v.kind == "permutation"] == ["permutation"]
+
+
+def test_an_unpooled_faker_gets_no_swap_check_but_keeps_marker_exact_cell() -> None:
+    marked = [{"c": f"qamark{i}"} for i in range(30)]
+    found = check_cells("t", {"c": Rule("faker")}, marked, marked[1:] + marked[:1])
+    assert {v.kind for v in found} == {"exact-cell"}
+    plain = [{"c": f"Person{i}"} for i in range(30)]
+    assert check_cells("t", {"c": Rule("faker")}, plain, plain[1:] + plain[:1]) == []
