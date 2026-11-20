@@ -190,3 +190,47 @@ def test_a_symlinked_parent_is_refused(tmp_path: Path) -> None:
     with pytest.raises(NotADirectoryError):
         qio.publish_private_once(tmp_path / "link" / "sub" / "rec", b"x")
     assert list(real.iterdir()) == []
+
+
+@pytest.fixture
+def locked_umask():
+    old = os.umask(0o777)
+    yield
+    os.umask(old)
+
+
+def test_every_create_path_is_exact_under_umask_0777(tmp_path: Path, locked_umask: None) -> None:
+    qio.publish_private_once(tmp_path / "a" / "b" / "rec", b"x")
+    assert stat.S_IMODE((tmp_path / "a" / "b" / "rec").stat().st_mode) == 0o600
+    for level in (tmp_path / "a", tmp_path / "a" / "b"):
+        assert stat.S_IMODE(level.stat().st_mode) == 0o700
+    qio.make_private_dir(tmp_path / "d", 0o750)
+    assert stat.S_IMODE((tmp_path / "d").stat().st_mode) == 0o750
+    fd = qio.open_private_capture(tmp_path / "cap.out")
+    os.close(fd)
+    assert stat.S_IMODE((tmp_path / "cap.out").stat().st_mode) == 0o600
+    with qio.private_scratch_dir() as scratch:
+        assert stat.S_IMODE(scratch.stat().st_mode) == 0o700
+
+
+def test_a_capture_that_cannot_be_made_private_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(fd: int, mode: int) -> None:
+        raise PermissionError("no chmod here")
+
+    monkeypatch.setattr(os, "fchmod", refuse)
+    with pytest.raises(PermissionError):
+        qio.open_private_capture(tmp_path / "cap.out")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_safe_errors_carry_no_cause_or_context(tmp_path: Path) -> None:
+    qio.publish_private_once(tmp_path / "rec", b"x")
+    with pytest.raises(qio.AlreadyPublished) as first:
+        qio.publish_private_once(tmp_path / "rec", b"y")
+    (tmp_path / "plain").write_bytes(b"")
+    with pytest.raises(FileExistsError) as second:
+        qio.make_private_dir(tmp_path / "plain")
+    for err in (first.value, second.value):
+        assert err.__cause__ is None and err.__context__ is None

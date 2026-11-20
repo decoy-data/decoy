@@ -9,7 +9,9 @@ temporary file is linked to the target instead, which is atomic and fails if the
 so two writers racing on one id cannot both win and a killed writer never leaves an empty target.
 An interruption at any point removes the temporary file, so a retry with the same id works.
 
-Standard library only. It must not import any private product module (`decoy._*`).
+Standard library only, and no private product module (`decoy._*`). Plan section 4 chose this small
+helper on purpose: the product's own atomic writers are private, and making them public would
+widen the frozen surface, so QA keeps its own copy of the few primitives it needs.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ class AlreadyPublished(FileExistsError):
 class StagedFile:
     """A private temporary file next to its target, published at most once.
 
-    The temporary file lives in the target's folder so `os.replace` stays on one filesystem and
+    The temporary file lives in the target's folder so the hard link stays on one filesystem and
     is atomic. Nothing appears at the target until `publish`.
     """
 
@@ -66,10 +68,13 @@ class StagedFile:
         self.close()
         if self._published:
             raise ValueError("the staged file was already published")
+        exists = False
         try:
             os.link(self.path, self.target)
         except FileExistsError:
-            raise AlreadyPublished(f"already exists: {self.target}") from None
+            exists = True
+        if exists:  # raised outside the handler so the error carries no __context__
+            raise AlreadyPublished(f"already exists: {self.target}")
         self._published = True
         with contextlib.suppress(FileNotFoundError):
             os.unlink(self.path)
@@ -140,21 +145,22 @@ def make_private_dir(path: Path, mode: int = PRIVATE_DIR) -> None:
     user with exactly `mode`; anything else is refused, so a pre-planted folder cannot be reused.
     """
     path = Path(path)
+    exists = False
     try:
         os.mkdir(path, mode)
     except FileExistsError:
-        info = os.lstat(path)
-        same = (
-            stat.S_ISDIR(info.st_mode)
-            and info.st_uid == os.getuid()
-            and stat.S_IMODE(info.st_mode) == mode
-        )
-        if not same:
-            raise FileExistsError(
-                f"refused: {path} exists with another type, owner or mode"
-            ) from None
+        exists = True
+    if not exists:
+        os.chmod(path, mode)  # mkdir applies the umask; the caller asked for exact bits
         return
-    os.chmod(path, mode)  # mkdir applies the umask; the caller asked for exact bits
+    info = os.lstat(path)
+    same = (
+        stat.S_ISDIR(info.st_mode)
+        and info.st_uid == os.getuid()
+        and stat.S_IMODE(info.st_mode) == mode
+    )
+    if not same:
+        raise FileExistsError(f"refused: {path} exists with another type, owner or mode")
 
 
 def open_private_capture(path: Path, *, inheritable: bool = False) -> int:
@@ -165,5 +171,14 @@ def open_private_capture(path: Path, *, inheritable: bool = False) -> int:
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_APPEND
     flags |= getattr(os, "O_CLOEXEC", 0)
     fd = os.open(path, flags, PRIVATE_FILE)
-    os.set_inheritable(fd, inheritable)
+    try:
+        os.fchmod(fd, PRIVATE_FILE)  # the umask can strip the bits `os.open` asked for
+        if stat.S_IMODE(os.fstat(fd).st_mode) != PRIVATE_FILE:
+            raise PermissionError(f"refused: {path} is not mode 0600")
+        os.set_inheritable(fd, inheritable)
+    except BaseException:
+        os.close(fd)
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(path)
+        raise
     return fd
