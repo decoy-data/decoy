@@ -1,7 +1,7 @@
 """End-to-end tests for `decoy fit` + the statistical generate path (WS3).
 
 `decoy fit` wraps the engine's `compute_distribution_snapshot`: it turns
-a source CSV into the distribution-snapshot/v1 JSON artifact that
+a source CSV into the distribution-snapshot/v2 JSON artifact that
 `type: statistical` generate columns consume. The flagship cell runs the
 full loop: fit -> validate -> run -> synthetic output shaped like the
 source.
@@ -93,7 +93,7 @@ class TestFit:
         result = runner.invoke(app, ["fit", str(src), "--output", str(out)])
         assert result.exit_code == 0, result.output
         snap = json.loads(out.read_text(encoding="utf-8"))
-        assert snap["schema_version"] == "distribution-snapshot/v1"
+        assert snap["schema_version"] == "distribution-snapshot/v2"
         assert snap["columns"]["amount"]["kind"] == "numeric"
         assert snap["columns"]["state"]["kind"] == "categorical"
 
@@ -861,13 +861,13 @@ class TestFitDpArtifactShape:
         assert written["dp"]["schema"] == "dps-marginal/v3"
         assert written == fake
 
-    def test_non_dp_artifact_is_distribution_snapshot_v1(self, tmp_path: Path) -> None:
+    def test_non_dp_artifact_is_distribution_snapshot_v2(self, tmp_path: Path) -> None:
         src = _source_csv(tmp_path)
         out = tmp_path / "snapshot.json"
         result = runner.invoke(app, ["fit", str(src), "--output", str(out)])
         assert result.exit_code == 0, result.output
         written = json.loads(out.read_text(encoding="utf-8"))
-        assert written["schema_version"] == "distribution-snapshot/v1"
+        assert written["schema_version"] == "distribution-snapshot/v2"
         assert "dp" not in written
 
 
