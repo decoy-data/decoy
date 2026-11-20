@@ -4,9 +4,6 @@
  "entries": {
   "cli/init.py::_scaffold_from_file": {
    "reason": "`decoy init` profiles its input for strategy inference; the wizard is stopped and the profile is not a scan result."
-  },
-  "api.py::scan": {
-   "reason": "`decoy.scan()` still calls `profile_columns` until slice C2 routes it through the shared scan call."
   }
  }
 }

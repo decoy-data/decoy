@@ -35,9 +35,7 @@
   "cli/io/_scan_set.py::_from_core::validate-engine#1": {"reason": "validates the engine's scan-set read model, catches the error without reading it and raises a fixed message outside the handler; a scan file is not a pipeline config"}
  },
  "csv-read-allow": {
-  "cli/gen/_fit.py::read_fit_csv": {"reason": "A caller-named file with its own parse flags; not a declared source.", "sites": 1},
-  "cli/scan.py::_load_csv_with_sampling": {"reason": "A caller-named file with its own sampling flags; not a declared source.", "sites": 4},
-  "cli/scan.py::_load_fixed_width_with_sampling": {"reason": "A caller-named fixed-width file with its own layout flags; not a declared source.", "sites": 3}
+  "cli/gen/_fit.py::read_fit_csv": {"reason": "A caller-named file with its own parse flags; not a declared source.", "sites": 1}
  },
  "engine-internal-allow": {
   "ci/engine_logging.py::decoy_engine.internal.logging": {"count": 1, "reason": "Silences the engine's cwd-relative file logger during `decoy ci` and restores its singleton; the engine has no public logging configuration (only the `Logger` protocol).", "removal": "Engine exports a public logging opt-out (docs/handoffs/inputs/cli-needs-engine-public-api.md #1); then delete this entry."},
@@ -142,7 +140,7 @@
   "src/decoy/cli/fit.py": {"max": 818, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/report.py": {"max": 2295, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/scan.py": {"max": 1032, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
+  "src/decoy/cli/scan.py": {"max": 930, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
  },
  "output-name-allow": {
  },

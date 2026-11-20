@@ -1,4 +1,4 @@
-"""The one engine call behind every scan: `decoy scan`, `decoy demo` and, later, `decoy.scan()`.
+"""The one engine call behind every scan: `decoy scan`, `decoy demo` and `decoy.scan()`.
 
 This module owns the facts the callers must agree on: the default sample size, the strategy
 names, the rule that `--rows 0` reads every row, and the bytes of a saved scan. It is the only
@@ -28,7 +28,7 @@ class SampleStrategy(str, Enum):
     random = "random"
 
 
-class ScanUsageError(Exception):
+class ScanUsageError(ValueError):
     """A bad invocation, found before any file is read. The message is fixed text plus names."""
 
     def __init__(self, message: str, hint_text: str | None = None) -> None:

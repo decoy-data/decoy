@@ -7,8 +7,8 @@ terminal UX, and forwarding work to the engine.
 S6 (OSS-launch, 2026-07-18): `decoy.mask()` / `decoy.scan()` are the
 library one-liner equivalents of `decoy run` / `decoy scan`,
 for `import decoy; decoy.mask(...)` without shelling out to the CLI. See
-`decoy.api` for the implementation -- both wrap the exact same
-decoy_engine entrypoints the CLI commands call.
+`decoy.api` for the implementation -- `mask` wraps the engine entrypoint `decoy run` calls, and
+`scan` calls the one shared function behind `decoy scan` and returns its `scan-set/v1` document.
 
 `mask` / `scan` are resolved lazily (module `__getattr__`, PEP 562) so a
 bare `import decoy` (e.g. just reading `__version__`) does not eagerly

@@ -1,0 +1,223 @@
+# QA-BETA L4 settings matrices (schema_version 1). Plan section 5.4:
+# docs/plans/2026-11-20-qa-beta-program.md. `scripts/qa/matrix.py` turns this file into the run
+# list: every pair of parameter values appears in at least one run, except pairs that a refusal
+# removes. Parameters come from the run options in docs/cli-reference.md lines 105 to 129.
+#
+# Constraint kinds:
+#   refused             the run must exit with the documented code and a value-free reason
+#   refused_after_run   the run refuses after the work, before any output is written
+#   ignored             the run must succeed and equal the run without the ignored flag (I3)
+# `when` maps a parameter to one value or a list of values; a run matches when every listed
+# parameter holds one of its values. `cites` are words that must appear on the cited doc line;
+# a test checks that, so a doc edit that moves a line turns the citation red.
+
+schema_version = 1
+
+[[matrix]]
+name = "mask"
+
+[matrix.parameters]
+strategy_mix = [
+  "hash only",
+  "fpe and date_shift",
+  "faker and categorical",
+  "bucketize and truncate",
+  "text_redact on free text",
+  "redact with vault column",
+  "passthrough mixed in",
+]
+source = ["csv", "tsv", "parquet", "fixed-width", "duckdb"]
+size_tier = ["S", "M", "L"]
+mask_secret = ["absent", "env: ref"]
+chunked = ["off", "--chunked"]
+native = ["default", "--native", "--no-native"]
+threads = ["default", "--threads 1", "--threads 4"]
+memory_budget = ["default", "--max-memory quarter of item"]
+subset = ["config subset on", "--no-subset", "no subset block"]
+post_scan = ["off", "--post-validate", "--post-validate-enforce"]
+evidence = ["off", "--evidence-out"]
+vault = ["off", "--vault"]
+output = ["default run folder", "--out-dir"]
+json = ["off", "--json"]
+
+[[matrix.constraints]]
+id = "mask-chunked-vault"
+kind = "refused"
+when = { chunked = "--chunked", vault = "--vault" }
+doc = "docs/cli-reference.md:113"
+cites = ["--vault", "--chunked"]
+expect = "exit 1, a reason that names --vault and --chunked"
+
+[[matrix.constraints]]
+id = "mask-chunked-subset"
+kind = "refused"
+when = { chunked = "--chunked", subset = ["config subset on", "--no-subset"] }
+doc = "docs/cli-reference.md:128"
+cites = ["--no-subset", "--chunked"]
+expect = "exit 1; a subset block is refused under --chunked even with --no-subset"
+
+[[matrix.constraints]]
+id = "mask-chunked-fixed-width"
+kind = "refused"
+when = { chunked = "--chunked", source = "fixed-width" }
+doc = "docs/cli-reference.md:109"
+cites = ["fixed_width", "--chunked"]
+expect = "exit 1, a reason that names the fixed-width source"
+
+[[matrix.constraints]]
+id = "mask-chunked-post-validate"
+kind = "refused"
+when = { chunked = "--chunked", post_scan = ["--post-validate", "--post-validate-enforce"] }
+doc = "docs/cli-reference.md:125"
+cites = ["--post-validate", "--chunked"]
+expect = "exit 1, a reason that names --post-validate"
+
+[[matrix.constraints]]
+id = "mask-duckdb-evidence"
+kind = "refused"
+when = { source = "duckdb", evidence = "--evidence-out" }
+doc = "docs/cli-reference.md:127"
+cites = ["--duckdb-source", "--evidence-out"]
+expect = "exit 1, a reason that names --evidence-out"
+
+[[matrix.constraints]]
+id = "mask-native-chunked"
+kind = "refused"
+when = { native = "--native", chunked = "--chunked" }
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "--chunked"]
+expect = "exit 1 before any run"
+
+# Reading of the strategy mixes. The engine treats fpe, hash, date_shift, deterministic faker and
+# categorical (pool_size or categories set), and any `vault: true` column as keyed, so a run with
+# no mask secret is refused (decoy_engine/keyprovider.py `_ALWAYS_KEYED_STRATEGIES`, shipped text in
+# `decoy explain keys`). bucketize, truncate, text_redact and redact are not keyed. "passthrough
+# mixed in" means passthrough columns beside a hash column. `decoy run` rejects `strategy:
+# tokenize` itself (exit 3, `tokenize_requires_vault`; the `decoy tokenize` verb serves it), so
+# the "redact with vault column" mix is a `vault: true` column on `redact` with a namespace. Only
+# the `--vault` flag is refused under `--chunked` (src/decoy/cli/run/_prepare.py:455), not the
+# marker, so `--chunked` with this mix is a valid run.
+[[matrix.constraints]]
+id = "mask-keyed-needs-secret"
+kind = "refused"
+when = { mask_secret = "absent", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "redact with vault column", "passthrough mixed in"] }
+doc = "src/decoy/cli/explain.py:210"
+cites = ["keyed_strategy_requires_secret"]
+expect = "exit 1, code keyed_strategy_requires_secret, before any data is read"
+
+[[matrix.constraints]]
+id = "mask-vault-flag-needs-vault-column"
+kind = "refused"
+when = { vault = "--vault", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "bucketize and truncate", "text_redact on free text", "passthrough mixed in"] }
+doc = "src/decoy/cli/run/_prepare.py:485"
+cites = ["vault_columns_declared"]
+expect = "exit 1, a reason that says no column declares vault: true"
+
+[[matrix.constraints]]
+id = "mask-native-vault-flag"
+kind = "refused"
+when = { native = "--native", vault = "--vault" }
+doc = "src/decoy/_native_gate.py:325"
+cites = ["vault_active"]
+expect = "exit 1 before any run, code native_require_vault_active"
+
+[[matrix.constraints]]
+id = "mask-native-vault-column"
+kind = "refused_after_run"
+when = { native = "--native", strategy_mix = "redact with vault column" }
+doc = "src/decoy/_native_gate.py:247"
+cites = ["vault"]
+expect = "refusal before any output is written: a vault: true column never shows compiled-kernel evidence"
+
+# The docs name FK tables on the cited line, not a subset block. A subset run resolves its rows
+# through the relationship graph, so this is expected to refuse the same way. It was not proved
+# against a live native companion; the first QA pass on a node with the companion confirms it.
+[[matrix.constraints]]
+id = "mask-native-subset"
+kind = "refused_after_run"
+when = { native = "--native", subset = "config subset on" }
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "FK table"]
+expect = "refusal before any output is written, as for an FK table (unconfirmed for subset)"
+
+# With --native the engine admits fpe, hash, faker, categorical, bucket_perturb, group_key,
+# date_shift and the plain strategies, but only hash, faker and fpe give positive compiled-kernel
+# evidence (decoy_engine `_operator_registry`, positive_kernel_evidence). `bucketize` is not a
+# native operator at all (`bucket_perturb` is). Native mixes by outcome:
+#   evidence, run passes:  hash only; fpe and date_shift; faker and categorical (person_first_name
+#                          and person_last_name providers, the native allow-list); passthrough
+#                          mixed in (its hash column gives the evidence)
+#   refused after the run: bucketize and truncate; text_redact on free text; the vault column mix
+[[matrix.constraints]]
+id = "mask-native-bucketize-no-evidence"
+kind = "refused_after_run"
+when = { native = "--native", strategy_mix = "bucketize and truncate" }
+doc = "src/decoy/_native_gate.py:450"
+cites = ["native_require_no_evidence"]
+expect = "refusal before any output is written; bucketize has no native operator"
+
+# Reading note: the docs name "passthrough/redact/truncate" as the strategies with no compiled
+# kernel evidence. The only mix that holds redact-family strategies alone is text_redact.
+[[matrix.constraints]]
+id = "mask-native-no-kernel-evidence"
+kind = "refused_after_run"
+when = { native = "--native", strategy_mix = "text_redact on free text" }
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "AFTER the run"]
+expect = "refusal before any output is written; an empty output folder"
+
+[[matrix.constraints]]
+id = "mask-chunked-ignores-max-memory"
+kind = "ignored"
+when = { chunked = "--chunked", memory_budget = "--max-memory quarter of item" }
+doc = "docs/cli-reference.md:111"
+cites = ["--max-memory", "--chunked"]
+expect = "run succeeds; outputs equal the run without --max-memory (I3)"
+
+[[matrix.constraints]]
+id = "mask-chunked-ignores-threads"
+kind = "ignored"
+when = { chunked = "--chunked", threads = ["--threads 1", "--threads 4"] }
+doc = "docs/cli-reference.md:112"
+cites = ["--threads", "--chunked"]
+expect = "run succeeds; outputs equal the run without --threads (I3)"
+
+# FK tables are a property of the corpus item, not a matrix value, so this refusal is its own
+# check: `--native` on a mask config with relationships refuses after the run.
+[[matrix.standalone]]
+id = "mask-native-fk-tables"
+kind = "refused_after_run"
+flags = ["--native"]
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "FK table"]
+expect = "refusal before any output is written; run it on a parent and child corpus item"
+
+[[matrix]]
+name = "generate"
+
+[matrix.parameters]
+key = ["none (seeded)", "--master-key with --key-label"]
+rows = ["config size", "--rows 100"]
+tables = ["single", "parent and child", "three-level chain"]
+output_format = ["csv", "parquet"]
+native = ["default", "--no-native"]
+evidence = ["off", "--evidence-out"]
+json = ["off", "--json"]
+
+[[matrix.constraints]]
+id = "generate-rows-evidence"
+kind = "refused"
+when = { rows = "--rows 100", evidence = "--evidence-out" }
+doc = "docs/cli-reference.md:129"
+cites = ["--rows", "--evidence-out"]
+expect = "exit 1, a reason that names --evidence-out"
+
+# One refusal that no matrix value reaches, because the table in plan 5.4 leaves `--native` out
+# of the generate values. It still needs its own refusal check on a generate config.
+[[matrix.standalone]]
+id = "generate-native"
+kind = "refused"
+flags = ["--native"]
+doc = "docs/cli-reference.md:121"
+cites = ["--native", "generate"]
+expect = "exit 1 before any run, on a generate config"
