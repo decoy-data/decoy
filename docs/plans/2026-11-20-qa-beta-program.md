@@ -1,4 +1,4 @@
-Status: plan (revision 3, 2026-11-20; Codex r1 NO-GO remediated)
+Status: plan (revision 3.4, 2026-11-20; Codex plan review of rev 3.1 NO-GO remediated)
 
 # QA-BETA: agent beta testing, a shared corpus and a mechanical oracle for the V1 QA pass
 
@@ -10,7 +10,7 @@ Anchors: a path with no prefix is in this repository (decoy CLI); `E:` is decoy-
 
 Rules consulted: dev-rules `README.md` (routing), `00-universal.md`, `development-loop.md` (PLAN: guarantee, failure modes, acceptance tests first, placement, slices), `risk-and-exceptions.md`, `workspace-and-vcs.md`, `reuse-first.md`, `exploration.md`, `scope-discipline.md`, `proportionality.md`, `verification.md`, `code-review.md`, `testing.md` (test depth, oracles, property tests), `architecture.md`, `cross-cutting-concerns.md`, `api-and-compatibility.md`, `data-and-migrations.md`, `observability-and-resilience.md`, `security.md`, `config-secrets-and-supply-chain.md`, `documentation.md`, `delegation.md`, `pre-release-audit.md`, `autonomous-operation.md` and `catalogs/recurring-defects.md`.
 
-Review history: Dennis r1 reviewed revision 1 at `775efe04`. Codex r1 gave NO-GO on revision 2 at `048021bb`. Sections 17 and 18 map the fixes.
+Review history: Dennis r1 reviewed revision 1 at `775efe04`. Codex r1 gave NO-GO on revision 2 at `048021bb`. Codex reviewed rev 3.1 at `70874c98` and gave NO-GO on the tester isolation design; rev 3.4 (Codex plan review of rev 3.1) fixes it. Sections 17, 18 and 19 map the fixes.
 
 ## 1. Current state
 
@@ -95,7 +95,7 @@ Command coverage. L4 covers `decoy run` only, so every other command has a named
 | `library path`, `schema`, `list`, `show`, `project` | yes | yes | P1 |
 | `upgrade` | yes | yes | P1 |
 
-Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs and a read-only copy of the tester's corpus items. Repository checkouts and other testers do not exist inside it. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
+Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs, a read-only copy of the tester's corpus items and its own inbox. Repository checkouts, other testers, the host home, the pass needles file and the refusal set do not exist inside it. Its only network path is the Squid egress proxy, which allows `CONNECT api.anthropic.com:443` and nothing else. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
 
 ### 5.2 Corpus
 
@@ -211,7 +211,9 @@ Remediation follows the owner rule: after the group's QA pass, through the norma
 
 ### 5.8 Capacity and nodes
 
-Testers count against the builder cap (6 builders and 2 reviewers). One QA pass runs at most 4 testers at once, leaving 2 builder slots for remediation. Tester agents are Sonnet; the triager is Opus. L runs use the Dell first, then the GCP test nodes (local first). macOS runs use the Mac. Windows cells wait for rows 89 and 6, as in the checklist.
+Testers count against the builder cap (6 builders and 2 reviewers). Tester capacity is `min(4, free worker slots, 2 Tart guests, configured subscription concurrency)` (rev 3.4). The Tart term applies to the Mac only: Apple's licence allows two macOS guests at once. The orchestrator passes free worker slots to the launcher from the capacity tool. Subscription concurrency is one constant in the launcher's capacity module, set to 2; the owner can raise it. The cap of 4 leaves 2 builder slots for remediation.
+
+Usage limits. Tester sessions share the owner's subscription limits with the builders. When `claude -p` ends with a recognized usage-limit response (a fixed pattern list in the capacity module, matched on the node-local capture only), the launcher marks the tester `paused`. It does not write a finding and triage never sees it as a product finding. Teardown runs as normal and keeps the safe artifacts: the findings already in the inbox are published, and the capture stays node-local. The launcher retries after the reset time in the response, or after 60 minutes when none is given, at most 6 times. The retry starts a fresh sandbox with the remaining time box and the ids of findings already filed. Any other nonzero `claude` exit marks the tester `failed`, which is a harness count, not a product finding. The pass record lists `paused` and `failed` counts. Tester agents are Sonnet; the triager is Opus. L runs use the Dell first, then the GCP test nodes (local first). macOS runs use the Mac. Windows cells wait for rows 89 and 6, as in the checklist.
 
 ## 6. Failure modes
 
@@ -219,21 +221,23 @@ Testers count against the builder cap (6 builders and 2 reviewers). One QA pass 
 |---|---|---|
 | F1 | An agent reports a failure that is not real | no finding reaches the roadmap without a repro on a clean node (5.7 step 4) |
 | F2 | An agent pastes a cell value into a finding, a hand-back or a record | `findings.py write` refuses it (AT-7); the launcher keeps stdout and stderr node-local; hand-backs contain counts and ids only |
-| F3 | A tester reads source or tests and stops behaving like a user | the tester's OS user cannot read repository checkouts (5.1 sandbox); S3 proves this on Linux and macOS |
+| F3 | A tester reads source or tests and stops behaving like a user | no checkout is mounted or shared into the tester's container or guest (5.1, 10a); the S3 probes (10a) prove it on Linux and macOS |
 | F4 | A corpus download is tampered with or changed | SHA-256 checked on a temp file before rename; mismatch refuses (AT-8); downloads are read only as data, with `python -I` |
 | F5 | A large run exhausts a node | L only on the Dell or GCP; the harness sets a per-run timeout and records a stall as a finding of type `stall`; the test stall guard and node-watch stay on |
 | F6 | The matrix misses a pair because a constraint removed it | every removed pair is listed with its constraint kind and turns into a refusal check, an ignored-flag equality check, or a documented n/a (AT-6) |
 | F7 | An invariant check has a bug and passes everything | every checker has a planted-defect test (AT-2 to AT-5 and AT-12); the leak checker and finding writer carry mutations |
 | F8 | Findings pile up with no owner | the triager files each V1 finding as a roadmap row in the same pass; the board shows the pass with its open count |
 | F9 | Prep work QAs an unfinished group | the S3 dry run uses the demo template and one closed group if any; anything found is filed against its group and held until that group's pass |
-| F10 | Agent time runs over the budget | each charter has a time box; a pass stops at 4 concurrent testers; usage is checked each tick |
+| F10 | Agent time or subscription usage runs out | each charter has a time box; capacity is `min(4, free worker slots, 2 Tart guests, configured subscription concurrency)`; a recognized usage-limit response pauses the tester, keeps its safe artifacts and retries after the reset, and is never a product finding (5.8, AT-10) |
+| F14 | A tester or the CLI under test reaches the network directly, or the agent uses a paid API path | Linux testers join only an internal Podman network; macOS guests run pf default deny as a non-admin user; the one Squid config allows only `CONNECT api.anthropic.com:443`; the entrypoint clears every API-key, base-URL and alternate-provider variable (10a, AT-10, AT-14, M5) |
+| F15 | Findings are lost, or a sandbox is left behind, when a run is interrupted | the inbox sits outside the throwaway layer; teardown always publishes, then deletes; the next launch recovers stale inboxes and clones (10a, AT-10) |
 | F11 | Public data license does not allow the use | an item without a recorded license on the allowed list is refused by `fetch.py` (AT-8) |
 | F12 | A leak check flags documented behaviour (passthrough, truncate prefix, text_redact context) | I1 rules are per strategy (5.5); AT-2 has a pass case for each exception |
 | F13 | An exit is misread (crash as refusal, Ctrl-C as unknown) | I6 classification table (15.2.1), pinned by AT-5 |
 
 ## 7. Acceptance tests (red first)
 
-Unit tests live in `tests/unit/qa/` and run in the normal suite. The real OS-user probes run in S3. `allpairspy` joins the dev dependency group in S1a.
+Unit tests live in `tests/unit/qa/` and run in the normal suite. The Squid allow and deny tests in `tests/e2e/qa/` need Podman and run on the Dell (they skip elsewhere). The real sandbox probes (section 10a, P-1 to P-10) run in S3 on the Dell and the Mac. `allpairspy` joins the dev dependency group in S1a.
 
 | Id | Test | Red on main because |
 |---|---|---|
@@ -246,14 +250,15 @@ Unit tests live in `tests/unit/qa/` and run in the normal suite. The real OS-use
 | AT-7 | `findings.py write` refuses needles and canonical scalars from any field or attached artifact. Cases include non-PII, numeric, multi-token and output-only values. It refuses marker text in an opaque coordinate id. Reader cases cover strict primitive types, missing and next-major versions, and allowed minor fields. Each safe error has empty `__cause__` and `__context__` | no writer |
 | AT-8 | `fetch.py` refuses an item whose SHA-256 differs, an item with no license, and an item whose license is not on the allowed list; a good item lands only after its hash checks | no fetcher |
 | AT-9 | A repro command writes a launcher nonce witness in a fresh `DECOY_HOME`. The recorded failure signature must recur. A replayed exit without the witness fails | no repro tooling |
-| AT-10 | Each brief has the required fields. Unit tests cover the Linux and macOS launcher commands, tester-scoped id allocation, local output capture and counts-and-ids hand-back | no briefs or launcher |
+| AT-10 | Each brief has the required fields. Unit tests, with a fake command runner, cover: every row of the argv table (10a) for Podman, Tart, Squid and the token copy, including read-only mounts, the internal network only, no published ports, the security flags and no secret in any argv; the token-file checks (mode 0600, directory 0700, owner, regular file, symlink refused at the file and the directory, a mode change between check and open refused); the Linux and Tart lifecycles, where a failure injected at each step still runs that step's cleanup and the inbox is published before it is deleted; recovery of a stale inbox and a stale clone; capacity and usage-limit pause; tester-scoped id allocation, local output capture and counts-and-ids hand-back. The node probes P-1 to P-10 (10a) cover proxy bypass, direct sockets, the token path, refusal-set and needles-file absence, inbox persistence and cleanup on real nodes in S3 | no briefs or launcher |
 | AT-11 | The checklist's sweep step and the journey test call `scripts/qa/sweep.py`; no second sweep implementation remains | the sweeps are separate today |
 | AT-12 | Planted defects cover I4 row loss and wrong quarantine counts, I5 column names, order and types, and I7 non-marker input and output scalars | no complete oracle |
+| AT-14 | `scripts/qa/proxy/squid.conf` shape test: the source ACL lists only the two QA subnets, the one `allow` line names CONNECT, `api.anthropic.com` and port 443, no `ssl_bump` or second port exists, and the last `http_access` line is `deny all`. Dell allow and deny tests run the stock Squid image with this file: CONNECT to `api.anthropic.com:443` is allowed; CONNECT to another domain, to port 80, to an IP literal, a plain GET, and a client outside the source ACL are each refused | no proxy config |
 | AT-13 | Concurrent same-id writes allow one complete record and refuse the other. An interrupted write leaves no partial target, removes its reservation and permits one retry. Syntax-tree sentries detect direct writes outside `io.py`, direct `docs/records` writes outside `findings.py publish`, private product imports and direct Slack calls | no writer or sentries |
 
 ## 8. Mutations (gate set)
 
-Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher and the repro guarantee.
+Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher, the repro guarantee and, from rev 3.4, the egress proxy config.
 
 | Id | Mutation | Must turn red |
 |---|---|---|
@@ -261,6 +266,7 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher 
 | M2 | `findings.py write` skips the canonical-scalar lookup | AT-7 |
 | M3 | `fetch.py` renames before checking the hash | AT-8 |
 | M4 | `repro.py` returns `recorded_exit` without running the command | AT-9 |
+| M5 | `squid.conf` loses its final `http_access deny all` | AT-14 shape test. Squid's implicit default would still deny at run time, because the line before is an `allow`; the shape test is what keeps the explicit rule, so a later reorder cannot open the proxy |
 
 ## 9. Placement (against `CODEMAP.md`)
 
@@ -275,13 +281,19 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher 
 | `scripts/qa/sweep.py` | the one needles sweep, used by the checklist, the journey and QA-BETA | new row "QA tooling (not shipped)", `scripts/qa/`, beside "Release scripts" |
 | `scripts/qa/corpus/{fetch,generate}.py` | corpus tools | same new row |
 | `scripts/qa/invariants/*.py` | I1 to I7 checkers, one module per invariant | same new row |
-| `scripts/qa/{io,matrix,findings,launch,repro}.py` | private writer, pairwise runs, finding commands, launcher and repro runner | same new row |
-| `scripts/qa/nodes.md` | one-time Podman and Tart node setup | same new row |
-| `tests/unit/qa/` | AT-1 to AT-13 | new row with the tooling |
+| `scripts/qa/{io,matrix,findings,launch,repro}.py` | private writer, pairwise runs, finding commands, launcher command line and repro runner | same new row |
+| `scripts/qa/sandbox/{argv,podman,tart,token,capacity}.py` | the one argv table, the Linux and Tart lifecycles, the token-file checks, capacity and usage-limit handling | same new row, named subpackage |
+| `scripts/qa/proxy/squid.conf` | the one egress proxy config, used by the Dell and the Mac | same new row |
+| `scripts/qa/proxy/pf.qa.conf` | the macOS guest pf rules (default deny, proxy only) | same new row |
+| `scripts/qa/image/{Containerfile,qa-entry.sh}` | the pinned tester image and the fixed entrypoint (also copied into the Tart base image) | same new row |
+| `scripts/qa/nodes.md` | one-time node setup: Podman and its networks on the Dell, Tart and the base image on the Mac, Squid on both | same new row |
+| `CODEMAP.md` | the "QA tooling (not shipped)" row: replace the OS-user launcher and `setup-testers.sh` text with the launcher, `sandbox/`, `proxy/`, `image/` and `nodes.md` | changed by S2 |
+| `tests/unit/qa/` | AT-1 to AT-14 unit parts | new row with the tooling |
+| `tests/e2e/qa/test_proxy_rules.py` | AT-14 allow and deny tests (need Podman; run on the Dell) | same new row |
 
-Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus` and `invariants` concerns use named subpackages.
+Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus`, `invariants` and `sandbox` concerns use named subpackages.
 
-Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines (owner approved 2026-11-20). S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again.
+Expected size: 30 to 36 new or changed files and at most 3,600 hand-written lines. New public tooling names are `findings.py write`, `findings.py publish`, `publish_private_once` and the invariant ids I1 to I7. The builder stops if the change exceeds either estimate by more than 20 percent. Re-baseline 2026-11-20: S1a and S2 came in near 5,400 lines together, mostly tests and sandbox safety. The new program ceiling is 8,000 lines (owner approved 2026-11-20). S1b keeps its 1,700-line estimate and the same 20 percent stop rule, and the orchestrator trims S1b scope before raising it again. Rev 3.4 sets S2 at 2,800 lines (section 13), so S1a, S1b and S2 together reach the 8,000-line ceiling with no margin. S2 therefore stops at 2,800 lines, not at 20 percent over.
 
 ## 10. Design notes
 
@@ -291,43 +303,151 @@ Expected size: 30 to 36 new or changed files and at most 3,600 hand-written line
 - **Why docs-only testers.** A tester who reads the code tests the code's intent, not the user's experience. Doc mismatches are real V1 findings (REL-DOCS).
 - **Why triage reproduces.** Agent reports have been wrong before (a docs agent claimed fixes not in files; a builder reported a passing ratchet that failed). One clean repro is the gate.
 
-### 10a. Tester isolation (rev 3, after S2 review round 3)
+### 10a. Tester isolation (rev 3, after S2 review round 3; rev 3.4, Codex plan review of rev 3.1)
 
-Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS users, groups and file modes, changed by root, where every rerun and every path is a new attack surface. A codex-fix pass closed the gaps, but only by adding more of the same machinery (per-pass generations, private groups, mount tables, disk images). Rev 3 removes the class. Isolation comes from established tools that start from a clean image each time.
+Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS users, groups and file modes, changed by root, where every rerun and every path is a new attack surface. A codex-fix pass closed the gaps, but only by adding more of the same machinery (per-pass generations, private groups, mount tables, disk images). Rev 3 removes the class. Isolation comes from established tools that start from a clean image each time. Rev 3.4 makes egress enforced on both nodes, keeps the inbox outside the throwaway layer, defines the token path and gives every lifecycle step its cleanup.
 
-**Linux (Dell): one rootless Podman container per tester per pass.** `podman run --rm` from a pinned base image (`ubuntu:22.04` by digest), as an unprivileged user inside a user namespace, with:
-- one internal Podman network whose only way out is the egress proxy below. The proxy allows `api.anthropic.com` on port 443 and nothing else, so the CLI under test has no egress and the agent reaches only the model. P3 is the exception and runs in the GitHub sandbox repo, not here;
-- read-only bind mounts for the bundle, the docs copy and the tester's corpus items (`:ro`);
-- a writable `--tmpfs /work:size=2g` as HOME and cwd, plus `--tmpfs /fault:size=64m` for P5 only;
-- the inbox at `/work/inbox`, copied out by the launcher after the container exits, through `io.py`;
-- `--read-only` root file system, `--cap-drop=ALL`, `--security-opt no-new-privileges`, and a memory and pids limit.
+Threat model. V1 covers accidental leaks only (owner standing rule). Hostile code inside the sandbox that tries to break out is V2. The controls below stop a careless agent or a CLI defect from reading what it should not, reaching a network it should not, or using a paid API.
 
-The checkout and other testers do not exist inside the container. A rerun starts from the same clean image, so there is no rerun state.
+What remains ours: the launcher (`scripts/qa/launch.py` and `scripts/qa/sandbox/`), the one argv table (10a.5), the Squid and pf configs, the tester image file and entrypoint, and the node setup notes in `scripts/qa/nodes.md`. The launcher captures tester stdout and stderr through `io.open_private_capture`. No setup script runs as root on a schedule. No tester OS users exist on any node. `scripts/qa/setup-testers.sh`, its test and `provision.py` are deleted.
 
-**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (owner approved 2026-11-20, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), points the guest's HTTPS proxy at the same allow-list proxy, runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
+#### 10a.1 Egress: one Squid config
 
-**What remains ours.**
-- `scripts/qa/launch.py` builds the podman or tart argv from one table. The table is the only place that lists mounts and limits.
-- The launcher captures output through `io.open_private_capture`, and copies the inbox out through `io.publish_private_once`.
-- `scripts/qa/nodes.md` gives the one-time node setup: install Podman (apt) on the Dell and Tart (from the checksummed release) on the Mac, pull or clone the pinned images, and run the egress proxy. The proxy is a stock forward proxy (Squid or tinyproxy from the distribution packages) with a one-line allow list, not our code.
+Both nodes use the stock Squid forward proxy with one checked-in config, `scripts/qa/proxy/squid.conf`. It holds no node paths (no disk cache, `pid_filename none`, logs to stdio), so the Dell and the Mac load the same bytes. Before each pass the launcher compares the SHA-256 of the config the node's Squid loaded with the repository file and refuses to start on a mismatch. Squid does not decrypt TLS: no `ssl_bump`. The rules, in order:
 
-No setup script runs as root on a schedule. No tester OS users exist. `setup-testers.sh` and `provision.py` are dropped.
+```
+http_port 3128
+acl qa_nodes src 10.89.7.0/24 192.168.64.0/24
+acl model_api dstdomain -n api.anthropic.com
+acl ip_literal dstdom_regex -n ^[0-9.]+$ ^\[?[0-9A-Fa-f]*:[0-9A-Fa-f:]*\]?$
+acl tls_port port 443
+acl connect_method method CONNECT
+http_access deny !qa_nodes
+http_access deny ip_literal
+http_access deny !connect_method
+http_access deny !tls_port
+http_access allow connect_method model_api tls_port
+http_access deny all
+```
 
-**Agent inside the sandbox.** Each tester is Claude Code in headless mode (`claude -p`, pinned version, baked into the image) with only the brief, the docs and the bundle. It runs on the owner's Claude subscription, not on a paid API key (owner 2026-11-20): the launcher passes a subscription token made once with `claude setup-token` (an owner step, Q4), through a mounted secret file read into `CLAUDE_CODE_OAUTH_TOKEN`, never argv. No metered API spend. Tester sessions use the subscription's usage limits, which the builders share, so QA passes run when builder slots are free (section 7, at most 4 testers) and usage is checked each tick. Threat model: accidental leaks only (V1); the token is readable inside the sandbox, but the proxy lets it reach only the model API.
+`10.89.7.0/24` is the Dell's internal Podman network. `192.168.64.0/24` is Tart's default NAT network on the Mac. A client from any other address is refused, so a LAN host cannot use either proxy. Testers set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and `DISABLE_AUTOUPDATER=1`, so the agent needs only the model API. If S3 shows that the subscription path needs a second host, S3 stops: adding a host is a plan change, not a config edit. AT-14 tests the config and M5 removes its final deny.
 
-**Tests.** Unit tests check the argv table: every listed mount is read-only except /work and /fault; there is no network except where a row says so; the security flags are present; the secret is mounted, not passed as an argument. S3 proves the isolation for real: a probe inside the container and the guest cannot read the checkout path, the other testers' inboxes or the host home, and a write to `/fault` stops at 64 MiB.
+#### 10a.2 Linux (Dell)
+
+The Dell is WSL2 Ubuntu 22.04 with rootless Podman 3.4.4 (installed and checked 2026-11-20). It has no systemd user session, so `~/.config/containers/containers.conf` sets `cgroup_manager = "cgroupfs"`. Podman 3.4 uses CNI networking. The plan assumes neither netavark nor pasta.
+
+Topology. Setup creates two networks once (`nodes.md`): `qa-internal` with `podman network create --internal --subnet 10.89.7.0/24`, which has no route out, and `qa-egress`, an ordinary bridge. The Squid container `qa-proxy` is dual-homed: it joins `qa-internal` and `qa-egress`. A tester container joins `qa-internal` only. Its one way out is the proxy, whose `qa-internal` address the launcher reads with `podman inspect` and passes as `HTTPS_PROXY`. No container publishes a port. If rootless Podman 3.4 refuses the dual-homed proxy, S3 stops. There is no fallback to host networking or `slirp4netns`.
+
+One tester run. The image is `scripts/qa/image/Containerfile`: `ubuntu:22.04` by digest, the pinned Claude Code version, and `scripts/qa/image/qa-entry.sh` as `/usr/local/bin/qa-entry`. The launcher runs it by digest with `podman run --rm` and:
+
+- `--network qa-internal`, `--userns=keep-id` and `--user <host uid>:<host gid>`, so the tester is the node user mapped into its own user namespace and can read the token file and write its inbox;
+- `--read-only` root file system, `--cap-drop=ALL`, `--security-opt no-new-privileges`, `--memory` and `--pids-limit`;
+- read-only bind mounts for the bundle, the docs copy and the tester's corpus items;
+- `--tmpfs /work:size=2g` as HOME and cwd, and `--tmpfs /fault:size=64m` for P5 only;
+- the inbox as a private bind mount: host folder `~/decoy-qa-runs/<pass>/<tester>/inbox` (made 0700 by `io.make_private_dir`) on `/work/inbox`, read-write. It is the only writable host path;
+- the token file only, read-only, on `/run/qa/claude-token` (10a.4);
+- labels `qa.pass=<pass>` and `qa.tester=<tester>` for recovery.
+
+The rest of `/work` stays on tmpfs and disappears with the container. The pass folder `~/decoy-qa-runs/<pass>/` also holds the node-local captures, the needles file and the refusal set. Only the inbox subfolder is mounted.
+
+Order, with cleanup:
+
+1. Create. Take the tester lock (`flock` on `~/decoy-qa-runs/<pass>/<tester>/lock`), make the inbox folder, and allocate the tester-scoped ids. Failure: remove the empty inbox folder, release the lock, stop.
+2. Run. `podman run --rm` as above, with a timeout of the time box plus 10 minutes. On timeout or a signal to the launcher: `podman stop --time 30`, then `podman rm -f` by name. Then go to step 3. The inbox is on the host, so stopping the container loses no finding.
+3. Publish. List the inbox and fail closed on a listing error. Accept only regular files, no symlinks, whose name is an id issued to this tester, at most 64 KiB each. Read each through the strict `findings.py` reader and publish it through `io.publish_private_once` to `findings/<pass>/<id>.toml`. An id that is already published with equal bytes is skipped (a recovery rerun). Different bytes make a process finding. A refused file stays in the inbox and makes a process finding.
+4. Delete. Remove the inbox folder only after step 3 published or recorded every file. Then confirm with `podman ps -a --filter label=qa.tester=<tester>` that nothing is left, and release the lock.
+
+Interruption. A signal to the launcher runs steps 2 to 4 through one `finally` path. After a kill or power loss, the next launch on the node runs recovery first: for each `~/decoy-qa-runs/<pass>/<tester>/` whose lock it can take, it removes containers with that tester's labels, then runs steps 3 and 4. Create-once ids make a second publish safe.
+
+#### 10a.3 macOS (Mac mini)
+
+The Mac mini runs macOS 15 arm64 with Tart 2.42.0 (installed from the checksummed release, owner Q5). Apple's licence allows two macOS guests at once, so the Mac runs at most two testers (5.8).
+
+Base image. `nodes.md` makes the local base VM `qa-macos15-base` once from the Cirrus Labs macOS 15 base image pinned by digest. The setup adds a standard (non-admin) user `qa` with no sudo rights, the pinned Claude Code version, `qa-entry.sh` as `/usr/local/bin/qa-entry` (root-owned, 0755), and `scripts/qa/proxy/pf.qa.conf` as `/etc/pf.qa.conf` (root-owned, 0644). The image keeps the stock admin user with passwordless sudo, which only the launcher uses through `tart exec`. The setup checks that no Claude settings file exists for `qa` or as a managed settings file. Squid runs on the Mac host from the pinned Homebrew package with the same `squid.conf`.
+
+Guest egress. `pf.qa.conf` blocks everything, then allows only: outbound TCP to the Squid address `192.168.64.1` port 3128, DHCP on the NAT link, and loopback. `pfctl` needs root, and `qa` has no sudo, so `qa` cannot change or disable pf. The guest agent that `tart exec` uses talks over virtio-vsock, not IP, so pf does not cut it (S3 checks this). Proxy variables in the entrypoint are now only a convenience: with them unset, every direct connection still fails (P-4, P-5).
+
+Order, with cleanup. The clone is `qa-<pass>-<tester>`. One `finally` path runs the cleanup named at each step:
+
+1. Clone. `tart clone qa-macos15-base <clone>`. Failure: `tart delete <clone>` if it exists, release the lock, stop.
+2. Boot. `tart run --no-graphics --dir=qa-ro:<pass read-only folder>:ro <clone>` as a child process that the launcher owns (not a shell `&`). The read-only folder holds the bundle, the docs copy and the tester's corpus items. Failure: kill the child, `tart delete <clone>`.
+3. Wait. Poll `tart exec <clone> true` for up to 180 seconds. Failure: `tart stop <clone>`, kill the child, `tart delete <clone>`.
+4. Install pf. `tart exec <clone> sudo -n shasum -a 256 /etc/pf.qa.conf` must equal the repository file. Then `tart exec <clone> sudo -n pfctl -E -f /etc/pf.qa.conf`, and `pfctl -s info` must show it enabled. Then, as `qa` with the proxy variables unset, a direct `curl` to `https://api.anthropic.com` must fail. Failure at any check: steps 7 and 9, and the tester is `failed`. Nothing has run as `qa` yet, so no inbox exists.
+5. Run. `tart exec -i <clone> sudo -n -u qa -H /usr/local/bin/qa-entry <charter>`, with the token on stdin (10a.4) and a timeout of the time box plus 10 minutes. On timeout or a signal: go to step 6. The guest is still running.
+6. Export the inbox. The named channel is the `inbox` export stream: `tart exec <clone> sudo -n tar -C /Users/qa -cf - inbox`. The launcher writes it through `io.open_private_capture` to `~/decoy-qa-runs/<pass>/<tester>/inbox.tar`. Every shared folder stays read-only. Failure: the tester is `export-failed`; go to step 7 and keep the clone for recovery instead of deleting it.
+7. Shut down. `tart stop --timeout 60 <clone>`, then kill the child if it is still alive.
+8. Publish. Read the tar as untrusted data with `tarfile`. Accept only regular files named `inbox/<id>.toml` for ids issued to this tester, at most 64 KiB each. Refuse links, absolute paths and `..`. Then publish as in Linux step 3. Delete `inbox.tar` after every file is published or recorded.
+9. Delete. `tart delete <clone>`, confirm with `tart list` that it is gone, release the lock.
+
+Interruption. After a kill or power loss, recovery at the next launch finds `qa-*` clones in `tart list` whose lock it can take. It boots each one once (steps 2 and 3), exports and publishes (steps 6 to 8), and deletes it (step 9). If the boot fails, it deletes the clone and counts the tester as `lost`; the charter reruns.
+
+P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
+
+#### 10a.4 Credential path
+
+Testers run on the owner's Claude subscription, not a paid API key (owner 2026-11-20, Q4). The token comes from `claude setup-token` (an owner step) and is valid for one year. The plan never contains it.
+
+- Devbox master copy: `~/.config/decoy-qa/claude-token`, a regular file, mode 0600, in a directory with mode 0700, both owned by the orchestrator's user.
+- Checks, in `scripts/qa/sandbox/token.py`, run on every copy before every use: `lstat` the directory and the file; refuse a symlink at either; require a directory with mode exactly 0700 and a regular file with mode exactly 0600, both owned by the effective user; then open with `O_NOFOLLOW` and `fstat` the open file, and refuse if the result differs from the `lstat` result. Every refusal is a fixed, value-free message.
+- To a node: at pass start the orchestrator sends the token over `ssh <node>` on stdin to a fixed remote command: `umask 077`, make the 0700 directory, write a temporary file, then rename it to `~/.config/decoy-qa/claude-token`. The token is never in argv. On the Dell the path must be on the WSL ext4 file system, never under `/mnt/c`, where modes are not real. The node launcher then runs the same checks.
+- Into the Linux sandbox: the one file, mounted read-only at `/run/qa/claude-token`.
+- Into the Mac guest: never on the guest disk. Tart shares folders, not files, so the launcher opens the checked node file and writes it to the stdin of the step 5 `tart exec`. The entrypoint reads one line and closes stdin.
+- Entrypoint: `qa-entry` is the only command the sandbox runs. It starts from `env -i` and sets only `PATH`, `HOME`, `LANG`, `HTTPS_PROXY`, an empty `NO_PROXY`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `DISABLE_AUTOUPDATER=1` and `CLAUDE_CODE_OAUTH_TOKEN` from the file or stdin. It explicitly unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_BEDROCK_BASE_URL`, `ANTHROPIC_VERTEX_BASE_URL`, `ANTHROPIC_VERTEX_PROJECT_ID`, every `ANTHROPIC_FOUNDRY_*` name, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, every `CLAUDE_CODE_SKIP_*_AUTH` name, every `AWS_*` name, `GOOGLE_APPLICATION_CREDENTIALS` and `CLOUD_ML_REGION`. It exits 78 before starting `claude` when the token is missing or empty, when `HTTPS_PROXY` is missing, or when a user or managed Claude settings file exists (a settings file could set `apiKeyHelper` or another provider). Then it runs `claude -p` with the charter, stdin from `/dev/null`. `--permission-mode bypassPermissions` is allowed only because the sandbox is throwaway, has no checkout and reaches only the model API.
+- The token is a pass secret: it joins the pass refusal set as a salted index, so the sweep and `findings.py write` refuse it on every surface. It never goes into the plaintext needles file.
+- Removal: at pass end, and in recovery, the orchestrator runs `ssh <node> rm -f ~/.config/decoy-qa/claude-token`. The Linux mount ends with the container and the Mac guest never holds a file copy. The devbox master copy stays. If a node is lost, the owner revokes the token on claude.ai and runs `claude setup-token` again.
+
+Inside the sandbox the token is readable by the agent and by the CLI under test. Under the V1 threat model that is accepted: the proxy lets it reach only the model API.
+
+#### 10a.5 The argv table
+
+`scripts/qa/sandbox/argv.py` holds the one table. No other module builds a `podman`, `tart`, `ssh` or `squid` command. AT-10 has a unit case for each row.
+
+| Row | Node | Command family | Fixed parts |
+|---|---|---|---|
+| N1 | Dell, setup | `podman network create` | `--internal --subnet 10.89.7.0/24 qa-internal`; `qa-egress` without `--internal` |
+| N2 | Dell | `podman run -d` (proxy) | `--name qa-proxy`, `--network qa-internal,qa-egress`, stock Squid image by digest, `squid.conf` mounted read-only, `--read-only`, `--cap-drop=ALL --cap-add=SETUID,SETGID`, no `-p` |
+| N3 | Dell | `podman inspect` | proxy `qa-internal` address; image digests |
+| N4 | Dell | `podman run --rm` (tester) | every flag in 10a.2; entrypoint `/usr/local/bin/qa-entry`; no `-p`, no `--privileged`, no other network |
+| N5 | Dell | `podman stop`, `podman rm -f` | by tester name, `--time 30` |
+| N6 | Dell | `podman ps -a` | `--filter label=qa.pass=<pass>` or `qa.tester=<tester>` |
+| T1 | Mac | `tart clone` | `qa-macos15-base`, clone `qa-<pass>-<tester>` |
+| T2 | Mac | `tart run` | `--no-graphics`, one `--dir=qa-ro:<path>:ro`, no writable share |
+| T3 | Mac | `tart exec` (wait, pf, checks) | `true`; `sudo -n shasum`; `sudo -n pfctl -E -f /etc/pf.qa.conf`; `sudo -n pfctl -s info`; direct `curl` probe as `qa` |
+| T4 | Mac | `tart exec -i` (run) | `sudo -n -u qa -H /usr/local/bin/qa-entry <charter>`, token on stdin |
+| T5 | Mac | `tart exec` (export) | `sudo -n tar -C /Users/qa -cf - inbox` |
+| T6 | Mac | `tart stop`, `tart delete`, `tart list` | `--timeout 60` on stop |
+| S1 | Mac | `squid` | `-N -f <checkout>/scripts/qa/proxy/squid.conf` |
+| K1 | devbox to node | `ssh` (token copy) | fixed remote command, token on stdin |
+| K2 | devbox to node | `ssh` (token removal) | `rm -f ~/.config/decoy-qa/claude-token` |
+
+#### 10a.6 Tests and probes
+
+Unit tests (AT-10, AT-14) check every argv row, the token checks, the entrypoint's environment rules (run as a shell script against a fake `claude`), each lifecycle step's cleanup under an injected failure, recovery, and the Squid config shape. The Dell allow and deny tests (AT-14) run the real Squid image with the real config.
+
+S3 runs these probes for real, on the Dell in a container and on the Mac in a guest as `qa`. Each is recorded in the S3 record with its command and exit, never with a value:
+
+- P-1. A planted file in the node's checkout path cannot be read; the checkout path does not exist inside.
+- P-2. Other testers' inboxes and the host home do not exist inside. A write to `/fault` stops at 64 MiB.
+- P-3. The pass needles file and the refusal set do not exist inside, under their host paths or by a file-name search.
+- P-4. With every proxy variable unset, a raw TCP connect to a public address on ports 443 and 80 fails, and so does a name lookup through the network.
+- P-5. With every proxy variable unset, direct HTTPS to `api.anthropic.com` fails.
+- P-6. Through the proxy, CONNECT to another domain, to an IP literal of the model API, and to port 80 is refused. On the Mac, `pfctl -d` and `sudo -n true` fail as `qa`.
+- P-7. `claude -p` with a one-line prompt succeeds through the proxy. The entrypoint's environment name list (names only) holds no API-key, base-URL or alternate-provider name, and no Claude settings file exists. So the only credential is the subscription token.
+- P-8. Fail closed: with the token file missing, or empty, the entrypoint exits 78 before `claude` starts. With the proxy stopped, `claude -p` fails and P-4 still holds.
+- P-9. Inbox persistence: a planted finding is published after a normal exit, after a stop mid-run (`podman stop` on the Dell, a launcher signal on the Mac), and after a launcher kill followed by recovery at the next launch.
+- P-10. Cleanup: after each P-9 case, no container with the pass label is left, the inbox folder and `inbox.tar` are gone, `tart list` shows no `qa-<pass>-` clone, and after pass end no token file is left on the node.
 
 ## 11. Owner questions
 
 - Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Answered: yes, owner 2026-11-20. Tart 2.42.0 installed on the Mac from the checksummed release (FSL-1.1, internal use allowed).
-- Q4 (added 2026-11-20, rev 3): model access for testers. Answered by the owner 2026-11-20: use the Claude subscription, not the API. Testers run Claude Code in local containers and Tart guests. Owner step: run `claude setup-token` once and give the token to the orchestrator as a file on the devbox.
+- Q4 (added 2026-11-20, rev 3): model access for testers. Answered by the owner 2026-11-20: use the Claude subscription, not the API. Testers run Claude Code in local containers and Tart guests. Owner step: run `claude setup-token` once and give the token to the orchestrator as a file on the devbox, at the path and modes in 10a.4.
 
 | Id | Question | Recommendation |
 |---|---|---|
 | Q1 | Add QA-BETA as a 1.0 row in the release group | Yes (owner 2026-11-20: "do a writeup ... let's add to QA methodology"). Answered. |
 | Q2 | The CI persona needs a real CI system. Create a private sandbox repo in the `decoy-data` organization with one GitHub Actions workflow on GitHub-hosted runners? | Yes. Hosted runners are what most companies use, need no runner registration or VM, and give real secret masking, artifacts and re-runs. The minutes fall within the organization's included private-repo minutes. A new repository is an owner call. Fallback if no: the same steps as a shell script on a test node. |
 | Q3 | Public data set: Synthea and Chinook | Yes; both licenses allow internal testing; nothing is redistributed. |
-| Q4 | Spend | No new spend: L runs fit the Dell and the existing GCP test nodes. |
+| Q4 | Model access and spend | Answered (owner 2026-11-20): testers use the Claude subscription, not the API, so there is no metered spend; the entrypoint clears every API-key and alternate-provider variable (10a.4). L runs fit the Dell and the existing GCP test nodes. No new spend. |
 
 ## 12. Compatibility impact
 
@@ -340,9 +460,20 @@ None. No product surface changes. The tooling reads the exit registry and schema
 | S0 | 2026-11-21, 1 day, 5 files, 300 lines | merge this plan; add the roadmap row, current method, checklist pointer and CODEMAP rows | R1 docs | Codex |
 | S1a | 2026-11-22 to 2026-11-25, 4 days, 11 files, 1,200 lines (actual about 27 files, 3,500 lines; re-baselined 2026-11-20) | add `io.py`, corpus manifest and tools, matrices, `allpairspy`, surface registry and AT-1, AT-6 and AT-8; run M3 on the final head | R2 data and atomic writes | Dennis then Codex |
 | S1b | 2026-11-26 to 2026-12-01, 6 days, 15 files, 1,700 lines | add the shared sweep, I1 to I7, `findings.py`, `repro.py`, AT-2 to AT-5, AT-7, AT-9 and AT-11 to AT-13; run M1, M2 and M4 on the final head | R2 oracle and publication controls | Dennis then Codex |
-| S2 | 2026-11-22 to 2026-11-27, 6 days, 10 files, 700 lines (actual about 20 files, 1,900 lines; section 10a added after review round 2) | add five charters, checklist, doc-walk and triager briefs, finding template, launcher, tester setup script and AT-10 | R1 launcher and docs | Codex |
-| S3 | 2026-12-02 to 2026-12-03, 2 days, 1 record | run the dry run on Linux and macOS; run the real OS-user probes; build S and M on both systems and L on Linux; run a 10-cell matrix smoke and one 30-minute charter; triage one finding | R2 operational proof | Codex reads the record |
+| S2 | 2026-11-22 to 2026-11-28, 7 days, 38 files, at most 2,800 lines (rev 3.4; file list below) | add five charters, checklist, doc-walk and triager briefs, finding template, the launcher and `sandbox/` package, the Squid and pf configs, the tester image and entrypoint, `nodes.md`, the CODEMAP row, AT-10 and AT-14; delete the setup script and its test; run M5 on the final head | R2 credentials, isolation and egress | Dennis then Codex |
+| S3 | 2026-12-02 to 2026-12-03, 2 days, 1 record | run the dry run on Linux and macOS; run the sandbox probes P-1 to P-10 (10a.6) on the Dell and the Mac; build S and M on both systems and L on Linux; run a 10-cell matrix smoke and one 30-minute charter; triage one finding | R2 operational proof | Codex reads the record |
 | Reserve | 2026-12-04, 1 day | correct dry-run failures only; defer new scope | same as the failed slice | required review for the changed slice |
+
+S2 file list (rev 3.4). Line counts are estimates of added or changed lines:
+
+- Kept from the S2 branch, about 650 lines: the eight briefs in `docs/qa/briefs/`, `docs/qa/beta-program.md`, `docs/qa/finding-template.toml`, `tests/unit/qa/__init__.py`, `tests/unit/qa/_paths.py`, `tests/unit/qa/test_briefs.py` and `tests/sentry/layout/test_codemap_paths.py`.
+- Changed, about 100 lines: `CODEMAP.md` (the QA tooling row, section 9) and this plan.
+- Rewritten, about 250 lines: `scripts/qa/launch.py` (command line only, at most 150 lines) and `tests/unit/qa/test_launcher.py`.
+- New code, about 850 lines: `scripts/qa/sandbox/__init__.py`, `argv.py`, `podman.py`, `tart.py`, `token.py` and `capacity.py`.
+- New config and image, about 150 lines: `scripts/qa/proxy/squid.conf`, `scripts/qa/proxy/pf.qa.conf`, `scripts/qa/image/Containerfile` and `scripts/qa/image/qa-entry.sh`.
+- New docs, about 120 lines: `scripts/qa/nodes.md`.
+- New tests, about 680 lines: `tests/unit/qa/test_argv.py`, `test_lifecycle.py`, `test_token.py`, `test_entrypoint.py`, `test_proxy_config.py`, and `tests/e2e/qa/test_proxy_rules.py` with its `__init__.py`.
+- Deleted, 546 lines, not counted: `scripts/qa/setup-testers.sh` and `tests/unit/qa/test_setup_script.py`.
 
 S1a and S2 start after S0. S1b starts after the `io.py` and corpus work from S1a. S3 needs S1b and S2. This critical path finishes before 2026-12-04.
 
@@ -351,7 +482,7 @@ S1a and S2 start after S0. S1b starts after the `io.py` and corpus work from S1a
 - S0 to S3 merged. The dry-run record shows one finding from tester submission through repro and triage. A planted finding is acceptable.
 - The dry-run record shows a tester started on a closed group within one hour of the launch command.
 - The corpus S, M and L tiers are built and hash-checked on the Dell, S and M on the Mac.
-- The Linux and macOS probes show the pre-provisioned tester identity. Each probe shows that a planted checkout read fails.
+- The S3 record shows probes P-1 to P-10 (10a.6) passing on the Dell and the Mac, including a planted checkout read that fails, direct sockets that fail with the proxy variables unset, and a `claude -p` call on the subscription that fails closed without the token or the proxy.
 - The coordinator hand-back contains only counts and finding ids. The captured tester output stays node-local.
 - The board shows QA-BETA closed and each checklist group's "ready for QA" state, so the first L1 pass can start the day a group closes.
 
@@ -362,11 +493,11 @@ S1a and S2 start after S0. S1b starts after the `io.py` and corpus work from S1a
 | Class | Name | Closing structure | Sentry or property test | Mutation |
 |---|---|---|---|---|
 | 1 | value leak | `findings.py write` checks every tester record; `findings.py publish` checks each pass record and Slack text; one surface registry drives the sweep | AT-2, AT-7, AT-11 and AT-13 | M1 and M2 |
-| 2 | cleanup | each run uses a fresh `DECOY_HOME` and output folder; an interrupted private write leaves no partial target | AT-9 and AT-13 | N/A: cleanup is wiring; AT-13 injects the interruption |
+| 2 | cleanup | each run uses a fresh `DECOY_HOME` and output folder; an interrupted private write leaves no partial target; every sandbox lifecycle step has its cleanup in one `finally` path, the inbox is published before it is deleted, and recovery handles stale inboxes and clones (10a.2, 10a.3) | AT-9, AT-10 and AT-13; probes P-9 and P-10 | N/A: cleanup is wiring; AT-10 and AT-13 inject the failure at each step |
 | 3 | state | each run has its own home and output folder; launcher-issued ids are tester-scoped and create-once | AT-9 and concurrent AT-13 | mutation M4 returns the recorded exit without a run |
 | 4 | route | the matrices cover every route the docs name (pandas, native, chunked, out-of-core) and I3 compares routes only where the docs promise equality | AT-6 coverage property, AT-4 | N/A: mutations are core only (owner 2026-11-10); AT-6 is a property test over random parameter sets |
 | 5 | referential | I2 applies `fail`, `remap` and `preserve` to complete FK tuples | AT-3 | N/A: AT-3 plants a tuple-only orphan; builder mutations stay on core leak and repro logic |
-| 6 | untrusted input | downloaded data is untrusted: hash checked, own folder, read as data only with `python -I`; testers run as a user that cannot read checkouts | AT-8, AT-10 | M3 (rename before the hash check) |
+| 6 | untrusted input | downloaded data is untrusted: hash checked, own folder, read as data only with `python -I`; testers run in a container or guest with no checkout and egress only to the model API; inbox files and the Tart export stream are untrusted and accepted only as regular files with issued ids | AT-8, AT-10, AT-14 | M3 (rename before the hash check); M5 (final proxy deny removed) |
 | 7 | TOCTOU (check-then-use) | `fetch.py` downloads to a temp file, checks the hash on that file, then renames it; the checked file is the used file | AT-8 | M3 (rename before the hash check) |
 | 8 | weak tests | each invariant checker has a planted defect and each documented exception has a pass case | AT-2 to AT-6 and AT-12 | M1; other checker cases use planted defects because the owner limits mutations |
 | 9 | refactor | the checklist and journey call one `sweep.py`; no product code moves | AT-11 detects another sweep | N/A: this is QA wiring, and AT-11 supplies the realistic bypass case |
@@ -496,3 +627,16 @@ Assume the V1 QA pass found too little and users hit bugs in January. Likely cau
 | 14. QA writers could copy product private helpers | DESIGN | `io.py` owns 0600 create-once atomic writes; AT-13 rejects other writers and private imports |
 | 15. Marker id could contain marker text | V2-LOG | 2, 5.5 and AT-7 require opaque coordinate ids |
 | 16. S1 did not fit the preparation window | V2-LOG | section 13 splits S1, gives dated estimates and reserves 2026-12-04 |
+
+## 19. Review map (Codex plan review of rev 3.1, closed in rev 3.4)
+
+| Finding | Label | Closed in |
+|---|---|---|
+| 1. The Linux inbox was lost with tmpfs and `--rm` | V1 | 10a.2: a private bind-mounted inbox per tester; create, run, publish through `io.py`, then delete; recovery after interruption; AT-10, P-9, P-10 |
+| 2. macOS egress was advisory | V1 | 10a.3: guest pf default deny, proxy address and port only, Claude runs as non-admin `qa`; P-4 to P-6 with the proxy variables unset |
+| 3. No concrete proxy registry and guard | DESIGN | 10a.1: one Squid config for both nodes, dual-homed Linux proxy; AT-14 allow and deny tests; M5; section 9 |
+| 4. No safe, proven credential path | V1 | 10a.4: 0600 file in a 0700 directory, owner and symlink checks, one read-only file mount or stdin, fixed entrypoint with a clean environment, transfer and removal; P-7, P-8 |
+| 5. No executable Tart lifecycle | V1 | 10a.3 steps 1 to 9 with cleanup at each step; 10a.5 argv rows T1 to T6; AT-10 |
+| 6. Quota exhaustion became failed QA jobs | V1 | 5.8 capacity formula and usage-limit pause; F10 |
+| 7. Placement described the discarded mechanism | DESIGN | section 9 lists `CODEMAP.md`, `sandbox/`, `proxy/`, `image/`; S2 changes the CODEMAP row |
+| 8. Stale text, risk, Q4, citation, size, AT-10 | V2-LOG | F3, section 7, S2, S3 and Done no longer name OS users; S2 is R2 with Dennis then Codex; Q4 row is model access and spend; 5.8 is cited; S2 file list and 2,800-line bound in 13; AT-10 and 10a.6 cover each named case |
