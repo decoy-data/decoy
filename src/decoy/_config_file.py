@@ -47,9 +47,7 @@ from decoy._yaml_errors import sanitize_yaml_error
 
 # The one table of pipeline file suffixes and the one kind check. Completion and the path test
 # for a pipeline argument import these, so a new suffix is added here and nowhere else.
-# Built from two pieces: `tests/sentry/io_policy/test_library_writer.py` forbids the literal
-# `.decoy`, which is also the project folder name, and this is a file suffix, not that folder.
-_DECOY_SUFFIX = "." + "decoy"
+_DECOY_SUFFIX = ".decoy"
 PIPELINE_SUFFIXES = (".yaml", ".yml", _DECOY_SUFFIX)
 
 NOT_UTF8 = "Pipeline YAML is not UTF-8 text."

@@ -29,13 +29,17 @@ Reading it top to bottom:
 Layout is free. Spaces and line breaks only separate words, so indentation can never break a file.
 Comments start with `#`.
 
-## Three commands
+## Running a file
+
+Every `decoy` command that takes a pipeline file takes a `.decoy` file:
 
 ```
-python -m decoy.lang pipeline.decoy > pipeline.yaml      # compile
-python -m decoy.lang --format pipeline.decoy             # print in the standard layout
-python -m decoy.lang --to-decoy pipeline.yaml            # convert an existing YAML pipeline
+decoy validate pipeline.decoy
+decoy run pipeline.decoy
 ```
+
+Converting a YAML pipeline and formatting a `.decoy` file are not available from the command
+line yet.
 
 A mistake is reported with its line and column, a code, and usually a hint:
 
