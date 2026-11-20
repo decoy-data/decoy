@@ -2,12 +2,11 @@
 
 CLI.3 commit 3 (2026-06-02): rewritten against the V2 demo body.
 Pre-rewrite the file exercised the V1 demo flow (scan -> FORECAST ->
-hash-based mask via the deleted Masker class) + the --ref multi-table
+hash-based mask via the deleted Masker class) + the multi-table
 FK-via-hash flow. Both are dead since the V1 scan rework and the
 V1 graph runner removal. The new cells verify (a) help text renders, (b) the
 single-table demo runs end-to-end and produces customers_masked.csv,
-(c) the --ref flow exits 1 with the deferral message pointing at the
-single-table demo as the workaround.
+(c) the retired --ref and --rows flags are unknown options (exit 2).
 """
 
 from __future__ import annotations
@@ -36,14 +35,8 @@ def test_demo_help_includes_examples():
     assert "See also:" in result.stdout
 
 
-def test_demo_help_hides_undeliverable_ref_flag():
-    """--ref (and its --rows coupling) is NOT advertised in --help: the
-    3-table FK body is unimplemented and unconditionally errors, so
-    advertising it as a real option is a doc-truth bug (it previously
-    errored on every call). The flag stays wired (hidden=True) so an
-    operator who already knows about it -- or finds it in the source --
-    still gets the typed deferral message instead of 'unknown flag'; see
-    test_demo_ref_exits_with_deferral_message below."""
+def test_demo_help_lists_no_ref_or_rows_flag():
+    """--ref and --rows are removed, so --help never names them."""
     result = runner.invoke(app, ["demo", "--help"])
     assert result.exit_code == 0
     assert "--ref" not in result.stdout
