@@ -19,7 +19,7 @@ from pathlib import Path
 import typer
 
 from decoy import _resources
-from decoy.cli.io import out_dir_option, pipeline_argument, resolve_pipeline
+from decoy.cli.io import INTEGRITY_OUT_OPTION, out_dir_option, pipeline_argument, resolve_pipeline
 from decoy.cli.io import resolve_path as _resolve_path
 from decoy.cli.run import _flow
 from decoy.cli.run._context import DEFAULT_CHUNK_SIZE, Mode, NotifyOn, RunContext
@@ -253,6 +253,7 @@ def run(
             "change the exit code. Not accepted with --all."
         ),
     ),
+    integrity_out: Path = INTEGRITY_OUT_OPTION,
     out_dir: Path = out_dir_option(),
     notify: list[str] = typer.Option(
         [],
@@ -428,6 +429,7 @@ def run(
             key_label=key_label,
             evidence_out=evidence_out,
             result=result,
+            integrity_out=integrity_out,
             out_dir=out_dir,
             notify=notify,
             notify_on=notify_on,

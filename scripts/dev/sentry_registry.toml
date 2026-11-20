@@ -176,3 +176,9 @@ id = "run-exit-owners"
 baseline = "tests/sentry/baselines/run-exit-owners.json"
 kind = "json"
 consumer = "tests/sentry/run/test_one_run_exit.py"
+
+[[sentry]]
+id = "run-exit-owners-io"
+baseline = "tests/sentry/baselines/run-exit-owners-io.json"
+kind = "json"
+consumer = "tests/sentry/run/test_one_run_exit.py"

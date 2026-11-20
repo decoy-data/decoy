@@ -64,6 +64,12 @@ class EvidenceWriteRefusal(RunRefusal):
     category = "runtime"
 
 
+class IntegrityWriteRefusal(RunRefusal):
+    """The post-scan report could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
+
+
 class Mode(str, Enum):
     mask = "mask"
     generate = "generate"
@@ -98,6 +104,7 @@ class RunContext:
     key_label: str
     evidence_out: Path
     result: Path | None
+    integrity_out: Path | None
     out_dir: Path | None
     notify: list[str]
     notify_on: NotifyOn
@@ -141,6 +148,10 @@ class RunContext:
     layout: RunLayout | None = field(init=False, default=None)
     # The one engine progress sink (`_progress.ProgressFanout`), built by `_flow`.
     progress: Any = field(init=False, default=None)
+    # SHA-256 of the YAML bytes read; the post-scan report and its file (`cli/io`, SCAN-ML C2a).
+    config_sha256: str | None = field(init=False, default=None)
+    _post_scan: dict | None = field(init=False, default=None)
+    _post_scan_file: Path | None = field(init=False, default=None)
     # The run-result collector riding on that sink, and the engine's `ExecutionResult` of the plain
     # branch; the one result builder (`_result`) reads both.
     _collector: Any = field(init=False, default=None)
@@ -226,6 +237,7 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
         (flag, path)
         for flag, path in (
             ("--evidence-out", ctx.evidence_out),
+            ("--integrity-out", ctx.integrity_out),
             ("--vault", ctx.vault),
             ("--result", ctx.result),
         )

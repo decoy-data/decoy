@@ -170,6 +170,8 @@ def exit_code_for(exc: BaseException) -> int:
     `unique` generate column the data cannot satisfy are 1; `fit`'s differential-privacy
     errors are 3 for a provenance refusal and a budget schedule mismatch and 1 for the rest;
     a blocking post-scan finding (`PostScanBlockedError`) is 4 and an existing vault (`vault_exists`) is 1;
+    a model that cannot load (`ModelUnavailableError`) and a route that refuses a model post-scan
+    (`PostScanRouteError`) are 1;
     Ctrl-C is 130; everything else, an `OSError` on a config read included, is 3.
 
     The engine and CLI exception types are imported here, not at module level: the CI modules
@@ -248,7 +250,12 @@ def usage_error_types() -> tuple[type, ...]:
     One tuple, read by the exit map and by the run error arm's reason-attach rule, so the two
     cannot drift apart. The imports are lazy: the run package imports this module.
     """
-    from decoy_engine import ConfigError, PipelineValidationError
+    from decoy_engine import (
+        ConfigError,
+        ModelUnavailableError,
+        PipelineValidationError,
+        PostScanRouteError,
+    )
     from decoy_engine.plan import PlanCompileError
 
     from decoy import _native_gate, _resources
@@ -284,6 +291,8 @@ def usage_error_types() -> tuple[type, ...]:
         PlanCompileError,
         PipelineValidationError,
         ConfigError,
+        ModelUnavailableError,
+        PostScanRouteError,
         _ChunkedGenerateError,
         _ChunkedFixedWidthError,
         _ChunkedIntegrityError,

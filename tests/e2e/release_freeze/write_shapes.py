@@ -216,6 +216,15 @@ relationships:
     namespace: patient_ids
 """.replace("MARKER_COL", MARKER_COL)
 
+# The `run` step's pipeline: post-scan integrity on, so `run --json` carries its `post_scan`
+# block. `full_name` is hashed because a redacted name column is a regex `fail` that blocks.
+_INTEGRITY = (
+    _PIPELINE.replace(
+        "{name: full_name, strategy: redact}", "{name: full_name, strategy: hash, namespace: names}"
+    )
+    + "post_scan: {integrity: true}\n"
+)
+
 _TOKENIZE = """version: 2
 global_settings: {seed: 7, mask_secret_ref: "env:SECRET_ENV"}
 sources:
@@ -280,6 +289,7 @@ def build_workspace(root: Path) -> None:
         "patient_id,diagnosis\n" + "".join(f"{i},flu\n" for i in range(1, 6)), encoding="utf-8"
     )
     (root / "pipeline.yaml").write_text(_PIPELINE, encoding="utf-8")
+    (root / "integrity.yaml").write_text(_INTEGRITY, encoding="utf-8")
     (root / "tokenize.yaml").write_text(_TOKENIZE, encoding="utf-8")
     (root / "vaulted.yaml").write_text(_VAULTED, encoding="utf-8")
     (root / "subset.yaml").write_text(_SUBSET, encoding="utf-8")
@@ -362,7 +372,7 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("scan fields", ["scan", "fields", "scan.json"]),
         ("scan show", ["scan", "show", "scan.json", "ssn"]),
         ("scan diff", ["scan", "diff", "scan.json", "scan2.json"]),
-        ("run", ["run", "pipeline.yaml", *mask, "--evidence-out", "ev1.json"]),
+        ("run", ["run", "integrity.yaml", *mask]),
         ("report show", ["report", "show", "ev1.json"]),
         ("report render", ["report", "render", "ev1.json", "-o", "report.html"]),
         ("report verify", ["report", "verify", "ev1.json"]),
@@ -451,7 +461,8 @@ def capture(root: Path) -> dict[str, Any]:
             if name == "scan fields":
                 for out in ("scan.json", "scan2.json"):
                     runner.invoke(app, ["scan", "patients.csv", "--has-header", "-o", out])
-            if name == "report diff":
+            if name in ("report show", "report diff"):
+                evidence = "ev1.json" if name == "report show" else "ev2.json"
                 runner.invoke(
                     app,
                     [
@@ -460,7 +471,7 @@ def capture(root: Path) -> dict[str, Any]:
                         "--mask-secret",
                         f"env:{SECRET_ENV}",
                         "--evidence-out",
-                        "ev2.json",
+                        evidence,
                     ],
                 )
             if name == "report vault":

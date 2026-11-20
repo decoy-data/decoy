@@ -6,7 +6,7 @@ from pathlib import Path
 from rich.text import Text
 
 from decoy.cli import gen
-from decoy.cli.io import shown_path
+from decoy.cli.io import post_scan_members, print_post_scan, shown_path
 from decoy.cli.run import _result
 from decoy.cli.run._context import Mode, RunContext
 from decoy.cli.run._prepare import _has_kind
@@ -116,6 +116,7 @@ def finish(ctx: RunContext) -> None:
             **_where_written(ctx),
         }
         payload["resources"] = ctx._resources_record
+        payload.update(post_scan_members(ctx._post_scan, ctx._post_scan_file))
         if ctx._subset_metrics is not None:
             payload["subset"] = ctx._subset_metrics
         if ctx.notify_channels:
@@ -188,6 +189,7 @@ def finish(ctx: RunContext) -> None:
         ],
     )
     render_warnings(ctx.state, _warnings)
+    print_post_scan(ctx.state, ctx._post_scan, ctx._post_scan_file)
     if ctx.explain_plan:
         render_execution_route(ctx.state, _qm.get("execution_plan"))
     if ctx.fidelity:

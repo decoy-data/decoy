@@ -131,6 +131,8 @@ PRIVATE_CASES: dict[str, str] = {
     + "test_run_vault_and_evidence_are_private",
     "cli/run/_result.py::_write_file::write_local_target::1": _E2E
     + "test_run_result_file_is_private",
+    "cli/io/_integrity_report.py::_write::write_local_target::1": _E2E
+    + "test_run_post_scan_report_is_private",
     "cli/tokenize.py::detokenize::write_private_table::1": _RESTORED,
     "cli/unmask.py::unmask::write_private_table::1": _RESTORED,
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
