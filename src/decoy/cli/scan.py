@@ -40,7 +40,13 @@ from decoy.cli import scanning as _scanning
 from decoy.cli._default_group import make_default_group
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
-from decoy.cli.scanning import diff_scan_sets, pii_bucket, saved_field_facts
+from decoy.cli.scanning import (
+    DEFAULT_SCAN_ROWS,
+    SampleStrategy,
+    diff_scan_sets,
+    pii_bucket,
+    saved_field_facts,
+)
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 from decoy.ui.table import make_table
@@ -54,12 +60,6 @@ _SCAN_GROUP_HELP = (
     "Subcommands operate on a saved scan: list fields (`fields`), per-field "
     "detail (`show`), compare two scans (`diff`)."
 )
-
-
-class SampleStrategy(str, Enum):
-    full = "full"
-    head = "head"
-    random = "random"
 
 
 class PiiLevel(str, Enum):
@@ -488,7 +488,7 @@ def _scan(
         help="Show per-field detail: dtype, null_rate, distinct_count, PII candidate flag.",
     ),
     rows: int = typer.Option(
-        10_000,
+        DEFAULT_SCAN_ROWS,
         "--rows",
         help=(
             "Limit the scan to the first N rows (a bounded sample). "

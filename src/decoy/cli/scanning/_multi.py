@@ -12,7 +12,6 @@ scan. The richer per-table detail, which can hold cell values, is never requeste
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -24,6 +23,12 @@ from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_tar
 from decoy.cli._sources import csv_file_source
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
 from decoy.cli.scanning import _detectors
+from decoy.cli.scanning._engine_call import (
+    ScanUsageError,
+    check_scan_options,
+    core_bytes,
+    scan_descriptors,
+)
 from decoy.ui.card import render_card
 from decoy.ui.output import (
     OutputMode,
@@ -55,14 +60,6 @@ _WARNING_TEXT = {
     ),
     "scan_key_type_mismatch": "the declared key columns differ in type",
 }
-
-
-class ScanUsageError(Exception):
-    """A bad invocation, found before any file is read. The message is fixed text plus names."""
-
-    def __init__(self, message: str, hint_text: str | None = None) -> None:
-        super().__init__(message)
-        self.hint_text = hint_text
 
 
 def table_name_from_path(path: Path) -> str:
@@ -513,38 +510,27 @@ def run_scan(
             sources, fmt=fmt, layout=layout, has_header=has_header, column_names=column_names
         )
         pre_scan = _detectors.resolve_pre_scan(detectors, ner_model)
+        check_scan_options(rows, strategy)
     except (ScanUsageError, _detectors.DetectorsUsageError) as exc:
         _emit_error(state, where, str(exc), getattr(exc, "hint_text", None))
         raise typer.Exit(code=EXIT_USAGE) from None
     # A model that cannot run refuses here, before the first table is read.
     _detectors.preflight(state, where, pre_scan)
 
-    # --rows 0 reads the whole file; otherwise --strategy picks the bounded sample.
-    row_cap: int | None = None if rows == 0 else rows
-    effective = "full" if rows == 0 else strategy
     out_path: Path | None = out if (out is not None and not streamed) else None
     try:
-        from decoy_engine import scan_set_to_dict, scan_sources
-
         with (
             detector_log(state, state.verbose),
             scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms,
         ):
-            result = scan_sources(
-                descriptors,
-                sample_rows=row_cap,
-                strategy=effective,  # type: ignore[arg-type]
-                pre_scan=pre_scan,
+            run = scan_descriptors(
+                descriptors, rows=rows, strategy=strategy, pre_scan=pre_scan, on_stage=ms.complete
             )
-            ms.complete()
-            core = scan_set_to_dict(result, detail=False)
-            ms.complete()
+            core = run.core
             # PERSIST ONLY on --output (H7b). The file is the value-free core, written once
             # after every table succeeded, so a failed table leaves no partial file.
             if out_path is not None:
-                write_local_target(
-                    out_path, json.dumps(core, indent=2).encode("utf-8"), WriteMode.REPLACE
-                )
+                write_local_target(out_path, core_bytes(core), WriteMode.REPLACE)
             ms.complete()
     except Exception as exc:
         # Never str(exc): engine parse errors can embed raw cell data.
@@ -566,7 +552,7 @@ def run_scan(
     models = _detectors.has_models(members)
     tables = [
         _table_summary(ct, st, paths[ct["name"]], show_fields)
-        for ct, st in zip(core["tables"], result.tables, strict=True)
+        for ct, st in zip(core["tables"], run.result.tables, strict=True)
     ]
     single = len(tables) == 1
     if state.mode is OutputMode.json:

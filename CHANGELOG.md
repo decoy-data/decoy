@@ -11,6 +11,8 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Changed
 
+- **`decoy scan` refuses a negative `--rows` as a usage error (FREEZE-SURFACE item 3, C1).** It exits 1 with `rows must be 0 or more`; the engine used to refuse it with exit 3. `decoy scan` and `decoy demo` now make their engine call through one shared function, so their output bytes do not change.
+
 - **`decoy scan --detectors` and `--ner-model` choose the pre-scan detectors (SCAN-ML C2b).** `--detectors regex,classifier,ner` adds the lgbm classifier and the spaCy NER model to the regex detectors; `regex` must be in the list, and `--ner-model NAME` needs `ner`. A model that cannot run here refuses before any table is read: exit 1, the reason code and the install hint. The card gains `Detectors  regex; classifier lgbm-v1 0.1.0`, `--json` gains `detectors: [{source, model_id, model_version}]` (always, `regex` alone by default), and the saved scan records the same list. `-v` prints the `pre_scan.detectors` record on stderr. With models on, the PII note says the fields were flagged by pattern matching and the detector models. `decoy scan --config` follows with SCAN-MULTI S1c.2 and shares the same preflight.
 
 - **Unkeyed `date_shift` refusal is pinned on every CLI surface (DATE-SHIFT-UNKEYED C1).** No CLI code change: engine 0.28.1 already refuses a `date_shift` column with no mask secret (`keyed_strategy_requires_secret`). New tests pin that `decoy run`, `decoy run --chunked` and `decoy.mask()` refuse it with the fixed text, write no target and echo no source date.
