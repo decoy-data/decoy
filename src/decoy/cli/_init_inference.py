@@ -35,7 +35,7 @@ column entry. The strategy + provider names match what
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -53,12 +53,17 @@ class Inference:
         deterministic: when True, the YAML entry carries
             `deterministic: true` (used for FK-preservation paths,
             e.g. customer_id-shaped columns).
+        date_format: the strptime format of a date_shift column, written
+            as `provider_config.date_format`. The engine refuses a
+            date_shift without one, so `_infer_strategy_for_column` only
+            returns date_shift with this set.
     """
 
     strategy: str
     provider: str | None = None
     review: str = ""
     deterministic: bool = False
+    date_format: str | None = None
 
 
 # Detector-id -> Inference. Detector ids come from the engine detectors
@@ -115,6 +120,15 @@ _INFERENCE_TABLE: dict[str, Inference] = {
             "tune via provider_config."
         ),
     ),
+    "eu_date": Inference(
+        strategy="date_shift",
+        review=(
+            "The scan found European-format dates. date_shift shifts each "
+            "date by an independent per-value offset in [min_days, max_days] "
+            "(not order-preserving across rows). Defaults are -365/+365 "
+            "days; tune via provider_config."
+        ),
+    ),
     "us_zip": Inference(
         strategy="truncate",
         review=(
@@ -157,8 +171,7 @@ _INFERENCE_TABLE: dict[str, Inference] = {
     "icd10": Inference(
         strategy="truncate",
         review=(
-            "The scan found ICD-10 codes. truncate to 3 chars (category) "
-            "matches HIPAA Safe Harbor."
+            "The scan found ICD-10 codes. truncate to 3 chars (category) matches HIPAA Safe Harbor."
         ),
     ),
     "pan": Inference(
@@ -222,6 +235,27 @@ _AMBIGUOUS_TEMPLATE = (
 )
 
 
+_MISSING = object()
+
+
+def _date_shift_format(field_stats, top) -> str | None:
+    """The date format to write for a date_shift column, or None.
+
+    The engine reports `format_pattern_complete` on FieldStats: true only
+    when every detector hit has the winning shape and parses with it. The
+    CLI reads that verdict and never recomputes it. Engines that predate
+    the field (0.28.x) do not report it; for those the detected
+    `format_pattern` alone is used, which is what they could always give.
+    """
+    pattern = getattr(top, "format_pattern", None) or getattr(field_stats, "format_pattern", None)
+    if not isinstance(pattern, str) or not pattern.strip():
+        return None
+    complete = getattr(field_stats, "format_pattern_complete", _MISSING)
+    if complete is not _MISSING and complete is not True:
+        return None
+    return pattern
+
+
 def _infer_strategy_for_column(field_stats) -> Inference:
     """Pick a strategy for one column based on its scan FieldStats.
 
@@ -243,7 +277,8 @@ def _infer_strategy_for_column(field_stats) -> Inference:
     """
     matches = getattr(field_stats, "detector_matches", None) or []
     confident_matches = [
-        m for m in matches
+        m
+        for m in matches
         if getattr(m, "confidence_bucket", None) in ("high", "medium")
         or getattr(m, "match_rate", 0.0) >= 0.5
     ]
@@ -257,33 +292,33 @@ def _infer_strategy_for_column(field_stats) -> Inference:
         top_id = getattr(top, "detector_id", "")
         ambiguous = (
             len(confident_matches) > 1
-            and (
-                getattr(top, "match_rate", 0.0)
-                - getattr(confident_matches[1], "match_rate", 0.0)
-            )
+            and (getattr(top, "match_rate", 0.0) - getattr(confident_matches[1], "match_rate", 0.0))
             < 0.1
         )
         base = _INFERENCE_TABLE.get(top_id, _FALLBACK)
+        if base.strategy == "date_shift":
+            # No usable format: the engine would refuse date_shift, so
+            # fall back the way an unknown column does.
+            date_format = _date_shift_format(field_stats, top)
+            if date_format is None:
+                return _FALLBACK
+            base = replace(base, date_format=date_format)
         if ambiguous:
-            signals = ", ".join(
-                getattr(m, "detector_id", "?") for m in confident_matches[:3]
-            )
-            review = _AMBIGUOUS_TEMPLATE.format(
-                signals=signals, chosen=base.strategy
-            )
+            signals = ", ".join(getattr(m, "detector_id", "?") for m in confident_matches[:3])
+            review = _AMBIGUOUS_TEMPLATE.format(signals=signals, chosen=base.strategy)
             return Inference(
                 strategy=base.strategy,
                 provider=base.provider,
                 review=review,
                 deterministic=base.deterministic,
+                date_format=base.date_format,
             )
         return base
 
     # No confident detector match. Treat likely-unique integer columns
     # as potential FK keys + suggest hash so joins survive.
-    if (
-        getattr(field_stats, "inferred_type", "") == "integer"
-        and getattr(field_stats, "is_likely_unique", False)
+    if getattr(field_stats, "inferred_type", "") == "integer" and getattr(
+        field_stats, "is_likely_unique", False
     ):
         return Inference(
             strategy="hash",

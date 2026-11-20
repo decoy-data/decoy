@@ -1,0 +1,133 @@
+"""Every date_shift the CLI writes carries `provider_config.date_format`.
+
+Engine 0.28.1 accepts the key; the engine release after it refuses a
+date_shift without one (`date_shift_requires_date_format`). These tests keep
+the shipped templates and the `decoy init` writer ahead of that refusal.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import pytest
+import yaml
+
+from decoy.cli._init_inference import _FALLBACK, _infer_strategy_for_column
+from decoy.cli.project._columns import emit_column_yaml
+from decoy.templates import get_template, template_names
+
+
+def _walk(node):
+    if isinstance(node, dict):
+        yield node
+        for v in node.values():
+            yield from _walk(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _walk(v)
+
+
+def _date_shift_columns(name: str) -> list[dict]:
+    tpl = get_template(name)
+    assert tpl is not None
+    return [d for d in _walk(yaml.safe_load(tpl.body)) if d.get("strategy") == "date_shift"]
+
+
+@pytest.mark.parametrize("name", template_names())
+def test_every_shipped_template_date_shift_has_date_format(name: str):
+    for col in _date_shift_columns(name):
+        fmt = (col.get("provider_config") or {}).get("date_format")
+        assert isinstance(fmt, str) and fmt.strip(), f"{name}.{col['name']} lacks date_format"
+
+
+def test_compliance_templates_do_carry_date_shift():
+    assert len(_date_shift_columns("hipaa")) == 3
+    assert len(_date_shift_columns("pci")) == 1
+
+
+@dataclass
+class _Match:
+    detector_id: str
+    format_pattern: str | None = None
+    match_rate: float = 0.95
+    confidence_bucket: str = "high"
+
+
+@dataclass
+class _Stats:
+    name: str
+    detector_matches: list = field(default_factory=list)
+    inferred_type: str = "string"
+    is_likely_unique: bool = False
+
+
+@dataclass
+class _StatsComplete(_Stats):
+    format_pattern_complete: bool = False
+
+
+_VARIANTS = [
+    ("iso_date", "%Y-%m-%dT%H:%M:%S"),
+    ("iso_date", "%Y%m%d"),
+    ("us_date", "%m/%d/%y"),
+    ("eu_date", "%d.%m.%Y"),
+    ("eu_date", "%d-%m-%Y"),
+]
+
+
+@pytest.mark.parametrize(("detector", "fmt"), _VARIANTS)
+def test_complete_variant_writes_its_format(detector: str, fmt: str):
+    fs = _StatsComplete("d", [_Match(detector, fmt)], format_pattern_complete=True)
+    inf = _infer_strategy_for_column(fs)
+    assert inf.strategy == "date_shift"
+    assert inf.date_format == fmt
+    body = emit_column_yaml("d", inf)
+    col = yaml.safe_load(body)[0]
+    assert col["provider_config"]["date_format"] == fmt
+    assert col["provider_config"]["min_days"] == -365
+
+
+@pytest.mark.parametrize("detector", ["iso_date", "us_date", "eu_date"])
+def test_incomplete_column_falls_back_to_redact(detector: str):
+    """Mixed variants, an invalid calendar date (31.02.2024) or padded values:
+    the engine reports format_pattern_complete false, so no date_shift."""
+    fs = _StatsComplete("d", [_Match(detector, "%d.%m.%Y")], format_pattern_complete=False)
+    assert _infer_strategy_for_column(fs) is _FALLBACK
+
+
+@pytest.mark.parametrize("detector", ["iso_date", "us_date", "eu_date"])
+def test_no_detected_format_falls_back_to_redact(detector: str):
+    assert _infer_strategy_for_column(_Stats("d", [_Match(detector, None)])) is _FALLBACK
+    assert _infer_strategy_for_column(_Stats("d", [_Match(detector, "  ")])) is _FALLBACK
+
+
+def test_engine_without_complete_flag_uses_detected_format():
+    """0.28.x reports format_pattern but not format_pattern_complete."""
+    inf = _infer_strategy_for_column(_Stats("d", [_Match("iso_date", "%Y-%m-%d")]))
+    assert inf.strategy == "date_shift"
+    assert inf.date_format == "%Y-%m-%d"
+
+
+def test_ambiguous_date_column_keeps_format():
+    fs = _StatsComplete(
+        "d",
+        [_Match("iso_date", "%Y-%m-%d", 0.95), _Match("us_phone", None, 0.92)],
+        format_pattern_complete=True,
+    )
+    inf = _infer_strategy_for_column(fs)
+    assert inf.strategy == "date_shift" and inf.date_format == "%Y-%m-%d"
+
+
+def test_init_scan_of_real_dates_writes_format(tmp_path):
+    """Real profile_columns output (installed engine) through the writer."""
+    import pandas as pd
+    from decoy_engine import profile_columns
+
+    df = pd.DataFrame({"signup": ["2020-01-15", "2020-02-20", "2020-03-05", "2020-04-30"]})
+    fs = profile_columns(df, source_label="t").fields[0]
+    inf = _infer_strategy_for_column(fs)
+    assert inf.strategy == "date_shift"
+    assert (
+        yaml.safe_load(emit_column_yaml("signup", inf))[0]["provider_config"]["date_format"]
+        == "%Y-%m-%d"
+    )

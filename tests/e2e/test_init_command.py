@@ -72,9 +72,7 @@ def test_init_overwrites_with_yes_flag(tmp_path: Path):
 
 def test_init_preset_hipaa_writes_hipaa_template(tmp_path: Path):
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "hipaa", "--output", str(out), "--quiet"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "hipaa", "--output", str(out), "--quiet"])
     assert result.exit_code == 0
     body = out.read_text()
     # Pulled from the bundled hipaa template -- must include PHI columns.
@@ -98,9 +96,7 @@ def test_init_preset_json_envelope_carries_preset_and_count(tmp_path: Path):
     import json as _json
 
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "pci", "--output", str(out), "--json"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "pci", "--output", str(out), "--json"])
     assert result.exit_code == 0
     payload = _json.loads(result.stdout)
     assert payload["preset"] == "pci"
@@ -112,9 +108,7 @@ def test_init_preset_generate_produces_generator_yaml(tmp_path: Path):
     (2026-06-02): V1 `generator_settings:` block folded into the unified
     V2 `global_settings:`."""
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "generate", "--output", str(out), "--quiet"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "generate", "--output", str(out), "--quiet"])
     assert result.exit_code == 0
     body = out.read_text()
     assert "tables:" in body
@@ -236,6 +230,9 @@ def test_init_scaffold_round_trips_date_shift_truncate_fpe(
     parsed = yaml.safe_load(body)
     # No exception == the scaffold is admissible by the engine's own schema.
     PipelineConfig.model_validate(parsed)
+    # The engine refuses a date_shift with no format.
+    (date_col,) = [c for t in parsed["tables"] for c in t["columns"] if c["name"] == "signup_date"]
+    assert date_col["provider_config"]["date_format"] == "%Y-%m-%d"
 
 
 def test_init_scaffold_actually_runs_and_pan_stays_luhn_valid(

@@ -82,6 +82,7 @@ tables:
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
 
 targets:
   transactions:

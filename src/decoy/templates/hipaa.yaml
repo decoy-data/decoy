@@ -91,18 +91,21 @@ tables:
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
       - name: admission_date
         strategy: date_shift
         namespace: patient_dates
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
       - name: discharge_date
         strategy: date_shift
         namespace: patient_dates
         provider_config:
           min_days: -30
           max_days: 30
+          date_format: "%Y-%m-%d"
 
       # D/E/F: Telephone, fax, email
       - name: phone
