@@ -2,6 +2,10 @@
  "sentry_id": "library-writer-allow",
  "created_in": "L1b.2",
  "entries": {
+  "_config_file.py": {
+   "sites": 1,
+   "reason": "Pipeline file suffix, not the project folder (owner decision 2026-11-20, W3 exception)."
+  },
   "cli/io/_project.py": {
    "sites": 1,
    "reason": "DECOY_DIR, the one home of the project folder name; the library imports it from decoy.cli.io (re-FRAME placement map)."

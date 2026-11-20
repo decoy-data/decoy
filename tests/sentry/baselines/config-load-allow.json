@@ -35,5 +35,8 @@
   "cli/scan.py::_parse_layout::1": {
    "reason": "fixed-width layout file: YAML with a JSON fallback, not a pipeline config; scan.py is a hot lane"
   }
+ },
+ "moved_from": {
+  "_source_positions.py::YamlPositionIndex.from_text::1": "ci/locations.py::YamlSourceIndex.from_text::1"
  }
 }
