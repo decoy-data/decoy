@@ -16,7 +16,14 @@ import typer
 
 from decoy import _native_gate, _resources
 from decoy.cli.gate import GateFinding
-from decoy.cli.io import OutputPlacement, PipelineRef, RunLayout
+from decoy.cli.io import (
+    DuckDBSourceError,
+    OutputPlacement,
+    PipelineRef,
+    RunLayout,
+    parse_flags,
+    resolve_path,
+)
 from decoy.ui.output import OutputState
 
 # Rows per chunk when `--chunk-size` is not given. The option has no default of its own so a
@@ -224,6 +231,13 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
         )
         if path is not None
     )
+    try:
+        databases = tuple(
+            resolve_path(flag.db_path, ctx.config.parent) for flag in parse_flags(ctx.duckdb_source)
+        )
+    except DuckDBSourceError:
+        # A bad `--duckdb-source` spelling is refused by its own parser, not here.
+        databases = ()
     if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
-    return OutputPlacement(typed=typed, chunked=ctx.chunked)
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, databases)
+    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=databases)

@@ -18,6 +18,7 @@ import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
+from tests.csv_sources import csv_source
 from tests.e2e.run_result.test_run_result import MARKER, _model, _write
 
 runner = CliRunner()
@@ -120,12 +121,23 @@ def test_preview_result_does_not_replace_a_target(tmp_path: Path, kind: str) -> 
     assert target.read_text(encoding="utf-8") == "zz_keep\n", result.output
 
 
+# The evidence manifest is written only when the run ends well, so its early-refusal case would
+# assert nothing: `--evidence-out` is tried on a run that really reaches the write.
+SIDE_FILE_RUNS = [("--result", False), ("--result", True), ("--evidence-out", False)]
+
+
+def _refused_and_kept(args: list[str], victim: Path) -> None:
+    before = victim.read_bytes()
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1, result.output
+    assert victim.read_bytes() == before
+
+
 @posix_only
-@pytest.mark.parametrize("flag", ["--result", "--evidence-out"])
+@pytest.mark.parametrize(("flag", "early"), SIDE_FILE_RUNS)
 @pytest.mark.parametrize("what", ["source", "config", "symlink"])
-@pytest.mark.parametrize("early", [False, True])
 def test_side_file_never_lands_on_an_input(
-    tmp_path: Path, flag: str, what: str, early: bool
+    tmp_path: Path, flag: str, early: bool, what: str
 ) -> None:
     cfg = _write(tmp_path)
     source = tmp_path / "in1.csv"
@@ -134,13 +146,83 @@ def test_side_file_never_lands_on_an_input(
     if what == "symlink":
         path = tmp_path / "alias.json"
         path.symlink_to(source)
-    before = victim.read_bytes()
     args = ["run", str(cfg), "--json", flag, str(path)]
-    if early:
-        args += ["--notify", "bogus"]
-    result = runner.invoke(app, args)
-    assert result.exit_code == 1, result.output
-    assert victim.read_bytes() == before
+    _refused_and_kept([*args, "--notify", "bogus"] if early else args, victim)
+
+
+def _relative_source_config(tmp_path: Path) -> tuple[Path, Path]:
+    """`sub/p.yaml` naming its source as `../data/in1.csv`: `(config, source)`."""
+    cfg = _write(tmp_path)
+    data = tmp_path / "data"
+    data.mkdir()
+    (tmp_path / "in1.csv").rename(data / "in1.csv")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    raw["sources"]["t1"]["path"] = "../data/in1.csv"
+    moved = sub / "p.yaml"
+    moved.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    cfg.unlink()
+    return moved, data / "in1.csv"
+
+
+@pytest.mark.parametrize(("flag", "early"), SIDE_FILE_RUNS)
+def test_relative_source_is_protected(tmp_path: Path, flag: str, early: bool) -> None:
+    cfg, source = _relative_source_config(tmp_path)
+    args = ["run", str(cfg), "--json", flag, str(source)]
+    _refused_and_kept([*args, "--notify", "bogus"] if early else args, source)
+
+
+def test_column_names_file_is_protected(tmp_path: Path) -> None:
+    cfg = _write(tmp_path)
+    names = tmp_path / "names.txt"
+    names.write_text("code\n", encoding="utf-8")
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    raw["sources"]["t1"].update({"has_header": False, "column_names_file": "names.txt"})
+    cfg.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    for flag in ("--result", "--evidence-out"):
+        _refused_and_kept(["run", str(cfg), "--json", flag, str(names)], names)
+
+
+def test_duckdb_source_database_is_protected(tmp_path: Path) -> None:
+    duckdb = pytest.importorskip("duckdb")
+    cfg = _write(tmp_path)
+    db = tmp_path / "src.duckdb"
+    con = duckdb.connect(str(db))
+    con.execute("create table t1 as select 'zz_a' as code")
+    con.close()
+    flags = ["--duckdb-source", f"t1={db}"]
+    _refused_and_kept(["run", str(cfg), "--json", *flags, "--result", str(db)], db)
+    _refused_and_kept(
+        ["run", str(cfg), "--json", *flags, "--notify", "bogus", "--result", str(db)], db
+    )
+
+
+def test_project_pipeline_source_is_protected(tmp_path: Path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.delenv("DECOY_PROJECT", raising=False)
+    root = tmp_path / "proj"
+    (root / "data").mkdir(parents=True)
+    (root / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
+    source = root / "data" / "in.csv"
+    source.write_text("code\nzz_a\nzz_b\n", encoding="utf-8")
+    folder = root / "pipelines" / "p1"
+    folder.mkdir(parents=True)
+    raw = {
+        "version": 2,
+        "global_settings": {"seed": 7},
+        "sources": {"t1": csv_source(source) | {"path": "../../data/in.csv"}},
+        "tables": [{"name": "t1", "columns": [{"name": "code", "strategy": "redact"}]}],
+        "targets": {"t1": {"type": "file", "format": "csv", "path": "t1.csv"}},
+    }
+    (folder / "pipeline.yaml").write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.chdir(root)
+    _refused_and_kept(["run", "p1", "--json", "--result", "data/in.csv"], source)
+    _refused_and_kept(
+        ["run", "p1", "--json", "--notify", "bogus", "--result", "data/in.csv"], source
+    )
 
 
 @pytest.mark.parametrize(("end", "exit_code"), [("success", 0), ("runtime", 3)])

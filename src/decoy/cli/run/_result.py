@@ -245,14 +245,14 @@ def build(
     return Document(payload, dict(_BUILT), code)
 
 
-def _placement_refused(ctx: RunContext) -> bool:
-    """True when the gate's layout rules refuse this run's outputs with `--result` among them.
+def _placement_refused(ctx: RunContext) -> str | None:
+    """A reason code when the gate's layout rules refuse this run's outputs with `--result` among them.
 
     The same check the gate runs before a source is read, run again here because a refusal that
     came before the gate (a bad `--notify`, a bad key) never reached it, and because the gate's
     own refusal for a colliding `--result` must not then write the file it refused. Any layout
     fault blocks the write: the result path is then not known to be clear of the outputs. Fails
-    closed on an error.
+    closed on an error, and then the code names the exception class.
     """
     from decoy.cli.gate import layout_findings, parse_pipeline_yaml
 
@@ -260,9 +260,10 @@ def _placement_refused(ctx: RunContext) -> bool:
         raw = getattr(ctx, "raw", None)
         raw = raw if raw is not None else parse_pipeline_yaml(ctx.config)[0]
         config = raw if isinstance(raw, dict) else {}
-        return bool(layout_findings(ctx.config, config, output_placement(ctx)))
-    except (OSError, ValueError, TypeError, KeyError, AttributeError):
-        return True
+        found = layout_findings(ctx.config, config, output_placement(ctx))
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        return f"output_path_refused_{type(exc).__name__}"
+    return "output_path_refused" if found else None
 
 
 def _write_file(ctx: RunContext, document: Document) -> Document:
@@ -279,8 +280,8 @@ def _write_file(ctx: RunContext, document: Document) -> Document:
     code = None
     if document.payload is None:
         code = status["code"]
-    elif _placement_refused(ctx):
-        code = "output_path_refused"
+    elif (refused := _placement_refused(ctx)) is not None:
+        code = refused
     else:
         try:
             body = json.dumps(document.payload, indent=2).encode("utf-8")
