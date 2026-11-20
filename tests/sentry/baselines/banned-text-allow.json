@@ -1,0 +1,26 @@
+{
+ "sentry_id": "banned-text-allow",
+ "created_in": "PROP-C-G1",
+ "entries": {
+  "cli/scan.py::_scan::make_default_group-arg": {
+   "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy scan` by the default-group context, so no user reads the name",
+   "count": 1,
+   "pattern": "_SCAN_PATTERN"
+  },
+  "cli/scan.py::_scan::name-kwarg": {
+   "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy scan` by the default-group context, so no user reads the name",
+   "count": 1,
+   "pattern": "_SCAN_PATTERN"
+  },
+  "cli/validate.py::_gate::make_default_group-arg": {
+   "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy validate` by the default-group context, so no user reads the name",
+   "count": 1,
+   "pattern": "_GATE_PATTERN"
+  },
+  "cli/validate.py::_gate::name-kwarg": {
+   "reason": "registration name of the hidden default command; the usage path is rewritten to `decoy validate` by the default-group context, so no user reads the name",
+   "count": 1,
+   "pattern": "_GATE_PATTERN"
+  }
+ }
+}

@@ -7,7 +7,7 @@ Slice X0a, CLI half, part 1b. Branch `feat/x0a-gate-reg`, stacked on `feat/x0a-g
 
 ## Environment
 
-- Base: CLI `origin/main` `cffab75c0175974bb33aa9d5e86444d31ff870d5`; parent `feat/x0a-gate` `35d38eb`.
+- Base: CLI `origin/main` `631015ceff5cc8a6173b2f4483af047fc93439af`; parent `feat/x0a-gate` `35d38eb`.
 - Same venv as part 1a (`bootstrap.sh` RESULT OK against `requirements-dev.lock`), Python 3.10.20.
 - Port source: engine `tests/sentry/_baseline_sources.py`, `test_baseline_registry.py` (#379 `78132c57`).
 

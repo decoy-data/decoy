@@ -134,12 +134,6 @@
   "cli/run/_evidence.py::write_evidence::da29d211e08d": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/run/_notify.py::parse_channels::61cfc41fd875": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_notify.py::parse_channels::6dced8952a67": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
   "cli/run/_prepare.py::_refuse_usage::6ca097a9a6f7": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },

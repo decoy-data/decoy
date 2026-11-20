@@ -21,7 +21,6 @@ The name is spelled in two pieces so this file does not hold it. Other tests imp
 from __future__ import annotations
 
 import fnmatch
-import json
 import re
 import subprocess
 from collections.abc import Mapping
@@ -29,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[3]
 THIS_FILE = "tests/sentry/release/test_retired_name_residual.py"
@@ -70,13 +70,11 @@ HISTORY = (
     Allowed("docs/RECENTLY-SHIPPED.md", "the dated shipped log"),
 )
 
+
 # {path: lines that still carry the name}, kept in a registered baseline so the ratchet check
 # lets it only shrink. A path that holds the name is written with `{n}` in the file.
-PENDING_FILE = ROOT / "tests" / "sentry" / "baselines" / "retired-name-pending.json"
-
-
 def _pending() -> dict[str, int]:
-    entries = json.loads(PENDING_FILE.read_text(encoding="utf-8"))["entries"]
+    entries = load_allowlist("retired-name-pending")
     return {path.format(n=RETIRED_NAME): int(e["max"]) for path, e in entries.items()}
 
 

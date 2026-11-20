@@ -19,7 +19,7 @@ sys.modules["launch_pin_check"] = lpc
 _spec.loader.exec_module(lpc)
 
 TAG = "v0.27.0"
-SPEC = f"git+https://github.com/louiskeep/decoy-engine@{TAG}"
+SPEC = f"git+https://github.com/decoy-data/decoy-engine@{TAG}"
 
 
 def _version() -> str:

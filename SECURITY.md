@@ -6,7 +6,7 @@
 
 **Use GitHub Private Vulnerability Reporting:**
 
-[https://github.com/louiskeep/decoy/security/advisories/new](https://github.com/louiskeep/decoy/security/advisories/new)
+[https://github.com/decoy-data/decoy/security/advisories/new](https://github.com/decoy-data/decoy/security/advisories/new)
 
 The report is private and visible only to repository maintainers. We will acknowledge receipt within 3 business days and aim to provide an initial assessment within 7 business days. Please do not file a public issue or contact support channels for security disclosures.
 

@@ -17,7 +17,6 @@ import pytest
 from tests.sentry.cli_text import _error_sites as sites
 
 BASELINE = sites.ROOT / "tests" / "sentry" / "baselines" / "one-error-emitter.json"
-REGISTRY = sites.ROOT / "scripts" / "dev" / "sentry_registry.toml"
 
 
 def _recorded() -> set[str]:
@@ -28,13 +27,6 @@ def test_baseline_equals_the_source_inventory() -> None:
     live, recorded = sites.inventory(), _recorded()
     assert live - recorded == set(), "error sites missing from the baseline (use emit_error)"
     assert recorded - live == set(), "stale baseline entries (shrink the baseline)"
-
-
-def test_baseline_is_registered_as_cl0() -> None:
-    doc = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "one-error-emitter"
-    assert doc["created_in"] == "CL0"
-    assert 'id = "one-error-emitter"' in REGISTRY.read_text(encoding="utf-8")
 
 
 def _keys(src: str) -> set[str]:
