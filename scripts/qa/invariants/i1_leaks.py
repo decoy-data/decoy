@@ -21,6 +21,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from scripts.qa.invariants import Rows, Violation
+from scripts.qa.sweep import canonical
 
 REPLACE = frozenset({"hash", "faker", "tokenize", "redact"})
 DOMAIN = frozenset({"fpe", "categorical", "date_shift", "bucketize"})
@@ -68,7 +69,10 @@ def check_cells(
             continue
         if rule.strategy not in REPLACE | DOMAIN | {"truncate", "text_redact"}:
             raise UnknownStrategy(f"{table}/{column}: no I1 rule for this strategy")
-        seen = {r[column] for r in source if r.get(column) is not None}
+        if rule.strategy == "text_redact" and len(rule.entities) != len(source):
+            # No entity list means nothing is checked, and a pass would be a lie.
+            raise UnknownStrategy(f"{table}/{column}: text_redact needs the entities of every row")
+        seen = {canonical(r[column]) for r in source if r.get(column) is not None}
         for i, (src, out) in enumerate(zip(source, output)):
             kind = _violation(rule, src.get(column), out.get(column), seen, i)
             if kind:
@@ -76,17 +80,17 @@ def check_cells(
     return found
 
 
-def _violation(rule: Rule, before: object, after: object, domain: set[object], row: int) -> str:
+def _violation(rule: Rule, before: object, after: object, domain: set[str], row: int) -> str:
     if before is None:
         return ""  # a null has no original value to leak
     if rule.strategy == "truncate":
         keep = str(before)[: rule.prefix]
         return "" if str(after) == keep or str(after) == "" else "truncate-extra"
     if rule.strategy == "text_redact":
-        found = any(e and e in str(after) for e in (rule.entities[row] if rule.entities else ()))
+        found = any(e and e in str(after) for e in rule.entities[row])
         return "entity" if found else ""
-    if after == before:
+    if after is not None and canonical(after) == canonical(before):
         return "same-row"
-    if rule.strategy in REPLACE and after in domain:
+    if rule.strategy in REPLACE and after is not None and canonical(after) in domain:
         return "exact-cell"
     return ""

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import os
 import secrets
+import signal
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -26,6 +27,8 @@ from scripts.qa.io import private_scratch_dir
 NONCE_VAR = "QA_REPRO_NONCE"
 WITNESS_VAR = "QA_REPRO_WITNESS"
 TIMEOUT = 120
+# A short signature such as "error" recurs by luck, so it proves nothing.
+MIN_SIGNATURE = 8
 
 
 @dataclass(frozen=True)
@@ -38,7 +41,7 @@ def run(
     argv: Sequence[str], recorded_exit: int, signature: str, *, timeout: float = TIMEOUT
 ) -> Result:
     """Run `argv` in a fresh home. The environment is cleaned so no tester state carries over."""
-    if not argv or not signature:
+    if not argv or len(signature) < MIN_SIGNATURE:
         return Result(False, "not-run")
     nonce = secrets.token_hex(16)
     with private_scratch_dir() as home:
@@ -50,18 +53,28 @@ def run(
             NONCE_VAR: nonce,
             WITNESS_VAR: str(witness),
         }
+        # A new session lets the timeout kill the whole group, so a grandchild that keeps the
+        # pipes open cannot hang the runner.
+        proc = subprocess.Popen(
+            list(argv),
+            env=env,
+            cwd=home,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
         try:
-            done = subprocess.run(
-                list(argv), env=env, cwd=home, capture_output=True, timeout=timeout, check=False
-            )
+            stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            proc.communicate()
             return Result(False, "stalled")
         saw = witness.read_text(encoding="utf-8") if witness.is_file() else ""
     if saw != nonce:
         return Result(False, "not-run")
-    if done.returncode != recorded_exit:
+    if proc.returncode != recorded_exit:
         return Result(False, "wrong-exit")
-    if signature.encode() not in done.stdout + done.stderr:
+    if signature.encode() not in stdout + stderr:
         return Result(False, "signature-missing")
     return Result(True, "reproduced")
 

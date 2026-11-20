@@ -11,7 +11,10 @@ import pytest
 from scripts.qa import findings, io, sweep
 
 NEEDLES = sweep.read_needles("qamark0042\nS3cretValueXYZ\n")
-REFUSAL = sweep.RefusalSet.build(["Zelda Quinn", 90210, datetime.date(2020, 1, 2), "N7-4471"])
+REFUSAL = sweep.RefusalSet.build(
+    ["Zelda Quinn", 90210, datetime.date(2020, 1, 2), "N7-4471", "O'Brien", "Smith, John",
+     "(555) 123-4567", "Acme Inc.", "$1,234.50", datetime.datetime(2020, 1, 2, 10)]
+)  # fmt: skip
 
 
 def record(**over: object) -> dict[str, object]:
@@ -47,6 +50,14 @@ def test_a_clean_record_round_trips(tmp_path: Path) -> None:
         "zip 90210 leaked",  # numeric
         "dated 2020-01-02",  # date
         "id N7-4471 appeared",  # output-only value
+        "customer O'Brien",
+        "Smith, John",
+        "call (555) 123-4567",
+        "vendor Acme Inc.",
+        "total $1,234.50",
+        "name zelda quinn",
+        "at 2020-01-02T10:00:00",
+        "at 2020-01-02 10:00:00",
     ],
 )
 def test_every_text_field_refuses_each_kind_of_value(
@@ -181,3 +192,50 @@ def test_publish_stops_on_a_value_in_a_stored_record(tmp_path: Path) -> None:
             tmp_path, "pass-1", late, None, records_dir=tmp_path / "rec", notify=sent.append
         )
     assert sent == [] and not (tmp_path / "rec").exists()
+
+
+def test_a_tester_cannot_write_triage_and_nested_strings_are_guarded(tmp_path: Path) -> None:
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(triage="v1"))
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(schema_version=["Zelda Quinn"]))
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(schema_version=2))
+
+
+def test_the_triager_writes_a_verdict_once_and_publish_joins_it(tmp_path: Path) -> None:
+    put(tmp_path, record())
+    path = findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
+    assert path.name == "t1-001.triage.toml"
+    with pytest.raises(io.AlreadyPublished):
+        findings.write_triage(tmp_path, "pass-1", "t1-001", "v2-log")
+    with pytest.raises(findings.Refused):
+        findings.write_triage(tmp_path, "pass-1", "t1-002", "Zelda Quinn")
+    out = findings.publish(tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec")
+    assert "| t1-001 | RUN | V1 | v1 |" in out.read_text()
+
+
+def test_an_artifact_cannot_pose_as_a_record_or_a_verdict(tmp_path: Path) -> None:
+    for name in ("x.toml", "triage.toml"):
+        with pytest.raises(findings.Refused):
+            put(tmp_path, record(), artifacts={name: b"clean"})
+    put(tmp_path, record(), artifacts={"out.txt": b"clean"})
+    out = findings.publish(tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec")
+    assert "Findings: 1" in out.read_text()
+
+
+def test_the_slack_status_is_posted_skipped_or_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("QA_SLACK_SCRIPT", raising=False)
+    assert findings._slack("x").startswith("skipped")
+    for name, code in (("ok.sh", 0), ("bad.sh", 1)):
+        script = tmp_path / name
+        script.write_text(f"#!/bin/sh\nexit {code}\n")
+        script.chmod(0o700)
+    monkeypatch.setenv("QA_SLACK_SCRIPT", str(tmp_path / "ok.sh"))
+    assert findings._slack("x") == "posted"
+    monkeypatch.setenv("QA_SLACK_SCRIPT", str(tmp_path / "bad.sh"))
+    assert findings._slack("x") == "failed"
+    monkeypatch.setenv("QA_SLACK_SCRIPT", str(tmp_path / "missing"))
+    assert findings._slack("x") == "failed"

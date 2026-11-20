@@ -43,8 +43,9 @@ SURFACES = Path(__file__).resolve().parents[2] / "docs/qa/surfaces.toml"
 CHECKS = ("cells", "needles", "needles-encrypted")
 # Scalars shorter than this are not in the refusal set: "1" or "ok" would match any message.
 MIN_SCALAR = 4
-MAX_WINDOW = 6  # the most words a multi-token scalar can have and still be found
-_TOKEN = re.compile(r"[\w.@+:/-]+")
+# Only a line this long is read as a hex secret; a short hex-looking marker stays text.
+MIN_HEX = 32
+_WORD = re.compile(r"\w+")
 _SALT_BYTES = 16
 
 
@@ -103,7 +104,7 @@ def read_needles(text: str) -> tuple[bytes, ...]:
         if not line:
             continue
         found.append(line.encode("utf-8"))
-        if len(line) % 2 == 0 and re.fullmatch(r"[0-9a-fA-F]+", line):
+        if len(line) >= MIN_HEX and len(line) % 2 == 0 and re.fullmatch(r"[0-9a-fA-F]+", line):
             found.append(bytes.fromhex(line))
     return tuple(found)
 
@@ -126,8 +127,25 @@ def canonical(value: object) -> str:
     return " ".join(unicodedata.normalize("NFC", str(value)).split())
 
 
+def words(text: str) -> list[str]:
+    """The one tokenizer for both sides of the refusal set: case-folded runs of word characters.
+
+    Punctuation, spacing and case never decide a match, so `O'Brien`, `Smith, John` and
+    `(555) 123-4567` are found however a message wraps them.
+    """
+    return _WORD.findall(unicodedata.normalize("NFC", text).casefold())
+
+
+def _forms(value: object) -> list[str]:
+    """Every text form a scalar can take. A datetime also appears with a space for the `T`."""
+    form = canonical(value)
+    if isinstance(value, datetime.datetime):
+        return [form, form.replace("T", " ", 1)]
+    return [form]
+
+
 class RefusalSet:
-    """Salted hashes of canonical scalars. The values themselves are not kept."""
+    """Salted hashes of the token forms of scalars. The values themselves are not kept."""
 
     def __init__(self, salt: bytes, digests: frozenset[str], lengths: frozenset[int]) -> None:
         self.salt, self._digests, self._lengths = salt, digests, lengths
@@ -135,25 +153,32 @@ class RefusalSet:
     @classmethod
     def build(cls, scalars: Iterable[object], salt: bytes | None = None) -> RefusalSet:
         salt = salt if salt is not None else secrets.token_bytes(_SALT_BYTES)
-        forms = {c for v in scalars if v is not None and len(c := canonical(v)) >= MIN_SCALAR}
-        lengths = frozenset(len(f.split(" ")) for f in forms)
-        return cls(salt, frozenset(cls._digest(salt, f) for f in forms), lengths)
+        forms = set()
+        for value in scalars:
+            for form in _forms(value) if value is not None else ():
+                tokens = words(form)
+                if len("".join(tokens)) >= MIN_SCALAR:
+                    forms.add(tuple(tokens))
+        lengths = frozenset(len(t) for t in forms)
+        return cls(salt, frozenset(cls._digest(salt, " ".join(t)) for t in forms), lengths)
 
     @staticmethod
     def _digest(salt: bytes, form: str) -> str:
         return hashlib.sha256(salt + form.encode("utf-8")).hexdigest()
 
     def contains(self, scalar: object) -> bool:
-        form = canonical(scalar)
-        return len(form) >= MIN_SCALAR and self._digest(self.salt, form) in self._digests
+        return any(self.found_in(form) for form in _forms(scalar))
 
     def found_in(self, text: str) -> bool:
-        """True when any run of up to `MAX_WINDOW` words in `text` is a set member."""
-        words = [w.strip(".,:;") for w in _TOKEN.findall(text)]
-        for i in range(len(words)):
+        """True when any run of tokens in `text` is a set member. Windows count tokens."""
+        tokens = words(text)
+        for i in range(len(tokens)):
             for size in self._lengths:
-                window = words[i : i + size]
-                if len(window) == size and self.contains(" ".join(window)):
+                window = tokens[i : i + size]
+                if (
+                    len(window) == size
+                    and self._digest(self.salt, " ".join(window)) in self._digests
+                ):
                     return True
         return False
 
@@ -182,6 +207,8 @@ def sweep(
     """
     if not captures or not any(blob for _, blob in captures.values()):
         raise NothingRead("no capture held any bytes")
+    if not needles and refusal is None:
+        raise NothingRead("no needles and no refusal set: a clean result would mean nothing")
     leaks: list[Leak] = []
     for name, (surface, blob) in captures.items():
         if surface not in registry.surfaces:

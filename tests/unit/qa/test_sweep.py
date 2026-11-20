@@ -107,9 +107,14 @@ def test_the_marker_kept_by_a_replacing_strategy_on_stdout_is_a_leak() -> None:
     assert leaks == [sweep.Leak("stdout", "o", "n0")]
 
 
-def test_a_hex_secret_also_matches_as_raw_bytes() -> None:
-    needles = sweep.read_needles("00ff10ab\n")
-    assert sweep.hits(bytes.fromhex("00ff10ab"), needles) == [1]
+def test_a_long_hex_secret_also_matches_as_raw_bytes() -> None:
+    secret = "00ff10ab" * 6  # 48 hex characters
+    needles = sweep.read_needles(secret + "\n")
+    assert sweep.hits(bytes.fromhex(secret), needles) == [1]
+
+
+def test_a_short_hex_looking_marker_is_not_decoded() -> None:
+    assert len(sweep.read_needles("00ff10ab\ndeadbeef\n")) == 2
 
 
 def test_a_sweep_that_read_nothing_is_not_a_pass() -> None:
@@ -142,3 +147,52 @@ def test_cli_exit_meanings(tmp_path: Path) -> None:
     empty = tmp_path / "empty.txt"
     empty.write_text("")
     assert sweep.main(["--needles", str(needles), str(empty)]) == 2  # read nothing
+    none = tmp_path / "none.txt"
+    none.write_text("")
+    assert sweep.main(["--needles", str(none), str(hit)]) == 2  # no needles can never pass
+
+
+PUNCTUATED = [
+    ("O'Brien", "customer O'Brien refused", "customer o'brien refused"),
+    ("Smith, John", "who: Smith, John.", "who: Smith John"),
+    ("(555) 123-4567", "call (555) 123-4567 now", "call 555-123-4567"),
+    ("Acme Inc.", "vendor Acme Inc. failed", "vendor Acme Inc failed"),
+    ("$1,234.50", "total $1,234.50 bad", "total 1234.50 bad"),
+    ("Zelda Quinn", "name zelda quinn", "NAME ZELDA QUINN"),
+    (datetime.datetime(2020, 1, 2, 10), "at 2020-01-02T10:00:00", "at 2020-01-02 10:00:00"),
+]
+
+
+@pytest.mark.parametrize(("scalar", "text", "variant"), PUNCTUATED)
+def test_the_refusal_set_sees_a_scalar_through_punctuation_case_and_separators(
+    scalar: object, text: str, variant: str
+) -> None:
+    refusal = sweep.RefusalSet.build([scalar])
+    assert refusal.found_in(text), text
+    assert sweep.sweep({"c": ("stderr", text.encode())}, NEEDLES, REGISTRY, refusal)
+    if not isinstance(scalar, datetime.datetime) and scalar != "$1,234.50":
+        assert refusal.found_in(variant), variant
+    assert not refusal.found_in("nothing here, 12 rows")
+
+
+def test_a_datetime_matches_with_either_separator() -> None:
+    refusal = sweep.RefusalSet.build([datetime.datetime(2020, 1, 2, 10)])
+    assert refusal.found_in("2020-01-02 10:00:00") and refusal.found_in("2020-01-02T10:00:00")
+
+
+def test_domain_and_replace_compare_canonical_forms() -> None:
+    src = [{"c": 1234}, {"c": "x"}]
+    assert [
+        v.kind for v in check_cells("t", {"c": Rule("hash")}, src, [{"c": "1234"}, {"c": "y"}])
+    ] == ["same-row"]
+    other = [{"c": 5678}, {"c": 1234}]
+    found = check_cells("t", {"c": Rule("hash")}, other, [{"c": "9"}, {"c": "5678"}])
+    assert [v.kind for v in found] == ["exact-cell"]
+    assert check_cells("t", {"c": Rule("fpe")}, [{"c": 7.0}], [{"c": "7"}])
+
+
+def test_a_text_redact_rule_without_matching_entities_is_refused() -> None:
+    src = [{"c": "hi Zelda"}, {"c": "hi Omar"}]
+    for rule in (Rule("text_redact"), Rule("text_redact", entities=(("Zelda",),))):
+        with pytest.raises(i1_leaks.UnknownStrategy):
+            check_cells("t", {"c": rule}, src, src)

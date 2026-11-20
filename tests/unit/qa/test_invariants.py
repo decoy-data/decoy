@@ -47,6 +47,11 @@ def test_fail_policy_needs_a_refusal_for_a_source_orphan() -> None:
     assert run_fk("fail", PARENTS, src, [], [], refused=True) == []
 
 
+def test_fail_policy_refusing_a_clean_source_is_wrong() -> None:
+    clean = children(("A", 1))
+    assert [v.kind for v in run_fk("fail", PARENTS, clean, [], [], refused=True)] == ["refused"]
+
+
 def test_fail_policy_refusing_a_clean_source_is_wrong_for_remap() -> None:
     assert [v.kind for v in run_fk("remap", PARENTS, children(("A", 1)), [], [], refused=True)] == [
         "refused"

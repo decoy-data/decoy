@@ -49,16 +49,13 @@ def check_fk(
     if policy not in POLICIES:
         raise ValueError(f"unknown orphan policy {policy!r}")
     src = set(orphans(source_parents, source_children, parent_cols, child_cols))
-    if policy == "fail" and src:
-        return (
-            [] if refused else [Violation("I2", "output-data-files", f"{table}/-/-", "not-refused")]
-        )
-    if refused:
-        return (
-            []
-            if policy == "fail"
-            else [Violation("I2", "output-data-files", f"{table}/-/-", "refused")]
-        )
+    if policy == "fail":
+        if src and not refused:
+            return [Violation("I2", "output-data-files", f"{table}/-/-", "not-refused")]
+        if refused:
+            return [] if src else [Violation("I2", "output-data-files", f"{table}/-/-", "refused")]
+    elif refused:
+        return [Violation("I2", "output-data-files", f"{table}/-/-", "refused")]
     out = set(orphans(out_parents, out_children, parent_cols, child_cols))
     if policy == "preserve":
         if len(source_children) != len(out_children):

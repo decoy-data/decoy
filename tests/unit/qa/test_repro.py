@@ -28,12 +28,12 @@ def test_a_replayed_exit_without_the_witness_fails() -> None:
 
 def test_a_witness_with_the_wrong_nonce_fails() -> None:
     cmd = [sys.executable, "-c", "import os;open(os.environ['QA_REPRO_WITNESS'],'w').write('x');"]
-    assert repro.run(cmd, 0, "x").reason == "not-run"
+    assert repro.run(cmd, 0, "x-signature").reason == "not-run"
 
 
 def test_the_exit_and_the_signature_must_both_recur() -> None:
-    cmd = py("sys.stderr.write('error: other\\n'); sys.exit(3)")
-    assert repro.run(cmd, 4, "other").reason == "wrong-exit"
+    cmd = py("sys.stderr.write('error: other-thing\\n'); sys.exit(3)")
+    assert repro.run(cmd, 4, "other-thing").reason == "wrong-exit"
     assert repro.run(cmd, 3, "disk full").reason == "signature-missing"
 
 
@@ -48,15 +48,28 @@ def test_each_run_gets_a_fresh_decoy_home_and_a_clean_environment(
 
 
 def test_a_stall_is_reported_not_hung() -> None:
-    assert repro.run(py("import time; time.sleep(30)"), 0, "x", timeout=0.5).reason == "stalled"
+    assert (
+        repro.run(py("import time; time.sleep(30)"), 0, "x-signature", timeout=0.5).reason
+        == "stalled"
+    )
 
 
 def test_no_command_or_no_signature_is_not_a_repro() -> None:
-    assert repro.run([], 0, "x").reason == "not-run"
+    assert repro.run([], 0, "x-signature").reason == "not-run"
     assert repro.run(py("pass"), 0, "").reason == "not-run"
 
 
 def test_cli_exit_follows_the_verdict() -> None:
-    cmd = py("sys.stderr.write('boom'); sys.exit(3)")
-    assert repro.main(["--recorded-exit", "3", "--signature", "boom", "--", *cmd]) == 0
-    assert repro.main(["--recorded-exit", "2", "--signature", "boom", "--", *cmd]) == 1
+    cmd = py("sys.stderr.write('boom-failure'); sys.exit(3)")
+    assert repro.main(["--recorded-exit", "3", "--signature", "boom-failure", "--", *cmd]) == 0
+    assert repro.main(["--recorded-exit", "2", "--signature", "boom-failure", "--", *cmd]) == 1
+
+
+def test_a_short_signature_is_refused() -> None:
+    cmd = py("sys.stderr.write('error: e'); sys.exit(3)")
+    assert repro.run(cmd, 3, "error").reason == "not-run"
+
+
+def test_a_grandchild_holding_the_pipe_cannot_hang_the_runner() -> None:
+    body = "import subprocess; subprocess.Popen(['sleep','30']); import time; time.sleep(30)"
+    assert repro.run(py(body), 0, "x-signature", timeout=0.5).reason == "stalled"

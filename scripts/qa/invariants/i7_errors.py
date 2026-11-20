@@ -22,12 +22,14 @@ def check_text(
     input_cells: Iterable[object] = (),
 ) -> list[Violation]:
     """`texts` maps a surface id (`stdout`, `stderr`, `logs`) to its text."""
-    cells = {c for v in input_cells if v is not None and len(c := canonical(v)) >= MIN_SCALAR}
+    cells = {
+        c for v in input_cells if v is not None and len(c := canonical(v).casefold()) >= MIN_SCALAR
+    }
     found: list[Violation] = []
     for surface, text in texts.items():
         found += [Violation("I7", surface, f"n{i}", "needle") for i in hits(text.encode(), needles)]
         if refusal is not None and refusal.found_in(text):
             found.append(Violation("I7", surface, "s", "scalar"))
-        if any(c in text for c in cells):
+        if any(c in text.casefold() for c in cells):
             found.append(Violation("I7", surface, "c", "input-cell"))
     return found
