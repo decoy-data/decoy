@@ -1,31 +1,33 @@
 #!/usr/bin/env bash
-# Owner-run, once per node: create the QA tester OS users (QA-BETA plan 5.1). Safe to re-run.
+# Owner-run, once per node: create the QA tester OS users (QA-BETA plan 5.1 and 10a). Safe to re-run.
 #
-# Layout per tester, with H = <home root>/qatester-<slug>:
-#   H            root-owned, group qatesters, mode 0750 (the tester cannot swap anything in it)
-#   H/bundle     the installed release bundle, root-owned, read-only for the tester
-#   H/docs       a copy of the public docs, root-owned, read-only for the tester
-#   H/corpus     a link to the shared corpus folder (group qatesters, no access for other)
-#   H/work       the tester's own HOME and workspace, mode 0700
-#   H/secret     a random test secret file (mode 0600, never a real secret), for P3
-#   H/fault      a size-capped volume for the P5 disk-full cell (created for p5 only)
+# Root rules (plan 10a):
+#   1. Root never writes, chmods, chowns or touches a path inside a directory a tester can write.
+#   2. Every root file-system change goes through qa_root_dir, qa_stage_swap or qa_new_file.
+#      A static test fails on a raw mkdir, chown, chmod, cp, touch, mv or redirect outside them.
+#   3. Sources live under <qa>/src/ (root-owned, not group or world writable), where <qa> is
+#      /var/lib/decoy-qa. Create that folder and put the bundle, docs and corpus trees in it first.
+#
+# Per tester, with <t> = <qa>/testers/qatester-<slug> (group qatester-<slug>, plus qatesters):
+#   <t>                       root:<user> 0750
+#   <t>/bundle, <t>/docs      root:<user>, files 0640 or 0750, replaced as whole trees each run
+#   <t>/secret/ci-secret      p3 only: random test secret, never a real one, root:<user> 0640
+#   <t>/fault, <t>/fault.ok   p5 only: size-capped volume for the disk-full cell, and its marker
+#   <t>/img/fault.dmg         macOS p5 only: the image file, root-owned, mode 0600
+#   <t>/work                  the tester's HOME, <user> 0700, made once; a rerun only checks it
+#   <t>/work/inbox            made by the tester, never by this script
+# <qa>/corpus is root:qatesters 0750 and is replaced as a whole tree each run.
+#
 # The users cannot read repository checkouts: keep checkouts mode 0700 under your own account.
-# The launcher never creates users.
-#
-# Default is a dry run that prints the plan. Pass --apply to change the node. Needs root.
-# Never run this from a test. The tests set QA_SETUP_TEST_ROOT, which keeps every path under that
-# folder and skips users, groups, chown, mounts and the root check; modes and trees still apply.
+# The launcher never creates users. Default is a dry run that prints the plan. Pass --apply as
+# root to change the node. Never run this from a test. The tests set QA_SETUP_TEST_ROOT, which
+# moves <qa> under that folder and skips users, groups, chown, mounts and the root check.
 #
 #   sudo scripts/qa/setup-testers.sh --bundle DIR --docs DIR --corpus DIR [--apply]
-#
-# --bundle and --docs are existing absolute folders. --corpus is a folder this script owns: it
-# must not exist, or be empty, or hold the marker file this script wrote. Fill it after setup
-# and run setup again to fix its modes.
 set -euo pipefail
 
 SLUGS="p1 p2 p3 p4 p5 checklist docwalk"
 GROUP=qatesters
-MARKER=.decoy-qa-corpus
 APPLY=0
 BUNDLE=""
 DOCS=""
@@ -35,7 +37,7 @@ TEST_ROOT="${QA_SETUP_TEST_ROOT:-}"
 die() { echo "error: $*" >&2; exit 2; }
 
 usage() {
-  sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
   exit 2
 }
 
@@ -50,46 +52,68 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-[ -n "$BUNDLE" ] && [ -n "$DOCS" ] && [ -n "$CORPUS" ] || usage
+if [ -z "$BUNDLE" ] || [ -z "$DOCS" ] || [ -z "$CORPUS" ]; then usage; fi
 
 OS="$(uname -s)"
-case "$OS" in
-  Linux) HOME_ROOT=/home ;;
-  Darwin) HOME_ROOT=/Users ;;
-  *) die "unsupported system: $OS" ;;
-esac
+case "$OS" in Linux | Darwin) ;; *) die "unsupported system: $OS" ;; esac
 if [ -n "$TEST_ROOT" ]; then
-  HOME_ROOT="$TEST_ROOT/home"
+  QA_ROOT="${TEST_ROOT%/}/var/lib/decoy-qa"
+  OWNER_UID="$(id -u)"
+  ROOT_OWNER="$(id -un)"
+  ROOT_GROUP="$(id -gn)"
   APPLY=1
-  mkdir -p "$HOME_ROOT"
-elif [ "$APPLY" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then
-  die "--apply needs root"
+else
+  QA_ROOT=/var/lib/decoy-qa
+  OWNER_UID=0
+  ROOT_OWNER=root
+  ROOT_GROUP="$(id -gn 0)"
+  if [ "$APPLY" -eq 1 ] && [ "$(id -u)" -ne 0 ]; then die "--apply needs root"; fi
 fi
 
-# Run a command. A dry run exits before the first change, so this always runs.
-run() { "$@"; }
 # Run a command that needs real accounts. Skipped in the test mode.
 real() {
   if [ -n "$TEST_ROOT" ]; then return 0; fi
-  run "$@"
+  "$@"
 }
+
+# The account name a path should belong to: the real tester, or the current user in a test.
+owner_name() { if [ -n "$TEST_ROOT" ]; then echo "$ROOT_OWNER"; else echo "$1"; fi; }
 
 canon_dir() { (cd -P -- "$1" 2> /dev/null && pwd -P); }
 
-# A tree root must be an absolute, normalized path with no symlink in it and at least 3 levels.
-check_root() {
-  local name="$1" path="${2%/}"
+# True when a symlink resolves to a path inside $1, following the whole chain.
+link_inside() {
+  local root="$1" l="$2" hops=0 t d
+  while [ -L "$l" ]; do
+    hops=$((hops + 1))
+    [ "$hops" -le 20 ] || return 1
+    t="$(readlink "$l")"
+    case "$t" in /*) l="$t" ;; *) l="$(dirname "$l")/$t" ;; esac
+    d="$(canon_dir "$(dirname "$l")")" || return 1
+    l="$d/$(basename "$l")"
+  done
+  case "$l/" in "$root"/*) return 0 ;; esac
+  return 1
+}
+
+# Rule 3: a source is a real folder under <qa>/src, QA-owned, and holds only safe entries.
+check_source() {
+  local name="$1" path="${2%/}" src_root="$QA_ROOT/src" l
   case "$path" in /*) ;; *) die "$name must be an absolute path" ;; esac
   case "$path/" in */../* | */./* | *//*) die "$name must be a normalized path" ;; esac
-  [ "$(printf '%s' "$path" | tr -cd / | wc -c | tr -d ' ')" -ge 3 ] || die "$name is too broad: $path"
   [ ! -L "$path" ] || die "$name is a symlink: $path"
-  if [ -e "$path" ]; then
-    [ -d "$path" ] || die "$name is not a folder: $path"
-    [ "$(canon_dir "$path")" = "$path" ] || die "$name has a symlink in its path: $path"
-  else
-    [ "$name" = corpus ] || die "$name does not exist: $path"
-    [ "$(canon_dir "$(dirname "$path")")" = "$(dirname "$path")" ] || die "$name has a symlink in its path: $path"
-  fi
+  [ -d "$path" ] || die "$name is not a folder: $path"
+  [ "$(canon_dir "$path")" = "$path" ] || die "$name has a symlink in its path: $path"
+  case "$path/" in "$src_root"/?*) ;; *) die "$name must be under $src_root/" ;; esac
+  [ ! -L "$src_root" ] && [ -d "$src_root" ] || die "$src_root is missing or a symlink"
+  [ -n "$(find "$src_root" -maxdepth 0 -user "$OWNER_UID")" ] || die "$src_root is not owned by the node owner"
+  [ -z "$(find "$src_root" -maxdepth 0 \( -perm -020 -o -perm -002 \))" ] || die "$src_root is group or world writable"
+  [ -z "$(find "$path" ! -type d ! -type f ! -type l | head -1)" ] || die "$name holds a special file"
+  [ -z "$(find "$path" -type f -links +1 | head -1)" ] || die "$name holds a file with more than one link"
+  [ "$(find "$path" | wc -l)" = "$(find "$path" -xdev | wc -l)" ] || die "$name crosses a filesystem"
+  while IFS= read -r l; do
+    link_inside "$path" "$l" || die "$name holds a symlink that points outside it"
+  done < <(find "$path" -type l)
 }
 
 no_overlap() {
@@ -100,145 +124,150 @@ no_overlap() {
 BUNDLE="${BUNDLE%/}"
 DOCS="${DOCS%/}"
 CORPUS="${CORPUS%/}"
-check_root bundle "$BUNDLE"
-check_root docs "$DOCS"
-check_root corpus "$CORPUS"
-HOME_ROOT="${HOME_ROOT%/}"
-for pair in "$BUNDLE $DOCS" "$BUNDLE $CORPUS" "$DOCS $CORPUS" "$BUNDLE $HOME_ROOT" "$DOCS $HOME_ROOT" "$CORPUS $HOME_ROOT"; do
-  # shellcheck disable=SC2086
-  no_overlap $pair
-done
+check_source bundle "$BUNDLE"
+check_source docs "$DOCS"
+check_source corpus "$CORPUS"
+no_overlap "$BUNDLE" "$DOCS"
+no_overlap "$BUNDLE" "$CORPUS"
+no_overlap "$DOCS" "$CORPUS"
 
-real_group() {
-  [ -z "$TEST_ROOT" ] || return 0
-  if [ "$OS" = Linux ]; then
-    getent group "$GROUP" > /dev/null || run groupadd "$GROUP"
+if [ "$APPLY" -eq 0 ]; then
+  echo "dry run: would set up these testers under $QA_ROOT/testers: $SLUGS"
+  echo "dry run: bundle $BUNDLE, docs $DOCS, corpus $CORPUS. Pass --apply as root to change this node."
+  exit 0
+fi
+
+# ---- The three functions below are the only places root changes the file system. ----
+
+# Make a root-owned folder. Refuse a symlink. With `once`, a folder that exists is only checked.
+qa_root_dir() {
+  local path="$1" owner="$2" group="$3" mode="$4" once="${5:-}"
+  [ ! -L "$path" ] || die "$path is a symlink"
+  if [ -e "$path" ]; then
+    [ -d "$path" ] || die "$path is not a folder"
+    if [ -n "$once" ]; then
+      [ -n "$(find "$path" -maxdepth 0 -user "$(owner_name "$owner")" -perm "$mode")" ] || die "$path has the wrong owner or mode"
+      return 0
+    fi
   else
-    dscl . -read "/Groups/$GROUP" > /dev/null 2>&1 || run dseditgroup -o create "$GROUP"
+    mkdir -m 0700 "$path"
+  fi
+  chmod "$mode" "$path"
+  real chown -h "$owner:$group" "$path"
+}
+
+# Copy a source tree into a fresh stage next to the target, lock it, then rename it over the target.
+qa_stage_swap() {
+  local src="$1" dest="$2" owner="$3" group="$4" stage
+  [ ! -L "$dest" ] || die "$dest is a symlink"
+  [ ! -e "$dest" ] || [ -d "$dest" ] || die "$dest is not a folder"
+  stage="$(mktemp -d "$dest.stage.XXXXXX")"
+  cp -RP "$src/." "$stage/"
+  real find "$stage" -xdev -exec chown -h "$owner:$group" {} +
+  chmod -R u=rwX,g=rX,o= "$stage"
+  if [ -e "$dest" ]; then mv "$dest" "$stage.old"; fi
+  mv "$stage" "$dest"
+  if [ -e "$stage.old" ]; then rm -rf "$stage.old"; fi
+}
+
+# Create a new file under a temporary name in a root-owned folder, then rename it into place.
+qa_new_file() {
+  local path="$1" owner="$2" group="$3" mode="$4" kind="$5" tmp
+  [ ! -L "$path" ] || die "$path is a symlink"
+  [ ! -e "$path" ] || [ -f "$path" ] || die "$path is not a file"
+  tmp="$(dirname "$path")/.new.$$.$(basename "$path")"
+  case "$kind" in
+    secret) (set -C; umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$tmp") ;;
+    empty) (set -C; umask 077; : > "$tmp") ;;
+    image) (umask 077; hdiutil create -size 64m -fs APFS -volname qa-fault "$tmp" > /dev/null) ;;
+    *) die "unknown file kind" ;;
+  esac
+  chmod "$mode" "$tmp"
+  real chown -h "$owner:$group" "$tmp"
+  mv -f "$tmp" "$path"
+}
+
+# ---- Accounts ----
+
+group_gid() {
+  if [ "$OS" = Linux ]; then getent group "$1" | cut -d: -f3
+  else dscl . -read "/Groups/$1" PrimaryGroupID | awk '{print $2}'; fi
+}
+
+ensure_group() {
+  if [ "$OS" = Linux ]; then
+    getent group "$1" > /dev/null || groupadd "$1"
+  else
+    dscl . -read "/Groups/$1" > /dev/null 2>&1 || dseditgroup -o create "$1"
   fi
 }
 
 # Create the account, or refuse when an existing one has the wrong home or group.
 ensure_user() {
-  local user="$1" home="$2"
-  [ -z "$TEST_ROOT" ] || return 0
+  local user="$1" home="$2" have_home have_gid
   if id "$user" > /dev/null 2>&1; then
-    local have_home have_gid want_gid
     if [ "$OS" = Linux ]; then
       have_home="$(getent passwd "$user" | cut -d: -f6)"
       have_gid="$(id -g "$user")"
-      want_gid="$(getent group "$GROUP" | cut -d: -f3)"
-      [ "$have_gid" = "$want_gid" ] || die "$user exists with a different primary group"
+      id -nG "$user" | tr ' ' '\n' | grep -qx "$GROUP" || die "$user is not in group $GROUP"
     else
       have_home="$(dscl . -read "/Users/$user" NFSHomeDirectory | awk '{print $2}')"
+      have_gid="$(dscl . -read "/Users/$user" PrimaryGroupID | awk '{print $2}')"
       dseditgroup -o checkmember -m "$user" "$GROUP" > /dev/null 2>&1 || die "$user is not in group $GROUP"
     fi
     [ "$have_home" = "$home" ] || die "$user exists with a different home: $have_home"
+    [ "$have_gid" = "$(group_gid "$user")" ] || die "$user exists with a different primary group"
   elif [ "$OS" = Linux ]; then
-    run useradd --create-home --home-dir "$home" --shell /bin/bash --gid "$GROUP" "$user"
+    useradd --no-create-home --home-dir "$home" --shell /bin/bash --gid "$user" --groups "$GROUP" "$user"
   else
-    run sysadminctl -addUser "$user" -home "$home" -shell /bin/bash -password -
-    run dseditgroup -o edit -a "$user" -t user "$GROUP"
+    sysadminctl -addUser "$user" -home "$home" -shell /bin/bash -GID "$(group_gid "$user")" -password -
+    dseditgroup -o edit -a "$user" -t user "$GROUP"
   fi
-}
-
-# Replace $2 with the complete tree staged at $1, by renames only.
-swap_in() {
-  local stage="$1" dest="$2" old="$1.old"
-  if [ -e "$dest" ] || [ -L "$dest" ]; then
-    [ -d "$dest" ] && [ ! -L "$dest" ] || die "$dest is not a real folder"
-    mv "$dest" "$old"
-  fi
-  mv "$stage" "$dest"
-  [ ! -d "$old" ] || [ -L "$old" ] || rm -rf "$old"
-}
-
-# Copy a source tree into a fresh root-made staging folder, lock it, then swap it in.
-install_tree() {
-  local src="$1" home="$2" name="$3" stage
-  [ ! -L "$home/$name" ] || die "$home/$name is a symlink"
-  stage="$(mktemp -d "$home/.stage.XXXXXX")"
-  cp -RP "$src/." "$stage/"
-  real find "$stage" -xdev -exec chown -h "root:$GROUP" {} +
-  chmod -R go-w,o-rwx "$stage"
-  chmod -R g+rX "$stage"
-  swap_in "$stage" "$home/$name"
-}
-
-make_secret() {
-  local dir="$1/secret" file="$1/secret/ci-secret"
-  [ ! -L "$dir" ] || die "$dir is a symlink"
-  mkdir -p "$dir"
-  chmod 0700 "$dir"
-  if [ ! -e "$file" ]; then
-    (umask 077 && head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$file")
-  fi
-  [ ! -L "$file" ] || die "$file is a symlink"
-  chmod 0600 "$file"
-  real chown -h "$2" "$dir" "$file"
 }
 
 # A size-capped volume for the P5 disk-full cell, so the host filesystem is never filled.
 make_fault_volume() {
-  local user="$1" home="$2"
-  [ -z "$TEST_ROOT" ] || return 0
-  [ ! -L "$home/fault" ] || die "$home/fault is a symlink"
-  mkdir -p "$home/fault"
+  local user="$1" t="$2" fresh=0
+  qa_root_dir "$t/fault" root "$user" 0750
   if [ "$OS" = Linux ]; then
-    mountpoint -q "$home/fault" || run mount -t tmpfs -o "size=64m,mode=0700,uid=$user" tmpfs "$home/fault"
-    grep -qF " $home/fault " /etc/fstab || run sh -c "echo 'tmpfs $home/fault tmpfs size=64m,mode=0700,uid=$user 0 0' >> /etc/fstab"
-  else
-    [ -e "$home/fault.dmg" ] || run hdiutil create -size 64m -fs APFS -volname "qa-fault" -o "$home/fault.dmg"
-    mount | grep -qF " on $home/fault " || run hdiutil attach -nobrowse -mountpoint "$home/fault" "$home/fault.dmg"
-  fi
-  run chown -h "$user" "$home/fault"
-  run touch "$home/fault/.qa-bounded"
-}
-
-fix_corpus() {
-  if [ -e "$CORPUS" ]; then
-    if [ ! -e "$CORPUS/$MARKER" ] && [ -n "$(ls -A "$CORPUS")" ]; then
-      die "corpus folder exists, is not empty and was not made by this script: $CORPUS"
+    if ! mountpoint -q "$t/fault"; then
+      mount -t tmpfs -o "size=64m,mode=0700,uid=$(id -u "$user"),gid=$(id -g "$user")" tmpfs "$t/fault"
     fi
   else
-    mkdir "$CORPUS"
+    qa_root_dir "$t/img" root "$user" 0700
+    [ -e "$t/img/fault.dmg" ] || qa_new_file "$t/img/fault.dmg" root root 0600 image
+    if ! mount | grep -qF " on $t/fault "; then
+      hdiutil attach -nobrowse -mountpoint "$t/fault" "$t/img/fault.dmg" > /dev/null
+      fresh=1
+    fi
+    if [ "$fresh" -eq 1 ]; then qa_root_dir "$t/fault" "$user" "$user" 0700; fi
   fi
-  : > "$CORPUS/$MARKER"
-  real chgrp -R "$GROUP" "$CORPUS"
-  # The tester group may read. Nobody else has any access.
-  chmod -R o-rwx,g+rX,g-w "$CORPUS"
-  chmod 0750 "$CORPUS"
+  qa_new_file "$t/fault.ok" root root 0644 empty
 }
 
-if [ "$APPLY" -eq 0 ]; then
-  echo "dry run: would set up these testers under $HOME_ROOT: $SLUGS"
-  echo "dry run: bundle $BUNDLE, docs $DOCS, corpus $CORPUS. Pass --apply as root to change this node."
-  exit 0
+if [ -z "$TEST_ROOT" ]; then ensure_group "$GROUP"; fi
+qa_root_dir "$QA_ROOT/testers" "$ROOT_OWNER" "$ROOT_GROUP" 0755
+if [ -z "$TEST_ROOT" ]; then
+  qa_stage_swap "$CORPUS" "$QA_ROOT/corpus" root "$GROUP"
+else
+  qa_stage_swap "$CORPUS" "$QA_ROOT/corpus" "$ROOT_OWNER" "$ROOT_GROUP"
 fi
-
-real_group
-fix_corpus
 
 for slug in $SLUGS; do
   user="qatester-$slug"
-  home="$HOME_ROOT/$user"
-  [ ! -L "$home" ] || die "$home is a symlink"
-  ensure_user "$user" "$home"
-  if [ -n "$TEST_ROOT" ]; then mkdir -p "$home"; fi
-  [ -d "$home" ] || die "$home is missing"
-  real chown "root:$GROUP" "$home"
-  chmod 0750 "$home"
-  install_tree "$BUNDLE" "$home" bundle
-  install_tree "$DOCS" "$home" docs
-  [ ! -e "$home/corpus" ] || [ -L "$home/corpus" ] || die "$home/corpus is not a link"
-  rm -f "$home/corpus"
-  ln -s "$CORPUS" "$home/corpus"
-  [ ! -L "$home/work" ] || die "$home/work is a symlink"
-  mkdir -p "$home/work"
-  real chown -h "$user" "$home/work"
-  chmod 0700 "$home/work"
-  make_secret "$home" "$user"
-  [ "$slug" != p5 ] || make_fault_volume "$user" "$home"
+  t="$QA_ROOT/testers/$user"
+  [ -n "$TEST_ROOT" ] || ensure_group "$user"
+  [ -n "$TEST_ROOT" ] || ensure_user "$user" "$t"
+  if [ -n "$TEST_ROOT" ]; then grp="$ROOT_GROUP"; else grp="$user"; fi
+  qa_root_dir "$t" "$ROOT_OWNER" "$grp" 0750
+  qa_stage_swap "$BUNDLE" "$t/bundle" "$ROOT_OWNER" "$grp"
+  qa_stage_swap "$DOCS" "$t/docs" "$ROOT_OWNER" "$grp"
+  qa_root_dir "$t/work" "$user" "$grp" 0700 once
+  if [ "$slug" = p3 ]; then
+    qa_root_dir "$t/secret" "$ROOT_OWNER" "$grp" 0750
+    qa_new_file "$t/secret/ci-secret" "$ROOT_OWNER" "$grp" 0640 secret
+  fi
+  if [ "$slug" = p5 ] && [ -z "$TEST_ROOT" ]; then make_fault_volume "$user" "$t"; fi
 done
 
 echo "done. Run the S3 probes before the first pass."
