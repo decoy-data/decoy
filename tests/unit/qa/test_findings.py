@@ -19,7 +19,7 @@ REFUSAL = sweep.RefusalSet.build(
 
 def record(**over: object) -> dict[str, object]:
     base: dict[str, object] = {
-        "id": "t1-001", "layer": "L1", "persona": "", "group": "RUN", "platform": "linux-x86_64",
+        "id": "t1-001", "layer": "L1", "persona": "", "group": "run", "platform": "linux-x86_64",
         "cli_version": "1.0.0", "engine_version": "1.0.0", "bundle_digest": "sha256:ab",
         "corpus_item": "single-csv-s", "command": "decoy run shop", "config": "values removed",
         "expected": "docs/cli-reference.md:108", "actual": "output differs", "exit": 1,
@@ -28,8 +28,18 @@ def record(**over: object) -> dict[str, object]:
     return base | over
 
 
+def _write(
+    root: Path, pass_id: str, rec: dict[str, object], needles, refusal, *, tester: str = "t1", **kw
+) -> Path:
+    """Split a full record into the tester's candidate and the launcher's context, then write."""
+    names = findings.CONTEXT_FIELDS
+    candidate = {k: v for k, v in rec.items() if k not in names}
+    context = findings.HarnessContext(tester=tester, **{k: rec[k] for k in names})  # type: ignore[arg-type]
+    return findings.write(root, pass_id, candidate, needles, refusal, context=context, **kw)
+
+
 def put(tmp_path: Path, rec: dict[str, object], **kw) -> Path:
-    return findings.write(tmp_path, "pass-1", rec, NEEDLES, REFUSAL, **kw)
+    return _write(tmp_path, "pass-1", rec, NEEDLES, REFUSAL, **kw)
 
 
 def test_a_clean_record_round_trips(tmp_path: Path) -> None:
@@ -76,14 +86,14 @@ SHORT_REFUSAL = sweep.RefusalSet.build(["Bob", "Ann", "O'Neil", "Zoë", 123, "F"
 @pytest.mark.parametrize("value", ["met Bob today", "Ann", "o'neil", "Zoe\u0308", "row 123"])
 def test_short_scalars_are_refused_in_a_record(tmp_path: Path, value: str) -> None:
     with pytest.raises(findings.Refused):
-        findings.write(tmp_path, "pass-1", record(actual=value), NEEDLES, SHORT_REFUSAL)
+        _write(tmp_path, "pass-1", record(actual=value), NEEDLES, SHORT_REFUSAL)
 
 
 def test_a_non_utf8_needle_is_found_in_an_artifact_byte_for_byte(tmp_path: Path) -> None:
     needles = (b"\xff\xfeSECRET\x80",)
     blob = b"before \xff\xfeSECRET\x80 after"
     with pytest.raises(findings.Refused):
-        findings.write(tmp_path, "pass-1", record(), needles, None, artifacts={"o.bin": blob})
+        _write(tmp_path, "pass-1", record(), needles, None, artifacts={"o.bin": blob})
     assert not (tmp_path / "pass-1").exists()
 
 
@@ -96,9 +106,12 @@ def test_an_attached_artifact_is_scanned_and_published(tmp_path: Path) -> None:
 
 
 def test_marker_text_in_a_coordinate_id_is_refused_even_without_a_needle(tmp_path: Path) -> None:
-    for rec in (record(id="qamark99-001"), record(coordinate="QAmark7")):
+    for rec, tester in (
+        (record(id="qamark99-001"), "qamark99"),
+        (record(coordinate="QAmark7"), "t1"),
+    ):
         with pytest.raises(findings.Refused, match="marker text"):
-            put(tmp_path, rec)
+            put(tmp_path, rec, tester=tester)
 
 
 def test_ids_are_tester_scoped_and_shaped(tmp_path: Path) -> None:
@@ -126,7 +139,7 @@ def toml_of(**over: object) -> str:
 
 def test_reader_version_rules() -> None:
     good = toml_of()
-    assert findings.read_record(good)["group"] == "RUN"
+    assert findings.read_record(good)["group"] == "run"
     for text in (
         good.replace("schema_version = 1\n", ""),
         good.replace("schema_version = 1", "schema_version = 2"),
@@ -166,7 +179,10 @@ def test_concurrent_same_id_writes_allow_one_complete_record(tmp_path: Path) -> 
     assert sorted(results) == ["lost"] * 7 + ["won"]
     final = findings.read_record((tmp_path / "pass-1" / "t1-001.toml").read_text())
     assert str(final["actual"]).startswith("attempt ")
-    assert [p.name for p in (tmp_path / "pass-1").iterdir()] == ["t1-001.toml"]
+    assert sorted(p.name for p in (tmp_path / "pass-1").iterdir()) == [
+        ".t1-001.bundle",
+        "t1-001.toml",
+    ]
 
 
 def test_an_interrupted_write_leaves_no_target_and_allows_one_retry(
@@ -188,7 +204,7 @@ def test_an_interrupted_write_leaves_no_target_and_allows_one_retry(
 # publish ------------------------------------------------------------------------------------
 def test_publish_writes_the_pass_record_and_notifies_with_counts_and_ids(tmp_path: Path) -> None:
     put(tmp_path, record())
-    put(tmp_path, record(id="t1-002", group="GEN"))
+    put(tmp_path, record(id="t1-002", group="generate"))
     for ident in ("t1-001", "t1-002"):
         findings.write_triage(tmp_path, "pass-1", ident, "v1")
     sent: list[str] = []
@@ -197,7 +213,7 @@ def test_publish_writes_the_pass_record_and_notifies_with_counts_and_ids(tmp_pat
         notify=sent.append, today=datetime.date(2026, 12, 1),
     )  # fmt: skip
     assert out.name == "2026-12-01-qa-beta-pass-1.md"
-    assert "| t1-002 | GEN | V1 | v1 |" in out.read_text()
+    assert "| t1-002 | generate | V1 | v1 |" in out.read_text()
     assert sent == ["QA-BETA pass pass-1: 2 findings. Ids: t1-001, t1-002"]
 
 
@@ -232,7 +248,7 @@ def test_the_triager_writes_a_verdict_once_and_publish_joins_it(tmp_path: Path) 
     with pytest.raises(findings.Refused):
         findings.write_triage(tmp_path, "pass-1", "t1-002", "Zelda Quinn")
     out = findings.publish(tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec")
-    assert "| t1-001 | RUN | V1 | v1 |" in out.read_text()
+    assert "| t1-001 | run | V1 | v1 |" in out.read_text()
 
 
 def test_an_artifact_cannot_pose_as_a_record_or_a_verdict(tmp_path: Path) -> None:
@@ -278,7 +294,8 @@ def test_the_record_is_written_last_so_it_marks_the_commit(
         findings, "publish_or_same", lambda t, d: (order.append(t.name), real(t, d))
     )
     put(tmp_path, record(), artifacts={"a.txt": b"one", "b.txt": b"two"})
-    assert order[-1] == "t1-001.toml" and set(order[:-1]) == {"t1-001.a.txt", "t1-001.b.txt"}
+    assert order[0] == ".t1-001.bundle" and order[-1] == "t1-001.toml"  # manifest first
+    assert set(order[1:-1]) == {"t1-001.a.txt", "t1-001.b.txt"}
 
 
 def test_a_retry_after_an_interruption_between_artifacts_and_record_succeeds(
@@ -426,7 +443,7 @@ def test_write_and_publish_treat_empty_input_sets_as_not_run(
     tmp_path: Path, refusal: sweep.RefusalSet | None
 ) -> None:
     with pytest.raises(sweep.NothingRead):
-        findings.write(tmp_path, "pass-1", record(), (), refusal)
+        _write(tmp_path, "pass-1", record(), (), refusal)
     assert not (tmp_path / "pass-1").exists()
     put(tmp_path, record())
     with pytest.raises(sweep.NothingRead):
@@ -473,9 +490,7 @@ def test_a_latin1_and_a_utf32_artifact_are_checked_too(tmp_path: Path) -> None:
         "id qamark0042".encode("utf-32"),
     ):
         with pytest.raises(findings.Refused):
-            findings.write(
-                tmp_path, "pass-1", record(), needles, refusal, artifacts={"o.txt": blob}
-            )
+            _write(tmp_path, "pass-1", record(), needles, refusal, artifacts={"o.txt": blob})
     assert not (tmp_path / "pass-1").exists()
 
 
@@ -486,21 +501,19 @@ def test_short_whole_tokens_are_refused_in_every_string_field(
     tmp_path: Path, field: str, value: str
 ) -> None:
     with pytest.raises(findings.Refused):
-        findings.write(tmp_path, "pass-1", record(**{field: value}), NEEDLES, SHORT_REFUSAL)
+        _write(tmp_path, "pass-1", record(**{field: value}), NEEDLES, SHORT_REFUSAL)
 
 
 @pytest.mark.parametrize("value", ["F", "CA", "0", "-1"])
 def test_short_whole_tokens_are_refused_in_artifacts(tmp_path: Path, value: str) -> None:
     for blob in (f"x {value} y".encode(), f"x {value} y".encode("utf-16")):
         with pytest.raises(findings.Refused):
-            findings.write(
-                tmp_path, "pass-1", record(), NEEDLES, SHORT_REFUSAL, artifacts={"a.txt": blob}
-            )
+            _write(tmp_path, "pass-1", record(), NEEDLES, SHORT_REFUSAL, artifacts={"a.txt": blob})
 
 
 @pytest.mark.parametrize("value", ["the CAT sat", "Fred left", "10 and 100", "item-1", "1.50"])
 def test_the_same_characters_inside_a_longer_word_are_accepted(tmp_path: Path, value: str) -> None:
-    findings.write(tmp_path, "pass-1", record(actual=value), NEEDLES, SHORT_REFUSAL)
+    _write(tmp_path, "pass-1", record(actual=value), NEEDLES, SHORT_REFUSAL)
 
 
 # V1-5: valid TOML for any text ---------------------------------------------------------------
@@ -540,8 +553,10 @@ def test_two_writers_of_one_id_with_different_artifact_names_leave_one_bundle(
     assert sorted(outcomes.values()) == ["lost", "won"]
     winner = next(n for n, v in outcomes.items() if v == "won")
     assert sorted(p.name for p in (tmp_path / "pass-1").iterdir()) == sorted(
-        ["t1-001.toml", f"t1-001.{winner}"]
+        ["t1-001.toml", f"t1-001.{winner}", ".t1-001.bundle"]
     )
+    manifest = (tmp_path / "pass-1" / ".t1-001.bundle").read_text()
+    assert manifest == f"{winner}\n"
 
 
 def test_a_retry_that_names_other_artifacts_than_a_killed_writer_is_refused(
@@ -564,20 +579,102 @@ def test_a_retry_that_names_other_artifacts_than_a_killed_writer_is_refused(
     put(tmp_path, record(), artifacts={"a.txt": b"one"})  # the same names finish it
 
 
-def test_duplicate_or_malformed_artifact_arguments_are_refused_by_the_cli(tmp_path: Path) -> None:
+def _cli_write(tmp_path: Path, *, context: bool = True, **over: object) -> list[str]:
+    """Argv for `write`: a candidate in an inbox folder and the launcher's context elsewhere."""
+    names = findings.CONTEXT_FIELDS
+    tmp_path.mkdir(exist_ok=True)
     needles, refusal = tmp_path / "n.txt", tmp_path / "r.json"
     needles.write_text("qamark0042\n")
     refusal.write_text(REFUSAL.dumps())
-    rec = tmp_path / "rec.toml"
-    rec.write_bytes(findings._render(record()))
-    (tmp_path / "x").write_text("one")
+    inbox = tmp_path / "inbox"
+    inbox.mkdir(exist_ok=True)
+    full = record()
+    rec = inbox / "rec.toml"
+    rec.write_bytes(findings._render({k: v for k, v in full.items() if k not in names}))
+    ctx = findings.HarnessContext(tester="t1", **{k: str(full[k]) for k in names})
+    ctx_file = tmp_path / "launcher" / "context.toml"
+    ctx_file.parent.mkdir(exist_ok=True)
+    ctx_file.write_bytes(ctx.dumps())
     base = ["write", "--root", str(tmp_path / "root"), "--pass", "pass-1", "--needles", str(needles),
-            "--refusal", str(refusal), "--record", str(rec), "--tester", "t1"]  # fmt: skip
+            "--refusal", str(refusal), "--record", str(rec)]  # fmt: skip
+    return [*base, "--context", str(ctx_file)] if context else base
+
+
+def test_duplicate_or_malformed_artifact_arguments_are_refused_by_the_cli(tmp_path: Path) -> None:
+    base = _cli_write(tmp_path)
+    (tmp_path / "x").write_text("one")
     x = str(tmp_path / "x")
     assert findings.main([*base, "--artifact", f"a.txt={x}", "--artifact", f"a.txt={x}"]) == 1
     assert findings.main([*base, "--artifact", "nameonly"]) == 1
     assert not (tmp_path / "root").exists()
     assert findings.main([*base, "--artifact", f"a.txt={x}"]) == 0
+
+
+# The structural fields come from the launcher's context, never from the candidate ----------------
+def test_the_cli_write_needs_a_context_file_outside_the_tester_folders(tmp_path: Path) -> None:
+    assert findings.main(_cli_write(tmp_path, context=False)) == 1
+    base = _cli_write(tmp_path)
+    inside = tmp_path / "inbox" / "context.toml"
+    inside.write_bytes(Path(base[base.index("--context") + 1]).read_bytes())
+    argv = [*base[:-1], str(inside)]
+    assert findings.main(argv) == 1  # a context the tester could have written
+    assert not (tmp_path / "root").exists()
+    assert findings.main(base) == 0
+
+
+def test_a_candidate_that_sets_a_structural_field_is_refused_and_context_fills_the_value(
+    tmp_path: Path,
+) -> None:
+    for field, value in (("group", "CA"), ("cli_version", "1.0.0"), ("platform", "linux-x86_64")):
+        candidate = {k: v for k, v in record().items() if k not in findings.CONTEXT_FIELDS}
+        context = findings.HarnessContext(
+            tester="t1", **{k: str(record()[k]) for k in findings.CONTEXT_FIELDS}
+        )
+        with pytest.raises(findings.Refused, match="only the harness"):
+            findings.write(
+                tmp_path, "pass-1", {**candidate, field: value}, NEEDLES, REFUSAL, context=context
+            )
+        assert not (tmp_path / "pass-1").exists()
+        # through the CLI the candidate file is refused as a file with an undefined field
+        argv = _cli_write(tmp_path / field)
+        rec = Path(argv[argv.index("--record") + 1])
+        rec.write_bytes(rec.read_bytes() + f'{field} = "{value}"\n'.encode())
+        assert findings.main(argv) == 1
+    published = put(tmp_path, record())
+    assert findings.read_record(published.read_text())["group"] == "run"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"), [("group", "CA"), ("group", "RUN"), ("platform", "windows-x86_64")]
+)
+def test_group_and_platform_are_closed_vocabularies(tmp_path: Path, field: str, value: str) -> None:
+    with pytest.raises(findings.Refused, match="grammar"):
+        put(tmp_path, record(**{field: value}))
+    for group in ("scan", "config", "mask", "generate", "run", "library", "release", "health"):
+        put(tmp_path / group, record(group=group))
+    for target in ("linux-x86_64", "linux-aarch64", "macos-arm64"):
+        put(tmp_path / target, record(platform=target))
+
+
+def test_a_refusal_set_value_cannot_reach_the_pass_record_through_a_structural_field(
+    tmp_path: Path,
+) -> None:
+    ca = sweep.RefusalSet.build(["CA"])
+    with pytest.raises(findings.Refused):
+        _write(tmp_path, "pass-1", record(group="CA"), NEEDLES, ca)
+
+
+def test_a_context_file_is_read_strictly(tmp_path: Path) -> None:
+    good = findings.HarnessContext(
+        tester="t1", **{k: str(record()[k]) for k in findings.CONTEXT_FIELDS}
+    ).dumps()
+    assert findings.read_context(good.decode()).tester == "t1"
+    for bad in (good.decode().replace("tester", "other"), good.decode() + "x = 1\n", "[[", ""):
+        if bad == good.decode() + "x = 1\n":
+            assert findings.read_context(bad).tester == "t1"  # minor fields are kept, like records
+            continue
+        with pytest.raises(findings.ReaderError):
+            findings.read_context(bad)
 
 
 # V1-7: triage integrity ----------------------------------------------------------------------
@@ -612,7 +709,7 @@ def test_publish_before_triage_is_refused_and_republishing_after_triage_works(
     again = findings.publish(
         tmp_path, "pass-1", NEEDLES, REFUSAL, records_dir=tmp_path / "rec", today=day
     )
-    assert out == again and "| t1-001 | RUN | V1 | confirmed |" in out.read_text()
+    assert out == again and "| t1-001 | run | V1 | confirmed |" in out.read_text()
 
 
 def test_verdict_writer_and_reader_share_one_descriptor() -> None:
@@ -641,18 +738,16 @@ def test_publish_refuses_a_malformed_stored_verdict(tmp_path: Path) -> None:
 
 
 # V1-8: tester is required at the submission entry point -------------------------------------
-def test_the_cli_write_requires_a_tester(tmp_path: Path) -> None:
-    needles, refusal, rec = tmp_path / "n.txt", tmp_path / "r.json", tmp_path / "rec.toml"
-    needles.write_text("qamark0042\n")
-    refusal.write_text(REFUSAL.dumps())
-    rec.write_bytes(findings._render(record()))
-    base = ["write", "--root", str(tmp_path / "root"), "--pass", "pass-1", "--needles", str(needles),
-            "--refusal", str(refusal), "--record", str(rec)]  # fmt: skip
-    assert findings.main(base) == 1
-    assert findings.main([*base, "--tester", ""]) == 1
-    assert findings.main([*base, "--tester", "t2"]) == 1  # another tester's id
+def test_the_tester_in_the_context_scopes_every_id(tmp_path: Path) -> None:
+    base = _cli_write(tmp_path)
+    ctx = Path(base[base.index("--context") + 1])
+    ctx.write_text(ctx.read_text().replace('tester = "t1"', 'tester = "t2"'))
+    assert findings.main(base) == 1  # the record's id is t1's
     assert not (tmp_path / "root").exists()
-    assert findings.main([*base, "--tester", "t1"]) == 0
+    ctx.write_text(ctx.read_text().replace('tester = "t2"', 'tester = ""'))
+    assert findings.main(base) == 1
+    ctx.write_text(ctx.read_text().replace('tester = ""', 'tester = "t1"'))
+    assert findings.main(base) == 0
 
 
 # Structural fields: typed metadata with a grammar, no refusal-set lookup -------------------------
@@ -663,20 +758,20 @@ def test_a_version_with_a_zero_is_accepted_when_zero_is_in_the_refusal_set(
     tmp_path: Path,
 ) -> None:
     assert ZERO.found_in("run 0 rows") and record()["cli_version"] == "1.0.0"
-    findings.write(tmp_path, "pass-1", record(), NEEDLES, ZERO)
+    _write(tmp_path, "pass-1", record(), NEEDLES, ZERO)
 
 
 @pytest.mark.parametrize(
     ("field", "value"),
     [("cli_version", "Bob"), ("engine_version", "1.0"), ("layer", "L9"), ("persona", "Zelda"),
-     ("group", "run"), ("platform", "Linux x86"), ("bundle_digest", "sha256:XYZ"),
+     ("group", "CA"), ("platform", "Linux x86"), ("bundle_digest", "sha256:XYZ"),
      ("corpus_item", "not-in-manifest"), ("proposed_tier", "V3"), ("cli_version", "0")],
 )  # fmt: skip
 def test_a_structural_field_that_does_not_fit_its_grammar_is_refused(
     tmp_path: Path, field: str, value: str
 ) -> None:
     with pytest.raises(findings.Refused, match="grammar"):
-        findings.write(tmp_path, "pass-1", record(**{field: value}), NEEDLES, ZERO)
+        _write(tmp_path, "pass-1", record(**{field: value}), NEEDLES, ZERO)
     with pytest.raises(findings.ReaderError):
         findings.read_record(findings._render(record(**{field: value})).decode())
 
@@ -685,22 +780,71 @@ def test_free_text_still_gets_the_full_lookup_and_needles_still_scan_structural_
     tmp_path: Path,
 ) -> None:
     with pytest.raises(findings.Refused):
-        findings.write(tmp_path, "pass-1", record(actual="saw 0 rows"), NEEDLES, ZERO)
+        _write(tmp_path, "pass-1", record(actual="saw 0 rows"), NEEDLES, ZERO)
     for field in ("command", "config", "expected"):
         with pytest.raises(findings.Refused):
-            findings.write(tmp_path, "pass-1", record(**{field: "a 1 b"}), NEEDLES, ZERO)
+            _write(tmp_path, "pass-1", record(**{field: "a 1 b"}), NEEDLES, ZERO)
     needle = sweep.read_needles("1.0.0\n")  # a needle that equals a structural value
     with pytest.raises(findings.Refused):
-        findings.write(tmp_path, "pass-1", record(), needle, ZERO)
+        _write(tmp_path, "pass-1", record(), needle, ZERO)
 
 
 def test_publish_with_numbers_in_the_refusal_set_is_not_blocked_by_counts_or_ids(
     tmp_path: Path,
 ) -> None:
-    findings.write(tmp_path, "pass-1", record(), NEEDLES, ZERO)
+    _write(tmp_path, "pass-1", record(), NEEDLES, ZERO)
     findings.write_triage(tmp_path, "pass-1", "t1-001", "v1")
     sent: list[str] = []
     findings.publish(
         tmp_path, "pass-1", NEEDLES, ZERO, records_dir=tmp_path / "rec", notify=sent.append
     )
     assert sent == ["QA-BETA pass pass-1: 1 findings. Ids: t1-001"]
+
+
+# V1-6 recovery: the manifest fixes the artifact-name set for the id -------------------------------
+def test_a_retry_with_fewer_artifacts_than_the_interrupted_write_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "pass-1"
+    real = findings.publish_or_same
+    seen: list[str] = []
+
+    def die_on_b(target: Path, data: bytes) -> bool:
+        if target.name == "t1-001.b.txt":
+            raise KeyboardInterrupt
+        seen.append(target.name)
+        return real(target, data)
+
+    with monkeypatch.context() as m:
+        m.setattr(findings, "publish_or_same", die_on_b)
+        with pytest.raises(KeyboardInterrupt):
+            put(tmp_path, record(), artifacts={"a.txt": b"one", "b.txt": b"two"})
+    assert "t1-001.a.txt" in seen and (folder / ".t1-001.bundle").read_text() == "a.txt\nb.txt\n"
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(), artifacts={"a.txt": b"one"})
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(), artifacts={"a.txt": b"one", "b.txt": b"two", "c.txt": b"x"})
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record())
+    assert not (folder / "t1-001.toml").exists()  # the record never committed
+    put(tmp_path, record(), artifacts={"a.txt": b"one", "b.txt": b"two"})  # the full set finishes
+    assert (folder / "t1-001.toml").exists() and (folder / "t1-001.b.txt").exists()
+
+
+def test_a_bundle_with_no_artifacts_also_fixes_its_set_to_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = io.publish_private_once
+
+    def die_on_record(target: Path, data: bytes) -> None:
+        if target.suffix == ".toml":
+            raise KeyboardInterrupt
+        real(target, data)
+
+    with monkeypatch.context() as m:
+        m.setattr(findings, "publish_private_once", die_on_record)
+        with pytest.raises(KeyboardInterrupt):
+            put(tmp_path, record())
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(), artifacts={"a.txt": b"one"})
+    put(tmp_path, record())

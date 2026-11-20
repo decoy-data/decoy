@@ -584,20 +584,50 @@ def test_a_closed_domain_strategy_refuses_a_value_outside_it_in_a_null_row(strat
     assert check_cells("t", {"c": rule}, before, after) == []
 
 
-def test_hash_refuses_another_rows_original_in_a_null_row_but_accepts_a_fresh_value() -> None:
+def test_a_null_row_must_stay_null_for_hash_even_with_a_fresh_value() -> None:
     rule = Rule("hash")
     before = [{"c": "alpha"}, {"c": None}, {"c": "gamma"}]
-    leak = [{"c": "h1"}, {"c": "gamma"}, {"c": "h3"}]
-    got = check_cells("t", {"c": rule}, before, leak)
-    assert [(v.coordinate, v.kind) for v in got] == [("t/c/1", "exact-cell")]
-    assert check_cells("t", {"c": rule}, before, [{"c": "h1"}, {"c": "h2"}, {"c": "h3"}]) == []
+    got = check_cells("t", {"c": rule}, before, [{"c": "h1"}, {"c": "gamma"}, {"c": "h3"}])
+    assert [(v.coordinate, v.kind) for v in got] == [("t/c/1", "null-row")]
+    got = check_cells("t", {"c": rule}, before, [{"c": "h1"}, {"c": "h2"}, {"c": "h3"}])
+    assert [(v.coordinate, v.kind) for v in got] == [("t/c/1", "null-row")]
     assert check_cells("t", {"c": rule}, before, [{"c": "h1"}, {"c": None}, {"c": "h3"}]) == []
 
 
-def test_truncate_and_text_redact_null_rows_are_checked_too() -> None:
-    got = check_cells("t", {"c": Rule("truncate", prefix=2)}, [{"c": None}], [{"c": "SECRET"}])
-    assert [v.kind for v in got] == ["truncate-extra"]
-    rule = Rule("text_redact", entities=(("Zelda",),))
-    assert [v.kind for v in check_cells("t", {"c": rule}, [{"c": None}], [{"c": "hi zelda"}])] == [
-        "entity"
-    ]
+@pytest.mark.parametrize(
+    ("rule", "invented"),
+    [
+        (Rule("date_shift", range=30), datetime.date(2020, 1, 2)),
+        (Rule("fpe"), "1234"),
+        (Rule("faker", pool=True), "Alice"),
+        (Rule("faker"), "Alice"),
+        (Rule("tokenize"), "tok-1"),
+        (Rule("redact"), "[REDACTED]"),
+        (Rule("truncate", prefix=2), "SE"),
+        (Rule("text_redact", entities=(("x",), (), ("y",))), "invented"),
+    ],
+)
+def test_every_other_strategy_keeps_a_null_row_null(rule: Rule, invented: object) -> None:
+    before: list[dict] = [{"c": _src(rule, 0)}, {"c": None}, {"c": _src(rule, 2)}]
+    ok = [{"c": "z0"}, {"c": None}, {"c": "z2"}]
+    if rule.strategy == "date_shift":
+        ok = [{"c": datetime.date(2020, 1, 11)}, {"c": None}, {"c": datetime.date(2020, 1, 13)}]
+    if rule.strategy == "truncate":
+        ok = [{"c": "al"}, {"c": None}, {"c": "ga"}]
+    assert check_cells("t", {"c": rule}, before, ok) == [], rule.strategy
+    bad = [dict(r) for r in ok]
+    bad[1] = {"c": invented}
+    got = check_cells("t", {"c": rule}, before, bad)
+    assert [(v.coordinate, v.kind) for v in got] == [("t/c/1", "null-row")], rule.strategy
+
+
+def _src(rule: Rule, row: int) -> object:
+    if rule.strategy == "date_shift":
+        return datetime.date(2020, 1, 1 + row)
+    return ["alpha", "", "gamma"][row]
+
+
+def test_the_null_row_contract_names_every_strategy_once() -> None:
+    assert set(i1_leaks.NULL_ROW) == i1_leaks.KNOWN | {"passthrough"}
+    assert {s for s, v in i1_leaks.NULL_ROW.items() if v == "domain"} == i1_leaks.CLOSED
+    assert set(i1_leaks.NULL_ROW.values()) == {"null", "domain"}

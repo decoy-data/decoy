@@ -1,16 +1,19 @@
 """Finding records: the tester's one way to submit a finding, and the one publisher (plan 5.6, 5.7).
 
-    python -m scripts.qa.findings write --root DIR --pass ID --needles F --refusal F --record R
+    python -m scripts.qa.findings write --root DIR --pass ID --needles F --refusal F --record R \
+        --context C
     python -m scripts.qa.findings publish --root DIR --pass ID --needles F --refusal F
 
 `write` refuses a record that holds a needle or any scalar from the pass's refusal set, in any
-field or attached artifact, and an id that holds marker text. `--tester` is required: an id must
-start with its tester's name, so two testers cannot collide. Nothing is written on a refusal. A
+field or attached artifact, and an id that holds marker text. The structural fields (layer,
+group, platform, versions, digest, corpus item) and the tester come from the launcher's context
+file (`--context`, outside the tester's inbox); a candidate that sets one is refused. An id must
+start with the tester's name, so two testers cannot collide. Nothing is written on a refusal. A
 bundle (the artifacts and the record) is published under one exclusive per-id claim
-(`io.exclusive_claim`), artifacts first and the record last as the commit marker. Two writers of
-one id take turns: the second finds the record and loses. A killed writer's leftover artifacts
-are finished by a retry with the same artifact names; a retry that names others is refused, so a
-record is never published beside another writer's files.
+(`io.exclusive_claim`): first a durable manifest of the complete artifact-name set, then the
+artifacts, then the record as the commit marker. Two writers of one id take turns: the second
+finds the record and loses. A retry after a kill must name exactly the manifest's set or it is
+refused, so a record never commits with an artifact missing or beside another writer's files.
 
 `publish` is the only QA code that writes under `docs/records` or posts to Slack. It sweeps the
 pass record and the Slack text first. A hit stops publication. It also refuses a pass whose
@@ -49,6 +52,8 @@ from scripts.qa.sweep import (
     require_input,
 )
 
+from decoy.distribution.targets import SUPPORTED_TARGETS
+
 SCHEMA_VERSION = 1
 # The one descriptor of a record. The writer and the reader both validate through it, so they
 # cannot drift. Policy for members it does not list: the writer refuses them (a tester may not
@@ -68,44 +73,65 @@ FIELDS: dict[str, type] = {
 OPTIONAL = {"coordinate"}
 
 
+# Each grammar is defined once and the structural registry points at it.
+ID_PATTERN = r"[a-z0-9][a-z0-9-]{2,63}"
+VERSION_PATTERN = r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+.][0-9A-Za-z.-]{1,31})?"
+ID = re.compile(ID_PATTERN)
+VERSION = re.compile(VERSION_PATTERN)
+LAYER = re.compile(r"L[1-4]")
+PERSONA = re.compile(r"|P[1-9][0-9]?")
+DIGEST = re.compile(r"sha256:[0-9a-f]{2,64}")
+TIERS = frozenset({"V1", "V2-LOG"})
+
+
 def _corpus_ids() -> frozenset[str]:
     """The closed vocabulary of `corpus_item`: the ids in the corpus manifest."""
     return frozenset(item.id for item in load_manifest(MANIFEST))
 
 
-def _pattern(text: str) -> Callable[[str], bool]:
-    compiled = re.compile(text)
-    return lambda value: compiled.fullmatch(value) is not None
+def _groups() -> frozenset[str]:
+    """The closed vocabulary of `group`: the roadmap's group keys, one file each under
+    `docs/roadmap/groups/`."""
+    return frozenset(p.stem for p in GROUPS_DIR.glob("*.md"))
 
 
-# Harness-filled structural fields: typed metadata like the plan's metric fields. Each has a strict
-# grammar (an anchored pattern or a closed vocabulary), is refused when it does not fit, and then
-# skips the refusal-set lookup, because a version such as `1.0.0` would otherwise collide with a
-# corpus value `0`. The needles scan still runs on every one. Free text (`command`, `config`,
-# `expected`, `actual`, `repro`, `coordinate`) keeps the full lookup.
+def _fits(rx: re.Pattern[str]) -> Callable[[str], bool]:
+    return lambda value: rx.fullmatch(value) is not None
+
+
+# Harness-filled structural fields: typed metadata like the plan's metric fields. They come from
+# the trusted `HarnessContext`, never from the tester's candidate (a candidate that holds one is
+# refused). Each has a strict grammar or a closed vocabulary, is refused when it does not fit, and
+# then skips the refusal-set lookup, because a version such as `1.0.0` would otherwise collide with
+# a corpus value `0`. The needles scan still runs on every one. `proposed_tier` is the one tester
+# field here: a two-word vocabulary. Free text (`command`, `config`, `expected`, `actual`, `repro`,
+# `coordinate`) and the tester-chosen `id` keep the full lookup.
 STRUCTURAL: dict[str, Callable[[str], bool]] = {
-    "id": _pattern(r"[a-z0-9][a-z0-9-]{2,63}"),
-    "layer": _pattern(r"L[1-4]"),
-    "persona": _pattern(r"|P[1-9][0-9]?"),
-    "group": _pattern(r"[A-Z][A-Z0-9-]{0,15}"),
-    "platform": _pattern(r"[a-z0-9][a-z0-9_.-]{0,31}"),
-    "cli_version": _pattern(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+.][0-9A-Za-z.-]{1,31})?"),
-    "engine_version": _pattern(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-+.][0-9A-Za-z.-]{1,31})?"),
-    "bundle_digest": _pattern(r"sha256:[0-9a-f]{2,64}"),
-    "proposed_tier": lambda value: value in {"V1", "V2-LOG"},
+    "layer": _fits(LAYER),
+    "persona": _fits(PERSONA),
+    "group": lambda value: value in _groups(),
+    "platform": lambda value: value in SUPPORTED_TARGETS,
+    "cli_version": _fits(VERSION),
+    "engine_version": _fits(VERSION),
+    "bundle_digest": _fits(DIGEST),
+    "proposed_tier": lambda value: value in TIERS,
     "corpus_item": lambda value: value in _corpus_ids(),
 }
+CONTEXT_FIELDS = (
+    "layer", "persona", "group", "platform", "cli_version", "engine_version", "bundle_digest",
+    "corpus_item",
+)  # fmt: skip
 # The triager's vocabulary. A tester never writes a verdict on their own finding.
 TRIAGE = ("confirmed", "not-reproduced", "duplicate", "v1", "v2-log", "docs-only")
 # The verdict file's descriptor. A verdict is written and read through it, as a record is.
 VERDICT_FIELDS: dict[str, type] = {"id": str, "triage": str}
-ID = re.compile(r"[a-z0-9][a-z0-9-]{2,63}")
 COORDINATE = re.compile(r"[a-z0-9][a-z0-9/-]{0,63}")
 PASS_ID = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
 ARTIFACT = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 MARKER_PREFIX = "qamark"
 RECORDS = Path(__file__).resolve().parents[2] / "docs/records"
 MANIFEST = Path(__file__).resolve().parents[2] / "docs/qa/corpus/manifest.toml"
+GROUPS_DIR = Path(__file__).resolve().parents[2] / "docs/roadmap/groups"
 
 
 class Refused(ValueError):
@@ -180,6 +206,36 @@ class Schema:
 
 RECORD = Schema(FIELDS, frozenset(OPTIONAL))
 VERDICT = Schema(VERDICT_FIELDS)
+CANDIDATE = Schema(
+    {k: v for k, v in FIELDS.items() if k not in CONTEXT_FIELDS}, frozenset(OPTIONAL)
+)
+CONTEXT = Schema({"tester": str, **dict.fromkeys(CONTEXT_FIELDS, str)})
+
+
+@dataclass(frozen=True)
+class HarnessContext:
+    """What the launcher knows about a finding, from a file outside the tester's inbox.
+
+    It fills the record's structural fields and its id prefix. The tester's candidate may not set
+    any of them, so a value from the tester's data can never reach a field that skips the
+    refusal-set lookup.
+    """
+
+    tester: str
+    layer: str
+    persona: str
+    group: str
+    platform: str
+    cli_version: str
+    engine_version: str
+    bundle_digest: str
+    corpus_item: str
+
+    def fields(self) -> dict[str, object]:
+        return {name: getattr(self, name) for name in CONTEXT_FIELDS}
+
+    def dumps(self) -> bytes:
+        return _render({"tester": self.tester, **self.fields()})
 
 
 def _validate(doc: Mapping[str, object], *, reading: bool, tester: str | None = None) -> None:
@@ -264,19 +320,25 @@ def _render(doc: Mapping[str, object]) -> bytes:
 def write(
     root: Path,
     pass_id: str,
-    record: Mapping[str, object],
+    candidate: Mapping[str, object],
     needles: Sequence[bytes],
     refusal: RefusalSet | None,
     *,
-    tester: str | None = None,
+    context: HarnessContext,
     artifacts: Mapping[str, bytes] | None = None,
 ) -> Path:
-    """Publish `root/<pass>/<id>.toml`, then each artifact as `<id>.<name>`."""
+    """Publish `root/<pass>/<id>.toml`, then each artifact as `<id>.<name>`.
+
+    The record is the tester's `candidate` plus the structural fields from `context`.
+    """
     artifacts = artifacts or {}
-    if PASS_ID.fullmatch(pass_id) is None:
-        raise Refused("the pass id is not valid")
+    if PASS_ID.fullmatch(pass_id) is None or PASS_ID.fullmatch(context.tester) is None:
+        raise Refused("the pass id or the tester is not valid")
     require_input(needles, refusal)  # an empty input set would let everything through
-    _check_record(record, tester)
+    if set(candidate) & set(CONTEXT_FIELDS):
+        raise Refused("the candidate sets a field that only the harness sets")
+    record = {**candidate, **context.fields()}
+    _check_record(record, context.tester)
     for name, value in record.items():
         for text in _strings(value):
             # Structural fields passed their grammar above; only free text gets the scalar lookup.
@@ -297,15 +359,17 @@ def write(
         # The record is the commit marker: an id that has one is used for good, whoever wrote it.
         if os.path.lexists(target):
             raise AlreadyPublished(f"already exists: {target}")
-        # Files left by a killed writer are finished by a retry with the same names. Any other
-        # name beside this id is another bundle's, and the record must not join the two.
-        stray = (
-            {p.name for p in target.parent.glob(f"{prefix}*") if p.name.startswith(prefix)}
-            - {f"{prefix}{n}" for n in artifacts}
-            - {target.name}
-        )
-        if stray:
-            raise Refused("the pass folder holds artifacts of an unfinished write of this id")
+        # The complete artifact-name set is published first and fixed for the id. A retry after a
+        # kill must name exactly the same set, so a record can never commit with files missing,
+        # and another writer's names are refused. The dot-led name cannot be an artifact's.
+        names = "".join(f"{n}\n" for n in sorted(artifacts)).encode("utf-8")
+        mismatch = False
+        try:
+            publish_or_same(target.with_name(f".{record['id']}.bundle"), names)
+        except AlreadyPublished:
+            mismatch = True
+        if mismatch:
+            raise Refused("an unfinished write of this id named other artifacts")
         for name, blob in artifacts.items():
             publish_or_same(target.with_name(f"{prefix}{name}"), blob)
         publish_private_once(target, _render(record))
@@ -346,6 +410,18 @@ def _read(text: str, check: Callable[[dict[str, object]], None]) -> dict[str, ob
     if bad is not None:
         raise ReaderError(bad)
     return doc
+
+
+def read_candidate(text: str) -> dict[str, object]:
+    """The tester's file: the record's fields without the structural ones, which the harness
+    adds. A candidate that holds a structural field fails here, as an undefined field."""
+    return _read(text, lambda d: CANDIDATE.check(d, reading=False))
+
+
+def read_context(text: str) -> HarnessContext:
+    """Strict reader for the launcher's context file: the same descriptor machinery as a record."""
+    doc = _read(text, lambda d: CONTEXT.check(d, reading=True))
+    return HarnessContext(**{k: str(doc[k]) for k in ("tester", *CONTEXT_FIELDS)})  # type: ignore[arg-type]
 
 
 def read_triage(text: str) -> dict[str, object]:
@@ -435,7 +511,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--needles", type=Path, required=True)
     ap.add_argument("--refusal", type=Path, required=True)
     ap.add_argument("--record", type=Path)
-    ap.add_argument("--tester")
+    ap.add_argument("--context", type=Path, help="the launcher's context file (write)")
     ap.add_argument("--artifact", action="append", default=[], metavar="NAME=PATH")
     ap.add_argument("--records-dir", type=Path, default=RECORDS)
     ap.add_argument("--no-slack", action="store_true", help="publish without posting to Slack")
@@ -473,20 +549,24 @@ def _publish_cli(args: argparse.Namespace, needles: Sequence[bytes], refusal: Re
 
 
 def _write_cli(args: argparse.Namespace, needles: Sequence[bytes], refusal: RefusalSet) -> int:
-    """The submission entry point. The tester is required: it scopes every id to its owner."""
-    if not args.tester or PASS_ID.fullmatch(args.tester) is None:
-        sys.stderr.write("refused: write needs --tester, the issued tester name\n")
+    """The submission entry point. The structural fields and the tester come from the launcher's
+    context file, which must sit outside the tester's record folder and the pass root."""
+    if args.context is None or args.record is None:
+        sys.stderr.write("refused: write needs --context and --record\n")
         return 1
-    if args.record is None:
-        sys.stderr.write("refused: write needs --record\n")
+    here = args.context.resolve().parent
+    fenced = (args.record.resolve().parent, args.root.resolve())
+    if any(here == d or d in here.parents for d in fenced):
+        sys.stderr.write("refused: the context file must be outside the record and pass folders\n")
         return 1
+    context = read_context(args.context.read_text(encoding="utf-8"))
     names = [a.partition("=")[0] for a in args.artifact]
     if any("=" not in a for a in args.artifact) or len(set(names)) != len(names):
         sys.stderr.write("refused: each --artifact is NAME=PATH and each name appears once\n")
         return 1
-    record = read_record(args.record.read_text(encoding="utf-8"))
+    candidate = read_candidate(args.record.read_text(encoding="utf-8"))
     arts = {n: Path(p).read_bytes() for n, _, p in (a.partition("=") for a in args.artifact)}
-    write(args.root, args.pass_id, record, needles, refusal, tester=args.tester, artifacts=arts)
+    write(args.root, args.pass_id, candidate, needles, refusal, context=context, artifacts=arts)
     return 0
 
 

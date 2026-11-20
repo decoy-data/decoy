@@ -277,8 +277,10 @@ Rules for writing a finding:
 - The launcher gives each tester its own ids before the tester starts. Each id can be used once.
 - `scripts/qa/findings.py write` is the only way a tester submits a finding. It refuses text that
   holds a needle or any canonical scalar from the refusal set. It also refuses a coordinate id
-  that holds marker text. `--tester` is required, and an id must start with it. The harness-filled fields (`id`, `layer`, `persona`, `group`, `platform`, the versions,
-  `bundle_digest`, `corpus_item`, `proposed_tier`) must fit a strict grammar and skip the
+  that holds marker text. `--tester` is required, and an id must start with it. The harness-filled fields (`layer`, `persona`, `group`, `platform`, the versions,
+  `bundle_digest`, `corpus_item`) come from the launcher's context file (`--context`, outside the
+  tester's inbox), never from the tester's record, and must fit a strict grammar or closed
+  vocabulary (`group` is a roadmap group key, `platform` a supported target). They skip the
   refusal-set lookup, so `1.0.0` is not blocked by a corpus value `0`; needles still scan them.
   A finding and its
   artifacts are published as one bundle under a per-id claim, the record last. `publish` refuses a

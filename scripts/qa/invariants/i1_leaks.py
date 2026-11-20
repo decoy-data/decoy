@@ -21,6 +21,8 @@ would cry wolf:
   return the input value. Each output must be in `Rule.allowed`, and equal canonical inputs must
   give equal outputs.
 - `passthrough`: exempt.
+- Null rows: `NULL_ROW` is the one contract. A null source stays null; `categorical` and `bucketize`
+  may also land in their allowed set. Any other output in a null row is invented data.
 - `truncate`: keeps exactly `Rule.prefix` characters, and the prefix must be set.
 - `text_redact`: surrounding text may stay, a detected entity may not (matched without case).
 """
@@ -39,6 +41,14 @@ EXACT = frozenset({"hash", "tokenize", "redact"})
 MARKER_ONLY = frozenset({"faker"})
 CLOSED = frozenset({"categorical", "bucketize"})
 KNOWN = EXACT | MARKER_ONLY | CLOSED | {"fpe", "date_shift", "truncate", "text_redact"}
+# The null-row contract of every strategy, in one place. A null stays null unless the strategy's
+# docs say it maps to something: `categorical` and `bucketize` have a closed output set, so a
+# null may land in it. Nothing in the docs gives another strategy a value for null, so it stays
+# null. To relax one, give it an explicit checked domain here.
+NULL_ROW = {
+    **dict.fromkeys(KNOWN | {"passthrough"}, "null"),
+    **dict.fromkeys(CLOSED, "domain"),
+}
 SWAP_ROWS = 20
 SWAP_OVERLAP = 0.9  # a column this much made of its own input values has been shuffled
 MARKER = "qamark"
@@ -152,23 +162,17 @@ def _day(value: object) -> datetime.date | None:
         return None
 
 
-def _null_source(rule: Rule, after: object, domain: set[str], allowed: set[str], row: int) -> str:
-    """A null has no original to keep, but its output must still be in the strategy's domain.
+def _null_source(rule: Rule, after: object, allowed: set[str]) -> str:
+    """The null-row contract (`NULL_ROW`): a null source has no original to keep.
 
-    Without this a mapping that writes a secret, or another row's original, into a null row would
-    pass. A null output is fine; only a value that breaks the strategy's own rule is a finding.
+    Under `null` the output must be null. Under `domain` it may be null or one of the rule's
+    allowed values. Anything else, such as a date, `1234` or a pooled name, is invented data.
     """
     if after is None:
         return ""
-    if rule.strategy in CLOSED:
+    if NULL_ROW[rule.strategy] == "domain":
         return "" if canonical(after) in allowed else "not-allowed"
-    if rule.strategy == "truncate":
-        return "truncate-extra"  # a prefix of nothing is nothing
-    if rule.strategy == "text_redact":
-        return "entity" if any(has_fragment(str(after), e) for e in rule.entities[row]) else ""
-    if rule.strategy in EXACT | MARKER_ONLY and not rule.pool and canonical(after) in domain:
-        return "exact-cell"
-    return ""
+    return "null-row"
 
 
 def _violation(
@@ -181,7 +185,7 @@ def _violation(
     row: int,
 ) -> str:
     if before is None:
-        return _null_source(rule, after, domain, allowed, row)
+        return _null_source(rule, after, allowed)
     if rule.strategy == "truncate":
         keep = str(before)[: rule.prefix]
         return "" if after is not None and str(after) == keep else "truncate-extra"
