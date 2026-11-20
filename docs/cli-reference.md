@@ -1296,7 +1296,8 @@ Examples:
   decoy scan data.csv --has-header
     Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
     A CSV always needs --has-header or --no-header: scan never guesses.
-    Reads the first 10 000 rows by default (--rows 0 for a full scan).
+    Reads the first 10 000 rows by default and labels the counts a sample, with
+    no key candidates (--rows 0 reads every row and gives whole-file numbers).
 
   decoy scan customers.csv orders.csv --has-header
     Scan several files in one run: one table each, named from the file stem.
