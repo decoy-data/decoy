@@ -291,35 +291,53 @@ Expected size: 30 to 36 new or changed files and at most 3,600 hand-written line
 - **Why docs-only testers.** A tester who reads the code tests the code's intent, not the user's experience. Doc mismatches are real V1 findings (REL-DOCS).
 - **Why triage reproduces.** Agent reports have been wrong before (a docs agent claimed fixes not in files; a builder reported a passing ratchet that failed). One clean repro is the gate.
 
-### 10a. Tester provisioning model (added after S2 review round 2)
+### 10a. Tester provisioning model (revised after S2 review round 3)
 
-Two Codex rounds on S2 found the same class each time: root changing paths that a tester can write. This section fixes the model so S2 round 3 builds against it.
+Three Codex rounds on S2 found the same class: a long-lived tester tree that root changes again on every setup run, written in shell, where a guard cannot see every write. Rev 2 removes the class instead of patching it.
 
-Rule 1. Root never writes, chmods, chowns or touches a path inside a directory that a tester can write. Every root change happens in a root-owned directory, on a path root created in the same run, before any tester can reach it.
+Rule 1. Fresh tree per pass. Setup never edits an existing tester tree. For each pass it removes the old tree and builds a new one. Removal is safe: it runs as root, after unmounting the fault volume, does not cross file systems, and does not follow symlinks. Then it builds the new tree from empty folders. Nothing a tester wrote in a past pass survives, so no rerun case exists. This covers the secret, the fault mount, the probe marker and the inbox.
 
-Rule 2. All root file-system changes in `setup-testers.sh` go through three functions: `qa_root_dir` (make a root-owned directory, refuse a symlink), `qa_stage_swap` (copy a source tree into a fresh root-made stage, then rename it over the target) and `qa_new_file` (create a new file with `O_EXCL` semantics in a root-owned directory). A static test fails on any raw `mkdir`, `chown`, `chmod`, `cp`, `touch`, `mv` or redirect outside those functions.
+Rule 2. Setup is Python, not shell. `scripts/qa/provision.py` replaces `setup-testers.sh`. It is standard library only, runs as root, and makes every file-system change through `scripts/qa/io.py`. For root-owned trees, io.py gains three functions:
+- `make_owned_dir(path, uid, gid, mode)`;
+- `copy_tree_checked(src, dst, uid, gid)`;
+- `publish_owned_once(path, data, uid, gid, mode)`.
+The existing io sentry (an AST scan, alias-aware) then covers provisioning too, so no shell guard is needed. The only subprocess calls are user and group creation, `mount` and `umount`, and `hdiutil`. Each is named in an allow-list and passes an argv list, never a shell string.
 
-Rule 3. Sources must be QA-owned. Bundle, docs and corpus sources must resolve, after `realpath`, under `/var/lib/decoy-qa/src/`, which is root-owned and not group- or world-writable. Any other path is refused. A source entry that is a symlink pointing outside its own tree, or a regular file with a link count above 1, is refused.
+Rule 3. Sources are QA-owned all the way down. Every entry under `/var/lib/decoy-qa/src/` must meet all of these:
+- it is owned by the QA owner;
+- it is not group- or world-writable;
+- it is a regular file, a folder, or a relative symlink that resolves inside its own tree;
+- it is not a special file, has a link count of 1, and does not cross a mount.
+An absolute symlink is refused.
 
-Per-tester layout (`<qa>` is `/var/lib/decoy-qa`, `<t>` is `<qa>/testers/<user>`):
+Per-tester layout for one pass (`<t>` is `/var/lib/decoy-qa/testers/<user>`):
 
-| Path | Owner and mode | Written by |
+| Path | Owner and mode | Notes |
 |---|---|---|
-| `<t>` | root:`<user>` 0750 | root, once |
-| `<t>/bundle`, `<t>/docs` | root:`<user>` 0750, files 0640 or 0750 | root through `qa_stage_swap` on every setup |
-| `<t>/secret/ci-secret` (P3 only) | dir root:`<user>` 0750, file root:`<user>` 0640 | root through `qa_new_file`, replaced by a stage swap |
-| `<t>/fault.ok` (P5 only) | root:root 0644 | root, after the bounded volume mounts |
-| `<t>/fault` (P5 only) | mount point root-owned; the mounted root is `<user>` 0700, set once on the fresh volume | root at mount time |
-| `<t>/work` (the tester's HOME) | `<user>` 0700 | root creates it once when absent; on a rerun root only checks owner and mode with `lstat` and never changes it |
-| `<t>/work/inbox` | `<user>` 0700 | the tester (findings.py write) |
+| `<t>` | root:`<user>` 0750 | made fresh each pass |
+| `<t>/bundle`, `<t>/docs` | root:`<user>`, folders 0750, files 0640 or 0750 | copied with checks from `src` |
+| `<t>/secret/ci-secret` (P3 only) | root:`<user>` 0640 | new random test secret each pass; the S3 probe and the leak needles are registered per pass |
+| `<t>/fault.ok`, `<t>/img/fault.dmg` (P5 only) | root, 0644 and 0600 | written after the bounded volume mounts |
+| `<t>/fault` (P5 only) | mounted root `<user>` 0700 | set once on the fresh volume |
+| `<t>/work` (HOME) and `<t>/work/inbox` | `<user>` 0700 | made fresh; the tester writes only here |
 
-On macOS the fault image file sits in a root-owned directory with mode 0600.
+The corpus at `/var/lib/decoy-qa/corpus` is root:`qatesters` 0750. It is replaced whole each time the corpus changes, by the same checked copy.
 
-Corpus: `<qa>/corpus` is root:`qatesters` 0750, replaced only through `qa_stage_swap`.
+Probe marker. S3's probe marker is written per pass: `<pass_dir>/probes/<slug>.ok` holds the pass id. The launcher refuses a marker from another pass. A setup run therefore always invalidates old probes.
 
-Launcher: it runs no `mkdir` or `chmod` as the tester. It lists `<t>/work/inbox` as the tester and fails closed when that listing exits nonzero. It checks the bundle as the tester: `realpath "$(command -v decoy)"` must sit under `realpath <t>/bundle`, and `decoy --version` must equal the version in the bundle manifest. Errors are raised after the `except` block, with no cause or context.
+Launcher. The launcher keeps these checks:
+- no `mkdir` as the tester;
+- a listing failure stops the launch;
+- the realpath and version check on the bundle;
+- errors raised after the except block.
 
-S3 proves this layout with the unrelated-user probe (AT-10): an unrelated tester cannot read another tester's work, secret or fault volume, or the checkout.
+Tests. `QA_PROVISION_TEST_ROOT` runs `provision.py` on a temp root as the current user, with no user creation and no chown. It covers:
+- planted symlinks and hardlinks in a past tree, which are removed and never followed;
+- an absolute symlink in a source;
+- a source entry that is world-writable or owned by someone else;
+- a rerun that gives a fresh secret and invalidates the probe;
+- a fault volume that is already mounted, which is unmounted first in test mode as a stub.
+The io sentry's planted cases include provision.py.
 
 ## 11. Owner questions
 
