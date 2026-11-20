@@ -13,7 +13,7 @@ The rule counts REFERENCES to four engine symbols, not calls and not binding for
   `DeliveryFacts` is referenced only inside `delivery_facts`, and the owner's real counts are
   pinned in `OWNER_REFERENCES`.
 
-Allowed exceptions: none. The tree has no type-only use of these names outside the owner.
+There are no exceptions. The tree has no type-only use of these names outside the owner.
 
 Named limit: a name built from parts at run time, and `importlib`, are invisible; the engine's
 own sentry covers construction inside the engine. Lexical shadowing is not modelled.
@@ -31,8 +31,6 @@ PROVIDER = "delivery_facts"
 SCHEMA = "decoy-run-result/v1"
 TRACKED = ("build_run_result", "RunResult", "RunResultRead", "DeliveryFacts")
 ENGINE_PACKAGE = "decoy_engine.run_result"
-# Allowed references outside the owner, each with its reason. Empty on purpose.
-ALLOWED: dict[tuple[str, str], str] = {}
 # The owner's real load-reference counts (imports are not loads).
 OWNER_REFERENCES = {"build_run_result": 1, "RunResult": 0, "RunResultRead": 0, "DeliveryFacts": 2}
 
@@ -73,13 +71,12 @@ def violations(source: str, rel: str) -> list[str]:
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 for item in node.names:
-                    if item.name in TRACKED and (rel, item.name) not in ALLOWED:
+                    if item.name in TRACKED:
                         found.append(f"{rel}:{node.lineno}: {item.name} imported")
                     if item.name == "*" and (node.module or "").startswith(ENGINE_PACKAGE):
                         found.append(f"{rel}:{node.lineno}: star import of the run result package")
         for symbol, node in refs:
-            if (rel, symbol) not in ALLOWED:
-                found.append(f"{rel}:{getattr(node, 'lineno', 0)}: {symbol} referenced")
+            found.append(f"{rel}:{getattr(node, 'lineno', 0)}: {symbol} referenced")
     else:
         built = [n for s, n in refs if s == "build_run_result"]
         if len(built) > 1:
