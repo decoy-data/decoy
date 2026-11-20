@@ -93,7 +93,7 @@ def test_planted_cell_defects_are_flagged(rule: Rule, after: list[dict], kind: s
     assert found[0].coordinate.startswith("t/c/")
 
 
-@pytest.mark.parametrize("strategy", ["hash", "fpe", "date_shift", "categorical", "bucketize"])
+@pytest.mark.parametrize("strategy", ["hash", "fpe", "date_shift", "faker", "tokenize", "redact"])
 def test_swapping_values_between_rows_fails_every_replacing_strategy(strategy: str) -> None:
     found = check_cells("t", {"c": Rule(strategy)}, SRC, SRC[::-1])
     assert [v.kind for v in found] == ["exact-cell", "exact-cell"]
@@ -233,3 +233,39 @@ def test_a_text_redact_rule_without_matching_entities_is_refused() -> None:
     for rule in (Rule("text_redact"), Rule("text_redact", entities=(("Zelda",),))):
         with pytest.raises(i1_leaks.UnknownStrategy):
             check_cells("t", {"c": rule}, src, src)
+
+
+CATS = ("Zelda Quinn", "Omar Fry", "Other")
+
+
+def test_categorical_may_map_onto_a_category_that_is_also_in_the_input() -> None:
+    rule = Rule("categorical", allowed=CATS)
+    assert check_cells("t", {"c": rule}, SRC, [{"c": "Omar Fry"}, {"c": "Zelda Quinn"}]) == []
+    assert check_cells("t", {"c": rule}, SRC, [{"c": "Other"}, {"c": "Other"}]) == []
+
+
+def test_categorical_output_outside_the_categories_or_unchanged_fails() -> None:
+    rule = Rule("categorical", allowed=CATS)
+    found = check_cells("t", {"c": rule}, SRC, [{"c": "Zelda Quinn"}, {"c": "invented"}])
+    assert [(v.kind, v.coordinate) for v in found] == [
+        ("same-row", "t/c/0"),
+        ("not-allowed", "t/c/1"),
+    ]
+
+
+def test_bucketize_checks_the_label_or_bound_form_and_not_exact_cells() -> None:
+    rule = Rule("bucketize", allowed=("0-9", "10-19", "20"))
+    src = [{"c": 3}, {"c": 14}]
+    assert check_cells("t", {"c": rule}, src, [{"c": "10-19"}, {"c": "0-9"}]) == []
+    assert [v.kind for v in check_cells("t", {"c": rule}, src, [{"c": 3}, {"c": "0-9"}])] == [
+        "same-row"
+    ]
+    assert [v.kind for v in check_cells("t", {"c": rule}, src, [{"c": "7"}, {"c": "0-9"}])] == [
+        "not-allowed"
+    ]
+
+
+@pytest.mark.parametrize("strategy", ["categorical", "bucketize"])
+def test_these_two_need_their_allowed_values(strategy: str) -> None:
+    with pytest.raises(i1_leaks.UnknownStrategy):
+        check_cells("t", {"c": Rule(strategy)}, SRC, SRC[::-1])
