@@ -151,12 +151,39 @@ def publish_or_same(target: Path, data: bytes) -> bool:
 
 
 def _holds(target: Path, data: bytes) -> bool:
+    """True when `target` is our own private regular file holding exactly `data`.
+
+    `O_NONBLOCK` keeps a FIFO from hanging the open, and the fstat then refuses it, a directory, a
+    file owned by someone else and a file others can read or write.
+    """
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
     try:
-        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0))
+        fd = os.open(target, flags)
     except OSError:
+        return False
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        os.close(fd)
         return False
     with os.fdopen(fd, "rb") as handle:
         return handle.read() == data
+
+
+def copy_private_tree(source: Path, dest: Path) -> None:
+    """Copy the regular files under `source` into a new private tree at `dest`.
+
+    Symlinks and special files are skipped, so a repro folder cannot pull in anything outside it.
+    """
+    source, dest = Path(source), Path(dest)
+    _ensure_parents(dest)
+    for path in sorted(source.rglob("*")):
+        relative = path.relative_to(source)
+        if path.is_symlink():
+            continue
+        if path.is_dir():
+            _ensure_parents(dest / relative)
+        elif path.is_file():
+            publish_private_once(dest / relative, path.read_bytes())
 
 
 @contextlib.contextmanager

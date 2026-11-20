@@ -27,7 +27,7 @@ def test_the_exit_is_decoys_not_the_commands() -> None:
 
 def test_a_script_that_echoes_the_signature_without_calling_decoy_fails() -> None:
     cmd = ["sh", "-c", "echo 'error: disk full' >&2; exit 3"]
-    assert go(cmd) == repro.Result(False, "not-run")
+    assert go(cmd) == repro.Result(False, "needs-manual-repro")
 
 
 def test_a_command_cannot_forge_the_witness_from_its_environment_or_folders() -> None:
@@ -68,9 +68,9 @@ def test_a_grandchild_holding_the_pipe_cannot_hang_the_runner() -> None:
 
 
 def test_no_command_no_decoy_or_a_short_signature_is_not_a_repro() -> None:
-    assert go([]).reason == "not-run"
-    assert go(CALLS_DECOY, 3, "error").reason == "not-run"
-    assert repro.run(CALLS_DECOY, 3, "disk full", real=[]).reason == "not-run"
+    assert go([]).reason == "invalid"
+    assert go(CALLS_DECOY, 3, "error").reason == "invalid"
+    assert repro.run(CALLS_DECOY, 3, "disk full", real=[]).reason == "needs-manual-repro"
 
 
 def test_cli_exit_follows_the_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -78,3 +78,36 @@ def test_cli_exit_follows_the_verdict(monkeypatch: pytest.MonkeyPatch) -> None:
     ok = ["--recorded-exit", "3", "--signature", "disk full", "--", *CALLS_DECOY]
     assert repro.main(ok) == 0
     assert repro.main(["--recorded-exit", "2", *ok[2:]]) == 1
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        ["/usr/bin/decoy", "run"],
+        ["./decoy", "run"],
+        ["../bin/decoy", "run"],
+        ["python", "-m", "decoy", "run"],
+        ["uv", "run", "decoy", "run"],
+        ["sh", "-c", "/opt/x/decoy run shop"],
+        ["sh", "-c", "uv run decoy run"],
+        ["sh", "-c", "python -m decoy run"],
+    ],
+)
+def test_a_command_that_bypasses_the_shim_is_refused(cmd: list[str]) -> None:
+    assert go(cmd) == repro.Result(False, "bypass")
+
+
+def test_the_repro_runs_in_a_copy_of_its_folder(tmp_path) -> None:
+    src = tmp_path / "finding"
+    src.mkdir()
+    (src / "input.csv").write_text("a,b\n1,2\n")
+    cmd = ["sh", "-c", "test -f input.csv && echo changed > input.csv && decoy run"]
+    assert go(cmd, folder=src).reproduced
+    assert (src / "input.csv").read_text() == "a,b\n1,2\n"  # the original is untouched
+    assert go(["sh", "-c", "test -f input.csv && decoy run"]).reason == "needs-manual-repro"
+
+
+def test_cli_exit_2_means_needs_manual_repro(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(repro, "_real_decoy", lambda: REAL)
+    args = ["--recorded-exit", "3", "--signature", "disk full", "--", "sh", "-c", "exit 3"]
+    assert repro.main(args) == 2

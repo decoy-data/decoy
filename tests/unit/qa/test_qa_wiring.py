@@ -96,3 +96,48 @@ def test_the_checklist_sweep_step_calls_the_one_sweep() -> None:
     text = CHECKLIST.read_text(encoding="utf-8")
     assert "python -m scripts.qa.sweep --needles data/markers.txt" in text
     assert "grep -rFf" not in text
+
+
+def inline_text_matches(source: str) -> list[int]:
+    """Lines where a value is looked for inside text with `in`: `x in text.casefold()` and the like.
+
+    Matching needles, cells or entities in text belongs to `scripts/qa/sweep.py`. A second matcher
+    in an invariant is how `Bob` came to flag `Bobby`.
+    """
+    found = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Compare) and any(
+            isinstance(o, ast.In | ast.NotIn) for o in node.ops
+        ):
+            right = node.comparators[-1]
+            if isinstance(right, ast.Call) and isinstance(right.func, ast.Attribute):
+                if right.func.attr in {"casefold", "lower", "upper", "decode", "encode"}:
+                    found.append(node.lineno)
+            elif isinstance(right, ast.Name) and right.id in {"text", "blob", "line", "haystack"}:
+                found.append(node.lineno)
+    return found
+
+
+@pytest.mark.parametrize(
+    "snippet",
+    [
+        "any(c in text.casefold() for c in cells)",
+        "x = c in text",
+        "ok = needle not in blob",
+        "bad = e in str(after).lower()",
+        "hit = n in data.decode()",
+    ],
+)
+def test_the_inline_match_scan_sees_each_spelling(snippet: str) -> None:
+    assert inline_text_matches(snippet), snippet
+
+
+def test_no_invariant_matches_needles_or_cells_in_text_itself() -> None:
+    offenders = {
+        p.relative_to(ROOT).as_posix(): lines
+        for p in sorted((QA / "invariants").glob("*.py"))
+        if (lines := inline_text_matches(p.read_text(encoding="utf-8")))
+    }
+    assert offenders == {}, "use scripts/qa/sweep.py"
+    i7 = (QA / "invariants" / "i7_errors.py").read_text(encoding="utf-8")
+    assert "from scripts.qa.sweep import" in i7 and "found_in" in i7

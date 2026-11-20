@@ -33,7 +33,7 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
 from scripts.qa.io import publish_or_same, publish_private_once
-from scripts.qa.sweep import RefusalSet, hits, read_needles
+from scripts.qa.sweep import NothingRead, RefusalSet, hits, read_needles, require_input
 
 SCHEMA_VERSION = 1
 # The one descriptor of a record. The writer and the reader both validate through it, so they
@@ -68,6 +68,16 @@ class Refused(ValueError):
 
 class ReaderError(ValueError):
     """A stored record is malformed or from another major version."""
+
+
+def _decodings(blob: bytes) -> list[str]:
+    """The ways a byte string can read as text: UTF-8, and UTF-16 by BOM or when it holds NULs."""
+    texts = [blob.decode("utf-8", "replace")]
+    if blob[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        texts.append(blob.decode("utf-16", "replace"))
+    elif b"\x00" in blob:
+        texts += [blob.decode("utf-16-le", "replace"), blob.decode("utf-16-be", "replace")]
+    return texts
 
 
 def _guard(text: str, where: str, needles: Sequence[bytes], refusal: RefusalSet | None) -> None:
@@ -148,15 +158,19 @@ def write(
     artifacts = artifacts or {}
     if PASS_ID.fullmatch(pass_id) is None:
         raise Refused("the pass id is not valid")
+    require_input(needles, refusal)  # an empty input set would let everything through
     _check_record(record, tester)
     for name, value in record.items():
         for text in _strings(value):
             _guard(text, name, needles, refusal)
     for name, blob in artifacts.items():
-        if ARTIFACT.fullmatch(name) is None or name.endswith(".toml"):  # a record or verdict name
+        # `<id>.toml` is the record itself, so a name that ends the file in `.toml` is refused.
+        if ARTIFACT.fullmatch(name) is None or f"{record['id']}.{name}".endswith(".toml"):
             raise Refused("an artifact name is not valid")
-        # Needles are matched on the raw bytes, so a non-UTF-8 needle is still found.
-        _guard(blob.decode("utf-8", "replace"), f"artifact {name}", (), refusal)
+        # Needles are matched on the raw bytes, so a non-UTF-8 needle is still found; each text
+        # reading (UTF-8, UTF-16) is then checked for needles and scalars too.
+        for text in _decodings(blob):
+            _guard(text, f"artifact {name}", needles, refusal)
         if hits(blob, needles):
             raise Refused(f"artifact {name} holds a needle or a scalar from the input")
     target = Path(root) / pass_id / f"{record['id']}.toml"
@@ -211,6 +225,7 @@ def publish(
     """Write the pass record under `docs/records`, then send the Slack text (counts and ids)."""
     if PASS_ID.fullmatch(pass_id) is None:
         raise Refused("the pass id is not valid")
+    require_input(needles, refusal)
     folder = Path(root) / pass_id
     # Only `<id>.toml` is a record: an artifact or a verdict has a dot in its stem.
     found = [
@@ -303,6 +318,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 tester=args.tester,
                 artifacts=arts,
             )
+    except NothingRead as exc:
+        sys.stderr.write(f"not run: {exc}\n")
+        return 2
     except (Refused, ReaderError, FileExistsError) as exc:
         sys.stderr.write(f"refused: {exc}\n")
         return 1

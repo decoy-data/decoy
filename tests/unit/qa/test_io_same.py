@@ -31,3 +31,16 @@ def test_an_executable_private_file(tmp_path: Path) -> None:
     target = tmp_path / "shim"
     qio.publish_private_once(target, b"#!/bin/sh\n", mode=qio.PRIVATE_EXEC)
     assert stat.S_IMODE(target.stat().st_mode) == 0o700
+
+
+def test_a_fifo_a_directory_and_a_loose_mode_file_are_refused_not_hung(tmp_path: Path) -> None:
+    import os
+
+    os.mkfifo(tmp_path / "fifo")
+    (tmp_path / "dir").mkdir()
+    loose = tmp_path / "loose"
+    loose.write_bytes(b"one")
+    loose.chmod(0o644)
+    for name in ("fifo", "dir", "loose"):
+        with pytest.raises(qio.AlreadyPublished):
+            qio.publish_or_same(tmp_path / name, b"one")

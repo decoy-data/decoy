@@ -161,7 +161,11 @@ def test_exit_4_needs_findings_named_in_the_output() -> None:
         exit_codes.EXIT_FINDINGS, "3 findings", "", expect="findings"
     ).finding
     assert i6_exit.classify(4, "", "", expect="findings").finding
-    for text in ("done, 12 rows written", "warning: slow disk", "all checks passed"):
+    for text in (
+        "done, 12 rows written", "warning: slow disk", "all checks passed",
+        "no findings", "0 findings", "No finding. 3 checks fail-safe ok",
+        "Traceback (most recent call last):\n  KeyError: 'fail'",
+    ):  # fmt: skip
         assert i6_exit.classify(4, text, "", expect="findings").finding, text
     for text in ("check fk_preservation: fail", "1 finding", "fingerprint changed: out.csv"):
         assert not i6_exit.classify(4, text, "", expect="findings").finding, text
@@ -217,3 +221,13 @@ def test_i7_flags_non_marker_input_and_output_scalars() -> None:
         == []
     )
     assert all("Omar" not in repr(v) for v in found)
+
+
+def test_i7_matches_whole_tokens_not_substrings() -> None:
+    assert (
+        i7_errors.check_text({"stderr": "error: Bobby Tables failed"}, [b"qamark9"], None, ["Bob"])
+        == []
+    )
+    assert [
+        v.kind for v in i7_errors.check_text({"stderr": "who: bob."}, [b"qamark9"], None, ["Bob"])
+    ] == ["input-cell"]

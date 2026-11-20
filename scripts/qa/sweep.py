@@ -169,6 +169,10 @@ class RefusalSet:
     def _digest(salt: bytes, form: str) -> str:
         return hashlib.sha256(salt + form.encode("utf-8")).hexdigest()
 
+    def is_empty(self) -> bool:
+        """True when nothing was indexed, so this set can never find anything."""
+        return not self._digests
+
     def contains(self, scalar: object) -> bool:
         return any(self.found_in(form) for form in _forms(scalar))
 
@@ -198,6 +202,25 @@ class RefusalSet:
         publish_private_once(path, self.dumps().encode("utf-8"))
 
 
+def require_input(needles: Iterable[bytes], refusal: RefusalSet | None) -> None:
+    """The one not-run rule: no real needle and no usable refusal set means the input was not read.
+
+    The sweep, the finding writer and `publish` all call this, so a pass whose needles file and
+    refusal set came out empty can never read as clean.
+    """
+    if not any(needles) and (refusal is None or refusal.is_empty()):
+        raise NothingRead("no needles and no refusal set: a clean result would mean nothing")
+
+
+def has_fragment(text: str, fragment: str) -> bool:
+    """Case-insensitive substring test, for a detected entity inside the cell it came from.
+
+    The one place outside the sweep where text is searched for a value; invariants call it instead
+    of using `in` themselves.
+    """
+    return bool(fragment) and fragment.casefold() in text.casefold()
+
+
 def sweep(
     captures: Mapping[str, tuple[str, bytes]],
     needles: Sequence[bytes],
@@ -210,8 +233,7 @@ def sweep(
     """
     if not captures or not any(blob for _, blob in captures.values()):
         raise NothingRead("no capture held any bytes")
-    if not needles and refusal is None:
-        raise NothingRead("no needles and no refusal set: a clean result would mean nothing")
+    require_input(needles, refusal)
     leaks: list[Leak] = []
     for name, (surface, blob) in captures.items():
         if surface not in registry.surfaces:

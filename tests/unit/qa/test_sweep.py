@@ -93,10 +93,70 @@ def test_planted_cell_defects_are_flagged(rule: Rule, after: list[dict], kind: s
     assert found[0].coordinate.startswith("t/c/")
 
 
-@pytest.mark.parametrize("strategy", ["hash", "fpe", "date_shift", "faker", "tokenize", "redact"])
-def test_swapping_values_between_rows_fails_every_replacing_strategy(strategy: str) -> None:
+@pytest.mark.parametrize("strategy", ["hash", "tokenize", "redact"])
+def test_swapping_values_between_rows_fails_the_exact_cell_strategies(strategy: str) -> None:
     found = check_cells("t", {"c": Rule(strategy)}, SRC, SRC[::-1])
     assert [v.kind for v in found] == ["exact-cell", "exact-cell"]
+
+
+def test_faker_gets_the_exact_cell_check_over_marker_inputs_only() -> None:
+    marked = [{"c": "qamark1"}, {"c": "qamark2"}]
+    assert [v.kind for v in check_cells("t", {"c": Rule("faker")}, marked, marked[::-1])] == [
+        "exact-cell",
+        "exact-cell",
+    ]
+    # Public data has no markers: a faker value may legitimately equal another row's input.
+    assert check_cells("t", {"c": Rule("faker")}, SRC, SRC[::-1]) == []
+    assert [v.kind for v in check_cells("t", {"c": Rule("faker")}, SRC, SRC)] == ["same-row"] * 2
+
+
+def _dates(shifts: list[int]) -> tuple[list[dict], list[dict]]:
+    base = datetime.date(2020, 1, 1)
+    src = [{"c": base + datetime.timedelta(days=i)} for i in range(len(shifts))]
+    return src, [{"c": r["c"] + datetime.timedelta(days=d)} for r, d in zip(src, shifts)]
+
+
+def test_date_shift_passes_a_thousand_real_shifts_and_checks_range_and_same_row() -> None:
+    import random
+
+    rng = random.Random(7)
+    shifts = [rng.choice([d for d in range(-30, 31) if d]) for _ in range(1000)]
+    src, out = _dates(shifts)
+    assert check_cells("t", {"c": Rule("date_shift", range=30)}, src, out) == []
+    src, out = _dates([0, 31, -31, 5])
+    kinds = [v.kind for v in check_cells("t", {"c": Rule("date_shift", range=30)}, src, out)]
+    assert kinds == ["same-row", "shift-range", "shift-range"]
+    iso = [{"c": "2020-01-01"}], [{"c": "2020-01-09"}]
+    assert check_cells("t", {"c": Rule("date_shift", range=30)}, *iso) == []
+
+
+def test_date_shift_needs_its_range() -> None:
+    src, out = _dates([3])
+    with pytest.raises(i1_leaks.UnknownStrategy):
+        check_cells("t", {"c": Rule("date_shift")}, src, out)
+
+
+def _codes() -> tuple[list[dict], list[dict], list[dict]]:
+    import random
+
+    sample = random.Random(1).sample(range(10000), 1000)
+    src = [{"c": f"{x:04d}"} for x in sample]
+    permuted = [{"c": f"{(x * 7919 + 13) % 10000:04d}"} for x in sample]  # a bijection of 0..9999
+    return src, permuted, src[1:] + src[:1]  # last: a row permutation of the same values
+
+
+@pytest.mark.parametrize("strategy", ["fpe", "faker"])
+def test_a_true_permutation_of_the_domain_passes_and_a_row_swap_fails(strategy: str) -> None:
+    src, permuted, swapped = _codes()
+    rule = Rule(strategy, pool=True)
+    assert check_cells("t", {"c": rule}, src, permuted) == []
+    found = check_cells("t", {"c": rule}, src, swapped)
+    assert [(v.kind, v.coordinate) for v in found] == [("permutation", "t/c/-")]
+
+
+def test_the_swap_check_needs_twenty_rows() -> None:
+    src, _, _ = _codes()
+    assert check_cells("t", {"c": Rule("fpe")}, src[:10], src[1:10] + src[:1]) == []
 
 
 @pytest.mark.parametrize("after", ["", "Ze", "Zeld", "Omar"])
@@ -104,6 +164,19 @@ def test_truncate_keeps_exactly_the_documented_prefix(after: str) -> None:
     out = [{"c": after}, {"c": "Oma"}]
     found = check_cells("t", {"c": Rule("truncate", prefix=3)}, SRC, out)
     assert [v.coordinate for v in found] == ["t/c/0"]
+
+
+def test_truncate_must_set_its_prefix() -> None:
+    with pytest.raises(i1_leaks.UnknownStrategy):
+        check_cells("t", {"c": Rule("truncate")}, SRC, SRC)
+
+
+def test_text_redact_entities_match_case_insensitively() -> None:
+    rule = Rule("text_redact", entities=(("Zelda",), ()))
+    found = check_cells(
+        "t", {"c": rule}, [{"c": "hi zelda"}, {"c": "x"}], [{"c": "hi ZELDA"}, {"c": "x"}]
+    )
+    assert [v.kind for v in found] == ["entity"]
 
 
 def test_an_unknown_strategy_is_refused_not_passed() -> None:
@@ -238,34 +311,59 @@ def test_a_text_redact_rule_without_matching_entities_is_refused() -> None:
 CATS = ("Zelda Quinn", "Omar Fry", "Other")
 
 
-def test_categorical_may_map_onto_a_category_that_is_also_in_the_input() -> None:
+def test_categorical_may_map_a_value_to_itself_or_onto_another_input_category() -> None:
     rule = Rule("categorical", allowed=CATS)
+    assert check_cells("t", {"c": rule}, SRC, SRC) == []  # no same-row check
     assert check_cells("t", {"c": rule}, SRC, [{"c": "Omar Fry"}, {"c": "Zelda Quinn"}]) == []
     assert check_cells("t", {"c": rule}, SRC, [{"c": "Other"}, {"c": "Other"}]) == []
 
 
-def test_categorical_output_outside_the_categories_or_unchanged_fails() -> None:
+def test_categorical_output_outside_the_categories_fails() -> None:
     rule = Rule("categorical", allowed=CATS)
     found = check_cells("t", {"c": rule}, SRC, [{"c": "Zelda Quinn"}, {"c": "invented"}])
+    assert [(v.kind, v.coordinate) for v in found] == [("not-allowed", "t/c/1")]
+
+
+def test_a_non_deterministic_categorical_mapping_fails() -> None:
+    rule = Rule("categorical", allowed=CATS)
+    src = [{"c": "Omar Fry"}, {"c": "Omar Fry"}, {"c": 7}, {"c": "7"}]
+    out = [{"c": "Other"}, {"c": "Zelda Quinn"}, {"c": "Other"}, {"c": "Zelda Quinn"}]
+    found = check_cells("t", {"c": rule}, src, out)
     assert [(v.kind, v.coordinate) for v in found] == [
-        ("same-row", "t/c/0"),
-        ("not-allowed", "t/c/1"),
+        ("nondeterministic", "t/c/1"),
+        ("nondeterministic", "t/c/3"),
     ]
 
 
-def test_bucketize_checks_the_label_or_bound_form_and_not_exact_cells() -> None:
+def test_bucketize_checks_the_label_or_bound_form_and_determinism() -> None:
     rule = Rule("bucketize", allowed=("0-9", "10-19", "20"))
     src = [{"c": 3}, {"c": 14}]
     assert check_cells("t", {"c": rule}, src, [{"c": "10-19"}, {"c": "0-9"}]) == []
     assert [v.kind for v in check_cells("t", {"c": rule}, src, [{"c": 3}, {"c": "0-9"}])] == [
-        "same-row"
-    ]
-    assert [v.kind for v in check_cells("t", {"c": rule}, src, [{"c": "7"}, {"c": "0-9"}])] == [
         "not-allowed"
     ]
+    twice = check_cells("t", {"c": rule}, [{"c": 3}, {"c": 3}], [{"c": "0-9"}, {"c": "20"}])
+    assert [v.kind for v in twice] == ["nondeterministic"]
 
 
 @pytest.mark.parametrize("strategy", ["categorical", "bucketize"])
 def test_these_two_need_their_allowed_values(strategy: str) -> None:
     with pytest.raises(i1_leaks.UnknownStrategy):
         check_cells("t", {"c": Rule(strategy)}, SRC, SRC[::-1])
+
+
+def test_an_empty_refusal_set_reports_empty() -> None:
+    assert sweep.RefusalSet.build([]).is_empty()
+    assert sweep.RefusalSet.build(["1", "ab"]).is_empty()  # nothing long enough was indexed
+    assert not REFUSAL.is_empty()
+
+
+@pytest.mark.parametrize("refusal", [None, "empty"])
+def test_no_needles_and_no_usable_refusal_set_means_not_run(refusal: str | None) -> None:
+    ref = sweep.RefusalSet.build([]) if refusal else None
+    with pytest.raises(sweep.NothingRead):
+        sweep.require_input([b""], ref)
+    with pytest.raises(sweep.NothingRead):
+        sweep.sweep({"c": ("stdout", b"data")}, (), REGISTRY, ref)
+    assert sweep.require_input([b"x"], ref) is None  # one real needle is enough
+    assert sweep.require_input([], REFUSAL) is None

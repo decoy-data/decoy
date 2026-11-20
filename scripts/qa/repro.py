@@ -20,16 +20,24 @@ result holds a verdict word and no output.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import secrets
+import shlex
 import signal
 import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
-from scripts.qa.io import PRIVATE_EXEC, private_scratch_dir, publish_private_once
+from scripts.qa.io import (
+    PRIVATE_EXEC,
+    copy_private_tree,
+    private_scratch_dir,
+    publish_private_once,
+)
 
 TIMEOUT = 120
 # A short signature such as "error" recurs by luck, so it proves nothing.
@@ -59,7 +67,10 @@ sys.exit(done.returncode)
 @dataclass(frozen=True)
 class Result:
     reproduced: bool
-    reason: str  # reproduced, not-run, wrong-exit, signature-missing, stalled
+    # reproduced, needs-manual-repro (nothing attested the run: a person must try it, and it is
+    # not a finding that failed to reproduce), bypass, invalid, wrong-exit, signature-missing,
+    # stalled
+    reason: str
 
 
 def _real_decoy() -> list[str]:
@@ -68,6 +79,28 @@ def _real_decoy() -> list[str]:
         if folder and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return [candidate]
     return []
+
+
+def _bypasses(argv: Sequence[str]) -> bool:
+    """True when the command reaches decoy by a route that skips the PATH shim.
+
+    Looks at the argv and at the words inside any `sh -c` string: a path whose last part is
+    `decoy`, `-m decoy`, and `uv run`.
+    """
+    lines = [list(argv)]
+    for item in argv:
+        try:
+            lines.append(shlex.split(item))
+        except ValueError:
+            continue
+    for words in lines:
+        if words[:2] == ["uv", "run"]:
+            return True
+        if any(a == "-m" and b == "decoy" for a, b in itertools.pairwise(words)):
+            return True
+        if any("/" in w and w.rstrip("/").rsplit("/", 1)[-1] == "decoy" for w in words):
+            return True
+    return False
 
 
 def _witness_lines(path: str, nonce: str) -> list[dict[str, object]]:
@@ -91,18 +124,31 @@ def run(
     signature: str,
     *,
     real: Sequence[str] | None = None,
+    folder: Path | None = None,
     timeout: float = TIMEOUT,
 ) -> Result:
-    """Run `argv` in a fresh home with the shim first on PATH. `real` is the decoy to attest."""
+    """Run `argv` in a fresh home with the shim first on PATH. `real` is the decoy to attest.
+
+    `folder` is the finding's repro folder. The command runs in a private copy of it, so a repro
+    cannot change the original.
+    """
     real = list(_real_decoy() if real is None else real)
-    if not argv or not real or len(signature) < MIN_SIGNATURE:
-        return Result(False, "not-run")
+    if not argv or len(signature) < MIN_SIGNATURE:
+        return Result(False, "invalid")
+    if _bypasses(argv):
+        return Result(False, "bypass")
+    if not real:
+        return Result(False, "needs-manual-repro")
     nonce = secrets.token_hex(16)
     with private_scratch_dir() as home, private_scratch_dir() as control:
         witness = str(control / "witness.jsonl")
         shim_dir = control / "bin"
         shim = _SHIM.format(python=sys.executable, real=real, nonce=nonce, witness=witness)
         publish_private_once(shim_dir / "decoy", shim.encode(), mode=PRIVATE_EXEC)
+        cwd = home
+        if folder is not None:
+            cwd = home / "repro"
+            copy_private_tree(folder, cwd)
         env = {
             "PATH": f"{shim_dir}{os.pathsep}{os.environ.get('PATH', '')}",
             "HOME": str(home),
@@ -113,7 +159,7 @@ def run(
         proc = subprocess.Popen(
             list(argv),
             env=env,
-            cwd=home,
+            cwd=cwd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
@@ -126,7 +172,7 @@ def run(
             return Result(False, "stalled")
         calls = _witness_lines(witness, nonce)
     if not calls:
-        return Result(False, "not-run")
+        return Result(False, "needs-manual-repro")
     if not any(c.get("exit") == recorded_exit for c in calls):
         return Result(False, "wrong-exit")
     if not any(c.get("exit") == recorded_exit and signature in str(c.get("output")) for c in calls):
@@ -143,7 +189,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     cmd = args.command[1:] if args.command[:1] == ["--"] else args.command
     result = run(cmd, args.recorded_exit, args.signature, real=_real_decoy())
     sys.stdout.write(f"{result.reason}\n")
-    return 0 if result.reproduced else 1
+    return 0 if result.reproduced else 2 if result.reason == "needs-manual-repro" else 1
 
 
 if __name__ == "__main__":

@@ -412,3 +412,47 @@ def test_a_failed_post_exits_nonzero_and_a_rerun_posts_again_without_rewriting(
     monkeypatch.setenv("QA_SLACK_SCRIPT", str(_script(tmp_path, 0)))
     assert _cli(tmp_path) == 0
     assert (record_file.stat().st_ino, record_file.read_bytes()) == before
+
+
+# Empty input sets are not-run, not clean ---------------------------------------------------------
+@pytest.mark.parametrize("refusal", [None, sweep.RefusalSet.build([])])
+def test_write_and_publish_treat_empty_input_sets_as_not_run(
+    tmp_path: Path, refusal: sweep.RefusalSet | None
+) -> None:
+    with pytest.raises(sweep.NothingRead):
+        findings.write(tmp_path, "pass-1", record(), (), refusal)
+    assert not (tmp_path / "pass-1").exists()
+    put(tmp_path, record())
+    with pytest.raises(sweep.NothingRead):
+        findings.publish(tmp_path, "pass-1", (b"",), refusal, records_dir=tmp_path / "rec")
+    assert not (tmp_path / "rec").exists()
+
+
+def test_the_cli_exits_2_when_the_input_sets_are_empty(tmp_path: Path) -> None:
+    (tmp_path / "needles.txt").write_text("\n")
+    (tmp_path / "refusal.json").write_text(sweep.RefusalSet.build([]).dumps())
+    args = ["publish", "--root", str(tmp_path), "--pass", "pass-1", "--no-slack"]
+    args += [
+        "--needles",
+        str(tmp_path / "needles.txt"),
+        "--refusal",
+        str(tmp_path / "refusal.json"),
+    ]
+    assert findings.main(args) == 2
+
+
+def test_an_artifact_named_toml_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(findings.Refused):
+        put(tmp_path, record(), artifacts={"toml": b"clean"})
+
+
+def test_artifacts_are_checked_as_utf16_too(tmp_path: Path) -> None:
+    for blob in (
+        "leaked 90210".encode("utf-16"),  # BOM
+        "leaked 90210".encode("utf-16-le"),  # no BOM, NULs
+        "leaked 90210".encode("utf-16-be"),
+        "token=S3cretValueXYZ".encode("utf-16-le"),  # a needle, not a scalar
+    ):
+        with pytest.raises(findings.Refused):
+            put(tmp_path, record(), artifacts={"o.txt": blob})
+    assert not (tmp_path / "pass-1").exists()

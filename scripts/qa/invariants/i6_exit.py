@@ -34,6 +34,8 @@ _REFUSAL = re.compile(r"error: \S")
 # the documented minimum is a line that names a finding: a fail or error severity, the word
 # finding, or a changed or mismatched item. Output with none of those is not a findings report.
 _FINDING_LINE = re.compile(r"\b(fail(ed)?|errors?|findings?|changed|mismatch(ed)?)\b", re.I)
+# A report that says there is nothing, or a crash dump that happens to contain the word `fail`.
+_NO_FINDINGS = re.compile(r"\b(no|0)\s+findings?\b", re.I)
 FAULT_CELLS = {"readonly", "disk", "quota"}
 
 
@@ -87,7 +89,13 @@ def classify(
         ok = cell in FAULT_CELLS and atomic_ok
         return Verdict("runtime", not ok, "" if ok else "runtime-outside-fault-cell")
     if code == EXIT_FINDINGS:
-        ok = expect == "findings" and _FINDING_LINE.search(stdout + "\n" + stderr) is not None
+        both = stdout + "\n" + stderr
+        ok = (
+            expect == "findings"
+            and _FINDING_LINE.search(both) is not None
+            and _NO_FINDINGS.search(both) is None
+            and "Traceback (most recent call last)" not in both
+        )
         return Verdict("findings", not ok, "" if ok else "unexpected-findings")
     if code == EXIT_CAPACITY:
         ok = cell == "memory"
