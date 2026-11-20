@@ -321,6 +321,9 @@ def _infer_strategy_for_column(field_stats) -> Inference:
         if ambiguous:
             signals = ", ".join(getattr(m, "detector_id", "?") for m in confident_matches[:3])
             review = _AMBIGUOUS_TEMPLATE.format(signals=signals, chosen=base.strategy)
+            if base is _DATE_REDACT:
+                # Keep the date note: it says how to get date_shift back.
+                review = f"{base.review} {review}"
             return Inference(
                 strategy=base.strategy,
                 provider=base.provider,

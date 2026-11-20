@@ -1,8 +1,10 @@
-"""Every date_shift the CLI writes carries `provider_config.date_format`.
+"""Date_shift format handling for the shipped templates and `decoy init`.
 
-Engine 0.28.1 accepts the key; the engine release after it refuses a
-date_shift without one (`date_shift_requires_date_format`). These tests keep
-the shipped templates and the `decoy init` writer ahead of that refusal.
+Every date_shift in a shipped template carries `provider_config.date_format`.
+`decoy init` writes one only when the engine reports one format fits every
+value. On engine 0.28.1 (no completeness flag) init deliberately emits
+date_shift with no format, as before, so the engine guesses it; the engine
+release that refuses a format-less date_shift also reports the flag.
 """
 
 from __future__ import annotations
@@ -178,3 +180,18 @@ def test_init_scan_of_real_dates_follows_engine_flag():
         assert inf.date_format == "%Y-%m-%d"
     elif not hasattr(fs, "format_pattern_complete"):
         assert inf.strategy == "date_shift" and inf.date_format is None
+
+
+def test_incomplete_date_with_ambiguous_second_detector_keeps_date_note():
+    fs = _StatsComplete(
+        "d",
+        [_Match("iso_date", "%Y-%m-%d", 0.95), _Match("us_phone", None, 0.92)],
+        format_pattern_complete=False,
+    )
+    inf = _infer_strategy_for_column(fs)
+    assert inf.strategy == "redact"
+    assert inf.date_format is None
+    assert _DATE_REDACT.review in inf.review
+    assert "no single format fits every value" in inf.review
+    assert "multiple candidate signals" in inf.review
+    assert "passthrough" not in inf.review
