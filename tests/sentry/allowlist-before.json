@@ -138,7 +138,7 @@
   "src/decoy/cli/report.py::compare_manifests::_fp_changes": {"reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."}
  },
  "module-size": {
-  "src/decoy/cli/fit.py": {"max": 818, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
+  "src/decoy/cli/fit.py": {"max": 817, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/report.py": {"max": 2299, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/scan.py": {"max": 1034, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
