@@ -20,7 +20,7 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | Bundled template set | versioning.md item 5 | `src/decoy/templates/` | `tests/e2e/test_release_smoke.py`, `tests/unit/test_bundled_templates.py` |
 | CI manifest | `docs/schemas/decoy-ci-v1.schema.json` | `src/decoy/ci/` | `tests/unit/test_ci_manifest.py` |
 | Python API: `mask`, `scan`, `MaskSecretConfigError`, `ConfigValidationError`, `UnsupportedCloudEndpointError` | `_LAZY_API` in `src/decoy/__init__.py` | `src/decoy/api.py` | `tests/unit/test_api.py` (the signature tests pin `mask` and `scan`) |
-| Version document and installer contract (tags `cli-version-document/v1`, `cli-bundle-manifest/v1`) | `src/decoy/distribution/` | `src/decoy/distribution/` | `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py` |
+| Version document and installer contract (tags `cli-version-document/v1`, `cli-bundle-manifest/v1`) | `src/decoy/distribution/` | `src/decoy/distribution/` | `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py`, `tests/unit/test_version_document_schema.py` |
 | `cli-local-1` evidence payload | the evidence writer | `src/decoy/cli/evidence.py` | `tests/unit/test_evidence.py` |
 | CLI version literal | `src/decoy/_version.py` | `src/decoy/_version.py` | `tests/unit/release/test_version_agreement.py` |
 | `decoy-ci/v1` CI manifest tag | tag census | `src/decoy/ci/contracts.py` | `tests/unit/test_ci_manifest.py` |
