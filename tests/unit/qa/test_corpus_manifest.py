@@ -122,3 +122,9 @@ def test_a_repeated_id_is_refused() -> None:
 
 def test_an_unlicensed_item_still_parses_so_the_fetcher_can_refuse_it() -> None:
     assert mf.parse_item({**PUBLIC, "license": ""}).license == ""
+
+
+def test_a_bad_document_error_carries_no_context() -> None:
+    with pytest.raises(mf.ManifestError) as err:
+        mf.parse_manifest("not toml [")
+    assert err.value.__cause__ is None and err.value.__context__ is None

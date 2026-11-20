@@ -3,8 +3,10 @@
 NumPy and the standard library only, never Faker: the product masks with Faker, and data made by
 the same library could hide a defect that depends on Faker's own patterns.
 
-Every text cell holds `qamark` plus a number that is unique inside one item. Date columns are not
-text for this rule: they exist to hold odd and bad date strings. Each builder returns tables as
+Every text cell holds `qamark` plus a number that is unique to the cell where it was made. A
+copied key cell (a composite foreign key) and a constant column repeat the marker of their source
+on purpose, so I1 relies on the marker being present, not on every number being distinct.
+Date columns are not text for this rule: they exist to hold odd and bad date strings. Each builder returns tables as
 column lists plus the foreign keys that must join.
 """
 

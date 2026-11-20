@@ -91,8 +91,9 @@ def test_written_files_are_identical_and_a_rerun_is_a_no_op(tmp_path: Path) -> N
     assert [p.read_bytes() for p in a] == [p.read_bytes() for p in b]
     assert oct(a[0].stat().st_mode & 0o777) == "0o600"
     generate.generate_item(item, tmp_path / "a", SEED)  # same bytes: allowed
-    with pytest.raises(generate.RegenerationDiffers):
+    with pytest.raises(generate.RegenerationDiffers) as err:
         generate.generate_item(item, tmp_path / "a", SEED + 1)
+    assert err.value.__cause__ is None and err.value.__context__ is None
 
 
 def test_a_duckdb_rerun_compares_tables_and_refuses_a_mismatch(tmp_path: Path) -> None:

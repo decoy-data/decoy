@@ -126,7 +126,9 @@ def parse_manifest(text: str) -> list[Item]:
     try:
         doc = tomllib.loads(text)
     except tomllib.TOMLDecodeError:
-        raise ManifestError("the manifest is not valid TOML") from None
+        doc = None
+    if doc is None:  # raised outside the handler so the error carries no __context__
+        raise ManifestError("the manifest is not valid TOML")
     version = doc.get("schema_version")
     if type(version) is not int:
         raise ManifestError("schema_version must be an integer")

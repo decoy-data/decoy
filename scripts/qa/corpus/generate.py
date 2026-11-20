@@ -53,9 +53,11 @@ def render_item(item: Item, seed: int) -> dict[str, bytes]:
 def _publish(path: Path, data: bytes) -> None:
     try:
         publish_private_once(path, data)
+        return
     except AlreadyPublished:
-        if path.read_bytes() != data:
-            raise RegenerationDiffers(f"{path.name} exists with different bytes") from None
+        pass
+    if path.read_bytes() != data:
+        raise RegenerationDiffers(f"{path.name} exists with different bytes")
 
 
 def _check_existing_duckdb(item: Item, path: Path, seed: int) -> None:
@@ -66,7 +68,7 @@ def _check_existing_duckdb(item: Item, path: Path, seed: int) -> None:
     except Exception:  # an unreadable or foreign file is a mismatch; keep its text out of the error
         same = False
     if not same:
-        raise RegenerationDiffers(f"{path.name} exists with different tables") from None
+        raise RegenerationDiffers(f"{path.name} exists with different tables")
 
 
 def generate_item(item: Item, out: Path, seed: int = DEFAULT_SEED) -> list[Path]:

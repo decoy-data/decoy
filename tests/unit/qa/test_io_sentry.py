@@ -26,7 +26,11 @@ PATH_WRITERS = {"write_text", "write_bytes", "touch"}
 WHOLE_MODULES = {"tempfile", "shutil"}
 FRAME_WRITERS = {"to_csv", "to_parquet", "to_json", "to_pickle", "write_csv", "write_parquet"}
 SQL_WRITE = re.compile(r"\bCOPY\b.*\bTO\b|\bEXPORT\s+DATABASE\b", re.I | re.S)
-PRIVATE_IMPORT = re.compile(r"^decoy(\.\w+)*\._\w+")
+PRIVATE_IMPORT = re.compile(r"^(decoy|decoy_engine)(\.\w+)*\._\w+")
+# The one place a DuckDB database may be created by the library: a scratch folder from
+# `io.private_scratch_dir()`, whose bytes then go through `publish_private_once`. Exact entries
+# only; `test_the_scratch_allow_list_is_real` checks each one still does what this says.
+SCRATCH_CONNECTS = {("scripts/qa/corpus/formats.py", "duckdb_file")}
 
 
 def _mode_is_write(call: ast.Call, position: int) -> bool:
@@ -78,10 +82,10 @@ def _is_memory_dest(node: ast.expr, memory: set[str]) -> bool:
     )
 
 
-def _connect_writes(call: ast.Call, source_line: str) -> bool:
-    """`x.connect(path)` creates a file unless it is `:memory:`, read-only, or marked scratch."""
-    if "qa-io: scratch" in source_line:
-        return False  # built inside io.private_scratch_dir(); the bytes then go through io.py
+def _connect_writes(call: ast.Call, allowed: bool) -> bool:
+    """`x.connect(path)` creates a file unless it is `:memory:`, read-only, or allow-listed."""
+    if allowed:
+        return False
     if not call.args and not call.keywords:
         return False
     first = call.args[0] if call.args else None
@@ -91,11 +95,26 @@ def _connect_writes(call: ast.Call, source_line: str) -> bool:
     return not (isinstance(read_only, ast.Constant) and read_only.value is True)
 
 
-def write_sites(source: str) -> list[str]:
+def _enclosing_functions(tree: ast.AST) -> dict[int, str]:
+    """Map each node's id to the name of the function that holds it."""
+    owner: dict[int, str] = {}
+
+    def walk(node: ast.AST, name: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = (
+                child.name if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef) else name
+            )
+            owner[id(child)] = inner
+            walk(child, inner)
+
+    walk(tree, "")
+    return owner
+
+
+def write_sites(source: str, relpath: str = "<snippet>") -> list[str]:
     """Every open-for-write spelling in `source`, as `line: what`."""
     tree = ast.parse(source)
-    lines = source.splitlines()
-    alias, memory = _aliases(tree), _memory_names(tree)
+    alias, memory, owner_of = _aliases(tree), _memory_names(tree), _enclosing_functions(tree)
     found: list[str] = []
     for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
@@ -141,7 +160,9 @@ def write_sites(source: str) -> list[str]:
                     where = next((k.value for k in node.keywords if k.arg == "where"), dest)
                     if where is None or not _is_memory_dest(where, memory):
                         found.append(f"{line}: write_table to a path")
-                elif fn.attr == "connect" and _connect_writes(node, lines[line - 1]):
+                elif fn.attr == "connect" and _connect_writes(
+                    node, (relpath, owner_of.get(id(node), "")) in SCRATCH_CONNECTS
+                ):
                     found.append(f"{line}: .connect(path)")
     return found
 
@@ -168,9 +189,29 @@ def test_no_module_but_io_writes_a_file() -> None:
         p.relative_to(ROOT).as_posix(): sites
         for p in _qa_modules()
         if p != QA / "io.py"
-        if (sites := write_sites(p.read_text(encoding="utf-8")))
+        if (sites := write_sites(p.read_text(encoding="utf-8"), p.relative_to(ROOT).as_posix()))
     }
     assert offenders == {}, "route these writes through scripts/qa/io.py"
+
+
+def test_the_scratch_allow_list_is_real() -> None:
+    for relpath, func in SCRATCH_CONNECTS:
+        tree = ast.parse((ROOT / relpath).read_text(encoding="utf-8"))
+        fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == func)
+        names = {
+            getattr(n.func, "attr", getattr(n.func, "id", ""))
+            for n in ast.walk(fn)
+            if isinstance(n, ast.Call)
+        }
+        assert "private_scratch_dir" in names and "connect" in names, (relpath, func)
+
+
+def test_a_connect_outside_the_allow_list_is_flagged() -> None:
+    src = "def other():\n    duckdb.connect(str(db))\n"
+    assert write_sites(src, "scripts/qa/corpus/formats.py")
+    ok = "def duckdb_file():\n    duckdb.connect(str(db))\n"
+    assert write_sites(ok, "scripts/qa/corpus/formats.py") == []
+    assert write_sites(ok, "scripts/qa/other.py")
 
 
 def test_io_py_is_where_the_writes_are() -> None:
@@ -249,7 +290,6 @@ def test_the_scan_catches_each_spelling(snippet: str) -> None:
         "pq.write_table(t, io.BytesIO())",
         "duckdb.connect(':memory:')",
         "duckdb.connect(str(db), read_only=True)",
-        "duckdb.connect(str(db))  # qa-io: scratch",
         "import os as o\no.path.join(a, b)",
     ],
 )
@@ -264,6 +304,9 @@ def test_the_scan_leaves_reads_alone(snippet: str) -> None:
         "import decoy._private_file",
         "from decoy.cli.io._paths import x",
         "from decoy import _atomic",
+        "import decoy_engine._internal",
+        "from decoy_engine.execution._operator_registry import OPERATORS",
+        "from decoy_engine import _x",
     ],
 )
 def test_the_private_import_scan_catches_each_spelling(snippet: str) -> None:
@@ -272,3 +315,4 @@ def test_the_private_import_scan_catches_each_spelling(snippet: str) -> None:
 
 def test_the_private_import_scan_leaves_public_imports_alone() -> None:
     assert private_imports("from decoy.cli.exit_codes import EXIT_OK\nimport decoy\n") == []
+    assert private_imports("from decoy_engine import run_pipeline\n") == []

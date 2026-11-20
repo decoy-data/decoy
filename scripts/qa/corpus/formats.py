@@ -92,7 +92,7 @@ def duckdb_file(tables: list[Table]) -> bytes:
 
     with private_scratch_dir() as scratch:
         db = scratch / "corpus.duckdb"
-        con = duckdb.connect(str(db))  # qa-io: scratch
+        con = duckdb.connect(str(db))
         try:
             for t in tables:
                 arrow = _arrow(t)  # noqa: F841  (duckdb reads the local name `arrow`)
