@@ -66,8 +66,22 @@ Run on the Mac (a throwaway uv venv in a scratch folder, deleted after), not the
   same 70 `name==version` lines. The dependents that constrain the four (requests and botocore on
   urllib3 and certifi, google-auth and joserfc on cryptography, pyasn1-modules on pyasn1) all
   accept the new versions.
+- **Engine and CLI requirements against the candidate.** The step above checks the pins against
+  each other only. A second `uv pip compile` took the engine's base `dependencies` (engine main
+  `pyproject.toml`, 22 lines) plus the CLI's own (`pyproject.toml`, 6 lines, `decoy-engine` left
+  out) as input with `-c` set to the candidate pins, for the same target. It fails on one line
+  only: the CLI requires `typer>=0.26.7,<0.27` (`pyproject.toml:158`) and the certified set pins
+  `typer==0.27.0`. The same run against the current main pins fails the same way, so this is an
+  existing conflict, not one this row adds. With the typer requirement left out, both the base and
+  the candidate resolve with no change. This row does not fix the typer conflict: it is the known
+  exception `typer` below and is a separate follow-up row (see "Follow-ups").
 
 Result: no fifth pin has to move for the four. No owner question from the dependency floors.
+
+**Known resolver exception `typer`.** Every resolver check in this plan (the pre-check above and
+step 4) must report exactly one conflict, the `typer` one named above, and nothing else. Any other
+conflict fails the check. No bare `uv pip check` goes into CI as part of this row, because it would
+fail on `typer` today.
 
 ## Behavior
 
@@ -108,9 +122,13 @@ Steps, in order. Each step names its input and its output.
    main): copy `requirements-certified.txt` to the fixture path, then change the four pin lines
    only. Leave the header (engine 0.28.1, `b61dcfd6...`) as it is; step 5 fixes it. Push. Record
    the C0 commit SHA. Output: the candidate file at `C0:requirements-certified.txt`.
-2. **E1, engine release prep of `N`.** In the engine release prep branch for `N`, export both pin
-   files from the CLI clone into a scratch folder:
-   `git -C <cli> show origin/main:requirements-certified.txt > base.txt` and
+   C0 is a single commit whose parent `C0^` is a CLI main commit. Never rebase, squash or amend
+   the branch below C0: later commits go on top, and C1 merges with a plain merge, so the C0 SHA
+   that E1 cites stays reachable.
+2. **E1, engine release prep of `N`.** In the engine release prep branch for `N`, first require
+   `git -C <cli> diff <C0 sha>^ origin/main -- requirements-certified.txt` to be empty (main has
+   not moved the pin file since C0). Then export both pin files from the CLI clone into a scratch
+   folder: `git -C <cli> show <C0 sha>^:requirements-certified.txt > base.txt` and
    `git -C <cli> show <C0 sha>:requirements-certified.txt > cand-24zc.txt`. Then run
    `python scripts/release/stamp_release.py --version N --cli-version V --cli-pins-base base.txt
    --cli-pins base.txt --cli-pins cand-24zc.txt`, where `V` is the `__version__` in CLI
@@ -124,17 +142,43 @@ Steps, in order. Each step names its input and its output.
    `tests/unit/generation/test_dp_prior_release_rows.py` and append it to `_ALL_ROWS`; extend the
    CLI-profile comment in `dp_provenance.py` with one line ("N: F is the 70-pin profile with
    certifi, cryptography, pyasn1 and urllib3 moved, row 24zc"); correct the stale count in
-   `docs/distribution-integrity/differential-privacy.md` ("63 third-party pins; 67 once ...") to 70.
+   `docs/distribution-integrity/differential-privacy.md` ("63 third-party pins; 67 once ...") to 70;
+   relabel `c479d1de...` in the `_V0_28_0_ROWS` comment of `test_dp_prior_release_rows.py:86-89`
+   as "the stale 0.28.0 24zc candidate (69-pin file without joserfc and rfc8785; no install has
+   it)", so no reader takes it for the live row `F`.
 4. **E1 proof before the tag.** On a Linux x86-64 glibc node (the Dell WSL node through
-   `~/bin/vm-run`, or a GCP test VM), build the AT-5 venv by hand: CPython 3.10.20, the engine from
-   the release prep commit with `--no-deps`, the CLI wheel built from C0 with `--no-deps`, then
-   `-r cand-24zc.txt`, then call `check_fit_environment()` and print
-   `compute_lock_fingerprint(installed_distribution_set())`. It must equal `F` and pass. (C0's
-   header still names the old fingerprint, so `cert_smoke.py` is not run here.) Then
-   `scripts/release/release_checks.sh N`, then `cut-release.sh` tags `vN`.
-5. **C1, CLI, after `vN` exists.** On the same CLI branch: repin the engine to `N` (file list
-   below), write `F` and `N` into the header and `cert_smoke.py`, add the tests, and merge only
-   when the certified-profile CI job is green on the exact head.
+   `~/bin/vm-run`, or a GCP test VM), in a scratch folder that holds a checkout of the CLI at C0
+   (the "C0 copy"), run the same commands as CLI `ci.yml:300-335`, changing only the engine
+   source and the pin file:
+
+   ```bash
+   cd <C0 copy>
+   uv venv .venv-build && uv pip install --python .venv-build/bin/python \
+     -c requirements-dev.lock "build==1.2.2"     # ci.yml's pinned build frontend
+   .venv-build/bin/python -m build --wheel
+   uv python install 3.10.20
+   uv venv --python 3.10.20 .venv-certified          # unseeded: no pip or setuptools
+   uv pip install --python .venv-certified/bin/python --no-deps \
+     "git+https://github.com/decoy-data/decoy-engine@<release prep commit>" dist/*.whl
+   uv pip install --python .venv-certified/bin/python -r <scratch>/cand-24zc.txt
+   .venv-certified/bin/python -I -c 'import importlib.metadata as m, sys; assert m.version("decoy-engine") == sys.argv[1]' N
+   uv pip check --python .venv-certified/bin/python   # must list only the known typer exception
+   # edit the header of the C0 copy's requirements-certified.txt to F; do not commit it
+   .venv-certified/bin/python scripts/cert_smoke.py
+   ```
+
+   `cert_smoke.py` reads `requirements-certified.txt` next to itself, so it checks the edited C0
+   copy: the fingerprint equals `F`, `F` is a row in the installed engine, and a real DP fit
+   completes. Paste the node name, `F` and the "fit OK" line into the release prep PR body. Only
+   then run `scripts/release/release_checks.sh N` and `cut-release.sh` to tag `vN`.
+5. **C1, CLI, after `vN` exists.** Before merge, require
+   `git diff <C0 sha>^ origin/main -- requirements-certified.txt` to be empty again. On the same
+   CLI branch: plain-merge `origin/main` (no rebase), repin the engine to `N` (file list below),
+   write `F` and `N` into the header and `cert_smoke.py`, add the tests, and merge only when the
+   certified-profile CI job is green on the exact head. Engine `N` may carry other behavior
+   changes that CLI tests pin (as #327 did for 0.28.1). C1 may take those test and code updates if
+   they are small and named in the C1 PR; otherwise a separate engine repin to `N` merges first
+   and C1 stacks on it.
 
 If the CLI version changes between C0 and C1, `F` is wrong for C1 (the fingerprint hashes
 `decoy-cli`). C1 then waits for the next engine release prep to stamp the row again with the new
@@ -151,7 +195,8 @@ Checked on CLI `7c0fe61d` and engine `815d15442`. The CLI engine repin list foll
    `stamp_release.py` (step 2); the CLI-profile comment at `:304-306` gains one line by hand. No
    row is removed.
 2. `tests/unit/generation/test_dp_prior_release_rows.py:94-122`: `_VN_ROWS` beside
-   `_V0_28_1_ROWS`, appended to `_ALL_ROWS`.
+   `_V0_28_1_ROWS`, appended to `_ALL_ROWS`; and `:86-89`, the `_V0_28_0_ROWS` comment, relabels
+   `c479d1de...` as the stale 0.28.0 24zc candidate (comment only, the tuple does not change).
 3. `docs/distribution-integrity/differential-privacy.md`, "Certified profiles" table: the CLI pin
    count reads 70.
 4. `_CERTIFIED_ANNOTATIONS` (`dp_provenance.py:330`): unchanged; none of the four is
@@ -209,6 +254,10 @@ requires, `ci/ci-tools.lock`, `pyproject.toml:171` (`cryptography>=42`), the eng
 | cryptography 50.0.0 needs a dependency the set does not hold | `uv pip install -r requirements-certified.txt` resolution error | C1 CI install step | stop and report; do not move a fifth pin (the pre-check says it does not happen today) |
 | A snapshot recorded on `b61dcfd6...` or an older row no longer compiles | existing prior-release-rows test (AT-4) | E1 T1 | restore the row |
 | A cryptography 50.0.0 API change breaks CLI Ed25519 signing | AT-6 failure | C1 | stop and report |
+| CLI main moved `requirements-certified.txt` after C0 (another repin or pin change merged) | `git diff <C0 sha>^ origin/main -- requirements-certified.txt` is not empty | step 2, and again before C1 merges | do not stamp from the old C0, or do not merge C1. Redo C0 on top of current main as a new commit (new SHA, new fixture copy) and stamp `F` again at the next engine release prep |
+| The C0 SHA cited by E1 is no longer on the branch (rebase, squash or force push) | `git -C <cli> cat-file -e <C0 sha>` fails, or the C1 fixture is not `<C0 sha>^:requirements-certified.txt` | C1 review | forbidden by step 1; if it happens, redo C0 and restamp |
+| Engine `N` raises a requirement floor above a certified pin (for example `cryptography>=50.0.1`) | the step-4 resolver check (`uv pip check`) lists a conflict other than the known `typer` exception | step 4 | do not tag with `F` as the 24zc row. Owner question at that time: move the pin (a fifth move, or above the named version) or lower the engine floor |
+| The step-4 resolver check lists only the known `typer` conflict | known exception, not a failure | step 4 | record it in the release prep PR body; the typer follow-up row owns it |
 
 Refusal messages carry package names, versions and fingerprints only. No paths or secrets are
 added. The synthetic success values printed by `cert_smoke.py` are the V2-LOG item recorded under
@@ -224,18 +273,20 @@ Output surfaces.
 | A fifth pin moves and `F` is recomputed and registered to hide it | AT-1 compares all 70 parsed pin lines against the fixture, independently of `F` (M5) |
 | Release prep stamps `F` from the wrong file (CLI main instead of C0) | the release prep PR names both rows and the C0 SHA; step 4 installs `cand-24zc.txt` and must reproduce `F` |
 | E1 drops an old row | `dp_rows.plan_rows` refuses a lost or reordered row; AT-4 |
+| CLI main changes the pin file between C0 and E1 or C1 | the empty-diff check against `<C0 sha>^` at step 2 and before C1 merges; the base file is read from `<C0 sha>^`, not from a moving `origin/main` |
+| Step 4 passes on a stale engine build | the installed `decoy-engine` version is asserted equal to `N` before `cert_smoke.py` runs |
 | The dev lock gets regenerated with a wider move | `lock.sh` is run with only the engine spec changed; the diff must touch only lines engine `N` requires |
 
 ## Acceptance tests (red first)
 
 | # | Test | Red on |
 |---|---|---|
-| AT-1 | New `tests/unit/release/test_certified_pin_delta.py`. Load `scripts/release/sbom_checks.py` with the importlib pattern the other `tests/unit/release/` modules use; parse the fixture and the live file with `sbom_checks.pins()` and `canonical_name()`. Require 70 unique names on each side, identical name sets, identical requirement text (markers included) for every unchanged pin, and a complete version delta equal to exactly `{certifi: 2026.7.22 -> 2026.10.18, cryptography: 49.0.0 -> 50.0.0, pyasn1: 0.6.4 -> 0.6.5, urllib3: 2.7.0 -> 2.8.0}` | current main (no fixture, no delta); M1, M4, M5 |
-| AT-2 | Same module: the header fingerprint equals public `compute_lock_fingerprint` over the 70 pins plus `decoy-engine` at the `pyproject.toml` pin and `decoy-cli` at `src/decoy/_version.py` | M2, M6 |
-| AT-3 | Same module: construct public `Provenance(CERTIFIED_PLATFORM, "3.10.20.final", F)`, where `F` is read from the header, and call public `validate_recorded_provenance()`. Do not import or inspect `_CERTIFIED_STACKS` | M3; and C0 alone (engine still 0.28.1, `F` not a row) |
+| AT-1 | New `tests/unit/release/test_certified_pin_delta.py`. Load `scripts/release/sbom_checks.py` with the importlib pattern the other `tests/unit/release/` modules use; parse the fixture and the live file with `sbom_checks.pins()` and `canonical_name()`. First assert the fixture's sha256 equals the value recorded in the test (the sha256 of `<C0 sha>^:requirements-certified.txt`), with the failure message "this fixture proves row 24zc only: delete it and this test on re-certification, never edit it". Require 70 unique names on each side, identical name sets, identical requirement text (markers included) for every unchanged pin, and a complete version delta equal to exactly `{certifi: 2026.7.22 -> 2026.10.18, cryptography: 49.0.0 -> 50.0.0, pyasn1: 0.6.4 -> 0.6.5, urllib3: 2.7.0 -> 2.8.0}` | current main (no fixture, no delta); M1, M4, M5, M7 |
+| AT-2 | Same module: read the header fingerprint with `scripts/cert_smoke.py`'s own `_recorded_fingerprint()` (loaded with importlib, as `test_launch_pin_check.py` loads its script; no second header regex). Assert the live file has no marker (`;`) on any pin line, so the pins are platform-independent. Assert the header equals public `compute_lock_fingerprint` over the 70 pins, each name through `sbom_checks.canonical_name`, plus `decoy-engine` at the `pyproject.toml` pin and `decoy-cli` at `src/decoy/_version.py` | C0 (the header still says `b61dcfd6...`); M2, M6 |
+| AT-3 | Same module: construct public `Provenance(CERTIFIED_PLATFORM, "3.10.20.final", F)`, where `F` is read from the header, and call public `validate_recorded_provenance()`. Do not import or inspect `_CERTIFIED_STACKS` | M3. At C0 AT-3 is not reached as a red-first proof: the header still holds `b61dcfd6...`, which is a row, so AT-3 passes and AT-2 is the red test there. AT-3's red proof is M3 on the C1 head |
 | AT-4 | Engine `test_dp_prior_release_rows.py`: `_VN_ROWS` includes `F` and the unchanged 70-pin row for `N`; every older row, `b61dcfd6...` included, still compiles | an E1 that drops a row |
-| AT-5 | CI certified-profile job on the C1 head: fresh 3.10.20 venv, engine tag `vN` and the CLI wheel with `--no-deps`, then `-r requirements-certified.txt`, then `cert_smoke.py` (fingerprint, manifest row, real DP fit). Step 4 runs the same install against the release prep commit, without `cert_smoke.py` | M2, M3, M6 |
-| AT-6 | Exact-50.0.0 CLI Ed25519 cell: a throwaway CPython 3.10.20 test environment constrained to `cryptography==50.0.0`; first assert `importlib.metadata.version("cryptography") == "50.0.0"`, then run the Ed25519 signing, verification, wrong-key and tamper cases in `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py` and `tests/unit/test_distribution_r7_security.py` | M4 (the version assert), or an API break in 50.0.0 |
+| AT-5 | CI certified-profile job on the C1 head: fresh 3.10.20 venv, engine tag `vN` and the CLI wheel with `--no-deps`, then `-r requirements-certified.txt`, then `cert_smoke.py` (fingerprint, manifest row, real DP fit). Step 4 runs the same commands against the release prep commit and the C0 copy, plus the installed-engine-version assert, the resolver check (only the known `typer` exception allowed) and `cert_smoke.py` on the edited, uncommitted header | M2, M3, M6, and a wrong engine build at step 4 |
+| AT-6 | Exact-50.0.0 CLI Ed25519 cell, on the C1 head, on a `~/bin/vm-run` node (not the devbox): `uv venv --python 3.10.20 <tmp>/at6`; `uv pip install --python <tmp>/at6/bin/python -r requirements-dev.lock`; `uv pip install --python <tmp>/at6/bin/python --no-deps -e .`; `uv pip install --python <tmp>/at6/bin/python --no-deps cryptography==50.0.0`; `<tmp>/at6/bin/python -I -c 'import importlib.metadata as m; assert m.version("cryptography") == "50.0.0"'`; `<tmp>/at6/bin/python -m pytest -q -p no:cacheprovider tests/unit/test_distribution.py tests/unit/test_distribution_acceptance.py tests/unit/test_distribution_r7_security.py`. Record the node, the head SHA and the pytest summary line in the C1 PR body and the gate ledger row | M4 (the version assert), or an API break in 50.0.0 |
 | AT-7 | Engine release prep refusal: `stamp_release.py` with a candidate that lacks an engine base requirement exits 1 with the tree unchanged. The existing `tests/unit/scripts/test_dp_rows.py` and `tests/unit/scripts/test_stamp_release_compile.py` cover this; E1 runs them and adds nothing | a release prep that would stamp `F` for a set no install has |
 
 **Named mutations** (on the C1 head unless stated; each must turn a test red):
@@ -249,6 +300,8 @@ Output surfaces.
   and admit that row engine-side. AT-2, AT-3 and AT-5 may then pass; AT-1 must still fail on the
   unauthorized fifth delta.
 - M6: set `src/decoy/_version.py` to a different version with the header unchanged. AT-2 fails.
+- M7: edit one pin line in the fixture (for example `urllib3==2.8.0`). AT-1 fails on the fixture
+  sha256 before it compares any pin.
 
 ## Enumerations (CLI `7c0fe61d`, engine `815d15442`)
 
@@ -300,7 +353,7 @@ fingerprint.
 | 5 | Referential integrity | none | N/A: dependency pins only, no keys or FK data paths change | n/a | n/a |
 | 6 | Untrusted producer | package index content | `uv` installs wheels by exact pin; the engine gate checks the installed set by fingerprint | AT-5 | M2 |
 | 7 | Check then use (TOCTOU) | the fingerprint is computed from the installed set at fit time, not from the file | unchanged engine gate | AT-5 | n/a |
-| 8 | Weak tests | nothing in T1 limits the pin delta to the four approved moves | exact whole-file delta plus fingerprint and public admission in one release test module | AT-1, AT-2, AT-3 | M1, M2, M4, M5, M6 |
+| 8 | Weak tests | nothing in T1 limits the pin delta to the four approved moves | exact whole-file delta plus fingerprint and public admission in one release test module | AT-1, AT-2, AT-3 | M1, M2, M4, M5, M6, M7 |
 | 9 | Refactor drift | the engine repin file list | follow CLI #327's list; `test_pyproject_metadata.py` and `test_launch_pin_check.py` pin `N` | AT-5, existing metadata tests | leave `ci.yml` on `v0.28.1` (AT-5 red) |
 | 10 | Frozen contract drift | the DP certified-row set and prior snapshots | release prep only inserts rows; `plan_rows` refuses a lost row | AT-4 | drop `b61dcfd6...` (AT-4 red) |
 
@@ -348,7 +401,7 @@ recorded-snapshot gates in `dp_provenance.py`.
 | Slice | Repo | Branch | Size | Gate | Depends on |
 |---|---|---|---|---|---|
 | C0 | CLI | `chore/certified-pin-cves-c1` (first commit, pushed, not merged) | XS (four pin lines, one fixture) | none on its own; it is the input to E1 | none |
-| E1 | engine | the release prep branch for `N` | XS (one extra `--cli-pins` flag, one test tuple, one comment line, one doc count) | T1: `tests/unit/generation/test_dp_prior_release_rows.py`, `tests/unit/scripts/test_dp_rows.py`, `tests/unit/scripts/test_stamp_release_compile.py`, `tests/sentry/test_dp_lock_row.py`; step 4 on a Linux x86-64 node; `scripts/release/release_checks.sh N` | C0 pushed; the daily engine release |
+| E1 | engine | the release prep branch for `N` | XS (one extra `--cli-pins` flag, one test tuple, one comment line, one doc count) | T1: `tests/unit/generation/test_dp_prior_release_rows.py`, `tests/unit/scripts/test_dp_rows.py`, `tests/unit/scripts/test_stamp_release_compile.py`, `tests/sentry/test_dp_lock_row.py`; step 4 on a Linux x86-64 node (exact `ci.yml:300-335` commands, engine version assert, resolver check, `cert_smoke.py` on the edited C0 copy, evidence in the PR body); `scripts/release/release_checks.sh N` | C0 pushed; the daily engine release |
 | C1 | CLI | `chore/certified-pin-cves-c1` | S (header, repin file list, one new test module) | T1: `tests/unit/release/test_certified_pin_delta.py`, `tests/unit/test_sbom_script.py`, `tests/unit/test_pyproject_metadata.py`, `tests/unit/release/test_launch_pin_check.py`, AT-6, and the CI certified-profile job green on the exact head; M1 to M6. Full suite per the testing.md dependency-lock, version-pin and frozen-contract triggers | E1 released as tag `vN` |
 
 **When to build.** Feature group: fit, fidelity and differential privacy (engine QA checklist
@@ -394,12 +447,20 @@ not waive the seven-location repin or boot proof at that trigger.
 
 ## Owner questions
 
-None open. The pre-check found no dependency floor that forces a fifth move. One conditional
-question is written into "Failure modes": if engine `N` adds a base dependency, stamping `F` needs
-a fifth pin line, and that needs an owner call at the time.
+None open. The pre-check found no dependency floor that forces a fifth move. Two conditional
+questions are written into "Failure modes" and need an owner call only if they happen: engine `N`
+adds a base dependency (stamping `F` then needs a fifth pin line), or engine `N` raises a
+requirement floor above a certified pin. The existing `typer` conflict is not a question for this
+row; it goes to the new CERT-TYPER row under "Follow-ups".
 
 ## Follow-ups (not in this row)
 
 - A `pip-audit` step on `requirements-certified.txt` in CI (V2-LOG candidate; needs a pinned tool
   and network access in CI).
 - Platform image pins are governed by the parked-platform exception above, not dropped.
+- **New row: CERT-TYPER.** The CLI requires `typer>=0.26.7,<0.27` (`pyproject.toml:158`) and the
+  certified set pins `typer==0.27.0`, so the certified install does not satisfy the CLI's own
+  requirement. Found by this plan's resolver pre-check on main as well as on the candidate. It is
+  older than this row and is not fixed here; it needs its own plan (move the certified pin, which
+  changes the fingerprint again, or widen the CLI range after checking the `typer utils docs`
+  output). After it closes, a resolver check with no known exceptions can go into CI.
