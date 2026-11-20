@@ -8,6 +8,12 @@ findings; an empty list means the ratchet holds. An entry that carries a numeric
 ``max_raised``). Messages carry ids, paths and keys only. ``load_allowlist`` is the one reader a
 sentry uses for its allowlist: the registered baseline JSON, which is the only copy.
 
+Growth has one recorded path: a registry row may list ``approved_growth`` entries, each an exact
+key and a dated owner decision ``owner YYYY-MM-DD <text>``. Ported from decoy-engine
+``tests/sentry/_ratchet.py`` (``DECISION``, ``parse_approvals`` and the stale-row check) and its
+``scripts/dev/sentry_registry.toml`` rows. A listed key may be added; a pattern, a bad decision, or
+a key the baseline does not hold is a finding.
+
 Ported from decoy-engine ``tests/sentry/_ratchet.py`` (X0a), plus the platform's
 ``created_in`` rules: every baseline names a non-empty ``created_in``, and a first inventory
 must name the slice passed as ``slice_name`` when one is given.
@@ -23,9 +29,11 @@ sentries compare entries exactly.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +48,8 @@ MIN_REASON = 15
 PLACEHOLDERS = frozenset({"todo", "tbd", "fixme", "xxx", "n/a", "none"})
 # Numeric fields a baseline entry may carry as a count the ratchet lets only fall, each checked.
 CEILING_FIELDS = ("max", "count", "sites")
+DECISION = re.compile(r"^owner \d{4}-\d{2}-\d{2} .{10,}$")
+_GLOB_CHARS = frozenset("*?[]")
 
 
 @dataclass(frozen=True)
@@ -76,6 +86,44 @@ def load_allowlist(sentry_id: str, root: Path | None = None) -> dict[str, dict[s
     registered, _ = parse_registry((base / REGISTRY).read_text(encoding="utf-8"))
     doc = json.loads((base / registered[sentry_id]).read_text(encoding="utf-8"))
     return dict(doc["entries"])
+
+
+def _decision_ok(decision: object) -> bool:
+    """A dated owner decision: the whole string matches and the date is a real calendar day."""
+    if not isinstance(decision, str) or not DECISION.fullmatch(decision):
+        return False
+    try:
+        date.fromisoformat(decision.split(" ", 2)[1])
+    except ValueError:
+        return False
+    return True
+
+
+def parse_approvals(text: str) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """``{sentry id: {key: decision}}`` from ``approved_growth`` rows, and findings for bad rows.
+
+    A row is ``{ key, decision }``; the key compares exactly (no glob or prefix) and the decision
+    must name a dated owner decision. Growth of a baseline passes only through a row here.
+    """
+    out: dict[str, dict[str, str]] = {}
+    findings: list[str] = []
+    for row in tomllib.loads(text).get("sentry", []):
+        sid = row.get("id", "")
+        for item in row.get("approved_growth", []):
+            key = item.get("key") if isinstance(item, dict) else None
+            decision = item.get("decision") if isinstance(item, dict) else None
+            if not isinstance(key, str) or not key:
+                findings.append(f"{sid}: approved_growth row has no key")
+            elif _GLOB_CHARS & set(key):
+                findings.append(f"{sid}: approved_growth key {key} is a pattern; list exact keys")
+            elif not _decision_ok(decision):
+                findings.append(
+                    f"{sid}: approved_growth for {key} needs a decision "
+                    "'owner YYYY-MM-DD <text of 10+ chars>'"
+                )
+            else:
+                out.setdefault(sid, {})[key] = decision
+    return out, findings
 
 
 def parse_baseline(text: str) -> Baseline:
@@ -199,9 +247,10 @@ def _fmt(keys: frozenset[str]) -> str:
 def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[list[str], list[str]]:
     """Return ``(findings, report_lines)`` for the tree at ``root`` against ``base_ref``."""
     reg_file = root / REGISTRY
-    head, findings = parse_registry(
-        reg_file.read_text(encoding="utf-8") if reg_file.exists() else ""
-    )
+    reg_text = reg_file.read_text(encoding="utf-8") if reg_file.exists() else ""
+    head, findings = parse_registry(reg_text)
+    approvals, approval_findings = parse_approvals(reg_text)
+    findings += approval_findings
     base_text = _git_show(root, base_ref, REGISTRY)
     base_reg = parse_registry(base_text)[0] if base_text is not None else {}
     report: list[str] = []
@@ -224,6 +273,10 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
         if not base.created_in.strip():
             findings.append(f"{path}: created_in is missing or not a non-empty string")
         findings += reason_findings(path, base)
+        findings += [
+            f"{sid}: stale approved_growth, {key} is not in {path}"
+            for key in sorted(set(approvals.get(sid, {})) - base.keys)
+        ]
 
     removed = set(base_reg) - set(head)
     # A key a replacement keeps must keep its max too, or a rename would launder a raised max.
@@ -246,6 +299,11 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
             moved_f, admitted = move_findings(path, base, base_doc, grown)
             findings += moved_f
             grown -= admitted
+            approved = grown & frozenset(approvals.get(sid, {}))
+            report += [
+                f"{sid}: approved growth {k} ({approvals[sid][k]})" for k in sorted(approved)
+            ]
+            grown -= approved
             if grown:
                 findings.append(
                     f"{sid}: baseline gained key(s) not in the merge base: {_fmt(grown)}"
