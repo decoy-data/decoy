@@ -11,6 +11,11 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-20: run result document and F29 remainder (rows 62 and 66)
+
+- Row 62 (RESULT) is closed. Every slice of plan `result-remainder` is merged. Engine: E2a #535, E-CAP #536, E3a #538, E-OOM #544, E2b #543, E3b #552 and the exit 5 disk code #551, all in engine 0.28.1, which the CLI pins. CLI: C-EXIT #228, C-REASON #229, C-CAP #240, C-DOC1 #336, C-DOC2 #344 and C-DOC3 #350, which adds `--result PATH` to write the run result document.
+- Row 66 (F29 remainder) is closed. Its CLI consumer work (C1) is the row 62 CLI work above, all merged, and C0 is engine #367. The F31 hook no longer applies: the owner closed F31 for CLI V1 on 2026-11-12.
+
 ## 2026-11-20: freeze slices S5 and S7a (engine)
 
 - `when:` filters reserve `null`, `true`, `false`, `between`, `like`, `ilike`, `matches`, `startswith` and `endswith` as column names, so later grammar can use them (engine #722).
