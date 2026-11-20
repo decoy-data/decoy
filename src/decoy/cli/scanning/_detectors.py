@@ -46,34 +46,41 @@ class DetectorsUsageError(Exception):
     """A bad `--detectors` or `--ner-model`, found before any file is read. Fixed text only."""
 
 
+# The engine reads `pre_scan` only inside a whole pipeline, so the options ride in the smallest
+# valid one and `parse_pipeline_config` (the one config route) returns the `PreScanConfig`.
+_SHELL: dict[str, Any] = {
+    "version": 2,
+    "global_settings": {"seed": 0},
+    "sources": {"t": {"type": "file", "format": "csv", "path": "t.csv", "has_header": True}},
+    "tables": [{"name": "t", "columns": [{"name": "c", "strategy": "passthrough"}]}],
+    "targets": {"t": {"type": "file", "format": "csv", "path": "o.csv"}},
+}
+
+
 def resolve_pre_scan(detectors: str | None, ner_model: str | None) -> Any:
     """The engine `PreScanConfig` for the options, or None when they ask for regex only."""
     if detectors is None and ner_model is None:
         return None
-    from decoy_engine import PreScanConfig
-    from pydantic import ValidationError
+    from decoy_engine import parse_pipeline_config
+    from decoy_engine.config import PipelineConfigError
 
     names = [n.strip() for n in (detectors or "regex").split(",")]
-    kwargs: dict[str, Any] = {"detectors": tuple(names)}
+    if ner_model is not None and "ner" not in names:
+        raise DetectorsUsageError(_NEEDS_NER)
+    pre_scan: dict[str, Any] = {"detectors": names}
     if ner_model is not None:
-        kwargs["ner_model"] = ner_model
+        pre_scan["ner_model"] = ner_model
     problem: str | None = None
-    config = None
+    parsed = None
     try:
-        config = PreScanConfig(**kwargs)
-    except ValidationError as exc:
-        # `hide_input_in_errors` keeps the input out of the error; only its code is read.
-        codes = " ".join(str(e.get("type", "")) for e in exc.errors())
-        problem = (
-            _NEEDS_NER
-            if "pre_scan_ner_inactive" in codes
-            else _BAD_MODEL
-            if "ner_model" in codes
-            else _BAD_LIST
-        )
+        parsed = parse_pipeline_config({**_SHELL, "pre_scan": pre_scan}).pre_scan
+    except PipelineConfigError as exc:
+        # Only where the problem is read, never its text: the engine message holds no value.
+        at_model = any(str(p.location).endswith("ner_model") for p in exc.problems)
+        problem = _BAD_MODEL if at_model else _BAD_LIST
     if problem is not None:
         raise DetectorsUsageError(problem)
-    return None if config.detectors == ("regex",) else config
+    return None if parsed.detectors == ("regex",) else parsed
 
 
 def preflight(state: OutputState, where: Mapping[str, Any], pre_scan: Any) -> None:
