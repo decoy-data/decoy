@@ -312,9 +312,29 @@ Size: C1 adds about 70 source lines, removes about 15, and adds about 200 test l
 
 ## 15.2 Enumerations
 
-Callers of the engine scan functions under `src/decoy` (from the walk, `origin/main` `c87ab295`): `cli/scanning/_multi.py::run_scan` (`scan_sources`, `scan_set_to_dict`), `cli/demo.py` demo single run (`scan_sources`, `scan_set_to_dict`), `api.py::scan` (`profile_columns`), `cli/init.py::init` (`profile_columns`). After C2: only `_engine_call.py::scan_descriptors`, plus `cli/init.py::init` on the allowlist.
+### 15.2.1 Callers
 
-Input kinds of `decoy.scan()`: CSV path (header, headerless with names), TSV path, Parquet path, fixed-width path (layout file or parsed list), DataFrame. Each has an AT-1 or AT-2 cell. Strategies: `head`, `random`, `full`; rows: default, positive, `0`, `None`, negative. Exit paths of `decoy.scan()`: returns the core; `ValueError` (usage, from `ScanUsageError`); `TypeError` (data type, Arrow conversion); engine errors (`ScanSourceError`, file-access errors, `PipelineConfigError`) unchanged.
+Callers of the engine scan functions under `src/decoy` on `origin/main` `c87ab295`: `src/decoy/cli/scanning/_multi.py:443-452` (`run_scan`: `scan_sources`, `scan_set_to_dict`), `src/decoy/cli/demo.py:162-172` (`scan_sources`, `scan_set_to_dict`), `src/decoy/api.py:691,724` (`scan`: `profile_columns`), `src/decoy/cli/init.py:374-376` (`init`: `profile_columns`). After C2, only `_engine_call.py::scan_descriptors` remains, plus `cli/init.py::init` on the allowlist.
+
+### 15.2.2 Exit paths
+
+`decoy.scan()` after C2: returns the core dict; raises `ValueError` (a `ScanUsageError` from `src/decoy/cli/scanning/_multi.py:58-63`, or a DataFrame with file-only options); `TypeError` (a `data` type other than path or DataFrame, as `src/decoy/api.py:720-722` today, or an Arrow conversion failure); engine errors unchanged (`ScanSourceError`, the file-access errors and `PipelineConfigError`, `E:src/decoy_engine/profiling/scan_set.py:90-104`). `decoy scan` exit codes do not change (`src/decoy/cli/scanning/_multi.py:434-469`: exit 1 for usage, exit 3 for a scan failure), except a negative `--rows`, exit 3 to exit 1, if Q3 is taken.
+
+### 15.2.3 Routes
+
+One route after C2: descriptor, then `scan_descriptors`, then the engine `scan_sources` (`E:src/decoy_engine/profiling/scan_set.py:145-215`, read through `_read_and_profile` at `:314-371`). Its read branches: whole (`full` or no cap), `random` (whole read, then a seeded sample, `:327-334`) and `head` (`cap + 1` rows, `:335-344`). AT-1 has a cell for each branch.
+
+### 15.2.4 FK shapes
+
+None. Both routes call `scan_sources` without `relationships`, so the integrity pass does not run (`E:src/decoy_engine/profiling/scan_set.py:257-273`) and the core's `relationships` list is empty.
+
+### 15.2.5 Fields
+
+The fields of the returned core are the engine's `TableCore` and `FieldCore` members (`E:src/decoy_engine/profiling/_scan_core.py:148-162`), listed in 5.5. Input kinds: CSV path (with header, or headerless with names), TSV path, Parquet path, fixed-width path (layout file or parsed list), DataFrame; each has an AT-1 or AT-2 cell. Options: strategy `head`, `random`, `full`; rows default, positive, `0`, `None`, negative.
+
+### 15.2.6 Output surfaces
+
+`decoy.scan()` return value (changes in C2); `decoy scan` card, `--json`, `--output FILE` and `--output -` (`src/decoy/cli/scanning/_multi.py:456-512`, unchanged); `decoy demo` `scan.json` (`src/decoy/cli/demo.py:171-173`, unchanged bytes).
 
 ## 15.3 Frozen contracts
 
