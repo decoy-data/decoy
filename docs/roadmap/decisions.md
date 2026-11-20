@@ -9,6 +9,20 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
   is incomplete as it stands, 1.0 reduces it to simple table structures only. The owner is building a different
   way to author pipelines. E1 and E2 ship in the experimental tier, since no 1.0 command calls them. The rest of
   `C:plan/init-wizard-v1-rest` is stopped.
+- **2026-11-19 (Decoy language).** The Decoy language (`.decoy` files) is a 1.0 focus: it is the
+  native way to define a pipeline, ahead of the wizard plus hand-edited YAML. YAML stays supported.
+  `decoy validate`, `decoy run` and the other pipeline commands read `.decoy` directly in 1.0. An
+  inferred line from `decoy init` carries a `?` review marker and `decoy run` refuses until it is
+  cleared. The `lark` dependency and the lock regeneration it needs are approved. Row DECOY-LANG;
+  plan `docs/plans/2026-11-19-decoy-language-completion.md` (decisions E1, E3, E4, E5).
+- **2026-11-19 (Decoy language commands, O1 to O5).** The format command is `decoy fmt`. A run
+  record keeps the compiled YAML next to the `.decoy` file's hash. A folder with both
+  `pipeline.yaml` and `pipeline.decoy` is refused. `decoy init` writes `.decoy` by default at 1.0,
+  with `--yaml` for the old output, after the loader and the run commands read `.decoy`; this is
+  an output-format change only, so the wizard freeze otherwise holds. The subset guard gets one
+  narrow exemption: `lang/_subset.py` may build the `subset` block (stores and dict displays);
+  pop, delete and filtering stay banned everywhere. Plan
+  `docs/plans/2026-11-19-decoy-language-commands.md`.
 - **2026-11-19 (physical seam and Faker).**
   - Physical seam: option C. The physical-plan compiler stays and becomes a "what would run and why"
     explainer for every route; execution stays in today's routes. The shadow-only execution branches

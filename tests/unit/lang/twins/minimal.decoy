@@ -1,0 +1,13 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  mask people from csv("./input.csv", header: true) to csv("./output.csv") {
+    first_name : faker(person_first_name)
+    last_name  : faker(person_last_name)
+    email      : faker(person_email)
+    ssn        : redact
+    keep account_status
+  }
+}
