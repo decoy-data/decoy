@@ -79,7 +79,7 @@ Every column also records its null count, non-null count and distinct count. The
 In the sample file, `full_name` has 80 distinct values, so it is treated as
 free text and only its length is kept.
 
-**The snapshot can still be sensitive.** `fit` profiles every row it fits on (the whole file, or the sample for a file over the row limit) and withholds the values of every column it flags as personal data (an SSN, a name, an id). The snapshot then carries `value_policy: flagged-redacted/v2` and lists those columns under `redacted_columns`. `fit` prints their names, never their values. A withheld number column keeps one coarse range and a withheld date column keeps years. A column the profiler does not flag is floored instead (see below), and what is left of its values is still real. For a category column that looks like this:
+**The snapshot can still be sensitive.** `fit` profiles every row it fits on (the whole file, or the sample for a file over the row limit) and withholds the values of every column it flags as personal data (an SSN, a name, an id). The snapshot then carries `value_policy: flagged-redacted/v2` and lists those columns under `redacted_columns`. `fit` prints their names, never their values. A withheld number column keeps one coarse range and a withheld date column keeps years. A column the profiler does not flag still holds its real values. For a category column that looks like this:
 
 ```json
 "state": {
@@ -100,20 +100,9 @@ free text and only its length is kept.
 State codes are harmless. A column of 25 surnames or diagnosis codes is not.
 Do not share a plain snapshot more widely than you would share the source.
 
-A column the profiler does not flag is floored at 10 rows, so one person cannot
-be picked out of it. The snapshot keeps no category, joint cell or year held by
-fewer than 10 rows (they join `other_count` or a wider year range), no exact
-largest or smallest number or date, and a short sentence column is stored as
-free text with length statistics only. The category values that survive are
-real, so the warning above still holds for a column of surnames. The engine
-applies the same floor to the profile behind `decoy scan`. This floor came in
-with engine 0.28.0 (`distribution-snapshot/v2`); the re-test on engine 0.19.0 stored
-every note of a 30-value note column word for word, and a snapshot fitted on
-an older CLI still does. Re-fit it.
-
-`--numeric-bins N` sets the least number of histogram buckets for a number
-column in a plain snapshot (it is 10 when you omit it), with or without
-`--epsilon`.
+A column the profiler does not flag keeps its values, including a rare
+category and its exact largest and smallest number. In the re-test, a
+30-value note column was not flagged and every note was stored word for word.
 
 To sample a withheld column as categories, re-run with `--include-values`. The
 file then holds real data and `fit` warns on stderr with the column names. A
@@ -338,9 +327,9 @@ Measured results from [the QA record](../../records/2026-11-10-cli-qa-generation
 | A column with blanks | Snapshots from older CLI versions dropped blanks (10% and 90% blank both came out 0%). Current `decoy fit` snapshots record the cell format and keep the blank rate. | See [blanks](#blanks). |
 | A date column | Only the year mix is kept. 66% January became 8%. | Generate dates another way if month or weekday matters. |
 | Codes with leading zeros (zip, account numbers) | Read as numbers; leading zeros are lost (10.9% of generated zips were short). | Not fixable at fit time today. Generate these with `faker` or a format rule. |
-| A category held by one person | Engine 0.28.0 folds a category held by fewer than 10 rows into `other_count`. Older snapshots stored it with `count: 1`. | Re-fit with the current CLI, or use the DP fit. |
-| A number column's largest or smallest value | Engine 0.28.0 stores a range that is wider than the 10 largest and 10 smallest cells, so `max` and `min` are not a real cell. Older snapshots stored them exactly. | Re-fit with the current CLI. |
-| Short free text with 30 or fewer distinct values | Engine 0.28.0 stores short sentence columns as free text (length statistics only). Older snapshots stored every string. | Re-fit with the current CLI. Drop or mask a column of short labels that is really a code. |
+| A category held by one person | Stored with `count: 1` and can be generated. | Remove rare values before fitting, or use the DP fit. |
+| A number column's largest or smallest value | Stored exactly as `max` / `min`. | Cap the column before fitting if an extreme identifies someone. |
+| Short free text with 30 or fewer distinct values | Stored and generated word for word. | Drop the column, or mask it first. |
 
 ## What this method cannot do
 

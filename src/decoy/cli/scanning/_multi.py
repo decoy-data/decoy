@@ -465,7 +465,7 @@ def _render_multi(state: OutputState, tables: list[dict], saved: str | None) -> 
             str(t["field_count"]),
             str(t["pii_candidate_count"]),
             _score(t["reid_risk_score"]),
-            "not checked" if is_sample(t) else ", ".join(t["key_candidates"]) or "-",
+            key_candidates_text(t),
         )
     state.console.print(tbl)
 

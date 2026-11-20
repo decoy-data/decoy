@@ -174,7 +174,7 @@ def test_scan_rows_default_bounds_sample(large_csv: Path) -> None:
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
     assert payload["scanned_rows"] <= 50
-    assert payload["basis"] in ("sample", "whole")
+    assert payload["basis"] == "sample"
 
 
 def test_scan_rows_zero_full_scan(large_csv: Path) -> None:

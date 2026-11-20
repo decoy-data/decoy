@@ -418,7 +418,7 @@ $ decoy fit [OPTIONS] SOURCE
 * `--dp-number TEXT`: &#x27;COL:LO:HI&#x27; -- declare COL as a DP numeric carrier with a data-independent domain (repeatable). Requires --epsilon.
 * `--dp-flag TEXT`: Declare COL as a DP boolean/flag carrier (repeatable). Requires --epsilon.
 * `--dp-text TEXT`: Declare COL as a DP categorical text carrier (repeatable). Requires --epsilon.
-* `--numeric-bins INTEGER`: Bin count per numeric column, 2 or more (engine default if omitted).
+* `--numeric-bins INTEGER`: Bin count per DP numeric column (engine default if omitted). Requires --epsilon.
 * `--dp-allow-omit`: Allow the DP release to omit source columns nobody declared with --dp-number/--dp-flag/--dp-text (default: omission is a usage error listing the columns). Requires --epsilon.
 * `--fanout COLUMN`: Record how many rows each key of COLUMN has (repeatable): the child-side key of a foreign key. A generate reference column with `distribution: fitted` then gives each generated parent about as many children as the source parents had. Counts only, never a key value. Not supported with --epsilon.
 * `--include-values`: Keep real values of sensitive columns in the snapshot. The file then holds real data. Not supported with --epsilon.
@@ -1296,8 +1296,7 @@ Examples:
   decoy scan data.csv --has-header
     Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
     A CSV always needs --has-header or --no-header: scan never guesses.
-    Reads the first 10 000 rows by default and labels the counts a sample, with
-    no key candidates (--rows 0 reads every row and gives whole-file numbers).
+    Reads the first 10 000 rows by default (--rows 0 for a full scan).
 
   decoy scan customers.csv orders.csv --has-header
     Scan several files in one run: one table each, named from the file stem.

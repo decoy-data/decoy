@@ -77,7 +77,8 @@ def test_flat_json_carries_the_basis_and_the_source_row_count(big: Path, small: 
     sample = _scan_json(big)
     assert sample["basis"] == "sample"
     assert sample["scanned_rows"] == 10_000
-    assert sample["row_count"] >= sample["scanned_rows"]
+    assert sample["row_count"] > sample["scanned_rows"]
+    assert sample["row_count"] >= _BIG
     assert isinstance(sample["row_count_exact"], bool)
     whole = _scan_json(small)
     assert whole["basis"] == "whole"
@@ -97,6 +98,10 @@ def test_rows_zero_reads_the_whole_file(big: Path) -> None:
 def test_multi_json_gives_every_table_the_same_members(big: Path, small: Path) -> None:
     payload = _scan_json(big, small)
     assert [t["basis"] for t in payload["tables"]] == ["sample", "whole"]
+    # `row_count` is the source count, `scanned_rows` the rows read (the Breaking change).
+    sampled = payload["tables"][0]
+    assert sampled["row_count"] > sampled["scanned_rows"] == 10_000
+    assert sampled["row_count"] >= _BIG
     for t in payload["tables"]:
         assert {"basis", "scanned_rows", "row_count", "row_count_exact"} <= set(t)
 

@@ -71,13 +71,8 @@ def fit_exact_snapshot(
     include_values: bool = False,
     contingency_top_k: int | None = None,
     fanout_columns: Sequence[str] = (),
-    numeric_bins: int | None = None,
 ) -> ExactFit:
     """Fit the exact (non-DP) snapshot of `source`. Raises `FitSourceError`."""
-    if numeric_bins is not None and numeric_bins < 2:
-        raise FitSourceError(
-            "--numeric-bins must be a whole number of 2 or more.", "fit_numeric_bins"
-        )
     import numpy as np
     from decoy_engine import distribution_snapshot_document
     from decoy_engine.quality.snapshot import DEFAULT_CONTINGENCY_TOP_K, DistributionSnapshotError
@@ -173,7 +168,6 @@ def fit_exact_snapshot(
             joint_columns=list(joint_pairs) if joint_pairs else None,
             contingency_top_k=contingency_top_k or DEFAULT_CONTINGENCY_TOP_K,
             fanout_columns=list(fanout_columns),
-            **({} if numeric_bins is None else {"numeric_bins": numeric_bins}),
         )
     except DistributionSnapshotError as exc:
         if exc.code == FANOUT_COLUMN_UNKNOWN:
