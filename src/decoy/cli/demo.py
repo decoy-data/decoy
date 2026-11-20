@@ -8,7 +8,6 @@ re-introduce.
 
 from __future__ import annotations
 
-import json as _json
 from pathlib import Path
 
 import typer
@@ -150,18 +149,16 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
 
     if state.mode is OutputMode.default:
         state.console.print(accent("[2/3]"), "Scanning...")
-    from decoy_engine import scan_set_to_dict, scan_sources
-
     from decoy.cli._sources import csv_file_source
-    from decoy.cli.scanning import table_name_from_path
+    from decoy.cli.scanning import core_bytes, scan_descriptors, table_name_from_path
 
     # The shape `decoy scan --output` saves: the value-free `scan-set/v1` core.
     descriptors = {
         table_name_from_path(sample_csv): csv_file_source(sample_csv.resolve(), has_header=True)
     }
-    result = scan_sources(descriptors, sample_rows=None, strategy="full")
-    core = scan_set_to_dict(result, detail=False)
-    scan_json.write_text(_json.dumps(core, indent=2))
+    run = scan_descriptors(descriptors, rows=None, strategy="full")
+    core = run.core
+    scan_json.write_bytes(core_bytes(core))
     scanned = core["tables"][0]
 
     if state.mode is OutputMode.default:
@@ -195,7 +192,7 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
         command="decoy demo",
         facts=[
             ("Sample dataset", str(sample_csv)),
-            ("Rows scanned", str(result.tables[0].row_count)),
+            ("Rows scanned", str(run.result.tables[0].row_count)),
             ("PII columns", f"{pii_columns} of {len(scanned['fields'])}"),
             ("Masked output", str(masked_csv)),
         ],

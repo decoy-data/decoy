@@ -20,7 +20,9 @@ def engine(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         return "RESULT"
 
     monkeypatch.setattr(decoy_engine, "scan_sources", fake_scan)
-    monkeypatch.setattr(decoy_engine, "scan_set_to_dict", lambda r, *, detail: {"r": r, "d": detail})
+    monkeypatch.setattr(
+        decoy_engine, "scan_set_to_dict", lambda r, *, detail: {"r": r, "d": detail}
+    )
     return calls
 
 

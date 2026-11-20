@@ -39,6 +39,12 @@ kind = "json"
 consumer = "tests/sentry/test_gate_single_entry.py"
 
 [[sentry]]
+id = "scan-call-allow"
+baseline = "tests/sentry/baselines/scan-call-allow.json"
+kind = "json"
+consumer = "tests/sentry/scan/test_one_scan_call.py"
+
+[[sentry]]
 id = "csv-read-allow"
 baseline = "tests/sentry/baselines/csv-read-allow.json"
 kind = "json"

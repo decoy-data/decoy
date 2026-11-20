@@ -91,7 +91,10 @@ def _expected(
 
         pre_scan = _detectors.resolve_pre_scan("regex", None)
     result = scan_sources(
-        descriptors, sample_rows=row_cap, strategy=effective, pre_scan=pre_scan  # type: ignore[arg-type]
+        descriptors,
+        sample_rows=row_cap,
+        strategy=effective,
+        pre_scan=pre_scan,  # type: ignore[arg-type]
     )
     return scan_set_to_dict(result, detail=False)
 
@@ -102,18 +105,36 @@ def _cells(tmp_path: Path) -> list[tuple[str, list[str], dict[str, Any]]]:
     fw, layout = _fixed(tmp_path / "f.fwf")
     flag = ["--has-header"]
     return [
-        ("csv default rows", [str(csv), *flag], {"path": csv, "row_cap": 10_000, "effective": "head"}),
-        ("csv rows 0", [str(csv), *flag, "--rows", "0"], {"path": csv, "row_cap": None, "effective": "full"}),
+        (
+            "csv default rows",
+            [str(csv), *flag],
+            {"path": csv, "row_cap": 10_000, "effective": "head"},
+        ),
+        (
+            "csv rows 0",
+            [str(csv), *flag, "--rows", "0"],
+            {"path": csv, "row_cap": None, "effective": "full"},
+        ),
         (
             "csv rows 5 random",
             [str(csv), *flag, "--rows", "5", "--strategy", "random"],
             {"path": csv, "row_cap": 5, "effective": "random"},
         ),
-        ("parquet", [str(pq)], {"path": pq, "row_cap": 10_000, "effective": "head", "has_header": None}),
+        (
+            "parquet",
+            [str(pq)],
+            {"path": pq, "row_cap": 10_000, "effective": "head", "has_header": None},
+        ),
         (
             "fixed width layout file",
             [str(fw), "--layout", str(layout)],
-            {"path": fw, "row_cap": 10_000, "effective": "head", "has_header": None, "layout": layout},
+            {
+                "path": fw,
+                "row_cap": 10_000,
+                "effective": "head",
+                "has_header": None,
+                "layout": layout,
+            },
         ),
         (
             "csv detectors regex",

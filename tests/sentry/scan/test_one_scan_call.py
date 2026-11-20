@@ -17,7 +17,7 @@ import ast
 from pathlib import Path
 
 from tests.sentry._ratchet import load_allowlist
-from tests.sentry.io_policy._calls import bindings, sites
+from tests.sentry.io_policy._calls import sites
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
