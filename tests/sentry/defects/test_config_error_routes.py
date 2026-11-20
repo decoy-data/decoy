@@ -28,9 +28,11 @@ from __future__ import annotations
 import ast
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 import typer.main
+from tests.sentry._ratchet import load_allowlist
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -49,35 +51,19 @@ _VALIDATE_METHODS = frozenset(
 _ADAPTER_METHODS = frozenset({"validate_python", "validate_json", "validate_strings"})
 _PYDANTIC_MODULES = frozenset({"pydantic", "pydantic_core"})
 
+
 # (path relative to src/decoy, enclosing function, violation kind, occurrence, reason). Shrink-only
 # baseline: tests/sentry/baselines/config-route-allow.json, keyed "path::function::kind#n" where n
 # numbers the same violation in the same function by line (1, 2, ...). Each entry must still hold
 # exactly that violation (checked below), so a second one in the same function is not covered.
-ALLOWLIST: tuple[tuple[str, str, str, int, str], ...] = (
-    (
-        "cli/io/_scan_set.py",
-        "_from_core",
-        "validate-engine",
-        1,
-        "validates the engine's scan-set read model, catches the error without reading it and "
-        "raises a fixed message outside the handler; a scan file is not a pipeline config",
-    ),
-    (
-        "ci/manifest.py",
-        "load_manifest",
-        "errors-call",
-        1,
-        "reads only the error type of the CLI-owned CiManifest, never a value or a message "
-        "(FU-4 moves it onto validation_problems if its codes ever need a location)",
-    ),
-    (
-        "ci/manifest.py",
-        "<module>",
-        "pydantic-import",
-        1,
-        "validates the CLI-owned CiManifest and reads only the error type, never a value or a "
-        "message (FU-4 moves it onto validation_problems if its codes ever need a location)",
-    ),
+def _route_entry(key: str, entry: dict[str, Any]) -> tuple[str, str, str, int, str]:
+    file, function, rest = key.split("::")
+    kind, n = rest.split("#")
+    return (file, function, kind, int(n), entry["reason"])
+
+
+ALLOWLIST: tuple[tuple[str, str, str, int, str], ...] = tuple(
+    _route_entry(key, e) for key, e in load_allowlist("config-route-allow").items()
 )
 
 

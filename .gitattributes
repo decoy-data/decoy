@@ -1,0 +1,3 @@
+# Key files must stay byte-exact: the pinned keys and the rotation statement are read as raw bytes.
+src/decoy/distribution/*.pub.pem text eol=lf
+src/decoy/distribution/key_rotation.json text eol=lf

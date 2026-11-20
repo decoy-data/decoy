@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, NoReturn
 
 import typer
 
@@ -26,6 +26,9 @@ from decoy.distribution import installer, layout, release_key
 from decoy.distribution import version_document as vd
 from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.theme import hint, success
+
+if TYPE_CHECKING:
+    from decoy import _outbound
 
 UPGRADE_EPILOG = """\
 Examples:
@@ -49,11 +52,33 @@ def _managed_home() -> Path | None:
     return layout.managed_home()
 
 
-def _fetch(url: str) -> bytes:
-    import urllib.request
+def _fetch(url: str, purpose: "_outbound.Purpose" = "upgrade_artifact") -> bytes:
+    # Imported here, not at module load, so a start that never upgrades does not load urllib.
+    from decoy import _outbound
 
-    with urllib.request.urlopen(url, timeout=30) as resp:
+    with _outbound.open_url(url, purpose=purpose, timeout=30) as resp:
         return resp.read()
+
+
+def _refuse_scheme(state, url: str) -> None:
+    """Exit 1 before any socket when the version-document URL has a scheme the purpose refuses.
+    The refusal is raised outside the `except` so the URL cannot ride in the exception context."""
+    from decoy import _outbound
+
+    try:
+        _outbound.check_scheme(url, "upgrade_document")
+        refused = None
+    except _outbound.OutboundRefused as exc:
+        refused = exc
+    if refused is not None:
+        allowed = " or ".join(_outbound.allowed_schemes("upgrade_document"))
+        emit_error(
+            state,
+            "upgrade",
+            f"the version-document URL scheme is not allowed (use {allowed}).",
+            code=refused.code,
+        )
+        raise typer.Exit(code=EXIT_USAGE)
 
 
 def upgrade(
@@ -69,6 +94,10 @@ def upgrade(
 ) -> None:
     """Upgrade (or pin) the managed Decoy runtime from the Decoy-hosted channel."""
     state = setup_output(json_, quiet, verbose)
+    from decoy import _outbound
+
+    if url is not None:
+        _refuse_scheme(state, url)
 
     home = _managed_home()
     if home is None:
@@ -103,11 +132,18 @@ def upgrade(
         raise typer.Exit(code=EXIT_OK)
 
     doc_url = vd.resolve_version_url(url)
+    _refuse_scheme(state, doc_url)
+    failure: BaseException | None = None
     try:
-        doc_bytes = _fetch(doc_url)
-        doc_sig = _fetch(doc_url + ".sig").decode("ascii").strip()
+        doc_bytes = _fetch(doc_url, "upgrade_document")
+        doc_sig = _fetch(doc_url + ".sig", "upgrade_document").decode("ascii").strip()
     except Exception as exc:
-        _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", exc)
+        failure = exc
+    # Refused outside the `except`, so no `__context__` carries the URL (defect class 3).
+    if isinstance(failure, _outbound.OutboundRefused):
+        _refuse(state, _outbound_text(failure, "the version endpoint"), failure.code, failure)
+    if failure is not None:
+        _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", failure)
 
     if not vd.verify_document(doc_bytes, doc_sig, expected_public_pem=pubkey):
         emit_error(
@@ -158,6 +194,7 @@ def upgrade(
     # not-yet-installed version, and a `--force` reinstall (a repair, even of a version
     # already on disk -- so a same-version `--force` re-downloads and re-verifies rather
     # than swapping to the retained bits).
+    install_failure: BaseException | None = None
     try:
         # A pinned non-latest version resolves <bundle base>/v<version>/decoy-<version>-<target>.tar.gz
         # (install.sh scheme), not under the document's own base.
@@ -170,11 +207,27 @@ def upgrade(
             download=_fetch,
             post_swap_validate=_post_swap,
         )
-    except installer.InstallError as exc:
-        _refuse(state, "the upgrade failed and the installed runtime is unchanged", "upgrade_install_failed", exc)
+    except (_outbound.OutboundRefused, installer.InstallError) as exc:
+        install_failure = exc
+    if isinstance(install_failure, _outbound.OutboundRefused):
+        _refuse(state, _outbound_text(install_failure, "a download"), install_failure.code, install_failure)
+    if install_failure is not None:
+        _refuse(
+            state,
+            "the upgrade failed and the installed runtime is unchanged",
+            "upgrade_install_failed",
+            install_failure,
+        )
 
     _report_outcome(state, outcome, "upgraded")
     raise typer.Exit(code=EXIT_OK)
+
+
+def _outbound_text(exc, what: str) -> str:
+    """Fixed text for an outbound refusal, chosen by its code."""
+    if exc.code == "url_redirect_refused":
+        return f"{what} redirected somewhere not allowed"
+    return f"{what} uses a URL scheme that is not allowed"
 
 
 def _refuse(state, message: str, code: str, exc: BaseException) -> NoReturn:

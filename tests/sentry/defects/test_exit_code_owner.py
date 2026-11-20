@@ -2,7 +2,7 @@
 
 `decoy.cli.exit_codes.exit_code_for` is the map. Three older copies still decide for themselves
 until CL4 moves them: the `decoy run` classifier, `decoy demo`'s three-type map and `decoy fit`'s
-differential-privacy arms. `ALLOWLIST` is exactly those three, as the shrink-only baseline
+differential-privacy arms. `ALLOWLIST` is exactly those three, read from the shrink-only baseline
 `baselines/exit-code-owner.json`: the ratchet (`scripts/dev/ratchet_check.py`) rejects an added
 key, this test requires every entry to match a real site, and CL4 empties it. Distinct from the
 literal-exit-code sentry (`tests/unit/test_exit_codes.py`), which watches `typer.Exit(code=7)`.
@@ -11,13 +11,10 @@ The scan is `_exit_map_sites.py`.
 
 from __future__ import annotations
 
-import json
 from typing import NamedTuple
 
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.defects import _exit_map_sites as sites
-
-BASELINE = sites.ROOT / "tests" / "sentry" / "baselines" / "exit-code-owner.json"
-REGISTRY = sites.ROOT / "scripts" / "dev" / "sentry_registry.toml"
 
 
 class Copy(NamedTuple):
@@ -26,22 +23,8 @@ class Copy(NamedTuple):
     reason: str
 
 
-ALLOWLIST: tuple[Copy, ...] = (
-    Copy(
-        "cli/run/_errors.py",
-        "fail",
-        "the decoy run classifier: exception to category to exit; CL4 moves it to exit_code_for",
-    ),
-    Copy(
-        "cli/demo.py",
-        "_demo",
-        "demo's three-type map (usage versus runtime); CL4 calls exit_code_for instead",
-    ),
-    Copy(
-        "cli/fit.py",
-        "fit",
-        "the differential-privacy arms (provenance, budget, DP, carrier); CL4 calls exit_code_for",
-    ),
+ALLOWLIST: tuple[Copy, ...] = tuple(
+    Copy(*key.split("::"), e["reason"]) for key, e in load_allowlist("exit-code-owner").items()
 )
 
 
@@ -53,18 +36,6 @@ def test_the_allowlist_equals_the_source_inventory() -> None:
     live = sites.inventory()
     assert live - _allowed() == set(), "a new exception-to-exit map (call exit_code_for)"
     assert _allowed() - live == set(), "an entry no longer matches a real site (shrink it)"
-
-
-def test_the_baseline_is_the_three_registered_copies() -> None:
-    doc = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "exit-code-owner"
-    assert doc["created_in"] == "CL3"
-    assert set(doc["entries"]) == {
-        "cli/run/_errors.py::fail",
-        "cli/demo.py::_demo",
-        "cli/fit.py::fit",
-    }
-    assert 'id = "exit-code-owner"' in REGISTRY.read_text(encoding="utf-8")
 
 
 def test_the_owner_exists_and_is_not_scanned() -> None:

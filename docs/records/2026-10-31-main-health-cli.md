@@ -24,7 +24,7 @@ $ DECOY_VENV=$S/venv310 bash scripts/dev/bootstrap.sh
 python:     3.10.20 (ci.yml expects 3.10.x)
 lock:       requirements-dev.lock sha256 a12cd32a84127dcf (fresh)
 decoy-engine installed 0.15.1     pin 0.15.1     OK
-             commit fd51be10673225d81a8c000d460b0172112b26ac (lock pins fd51be10...; ci.yml installs @v0.15.1)
+             commit e6ded7e249f4bcd87ac76c12263ff8a3acfd9aae (lock pins fd51be10...; ci.yml installs @v0.15.1)
 full env:   matches requirements-dev.lock exactly (63 pins)
 native:     companion NOT installed; engine expects decoy-native-abi-3 (the CLI does not need it)
 RESULT:     OK, environment matches requirements-dev.lock and the engine pins

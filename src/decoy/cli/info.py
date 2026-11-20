@@ -69,25 +69,16 @@ def info(
     _render_companion_report(state, companion)
 
 
-def _companion_report() -> dict | None:
+def _companion_report() -> dict:
     """`native_companion_status()`, reduced to the fields safe to display:
     never `status.cause` (may chain an exception with a path), and
     `abi_actual` sanitized (it comes from the companion's own untrusted
-    `abi_version()` call -- see `decoy._native_gate.sanitize_abi`).
-
-    `None` when the installed `decoy-engine` predates
-    `native_companion_status()` (R5 capability-detect, matching
-    `preflight._check_capacity`'s own degrade-not-crash posture for an old
-    engine) -- there is nothing to report, not an error."""
+    `abi_version()` call -- see `decoy._native_gate.sanitize_abi`)."""
     import decoy_engine
-
-    probe = getattr(decoy_engine, "native_companion_status", None)
-    if probe is None:
-        return None
 
     from decoy import _native_gate
 
-    status = probe()
+    status = decoy_engine.native_companion_status()
     return {
         "present": status.present,
         "ok": status.ok,
@@ -98,14 +89,10 @@ def _companion_report() -> dict | None:
     }
 
 
-def _render_companion_report(state, companion: dict | None) -> None:
+def _render_companion_report(state, companion: dict) -> None:
     from rich.text import Text
 
     from decoy.ui.theme import hint, success, warn
-
-    if companion is None:
-        state.console.print(hint("native: "), Text("not checked -- needs a newer decoy-engine."))
-        return
 
     label = "native: "
     if companion["ok"]:

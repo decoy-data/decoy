@@ -7,7 +7,7 @@ Branch `feat/x0a-gate`. Part 1b (registering the CLI allowlist) is `2026-11-04-x
 
 ## Environment
 
-- Base: CLI `origin/main` `cffab75c0175974bb33aa9d5e86444d31ff870d5`.
+- Base: CLI `origin/main` `631015ceff5cc8a6173b2f4483af047fc93439af`.
 - Venv `.venv` from `scripts/dev/bootstrap.sh`: `RESULT:     OK, environment matches requirements-dev.lock and the engine pins`.
 - Python 3.10.20 (the floor, so `tomli` is the TOML reader), pytest 9.2.0, ruff 0.15.14, GNU bash 5.2.21.
 - Port sources: engine `tests/sentry/_ratchet.py`, `scripts/dev/ratchet_check.py` (#378 `217f1899`);

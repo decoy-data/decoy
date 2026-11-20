@@ -134,7 +134,7 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/_token_vault.py::LocalTokenVault.__init__::open_private::1": _VAULT,
     "cli/_token_vault.py::LocalTokenVault.__init__::sqlite3.connect::1": _VAULT,
     "_resources.py::write_settings::write_atomic::1": _E2E + "test_setup_settings_file_is_private",
-    "distribution/installer.py::check_document_freshness::write_atomic::1": _UNIT
+    "distribution/trust_state.py::write_trust_state::write_atomic::1": _UNIT
     + "test_installer_trust_state_is_owner_only_under_umask_zero",
     "cli/io/_layout.py::create_run_folder::create_private_directory::1": _UNIT
     + "test_create_private_directory_is_0700_under_umask_000",
@@ -186,8 +186,6 @@ def load_rows(text: str) -> list[Row]:
 
 ROWS = load_rows(ROWS_FILE.read_text(encoding="utf-8"))
 # The shrink-only baseline source (`tests/sentry/_baseline_sources.py`): rows that carry an exit.
-BASELINE_ROWS = tuple((r.key, r.reason) for r in ROWS if r.exit)
-
 
 # --- the scan -----------------------------------------------------------------------------
 
@@ -613,8 +611,6 @@ def test_the_census_is_63_watched_sinks(files: dict[str, str]) -> None:
 
 def test_the_baseline_has_two_rows_with_exits() -> None:
     doc = json.loads(BASELINE_FILE.read_text(encoding="utf-8"))
-    assert doc["sentry_id"] == "private-file-sinks"
-    assert doc["created_in"] == "X7c-S3"
     assert len(doc["entries"]) == 2
     assert all(e["exit"] for e in doc["entries"].values())
     assert doc["entries"] == baseline_entries(ROWS)

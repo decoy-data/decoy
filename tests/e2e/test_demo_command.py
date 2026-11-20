@@ -77,6 +77,24 @@ def test_demo_runs_end_to_end(tmp_path: Path):
     assert "REDACTED" in masked
 
 
+def test_demo_scan_is_a_value_free_scan_set_that_the_readers_open(tmp_path: Path):
+    """AT-D6b: the saved scan the demo writes is `scan-set/v1`, holds no cell value, and
+    `scan show` and `scan fields` read it."""
+    out_dir = tmp_path / "demo"
+    assert runner.invoke(app, ["demo", "--dir", str(out_dir)]).exit_code == 0
+    scan_json = out_dir / "scan.json"
+
+    text = scan_json.read_text()
+    assert _json.loads(text)["scan_schema"] == "scan-set/v1"
+    for cell in ("alice@example.com", "111-22-3333", "Alice", "Anderson"):
+        assert cell not in text
+
+    fields = runner.invoke(app, ["scan", "fields", str(scan_json)])
+    assert fields.exit_code == 0, fields.output
+    show = runner.invoke(app, ["scan", "show", str(scan_json), "ssn"])
+    assert show.exit_code == 0, show.output
+
+
 def test_demo_json_envelope(tmp_path: Path):
     """JSON envelope shape: V2 demo carries `pii_columns` but no
     `top_disguise` (FORECAST step deleted)."""

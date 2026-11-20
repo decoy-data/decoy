@@ -1904,10 +1904,10 @@ Examples:
   decoy report vault vault.bin --config pipeline.yaml --quiet
     Silent mode; exit code 0 = vault opened successfully.
 
-The vault is encrypted under a key derived from the config's seed. The
-config passed to --config must be the SAME config (or at least the same
-global_settings.seed) used by the `decoy run --vault` call that wrote
-the vault, otherwise the decrypt will fail and the command exits 1.
+The vault opens only under the mask secret that the `decoy run --vault`
+call used. Pass the same secret with --mask-secret, or name it in the
+config's global_settings.mask_secret_ref. The seed is not key material.
+A missing or wrong secret exits 1.
 
 See also: decoy run --vault, decoy unmask --vault.
 

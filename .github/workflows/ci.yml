@@ -258,8 +258,9 @@ jobs:
         run: check-jsonschema --builtin-schema vendor.gitlab-ci integrations/gitlab/decoy-ci.yml
 
   # ---------------------------------------------------------------------------
-  # shape-changelog: a `--json` shape snapshot change must come with a CHANGELOG entry.
-  # A sentry sees one tree, not a diff, so this step compares the pull request with its base.
+  # shape-changelog: a `--json` shape snapshot change must come with a CHANGELOG entry, and
+  # no sentry baseline may grow. A sentry sees one tree, not a diff, so these steps compare the
+  # pull request with its base.
   # ---------------------------------------------------------------------------
   shape-changelog:
     name: shape-changelog
@@ -276,6 +277,12 @@ jobs:
       - name: Shape snapshot change needs a CHANGELOG entry
         if: github.event_name == 'pull_request'
         run: python scripts/release/check_shape_changelog.py --base ${{ github.event.pull_request.base.sha }}
+
+      # A sentry reads one tree; the ratchet compares every baseline with its merge base, so a
+      # grown allowlist or a raised count fails here.
+      - name: Baselines only shrink
+        if: github.event_name == 'pull_request'
+        run: python scripts/dev/ratchet_check.py --base ${{ github.event.pull_request.base.sha }}
 
   # ---------------------------------------------------------------------------
   # certified-profile: requirements-certified.txt still reproduces a
@@ -312,7 +319,7 @@ jobs:
       - name: Install engine and CLI wheel without dependencies
         # Only the two named artifacts: --no-deps stops the resolver, and the
         # next step installs the complete fingerprinted closure.
-        run: uv pip install --python .venv-certified/bin/python --no-deps "git+https://github.com/louiskeep/decoy-engine@v0.27.0" dist/*.whl
+        run: uv pip install --python .venv-certified/bin/python --no-deps "git+https://github.com/decoy-data/decoy-engine@v0.27.0" dist/*.whl
 
       - name: Install the pinned closure
         run: uv pip install --python .venv-certified/bin/python -r requirements-certified.txt

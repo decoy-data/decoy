@@ -159,19 +159,26 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
 
     if state.mode is OutputMode.default:
         state.console.print(accent("[2/3]"), "Scanning...")
-    import pandas as pd
-    from decoy_engine import profile_columns, profile_document
+    from decoy_engine import scan_set_to_dict, scan_sources
 
-    df = pd.read_csv(sample_csv)
-    profile = profile_columns(df, source_label=sample_csv.name, sample_strategy="full")
-    scan_json.write_text(_json.dumps(profile_document(profile), indent=2))
+    from decoy.cli._sources import csv_file_source
+    from decoy.cli.scanning import table_name_from_path
+
+    # The shape `decoy scan --output` saves: the value-free `scan-set/v1` core.
+    descriptors = {
+        table_name_from_path(sample_csv): csv_file_source(sample_csv.resolve(), has_header=True)
+    }
+    result = scan_sources(descriptors, sample_rows=None, strategy="full")
+    core = scan_set_to_dict(result, detail=False)
+    scan_json.write_text(_json.dumps(core, indent=2))
+    scanned = core["tables"][0]
 
     if state.mode is OutputMode.default:
         state.console.print(accent("[3/3]"), "Running V2 masking pipeline...")
     pipeline_yaml.write_text(_build_pipeline_yaml(sample_csv, masked_csv))
     _run_v2_mask(pipeline_yaml)
 
-    pii_columns = sum(1 for f in profile.fields if f.pii_score >= 0.6)
+    pii_columns = sum(1 for f in scanned["fields"] if f["pii_candidate"])
 
     if state.mode is OutputMode.json:
         emit_json(
@@ -197,8 +204,8 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
         command="decoy demo",
         facts=[
             ("Sample dataset", str(sample_csv)),
-            ("Rows scanned", str(profile.row_count)),
-            ("PII columns", f"{pii_columns} of {len(profile.fields)}"),
+            ("Rows scanned", str(result.tables[0].row_count)),
+            ("PII columns", f"{pii_columns} of {len(scanned['fields'])}"),
             ("Masked output", str(masked_csv)),
         ],
         next_hint=f"head {masked_csv}",

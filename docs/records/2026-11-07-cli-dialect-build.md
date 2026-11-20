@@ -6,7 +6,7 @@ Handoff `p05-cli-dialect-build-handoff.md`, Part C. Branch `feat/cli-dialect-c` 
 
 ## Environment
 
-- Base `dd4039869bc69a99644a185b8446de04b66bf0b0`. Engine `v0.19.0` is tag `71c9d60d`, commit `4a0d5b1f0d2014f35e663d29f7794622a5c7d334`.
+- Base `382d7883e3c6bf1946a081f4c9652a98fa89a1be`. Engine `v0.19.0` is tag `71c9d60d`, commit `69dceb51b3cc2654b3a4dff70adf8942ff685c7b`.
 - Red and green runs: devbox venv `~/.cache/decoy-cli-dialect-venv` (CPython 3.10.20, `requirements-dev.lock`, engine 0.19.0) through `~/bin/pytest-one`. T1 gates: VM 5 and VM 6 through `vm-run` (`venv-cli-vmrun`, lock-faithful).
 - Blob prefixes matched the handoff for every file this slice edits. Two files differ from the handoff list and none is a census row: `run.py` (`9810caa9f92d`, not edited), `scripts/dev/sentry_registry.toml` (`61e1a92f4488`) and `CHANGELOG.md` (`b250f75622a6`), both moved by earlier merges.
 

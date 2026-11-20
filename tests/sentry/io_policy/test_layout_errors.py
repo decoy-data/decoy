@@ -1,13 +1,18 @@
-"""G-ONE-LAYOUT-CODE: every `layout.*` code lives in the registry `cli/io/_layout_errors.py`.
+"""G-ONE-LAYOUT-CODE: every `layout.*` and `report.*` code lives in the registry
+`cli/io/_layout_errors.py`.
 
-- no string literal in `src/` outside the registry carries a `layout.<code>` token (docstrings
-  aside), so gate findings, command errors and tests of those read one source;
+- no string literal in `src/` outside the registry carries a `layout.<code>` or `report.<code>`
+  token (docstrings aside), so gate findings, command errors and tests of those read one source;
 - the registry is well formed: unique codes, each `layout.` plus lower-case words, every gate
   descriptor reachable through `decoy.cli.io` and its code in the CI rule-code set;
 - code outside `cli/io` imports the layout services from the public `decoy.cli.io` package,
   never from `_layout`, `_project`, `_pipelines` or `_layout_errors`.
 
+- AT-S4b: the gate and warning vocabulary (`GATE_CODES`, `WARNING_CODES`, `_CLI_GATE_CODES`) is an
+  exact snapshot, so adding, removing or renaming a reason code changes this file in review.
+
 Named limit: a code assembled at run time (`"layout." + name`) is not seen.
+Other reason codes, including `CLI_WARNING_CODES`, are not pinned.
 """
 
 from __future__ import annotations
@@ -19,14 +24,15 @@ from pathlib import Path
 import pytest
 
 import decoy.cli.io as public
+from decoy.ci.rule_codes import _CLI_GATE_CODES
 from decoy.cli.io import _layout_errors as registry
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 REGISTRY_FILE = "cli/io/_layout_errors.py"
 PRIVATE_MODULES = ("_layout", "_project", "_pipelines", "_layout_errors")
-_TOKEN = re.compile(r"(?<![\w.])layout\.[a-z]+(?:_[a-z]+)+")
-_CODE = re.compile(r"layout\.[a-z]+(?:_[a-z]+)+")
+_TOKEN = re.compile(r"(?<![\w.])(?:layout|report)\.[a-z]+(?:_[a-z]+)+")
+_CODE = re.compile(r"(?:layout|report)\.[a-z]+(?:_[a-z]+)+")
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
 
 
@@ -41,7 +47,7 @@ def _docstrings(tree: ast.AST) -> set[int]:
 
 
 def literal_findings(source: str, rel: str) -> list[str]:
-    """`file:line` of each string literal that carries a `layout.<code>` token."""
+    """`file:line` of each string literal that carries a `layout.<code>` or `report.<code>` token."""
     if rel == REGISTRY_FILE:
         return []
     tree = ast.parse(source)
@@ -140,6 +146,7 @@ def test_a_layout_error_text_is_the_fixed_message_and_nothing_more() -> None:
         'CODE = "layout.project_not_found"\n',
         'def f():\n    return {"rule": "layout.pipeline_unknown"}\n',
         'x = f"bad layout.output_path_escapes {y}"\n',
+        'CODE = "report.source_ambiguous"\n',
     ],
 )
 def test_a_layout_code_literal_outside_the_registry_is_caught(source: str) -> None:
@@ -167,3 +174,79 @@ def test_a_private_layout_import_outside_cli_io_is_caught(source: str) -> None:
 
 def test_the_public_import_is_allowed() -> None:
     assert import_findings("from decoy.cli.io import find_project\n", "cli/run.py") == []
+
+
+# AT-S4b snapshot.
+LAYOUT_GATE_CODES = frozenset(
+    {
+        "layout.project_marker_invalid",
+        "layout.project_marker_untrusted",
+        "layout.project_not_found",
+        "layout.project_mismatch",
+        "layout.pipeline_unknown",
+        "layout.pipeline_name_invalid",
+        "layout.pipeline_name_mismatch",
+        "layout.pipeline_name_collision",
+        "layout.output_path_escapes",
+        "layout.path_too_long",
+        "layout.output_path_collision",
+        "layout.output_dir_unusable",
+        "layout.project_root_refused",
+        "layout.delivery_root_split",
+        "layout.side_file_in_out",
+        "layout.cloud_target_invalid",
+        "layout.cloud_target_unsupported",
+    }
+)
+REPORT_CODES = frozenset({"report.source_ambiguous"})
+WARNING_SNAPSHOT = frozenset(
+    {
+        "layout.latest_invalid",
+        "layout.latest_link_failed",
+        "layout.latest_write_failed",
+        "layout.gitignore_write_failed",
+        "layout.report_not_written",
+        "layout.project_nested",
+        "layout.config_inside_out",
+    }
+)
+CLI_GATE_SNAPSHOT = frozenset(
+    {
+        "capacity.out_of_core_fk",
+        "capacity.plan_uncompilable",
+        "capacity.source_unreadable",
+        "compile_error",
+        "compile.needs_profile",
+        "compile_warning",
+        "missing_extra",
+        "source.declared_columns",
+        "source.declared_columns_not_checked",
+        "native.companion",
+        "native.eligibility",
+        "pipeline.validation_error",
+        "target_format_suffix_mismatch",
+        "target_format_unknown",
+        "validation_error",
+        "yaml.empty",
+        "yaml.not_mapping",
+        "yaml.not_utf8",
+        "yaml.parse_error",
+    }
+)
+
+
+def test_gate_codes_snapshot_is_the_layout_set_plus_the_report_set() -> None:
+    assert public.GATE_CODES == LAYOUT_GATE_CODES | REPORT_CODES
+
+
+def test_report_descriptors_hold_exactly_the_report_codes() -> None:
+    assert {d.code for d in public.REPORT_DESCRIPTORS} == REPORT_CODES
+    assert set(public.REPORT_DESCRIPTORS) <= set(public.GATE_DESCRIPTORS)
+
+
+def test_warning_codes_snapshot() -> None:
+    assert public.WARNING_CODES == WARNING_SNAPSHOT
+
+
+def test_cli_gate_codes_snapshot() -> None:
+    assert _CLI_GATE_CODES == CLI_GATE_SNAPSHOT

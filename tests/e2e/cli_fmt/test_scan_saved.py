@@ -1,5 +1,6 @@
-"""Saved-scan readers (`scan fields`, `show`, `diff`) go through `load_scan_set` and accept the
-`scan-set/v1` core and the bare legacy `profile.to_dict()`, from a path or from stdin."""
+"""Saved-scan readers (`scan fields`, `show`, `diff`) go through `load_scan_set`, which reads
+only the `scan-set/v1` core, from a path or from stdin. An untagged saved scan (the bare
+`profile.to_dict()` written before `scan-set/v1`) is refused with a coded error (AT-D6)."""
 
 from __future__ import annotations
 
@@ -11,7 +12,6 @@ import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
-from decoy.cli.io import _scan_set
 
 runner = CliRunner()
 FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "scan" / "legacy_profile.json"
@@ -64,15 +64,6 @@ def load_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
     monkeypatch.setattr(scan_mod, "load_scan_set", spy)
     return calls
-
-
-def test_the_fixture_meets_the_legacy_shape_check(legacy: dict) -> None:
-    for key in _scan_set._LEGACY_TOP_REQUIRED:
-        assert key in legacy
-    for field in legacy["fields"]:
-        for key in _scan_set._LEGACY_FIELD_REQUIRED:
-            assert key in field
-    assert CANARY in json.dumps(legacy["fields"][1]["top_values"])
 
 
 # -- T2-load-bare -----------------------------------------------------------------------
@@ -132,40 +123,26 @@ def test_a_tag_that_could_hold_data_is_not_echoed(core_file: Path, tmp_path: Pat
     assert result.exit_code == 1 and CANARY not in result.output
 
 
-# -- legacy -----------------------------------------------------------------------------
+# -- untagged saved scans (AT-D6) --------------------------------------------------------
+
+CODE = "scan.saved_scan_schema_unsupported"
 
 
-def test_legacy_fields_lists_every_field_and_no_canary(legacy_file: Path, legacy: dict) -> None:
+@pytest.mark.parametrize("cmd", [["fields"], ["show"], ["diff"]])
+def test_an_untagged_saved_scan_is_refused_with_its_code(legacy_file: Path, cmd: list[str]) -> None:
+    extra = ["first_name"] if cmd == ["show"] else [str(legacy_file)] if cmd == ["diff"] else []
+    result = runner.invoke(app, ["scan", *cmd, str(legacy_file), *extra])
+    assert result.exit_code == 1
+    assert CODE in result.output
+    assert CANARY not in result.output
+
+
+def test_an_untagged_saved_scan_is_refused_in_json_with_its_code(legacy_file: Path) -> None:
     result = runner.invoke(app, ["scan", "fields", str(legacy_file), "--json"])
-    assert result.exit_code == 0, result.output
-    assert [f["name"] for f in json.loads(result.stdout)["fields"]] == [
-        f["name"] for f in legacy["fields"]
-    ]
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["status"] == "error" and CODE in payload["error"]
     assert CANARY not in result.output
-
-
-def test_legacy_show_reports_the_row_count_and_no_canary(legacy_file: Path) -> None:
-    result = runner.invoke(app, ["scan", "show", str(legacy_file), "first_name", "--json"])
-    assert result.exit_code == 0, result.output
-    assert CANARY not in result.output
-    card = runner.invoke(app, ["scan", "show", str(legacy_file), "first_name"])
-    assert card.exit_code == 0 and CANARY not in card.output + card.stdout
-
-
-def test_legacy_diff_against_a_core_scan_of_the_same_data(
-    legacy_file: Path, core_file: Path, legacy: dict, tmp_path: Path
-) -> None:
-    same = json.loads(
-        runner.invoke(app, ["scan", "diff", str(legacy_file), str(core_file), "--json"]).stdout
-    )
-    assert same["summary"]["added"] == 0 and same["summary"]["removed"] == 0
-    trimmed = dict(legacy, fields=[f for f in legacy["fields"] if f["name"] != "ssn"])
-    cut = tmp_path / "cut.json"
-    cut.write_text(json.dumps(trimmed))
-    diff = json.loads(
-        runner.invoke(app, ["scan", "diff", str(legacy_file), str(cut), "--json"]).stdout
-    )
-    assert [r["name"] for r in diff["changes"]["removed"]] == ["ssn"]
 
 
 @pytest.mark.parametrize(
@@ -173,41 +150,26 @@ def test_legacy_diff_against_a_core_scan_of_the_same_data(
     [
         {"row_count": 5},
         {"row_count": 5, "fields": "name"},
-        {"row_count": "5", "fields": []},
-        {"row_count": 5, "fields": [{"pii_score": 0.1}]},
-        {"row_count": 5, "fields": [{"name": 3}]},
+        {"row_count": 5, "fields": [{"name": "x", "pii_score": 0.1}]},
+        {"command": "scan", "status": "ok", "profile": {"row_count": 1, "fields": []}},
         {"unrelated": "value " + CANARY},
     ],
 )
-def test_a_dict_that_is_not_a_profile_exits_1_with_a_fixed_message(
-    tmp_path: Path, doc: object
-) -> None:
+def test_a_dict_without_the_tag_exits_1_with_the_code(tmp_path: Path, doc: object) -> None:
     path = tmp_path / "x.json"
     path.write_text(json.dumps(doc))
     result = runner.invoke(app, ["scan", "fields", str(path)])
     assert result.exit_code == 1
-    assert "not a saved scan Decoy can read" in result.output
+    assert CODE in result.output
     assert CANARY not in result.output
 
 
 # -- stdin ------------------------------------------------------------------------------
 
 
-def test_stdin_legacy_matches_the_file(legacy_file: Path) -> None:
-    text = legacy_file.read_text()
-    for args in (["fields", "-", "--json"], ["show", "-", "ssn", "--json"]):
-        from_stdin = runner.invoke(app, ["scan", *args], input=text)
-        file_args = [str(legacy_file) if a == "-" else a for a in args]
-        from_file = runner.invoke(app, ["scan", *file_args])
-        assert from_stdin.exit_code == 0 == from_file.exit_code
-        want, got = json.loads(from_file.stdout), json.loads(from_stdin.stdout)
-        assert {k: v for k, v in got.items() if k != "scan"} == {
-            k: v for k, v in want.items() if k != "scan"
-        }
-    one = runner.invoke(app, ["scan", "diff", "-", str(legacy_file), "--json"], input=text)
-    two = runner.invoke(app, ["scan", "diff", str(legacy_file), "-", "--json"], input=text)
-    for r in (one, two):
-        assert r.exit_code == 0 and json.loads(r.stdout)["drift"] is False
+def test_stdin_untagged_is_refused_with_the_code(legacy_file: Path) -> None:
+    result = runner.invoke(app, ["scan", "fields", "-"], input=legacy_file.read_text())
+    assert result.exit_code == 1 and CODE in result.output and CANARY not in result.output
 
 
 def test_stdin_core_matches_the_file(core_file: Path) -> None:
@@ -240,20 +202,7 @@ def test_a_json_list_is_refused(tmp_path: Path) -> None:
     assert runner.invoke(app, ["scan", "fields", str(path)]).exit_code == 1
 
 
-def test_a_legacy_file_is_a_one_table_set_named_from_its_source_label(legacy_file: Path) -> None:
-    named = runner.invoke(app, ["scan", "fields", str(legacy_file), "--table", "people"])
-    assert named.exit_code == 0, named.output
-    other = runner.invoke(app, ["scan", "fields", str(legacy_file), "--table", "table"])
-    assert other.exit_code == 1
-
-
 # -- non-finite numbers ---------------------------------------------------------------
-
-
-def _legacy_with(legacy: dict, literal: str) -> str:
-    """The legacy document as text with one field's `pii_score` set to a raw JSON literal."""
-    legacy["fields"][0]["pii_score"] = "@@"
-    return json.dumps(legacy).replace('"@@"', literal)
 
 
 def _core_with(core: dict, literal: str) -> str:
@@ -262,35 +211,20 @@ def _core_with(core: dict, literal: str) -> str:
 
 
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity", "1e999", "-1e999"])
-@pytest.mark.parametrize("fmt", ["legacy", "core"])
 @pytest.mark.parametrize("cmd", [["fields"], ["show"]])
 def test_a_non_finite_number_in_a_saved_scan_is_refused(
-    tmp_path: Path, legacy: dict, core_file: Path, literal: str, fmt: str, cmd: list[str]
+    tmp_path: Path, core_file: Path, literal: str, cmd: list[str]
 ) -> None:
-    text = (
-        _legacy_with(legacy, literal)
-        if fmt == "legacy"
-        else _core_with(json.loads(core_file.read_text()), literal)
-    )
     path = tmp_path / "bad.json"
-    path.write_text(text, encoding="utf-8")
-    field = legacy["fields"][0]["name"] if fmt == "legacy" else "ssn"
-    args = ["scan", *cmd, str(path)] + ([field, "--json"] if cmd == ["show"] else ["--json"])
+    path.write_text(_core_with(json.loads(core_file.read_text()), literal), encoding="utf-8")
+    args = ["scan", *cmd, str(path)] + (["ssn", "--json"] if cmd == ["show"] else ["--json"])
     result = runner.invoke(app, args)
     assert result.exit_code == 1
     assert "not a saved scan Decoy can read" in result.output
     assert "NaN" not in result.output and "Infinity" not in result.output
 
 
-@pytest.mark.parametrize("fmt", ["legacy", "core"])
-def test_a_normal_float_in_a_saved_scan_is_still_accepted(
-    tmp_path: Path, legacy: dict, core_file: Path, fmt: str
-) -> None:
-    text = (
-        _legacy_with(legacy, "0.25")
-        if fmt == "legacy"
-        else _core_with(json.loads(core_file.read_text()), "0.25")
-    )
+def test_a_normal_float_in_a_saved_scan_is_still_accepted(tmp_path: Path, core_file: Path) -> None:
     path = tmp_path / "ok.json"
-    path.write_text(text, encoding="utf-8")
+    path.write_text(_core_with(json.loads(core_file.read_text()), "0.25"), encoding="utf-8")
     assert runner.invoke(app, ["scan", "fields", str(path), "--json"]).exit_code == 0
