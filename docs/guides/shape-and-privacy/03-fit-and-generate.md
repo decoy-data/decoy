@@ -79,7 +79,7 @@ Every column also records its null count, non-null count and distinct count. The
 In the sample file, `full_name` has 80 distinct values, so it is treated as
 free text and only its length is kept.
 
-**The snapshot can still be sensitive.** `fit` profiles every row it fits on (the whole file, or the sample for a file over the row limit) and withholds the values of every column it flags as personal data (an SSN, a name, an id). The snapshot then carries `value_policy: flagged-redacted/v1` and lists those columns under `redacted_columns`. `fit` prints their names, never their values. A withheld number column keeps one coarse range and a withheld date column keeps years. A column the profiler does not flag still holds its real values. For a category column that looks like this:
+**The snapshot can still be sensitive.** `fit` profiles every row it fits on (the whole file, or the sample for a file over the row limit) and withholds the values of every column it flags as personal data (an SSN, a name, an id). The snapshot then carries `value_policy: flagged-redacted/v2` and lists those columns under `redacted_columns`. `fit` prints their names, never their values. A withheld number column keeps one coarse range and a withheld date column keeps years. A column the profiler does not flag still holds its real values. For a category column that looks like this:
 
 ```json
 "state": {
