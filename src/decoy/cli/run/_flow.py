@@ -109,6 +109,10 @@ def execute(ctx: RunContext) -> None:
     """
     if ctx.all_:
         _fan_out(ctx)
+    # Bound before the envelope, so every document it writes names the run's config.
+    _bind_pipeline(ctx)
+    ctx.invocation_id = mint_invocation_id()
+    ctx.config_str = str(ctx.config)
     # First, so a refusal before the run starts has timings.
     ctx._run_started_at = datetime.now(timezone.utc)
     ctx.started = time.perf_counter()
@@ -123,10 +127,6 @@ def execute(ctx: RunContext) -> None:
 
 def _phases(ctx: RunContext) -> None:
     """The phases in order. Everything after the `try` runs only on success."""
-    _bind_pipeline(ctx)
-    ctx.invocation_id = mint_invocation_id()
-    ctx.config_str = str(ctx.config)
-
     parse_channels(ctx)
 
     ctx.raw, ctx.saved_findings, ctx.config_read_error = _load_raw_config(ctx.config)
