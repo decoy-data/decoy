@@ -59,15 +59,12 @@ KINDS = frozenset(
         "QA checklists and run templates",
     }
 )
-# Paths the map marks `(target)`. A new or misspelled target is red. The QA-BETA slices S1a, S1b
-# and S2 (docs/plans/2026-11-20-qa-beta-program.md) create these and drop them from this set.
+# Paths the map marks `(target)`. A new or misspelled target is red. The QA-BETA slices S1b and S2
+# (docs/plans/2026-11-20-qa-beta-program.md) create these and drop them from this set; S1a
+# dropped the corpus, matrix, tooling and test folders.
 TARGETS: frozenset[str] = frozenset(
     {
         "docs/qa/briefs/",
-        "docs/qa/corpus/",
-        "docs/qa/matrix.toml",
-        "scripts/qa/",
-        "tests/unit/qa/",
     }
 )
 _TARGET = re.compile(r"`([^`]+)` \(target\)")
