@@ -162,7 +162,8 @@ Steps, in order. Each step names its input and its output.
      "git+https://github.com/decoy-data/decoy-engine@<release prep commit>" dist/*.whl
    uv pip install --python .venv-certified/bin/python -r <scratch>/cand-24zc.txt
    .venv-certified/bin/python -I -c 'import importlib.metadata as m, sys; assert m.version("decoy-engine") == sys.argv[1]' N
-   uv pip check --python .venv-certified/bin/python   # must list only the known typer exception
+   # only the known typer exception may be listed; any other line stops the release
+   ! uv pip check --python .venv-certified/bin/python | grep -v -i '^ *$' | grep -v -i 'typer' | grep -v -i '^Found [0-9]* incompatibilit'
    # edit the header of the C0 copy's requirements-certified.txt to F; do not commit it
    .venv-certified/bin/python scripts/cert_smoke.py
    ```
@@ -170,7 +171,8 @@ Steps, in order. Each step names its input and its output.
    `cert_smoke.py` reads `requirements-certified.txt` next to itself, so it checks the edited C0
    copy: the fingerprint equals `F`, `F` is a row in the installed engine, and a real DP fit
    completes. Paste the node name, `F` and the "fit OK" line into the release prep PR body. Only
-   then run `scripts/release/release_checks.sh N` and `cut-release.sh` to tag `vN`.
+   then run `scripts/release/release_checks.sh N` and `scripts/release/cut-release.sh <full release
+   prep commit SHA>` to tag `vN`.
 5. **C1, CLI, after `vN` exists.** Before merge, require
    `git diff <C0 sha>^ origin/main -- requirements-certified.txt` to be empty again. On the same
    CLI branch: plain-merge `origin/main` (no rebase), repin the engine to `N` (file list below),
