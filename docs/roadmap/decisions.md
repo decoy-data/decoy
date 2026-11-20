@@ -4,6 +4,11 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-19 (init wizard stops).** The `decoy init` guided wizard (row 32b) is not developed further. Finish
+  what is open (engine #653 E1 and #654 E2) and stop; that is the 1.0 scope for this surface. If the surface
+  is incomplete as it stands, 1.0 reduces it to simple table structures only. The owner is building a different
+  way to author pipelines. E1 and E2 ship in the experimental tier, since no 1.0 command calls them. The rest of
+  `C:plan/init-wizard-v1-rest` is stopped.
 - **2026-11-19 (physical seam and Faker).**
   - Physical seam: option C. The physical-plan compiler stays and becomes a "what would run and why"
     explainer for every route; execution stays in today's routes. The shadow-only execution branches

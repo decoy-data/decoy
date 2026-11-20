@@ -79,6 +79,8 @@ def _run(cfg: Path, *args: str):
 def _envelope(result) -> dict:
     payload = json.loads(result.stdout)
     payload.pop("elapsed_s", None)
+    # The result document carries this run's id and timestamps, which differ between two runs.
+    payload.pop("result", None)
     return payload
 
 
