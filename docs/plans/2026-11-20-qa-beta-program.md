@@ -95,7 +95,7 @@ Command coverage. L4 covers `decoy run` only, so every other command has a named
 | `library path`, `schema`, `list`, `show`, `project` | yes | yes | P1 |
 | `upgrade` | yes | yes | P1 |
 
-Sandbox. Every tester works from the installed release bundle and reads only the public docs folder. The launcher starts each tester as its own OS user on Linux and macOS. The user home holds only the bundle, public docs and a read-only corpus mount. The user cannot read repository checkouts on the node. The owner runs `scripts/qa/setup-testers.sh` once on each node to create these tester users. The launcher does not create users. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
+Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs and a read-only copy of the tester's corpus items. Repository checkouts and other testers do not exist inside it. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
 
 ### 5.2 Corpus
 
@@ -276,7 +276,7 @@ Core only (owner 2026-11-10): the leak checker, the finding writer, the fetcher 
 | `scripts/qa/corpus/{fetch,generate}.py` | corpus tools | same new row |
 | `scripts/qa/invariants/*.py` | I1 to I7 checkers, one module per invariant | same new row |
 | `scripts/qa/{io,matrix,findings,launch,repro}.py` | private writer, pairwise runs, finding commands, launcher and repro runner | same new row |
-| `scripts/qa/setup-testers.sh` | owner-run OS-user setup | same new row |
+| `scripts/qa/nodes.md` | one-time Podman and Tart node setup | same new row |
 | `tests/unit/qa/` | AT-1 to AT-13 | new row with the tooling |
 
 Nothing goes under `src/`. `scripts/qa/` is not in the wheel. It does not import private product modules. No module exceeds 400 lines. The package has fewer than 10 direct Python modules. The `corpus` and `invariants` concerns use named subpackages.
@@ -291,55 +291,36 @@ Expected size: 30 to 36 new or changed files and at most 3,600 hand-written line
 - **Why docs-only testers.** A tester who reads the code tests the code's intent, not the user's experience. Doc mismatches are real V1 findings (REL-DOCS).
 - **Why triage reproduces.** Agent reports have been wrong before (a docs agent claimed fixes not in files; a builder reported a passing ratchet that failed). One clean repro is the gate.
 
-### 10a. Tester provisioning model (revised after S2 review round 3)
+### 10a. Tester isolation (rev 3, after S2 review round 3)
 
-Three Codex rounds on S2 found the same class: a long-lived tester tree that root changes again on every setup run, written in shell, where a guard cannot see every write. Rev 2 removes the class instead of patching it.
+Three Codex rounds on S2 failed on one class: a hand-built sandbox made of OS users, groups and file modes, changed by root, where every rerun and every path is a new attack surface. A codex-fix pass closed the gaps, but only by adding more of the same machinery (per-pass generations, private groups, mount tables, disk images). Rev 3 removes the class. Isolation comes from established tools that start from a clean image each time.
 
-Rule 1. Fresh tree per pass. Setup never edits an existing tester tree. For each pass it removes the old tree and builds a new one. Removal is safe: it runs as root, after unmounting the fault volume, does not cross file systems, and does not follow symlinks. Then it builds the new tree from empty folders. Nothing a tester wrote in a past pass survives, so no rerun case exists. This covers the secret, the fault mount, the probe marker and the inbox.
+**Linux (Dell): one rootless Podman container per tester per pass.** `podman run --rm` from a pinned base image (`ubuntu:22.04` by digest), as an unprivileged user inside a user namespace, with:
+- `--network none`. P3 is the exception and runs in the GitHub sandbox repo, not here;
+- read-only bind mounts for the bundle, the docs copy and the tester's corpus items (`:ro`);
+- a writable `--tmpfs /work:size=2g` as HOME and cwd, plus `--tmpfs /fault:size=64m` for P5 only;
+- the inbox at `/work/inbox`, copied out by the launcher after the container exits, through `io.py`;
+- `--read-only` root file system, `--cap-drop=ALL`, `--security-opt no-new-privileges`, and a memory and pids limit.
 
-Rule 2. Setup is Python, not shell. `scripts/qa/provision.py` replaces `setup-testers.sh`. It is standard library only, runs as root, and makes every file-system change through `scripts/qa/io.py`. For root-owned trees, io.py gains three functions:
-- `make_owned_dir(path, uid, gid, mode)`;
-- `copy_tree_checked(src, dst, uid, gid)`;
-- `publish_owned_once(path, data, uid, gid, mode)`.
-The existing io sentry (an AST scan, alias-aware) then covers provisioning too, so no shell guard is needed. The only subprocess calls are user and group creation, `mount` and `umount`, and `hdiutil`. Each is named in an allow-list and passes an argv list, never a shell string.
+The checkout and other testers do not exist inside the container. A rerun starts from the same clean image, so there is no rerun state.
 
-Rule 3. Sources are QA-owned all the way down. Every entry under `/var/lib/decoy-qa/src/` must meet all of these:
-- it is owned by the QA owner;
-- it is not group- or world-writable;
-- it is a regular file, a folder, or a relative symlink that resolves inside its own tree;
-- it is not a special file, has a link count of 1, and does not cross a mount.
-An absolute symlink is refused.
+**macOS (Mac mini): one Tart macOS 15 guest per tester per pass** (needs owner OK, Q5). Apple's licence allows two macOS guests at a time on one Mac, so Mac testers run two at a time. The launcher clones a pinned base VM (`tart clone`), shares the bundle, docs and corpus read-only (`tart run --dir=name:path:ro`), runs the charter, copies the inbox out, then deletes the clone. P5's bounded disk is a 64 MiB disk image created inside the guest. A careless fill only hurts the guest.
 
-Per-tester layout for one pass (`<t>` is `/var/lib/decoy-qa/testers/<user>`):
+**What remains ours.**
+- `scripts/qa/launch.py` builds the podman or tart argv from one table. The table is the only place that lists mounts and limits.
+- The launcher captures output through `io.open_private_capture`, and copies the inbox out through `io.publish_private_once`.
+- `scripts/qa/nodes.md` gives the one-time node setup: install Podman (apt) on the Dell and Tart (brew) on the Mac, and pull or clone the pinned images.
 
-| Path | Owner and mode | Notes |
-|---|---|---|
-| `<t>` | root:`<user>` 0750 | made fresh each pass |
-| `<t>/bundle`, `<t>/docs` | root:`<user>`, folders 0750, files 0640 or 0750 | copied with checks from `src` |
-| `<t>/secret/ci-secret` (P3 only) | root:`<user>` 0640 | new random test secret each pass; the S3 probe and the leak needles are registered per pass |
-| `<t>/fault.ok`, `<t>/img/fault.dmg` (P5 only) | root, 0644 and 0600 | written after the bounded volume mounts |
-| `<t>/fault` (P5 only) | mounted root `<user>` 0700 | set once on the fresh volume |
-| `<t>/work` (HOME) and `<t>/work/inbox` | `<user>` 0700 | made fresh; the tester writes only here |
+No setup script runs as root on a schedule. No tester OS users exist. `setup-testers.sh` and `provision.py` are dropped.
 
-The corpus at `/var/lib/decoy-qa/corpus` is root:`qatesters` 0750. It is replaced whole each time the corpus changes, by the same checked copy.
+**Agent inside the sandbox.** The agent runtime runs inside the container or guest with only the brief, the docs and the bundle. The launcher passes only the model API credential, through a mounted secret file, never argv. The credential is a separate low-limit QA key. Getting it is an owner step (Q4).
 
-Probe marker. S3's probe marker is written per pass: `<pass_dir>/probes/<slug>.ok` holds the pass id. The launcher refuses a marker from another pass. A setup run therefore always invalidates old probes.
-
-Launcher. The launcher keeps these checks:
-- no `mkdir` as the tester;
-- a listing failure stops the launch;
-- the realpath and version check on the bundle;
-- errors raised after the except block.
-
-Tests. `QA_PROVISION_TEST_ROOT` runs `provision.py` on a temp root as the current user, with no user creation and no chown. It covers:
-- planted symlinks and hardlinks in a past tree, which are removed and never followed;
-- an absolute symlink in a source;
-- a source entry that is world-writable or owned by someone else;
-- a rerun that gives a fresh secret and invalidates the probe;
-- a fault volume that is already mounted, which is unmounted first in test mode as a stub.
-The io sentry's planted cases include provision.py.
+**Tests.** Unit tests check the argv table: every listed mount is read-only except /work and /fault; there is no network except where a row says so; the security flags are present; the secret is mounted, not passed as an argument. S3 proves the isolation for real: a probe inside the container and the guest cannot read the checkout path, the other testers' inboxes or the host home, and a write to `/fault` stops at 64 MiB.
 
 ## 11. Owner questions
+
+- Q5 (added 2026-11-20, rev 3): install Podman on the Dell and Tart plus one pinned macOS 15 base image (about 25 GB) on the Mac mini. No new spend. Recommended: yes.
+- Q4 (added 2026-11-20, rev 3): a separate low-limit model API key for QA testers, used only inside the sandbox. Recommended: yes.
 
 | Id | Question | Recommendation |
 |---|---|---|
