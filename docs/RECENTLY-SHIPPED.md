@@ -11,6 +11,12 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-20: freeze slices S5 and S7a (engine)
+
+- `when:` filters reserve `null`, `true`, `false`, `between`, `like`, `ilike`, `matches`, `startswith` and `endswith` as column names, so later grammar can use them (engine #722).
+- A tag census classifies every `name/vN` constant in engine source as a frozen format, a derivation label, an internal tag or a declared casting format (engine #723).
+- Engine 0.28.1 released (engine #706).
+
 ## 2026-11-20: library commands (rows 39 and 40)
 
 - `decoy library list`, `show`, `diff` and `ref` (CLI #215) and `prune`, `clean` and `export` (CLI #219) are merged. Paths print as plain text, never as Rich markup.
