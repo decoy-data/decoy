@@ -73,9 +73,11 @@ One shared sweep. The checklist and the journey each have a leak sweep today. S1
 | Layer | Who runs it | Input | Oracle | When |
 |---|---|---|---|---|
 | L1 Checklist pass | one Sonnet agent per checklist group | the group's checks, the corpus | the check's expected exit and output, plus invariants | as each group becomes V1 complete |
-| L2 Doc walk | one Sonnet agent per public docs page set | every example in the public docs, run as written | the doc text, plus invariants | as each group becomes V1 complete, for that group's pages |
+| L2 Doc walk | one Sonnet agent per public docs page set | every example in the public docs, run as written; the `.decoy` language guide is one page set, and each example `.decoy` file in it is written out and run as given | the doc text, plus invariants | as each group becomes V1 complete, for that group's pages |
 | L3 Persona beta testers | five Sonnet agents, one per persona | a charter, the public docs, the corpus | the docs and the invariants; the agent's judgement only for "confusing" findings | after the V1 build is complete (personas cross groups) |
 | L4 Matrix runs | the harness, no agent | the pairwise settings matrices over the corpus | invariants only | after the V1 build is complete; a smoke subset runs in S3 to test the harness |
+
+Gating for `.decoy` (rev 3.4). Coverage of the `.decoy` language in every layer (the L2 guide walk, the `.decoy` personas and the matrix pipeline-source value) runs only once the DECOY-LANG group is V1 complete. This is the standing rule that QA runs only on complete groups. Until then, testers use YAML configs.
 
 L4 is scripted on purpose: coverage is cheap and mechanical. Agents (L1 to L3) are used where judgement, docs reading and exploration pay.
 
@@ -95,7 +97,7 @@ Command coverage. L4 covers `decoy run` only, so every other command has a named
 | `library path`, `schema`, `list`, `show`, `project` | yes | yes | P1 |
 | `upgrade` | yes | yes | P1 |
 
-Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs, a read-only copy of the tester's corpus items and its own inbox. Repository checkouts, other testers, the host home, the pass needles file and the refusal set do not exist inside it. Its only network path is the Squid egress proxy, which allows `CONNECT api.anthropic.com:443` and nothing else. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
+Sandbox. Every tester runs in a fresh, throwaway sandbox: a rootless Podman container on Linux, a Tart guest on macOS (section 10a). The sandbox holds only the installed release bundle, the public docs, a read-only copy of the tester's corpus items and its own inbox. Repository checkouts, other testers, the host home, the pass needles file and the refusal set do not exist inside it. Its only network path is the Squid egress proxy, which allows `CONNECT api.anthropic.com:443` and nothing else. "The public docs" means the built public docs set, mounted read-only. It includes the `.decoy` language guide (`docs/guides/decoy-language/`) and the `decoy` CLI reference. The tester also has `decoy --help` and any built-in language help command that DECOY-LANG ships. Briefs forbid values in messages. The launcher captures tester stdout and stderr in a node-local file. The coordinator receives only finding ids and counts.
 
 ### 5.2 Corpus
 
@@ -123,6 +125,8 @@ Each charter states the persona, the mission, the time box (2 hours of agent tim
 | P4 Compliance reviewer | evidence records, `decoy report verify`, the vault and `decoy unmask` with and without the vault file and mask secret, post-scan reports, what an auditor can and cannot see | Dell |
 | P5 Careless user | wrong flags, wrong file types, missing secret, interrupted runs (Ctrl-C mid-write), full disk, read-only output folder, re-running into an existing output | Dell, Mac |
 
+Pipeline source (rev 3.4, DECOY-LANG). The `.decoy` pipeline language (CLI PR #359) replaced the init wizard as the way users write pipelines (owner 2026-11-19). P1 and P5 write their pipelines as `.decoy` files from the language guide alone. P2 and P3 start from a YAML config. P4 uses whatever the pipeline it audits was written in. Each charter names its pipeline source.
+
 P3's notes become the draft of a "Running Decoy in CI" guide (owner rule: every built capability is expressed to customers), handed to REL-DOCS row 92 after triage.
 
 ### 5.4 Settings matrices (L4)
@@ -147,6 +151,7 @@ Mask matrix:
 | vault | off, `--vault` |
 | output | default run folder, `--out-dir` |
 | `--json` | off, on |
+| pipeline source | `.decoy` file, YAML config (only where the docs give both forms) |
 
 Generate matrix:
 
@@ -159,6 +164,7 @@ Generate matrix:
 | native | default, `--no-native` (`--native` is refused up front) |
 | evidence | off, `--evidence-out` |
 | `--json` | off, on |
+| pipeline source | `.decoy` file, YAML config (only where the docs give both forms) |
 
 Constraints have three kinds, each citing its doc line in `docs/qa/matrix.toml`:
 
