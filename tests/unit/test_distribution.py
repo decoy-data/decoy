@@ -141,6 +141,14 @@ def test_manifest_roundtrip_files_and_symlinks(tmp_path):
     assert manifest_mod.verify_manifest(man, root) == []
 
 
+def test_manifest_tag_is_the_frozen_format_name(tmp_path):
+    root = tmp_path / "b"
+    root.mkdir()
+    _make_tree(root)
+    man = manifest_mod.compute_manifest(root, version="0.1.0", target="t")
+    assert man["schema_version"] == "cli-bundle-manifest/v1"
+
+
 def test_manifest_detects_content_tamper(tmp_path):
     root = tmp_path / "b"
     root.mkdir()

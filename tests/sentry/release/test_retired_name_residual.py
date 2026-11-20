@@ -71,6 +71,21 @@ HISTORY = (
 )
 
 
+# The one tracked file outside history that may spell the old public names: the table that maps
+# each retired symbol to its new one. `test_public_renames.py` checks the table row by row and
+# that no other line in the file holds the word. RETIRED_SYMBOLS is the residual list of old names.
+RENAMES_DOC = "docs/release/public-renames.md"
+RETIRED_SYMBOLS = (
+    f"run_{RETIRED_NAME}",
+    f"{RETIRED_NAME.capitalize()}Profile",
+    f"run_{RETIRED_NAME}_post_mask",
+    f"{RETIRED_NAME.capitalize()}PostMaskReport",
+    f"{RETIRED_NAME}_profiles_to_snapshot",
+    f"_run_{RETIRED_NAME}_inner",
+    f"decoy_engine.{RETIRED_NAME}",
+)
+
+
 # {path: lines that still carry the name}, kept in a registered baseline so the ratchet check
 # lets it only shrink. A path that holds the name is written with `{n}` in the file.
 def _pending() -> dict[str, int]:
@@ -109,7 +124,7 @@ def violations(files: Mapping[str, bytes], pending: Mapping[str, int]) -> list[s
     out: list[str] = []
     seen_pending: set[str] = set()
     for path, data in sorted(files.items()):
-        if is_history(path):
+        if is_history(path) or path == RENAMES_DOC:
             continue
         path_hit = bool(RETIRED_PATTERN.search(path))
         lines = hit_lines(data, split_exempt=path == THIS_FILE)
