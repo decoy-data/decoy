@@ -31,6 +31,7 @@ import contextlib
 import sqlite3
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -53,6 +54,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "IndexRow",
     "all_rows",
+    "delete_row",
     "ensure_schema",
     "insert",
     "latest",
@@ -295,7 +297,8 @@ def insert(conn: sqlite3.Connection, row: IndexRow) -> None:
     conn.executemany("INSERT INTO tables VALUES (?, ?)", [(row.id, t) for t in row.tables])
 
 
-def _delete(conn: sqlite3.Connection, record_id: str) -> None:
+def delete_row(conn: sqlite3.Connection, record_id: str) -> None:
+    """Drop a record's rows (prune calls this only after its object file is gone)."""
     for table, column in (("records", "id"), ("links", "src"), ("tables", "id")):
         conn.execute(f"DELETE FROM {table} WHERE {column} = ?", (record_id,))
 
@@ -306,7 +309,7 @@ def sync(
     """Make the index match the object names: insert what is missing, drop what is gone."""
     indexed = {r[0] for r in conn.execute("SELECT id FROM records")}
     for gone in sorted(indexed - on_disk):
-        _delete(conn, gone)
+        delete_row(conn, gone)
     for new in sorted(on_disk - indexed):
         row = load(new)
         if row is not None:
@@ -359,6 +362,33 @@ def select(
         and (table is None or table in r.tables)
     ]
     return sorted(picked, key=lambda r: (r.created_at, r.id))
+
+
+def parse_instant(text: str) -> datetime:
+    """A record time (`created_at`) or a user's `--since`: `YYYY-MM-DD` (midnight UTC) or an ISO
+    time; a trailing `Z` or no zone is UTC. The one parser of the library's timestamps. Raises
+    `ValueError`."""
+    value = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
+def reachable(roots: Iterable[str], rows: Iterable[IndexRow]) -> set[str]:
+    """Every id reachable from `roots` along record links: git's reachability from refs.
+
+    The one link-closure walk (prune keeps it, export `--ref` writes it). An id with no row is
+    included but has no edges; callers refuse to act while any stored object has no row
+    (`_inventory`), so a missing row never hides a link.
+    """
+    edges = {row.id: [dst for _rel, dst in row.links] for row in rows}
+    seen: set[str] = set()
+    stack = list(roots)
+    while stack:
+        rid = stack.pop()
+        if rid in seen:
+            continue
+        seen.add(rid)
+        stack.extend(edges.get(rid, ()))
+    return seen
 
 
 def latest(rows: Iterable[IndexRow], **filters: str | None) -> str | None:

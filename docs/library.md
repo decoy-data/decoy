@@ -170,6 +170,65 @@ Wherever a record is named you can give:
 - `KIND/latest`, the newest record of that kind, or `KIND/latest~N`, the N-th before it. `latest`
   is computed, so it cannot be the name of a stored ref.
 
+## Pruning records and cleaning scratch
+
+Both commands show exactly what they would delete and delete nothing until you add `--yes`. All
+take `--library DIR`.
+
+- `decoy library prune [--kind K] [--keep-last N] [--older-than D] [--yes]` deletes records you
+  no longer keep: beyond the newest `N` of each kind, and/or older than `D` (`90d`, `12h`, `30m`).
+  With no options it applies the `keep_last` rules in `.decoy/library.yaml`; the default policy
+  keeps every record. It never deletes:
+  - a record a ref points at, or any record a kept record links to (directly or through others);
+  - a record younger than one hour (one a running command may still be linking to);
+  - a record of a kind this Decoy does not know, or one written by a newer Decoy; their links
+    still protect what they point at.
+
+  Prune first accounts for every ref and record file. If one cannot be read (a ref it cannot
+  parse, a record file with no index row, a link among them), it cannot know what that entry
+  protects: the preview says how many such entries there are and `--yes` refuses with
+  `library_unexplained_entries` (exit 3) until `decoy library fsck` explains or repairs them. A
+  ref may start with a byte order mark.
+- `decoy library clean [--yes]` deletes everything in `.decoy/scratch/` (sample output and
+  staging). It never touches records, logs, or anything outside the library: vault files, keys,
+  targets and `out/` run folders stay. A link in scratch is removed as an entry; a `scratch/`
+  that is itself a link is refused.
+
+Neither command deletes through a linked `library/`, `objects/` or `scratch/` folder: that is
+`library_path_unsafe` (exit 3) and nothing is deleted.
+
+Both work under the library lock and refuse in degraded mode (`library_lock_unavailable`, exit
+3). A file another program holds open (on Windows) is listed as left behind, the rest is
+deleted, and the command exits 4; run it again once the file is closed.
+
+## Exporting
+
+`decoy library export --output FILE [--kind K] [--since D] [--ref R] [--include-logs] [--keep-paths]`
+writes one self-verifying JSON Lines file (`decoy-library-export/v1`) that the platform can
+import. The file is 0600. `--ref R` exports R (a ref, an id or `KIND/latest`) and every record it
+links to; `--kind` and `--since` choose the records an export starts from and cannot be
+combined with `--ref`. **An export is always closed**: every record a chosen record links to,
+directly or through others, is exported too, whatever its kind or date. Nothing under `scratch/` is ever exported. The output may not be a file inside
+`library/` or `scratch/`, or a symlink (`export_destination_unsafe`, exit 1). Like prune, export
+refuses with `library_unexplained_entries` while any ref or record file cannot be accounted for
+(for example a record written in a newer envelope format), or while a ref or a link names a
+record that is not in the library, rather than write a file that is incomplete or not closed.
+
+By default an export carries no raw path: each record's declared path fields are reduced to file
+names, which gives that record a new id, and the line names the original id as `source_id`; links
+and refs point at the new ids. **A default export withholds the records this Decoy cannot strip**:
+a record of a kind it does not know, or one written by a newer Decoy with payload fields it does
+not know. They are left out, listed by id in the header's `withheld_records`, and counted in a
+notice on stderr. A record that links to a withheld record, directly or through others, is
+withheld too (so the file stays closed): it is listed in `withheld_records` as well, named in its
+own stderr notice, and a ref to it is left out of the header. Export never writes a file whose
+records link outside it; if one would, it refuses with `export_not_closed` and writes nothing. To
+include them all, rerun with `--keep-paths`: every record is then exported byte for byte, paths
+included, with its original id.
+
+`--include-logs` is accepted, but no job logs exist yet (they arrive with `decoy run` job logs),
+so none is exported.
+
 ## Retention policy
 
 `.decoy/library.yaml` is optional. Without it, these defaults apply:
@@ -186,8 +245,9 @@ retention:
 Keys you leave out keep their defaults. An unknown key, a kind Decoy does not know, a number
 written as text, or a count below 1 makes the file invalid (`library_policy_invalid`, naming the
 field, never its value). The file is read like the project marker: a regular file of at most
-64 KiB, owned by you; one another user owns is refused with `library_policy_untrusted`. Nothing
-applies the policy yet: prune and log rotation arrive later.
+64 KiB, owned by you; one another user owns is refused with `library_policy_untrusted`.
+`decoy library prune` with no options applies the record rules; log rotation and the scratch
+time limit arrive with job logs and `decoy run --sample`.
 
 ## Commands
 

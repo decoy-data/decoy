@@ -15,6 +15,8 @@ from __future__ import annotations
 from decoy_engine.reasons import runtime, warning
 
 __all__ = [
+    "EXPORT_DESTINATION_UNSAFE",
+    "EXPORT_NOT_CLOSED",
     "LIBRARY_BUSY",
     "LIBRARY_FILE_TOO_LARGE",
     "LIBRARY_INDEX_CORRUPT",
@@ -26,6 +28,7 @@ __all__ = [
     "LIBRARY_POLICY_INVALID",
     "LIBRARY_POLICY_UNTRUSTED",
     "LIBRARY_READ_FAILED",
+    "LIBRARY_UNEXPLAINED_ENTRIES",
     "LIBRARY_WRITE_FAILED",
     "RECORD_CORRUPT",
     "RECORD_INVALID",
@@ -72,6 +75,15 @@ LIBRARY_READ_FAILED = "library_read_failed"
 LIBRARY_FILE_TOO_LARGE = "library_file_too_large"
 
 
+# prune or export met an entry it cannot account for (a ref it cannot read, a record file with
+# no index row, a link or pipe among the objects): acting could delete or drop what that entry
+# protects, so `--yes` and export refuse until `decoy library fsck` explains or repairs it.
+LIBRARY_UNEXPLAINED_ENTRIES = "library_unexplained_entries"
+# `export --output` names a file inside the library or its scratch area, or a symlink.
+EXPORT_DESTINATION_UNSAFE = "export_destination_unsafe"
+# export would write a set whose records link outside it; refused before anything is written.
+EXPORT_NOT_CLOSED = "export_not_closed"
+
 # Codes that describe what the user typed; every other code is the library's own state. The
 # commands exit `EXIT_USAGE` for these and `EXIT_RUNTIME` for the rest (`_cli.LibraryCommand`).
 USAGE_CODES = frozenset(
@@ -81,6 +93,8 @@ USAGE_CODES = frozenset(
         REF_KIND_MISMATCH,
         LIBRARY_PATH_TOO_LONG,
         LIBRARY_POLICY_INVALID,
+        LIBRARY_POLICY_UNTRUSTED,
+        EXPORT_DESTINATION_UNSAFE,
     }
 )
 
