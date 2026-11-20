@@ -9,6 +9,7 @@ import typer
 from rich.text import Text
 
 from decoy import _mask_secret, _mask_secret_guidance, _native_gate, _resources
+from decoy._config_file import read_config_bytes
 from decoy.cli import gen
 from decoy.cli.gate import (
     GateFinding,
@@ -25,8 +26,10 @@ from decoy.cli.io import (
     OutputPlacement,
     acquire_relation,
     check_declared_before_acquire,
+    config_sha256,
     duckdb_probe_raw,
     parse_flags,
+    preflight_detectors,
     quarantine_enabled,
 )
 from decoy.cli.io import resolve_path as _resolve_path
@@ -58,19 +61,19 @@ class _MaskSecretUsageError(Exception):
 
 def _load_raw_config(
     config_path: Path,
-) -> tuple[object, list[GateFinding], Exception | None]:
-    """The run path's single YAML parse, through the gate's parser.
+) -> tuple[object, list[GateFinding], Exception | None, str | None]:
+    """The run path's single YAML read and parse, through the gate's parser.
 
-    Returns `(raw, findings, read_error)`: `findings` holds a YAML syntax error (the run
-    refuses it before any work), as do a non-UTF-8, empty or non-mapping file; `read_error`
-    an unreadable file (an `OSError`: it surfaces through the run-level handler as a runtime
-    error).
+    Returns `(raw, findings, read_error, sha256)`: `findings` holds a YAML syntax error (the run
+    refuses it before any work), as do a non-UTF-8, empty or non-mapping file; `read_error` an
+    unreadable file (an `OSError`, a runtime error); `sha256` hashes the bytes parsed.
     """
     try:
-        raw, findings = parse_pipeline_yaml(config_path)
+        data = read_config_bytes(config_path)
+        raw, findings = parse_pipeline_yaml(config_path, data)
     except (OSError, UnicodeDecodeError) as exc:
-        return None, [], exc
-    return raw, findings, None
+        return None, [], exc, None
+    return raw, findings, None, config_sha256(data)
 
 
 def _build_resolver(master_key_hex: str | None, key_label: str | None, raw_cfg: dict | None, state):
@@ -188,6 +191,7 @@ def refuse_preview(ctx: RunContext) -> None:
             ("--chunked", ctx.chunked),
             ("--chunk-size", ctx.chunk_size is not None),
             ("--evidence-out", ctx.evidence_out is not None),
+            ("--integrity-out", ctx.integrity_out is not None),
             ("--notify", bool(ctx.notify)),
             ("--vault", ctx.vault is not None),
             ("--fidelity", ctx.fidelity),
@@ -238,11 +242,8 @@ def _guard_mask_secret_ref(raw: object) -> None:
 def _placement(ctx: RunContext) -> OutputPlacement:
     """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
     project run folder; the typed side files join the collision rule either way."""
-    typed = tuple(
-        (flag, path)
-        for flag, path in (("--evidence-out", ctx.evidence_out), ("--vault", ctx.vault))
-        if path is not None
-    )
+    sides = (("--evidence-out", ctx.evidence_out), ("--integrity-out", ctx.integrity_out))
+    typed = tuple((f, p) for f, p in (*sides, ("--vault", ctx.vault)) if p is not None)
     if ctx.out_dir is not None:
         return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked)
     return OutputPlacement(typed=typed, chunked=ctx.chunked)
@@ -364,6 +365,7 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
             duckdb_probe_raw(ctx.raw, _flags), ctx.config, _placement(ctx)
         )
         check_declared_before_acquire(_probe, _flags, ctx.config.parent)
+        preflight_detectors(_probe)  # a model that cannot load refuses before any relation is read
         import tempfile
 
         ctx._duckdb_tmpdir = Path(tempfile.mkdtemp(prefix="decoy-duckdb-"))
@@ -377,6 +379,11 @@ def prepare(ctx: RunContext, _scopes: contextlib.ExitStack) -> None:
                 "format": "parquet",
                 "path": str(_parquet),
             }
+
+    if not ctx.chunked and not ctx.duckdb_source and isinstance(ctx.raw, dict):
+        # The gate's preflight profiles source data, so a post-scan model that cannot load
+        # refuses first, on the config the static layers accept (the DuckDB route did it above).
+        preflight_detectors(check_static_before_acquire(ctx.raw, ctx.config, _placement(ctx)))
 
     # The whole `decoy validate` gate (config, compile, preflight) before any source
     # row is read. A refusal raises into the one handler below; a pass hands back the

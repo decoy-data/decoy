@@ -5,8 +5,11 @@
 raises a typed refusal or calls `_result.finish`, so the exit integer of a run is the integer in
 its document.
 
-Scope: every module that can end `decoy run`: all of `cli/run/` (recursive) and
-`cli/project/_run_all.py`, the `--all` fan-out. The `--all` summary has no single run and so no
+Scope: every module that can end `decoy run`: all of `cli/run/` (recursive), the `--all`
+fan-out `cli/project/_run_all.py`, and `cli/io/`, whose helpers the run calls (a helper that
+exits there is a second exit path beside the choke point). Two io functions are listed in
+`run-exit-owners-io.json`: `report_detectors` serves `decoy report integrity`, and
+`resolve_pipeline` runs before any run exists, so its exits carry no document (a known V2 gap). The `--all` summary has no single run and so no
 document; its two functions are the reasoned, shrink-only entries of `run-exit-owners.json`. Each
 entry pins the exact exits and writer calls its function holds (`hits`), so one more call inside a
 listed function fails too. A stale entry fails, so the list only shrinks.
@@ -49,7 +52,7 @@ WRITERS = ("emit_json", "emit_error")
 
 
 def in_scope(rel: str) -> bool:
-    return (rel.startswith("cli/run/") or rel == RUN_ALL) and rel != OWNER
+    return (rel.startswith(("cli/run/", "cli/io/")) or rel == RUN_ALL) and rel != OWNER
 
 
 def _bindings(tree: ast.Module) -> dict[str, str]:
@@ -125,12 +128,14 @@ def violations(
 def _modules() -> list[Path]:
     return [
         *sorted((SRC / "cli" / "run").rglob("*.py")),
+        *sorted((SRC / "cli" / "io").rglob("*.py")),
         SRC / RUN_ALL,
     ]
 
 
 def _allowed() -> dict[str, list[str]]:
-    return {key: list(entry["hits"]) for key, entry in load_allowlist("run-exit-owners").items()}
+    entries = {**load_allowlist("run-exit-owners"), **load_allowlist("run-exit-owners-io")}
+    return {key: list(entry["hits"]) for key, entry in entries.items()}
 
 
 def test_no_exit_or_writer_outside_the_owner() -> None:
@@ -144,6 +149,7 @@ def test_no_exit_or_writer_outside_the_owner() -> None:
 def test_the_scope_reaches_every_run_module() -> None:
     rels = {p.relative_to(SRC).as_posix() for p in _modules()}
     assert RUN_ALL in rels
+    assert "cli/io/_integrity_report.py" in rels
     assert {"cli/run/_flow.py", "cli/run/_errors.py", "cli/run/__init__.py"} <= rels
     assert all(p.exists() for p in _modules())
 
@@ -190,7 +196,7 @@ SEEDED = [
 
 
 def test_seeded_shapes_are_caught_in_every_scoped_module() -> None:
-    for rel in (R, "cli/run/__init__.py", "cli/run/sub/_x.py", RUN_ALL):
+    for rel in (R, "cli/run/__init__.py", "cli/run/sub/_x.py", "cli/io/_x.py", RUN_ALL):
         for source in SEEDED:
             assert violations(source, rel), (rel, source)
 

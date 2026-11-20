@@ -1,0 +1,20 @@
+{
+ "sentry_id": "run-exit-owners-io",
+ "created_in": "SCAN-ML-C2a",
+ "entries": {
+  "cli/io/_integrity_report.py::report_detectors": {
+   "reason": "serves `decoy report integrity --config`, a command with no run result document; may only shrink",
+   "hits": [
+    "calls emit_error",
+    "raises typer.Exit"
+   ]
+  },
+  "cli/io/_pipelines.py::resolve_pipeline": {
+   "reason": "resolves the pipeline argument before any run exists, for every pipeline command; may only shrink",
+   "hits": [
+    "calls emit_json",
+    "raises typer.Exit"
+   ]
+  }
+ }
+}
