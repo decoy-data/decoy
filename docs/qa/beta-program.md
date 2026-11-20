@@ -164,8 +164,9 @@ Generate matrix:
 | evidence | off, `--evidence-out` |
 | `--json` | off, on |
 
-`allpairspy` covers every pair of values that a constraint does not remove. That is about 60
-mask runs and 15 generate runs per platform. Each QA pass writes its own run list. The run list
+`allpairspy` covers every pair of values that a constraint does not remove. That is 59
+mask runs and 9 generate runs per platform (the generator's output on 2026-11-20; a matrix edit
+changes it). Each QA pass writes its own run list. The run list
 is not committed.
 
 ### Constraint kinds
@@ -271,8 +272,8 @@ Rules for writing a finding:
   holds a needle or any canonical scalar from the refusal set. It also refuses a coordinate id
   that holds marker text. (Built by slice S1b.)
 - Every QA writer uses one private helper, `scripts/qa/io.py` (`publish_private_once`). It
-  writes a 0600 file, reserves the target so it is created once, and publishes it with an atomic
-  rename. (Built by slice S1a.)
+  writes a 0600 temporary file, then publishes it with a hard link that fails if the target exists,
+  so the target is created once and is never visible half written. (Built by slice S1a.)
 - Testers return only counts and finding ids to the coordinator. Never paste a cell value, a
   marker or a secret into a finding, a message or a record.
 

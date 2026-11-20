@@ -1,0 +1,593 @@
+# QA corpus manifest (schema_version 1). Plan: docs/plans/2026-11-20-qa-beta-program.md.
+# Data never enters git: `scripts/qa/corpus/generate.py` builds the generated items and
+# `scripts/qa/corpus/fetch.py` downloads the public ones, both into ~/decoy-qa-corpus/<id>/.
+# Generated items have no hash (same seed, same bytes). Public items need a recorded license
+# from the allow-list in scripts/qa/corpus/manifest.py and a SHA-256 of the exact file.
+# `max_bytes` caps a download. `marker_columns` lists table.column for every text column; the generator test keeps it true.
+
+schema_version = 1
+
+[[items]]
+id = "synthea-csv-apr2020"
+origin = "https://raw.githubusercontent.com/synthetichealth/synthea-sample-data/84f59805d481b9f01f3141ef39e68bdbbeb80132/downloads/synthea_sample_data_csv_apr2020.zip"
+license = "Apache-2.0"
+sha256 = "4194b18c11eaedcf0d5d5dd448d8ac9661f14381e2ef9f109215dc42266cd38a"
+tier = "M"
+format = "csv-zip"
+shapes = ["multi-table", "fk-chain", "real-world-mess", "dates", "heavy-nulls"]
+marker_columns = []
+max_bytes = 20000000
+
+[[items]]
+id = "chinook-sqlite"
+origin = "https://github.com/lerocha/chinook-database/releases/download/v1.4.5/Chinook_Sqlite.sqlite"
+license = "MIT"
+sha256 = "bdf635be69850bd3be09c9a2dbeef7ddfb80036bd3ef3381383cd03b61e4a61a"
+tier = "S"
+format = "sqlite"
+shapes = ["multi-table", "fk-chain", "real-world-mess"]
+marker_columns = []
+max_bytes = 2000000
+# The DuckDB source reads DuckDB files; this SQLite file needs a conversion that slice S1b adds.
+# No pass uses the item before then.
+needs_conversion = "sqlite->duckdb"
+
+[[items]]
+id = "single-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-tsv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "tsv"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-parquet-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-fixed-width-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "fixed-width"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-duckdb-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "duckdb"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "csv"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-tsv-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "tsv"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-parquet-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "parquet"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-fixed-width-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "fixed-width"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-duckdb-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "duckdb"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "csv"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-tsv-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "tsv"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-parquet-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "parquet"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-fixed-width-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "fixed-width"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-duckdb-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "duckdb"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-semicolon-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv-semicolon"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-quoted-newlines-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv-quoted-newlines"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-bom-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv-bom"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-latin1-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv-latin1"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-utf16-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv-utf16"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-crlf-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv-crlf"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-parquet-dict-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet-dict"
+shapes = ["single"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "parent-child-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "fk-chain3-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["fk_chain3"]
+marker_columns = ["accounts.name", "orders.ref", "items.sku"]
+
+[[items]]
+id = "self-ref-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["self_ref"]
+marker_columns = ["staff.name"]
+
+[[items]]
+id = "composite-key-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["composite_key"]
+marker_columns = ["stores.region", "stores.name", "sales.region", "sales.memo"]
+
+[[items]]
+id = "fk-cycle-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["fk_cycle"]
+marker_columns = ["departments.name", "employees.name"]
+
+[[items]]
+id = "wide-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["wide"]
+marker_columns = ["wide.c002_text", "wide.c006_text", "wide.c010_text", "wide.c014_text", "wide.c018_text", "wide.c022_text", "wide.c026_text", "wide.c030_text", "wide.c034_text", "wide.c038_text", "wide.c042_text", "wide.c046_text", "wide.c050_text", "wide.c054_text", "wide.c058_text", "wide.c062_text", "wide.c066_text", "wide.c070_text", "wide.c074_text", "wide.c078_text", "wide.c082_text", "wide.c086_text", "wide.c090_text", "wide.c094_text", "wide.c098_text", "wide.c102_text", "wide.c106_text", "wide.c110_text", "wide.c114_text", "wide.c118_text", "wide.c122_text", "wide.c126_text", "wide.c130_text", "wide.c134_text", "wide.c138_text", "wide.c142_text", "wide.c146_text", "wide.c150_text", "wide.c154_text", "wide.c158_text", "wide.c162_text", "wide.c166_text", "wide.c170_text", "wide.c174_text", "wide.c178_text", "wide.c182_text", "wide.c186_text", "wide.c190_text", "wide.c194_text", "wide.c198_text"]
+
+[[items]]
+id = "free-text-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["free_text"]
+marker_columns = ["messages.body"]
+
+[[items]]
+id = "dates-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["dates"]
+marker_columns = ["events.label"]
+
+[[items]]
+id = "heavy-nulls-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["heavy_nulls"]
+marker_columns = ["sparse.a"]
+
+[[items]]
+id = "null-constant-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["null_constant"]
+marker_columns = ["flat.all_null_text", "flat.const_text", "flat.label"]
+
+[[items]]
+id = "dup-keys-csv-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["dup_keys"]
+marker_columns = ["dups.name"]
+
+[[items]]
+id = "parent-child-parquet-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "fk-chain3-parquet-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["fk_chain3"]
+marker_columns = ["accounts.name", "orders.ref", "items.sku"]
+
+[[items]]
+id = "composite-key-parquet-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["composite_key"]
+marker_columns = ["stores.region", "stores.name", "sales.region", "sales.memo"]
+
+[[items]]
+id = "parent-child-duckdb-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "duckdb"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "fk-chain3-duckdb-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "duckdb"
+shapes = ["fk_chain3"]
+marker_columns = ["accounts.name", "orders.ref", "items.sku"]
+
+[[items]]
+id = "self-ref-duckdb-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "duckdb"
+shapes = ["self_ref"]
+marker_columns = ["staff.name"]
+
+[[items]]
+id = "composite-key-duckdb-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "duckdb"
+shapes = ["composite_key"]
+marker_columns = ["stores.region", "stores.name", "sales.region", "sales.memo"]
+
+[[items]]
+id = "parent-child-csv-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "csv"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "parent-child-parquet-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "parquet"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "parent-child-csv-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "csv"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "parent-child-parquet-l"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "L"
+format = "parquet"
+shapes = ["parent_child"]
+marker_columns = ["parents.name", "parents.email", "children.memo"]
+
+[[items]]
+id = "free-text-csv-m"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "M"
+format = "csv"
+shapes = ["free_text"]
+marker_columns = ["messages.body"]
+
+[[items]]
+id = "single-csv-header-only-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["single", "header_only"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-tsv-header-only-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "tsv"
+shapes = ["single", "header_only"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-parquet-header-only-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["single", "header_only"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-fixed-width-header-only-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "fixed-width"
+shapes = ["single", "header_only"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-csv-empty-file-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["single", "empty_file"]
+marker_columns = []
+
+[[items]]
+id = "single-parquet-empty-file-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["single", "empty_file"]
+marker_columns = []
+
+[[items]]
+id = "single-csv-malformed-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "csv"
+shapes = ["single", "malformed"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-tsv-malformed-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "tsv"
+shapes = ["single", "malformed"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-parquet-malformed-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "parquet"
+shapes = ["single", "malformed"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-fixed-width-malformed-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "fixed-width"
+shapes = ["single", "malformed"]
+marker_columns = ["people.name", "people.email", "people.note"]
+
+[[items]]
+id = "single-duckdb-malformed-s"
+origin = "generated"
+license = "generated"
+sha256 = ""
+tier = "S"
+format = "duckdb"
+shapes = ["single", "malformed"]
+marker_columns = ["people.name", "people.email", "people.note"]
