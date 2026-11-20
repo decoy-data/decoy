@@ -48,7 +48,7 @@ Answer these at the end as counts and finding ids only. Put any detail into find
 
 Work from the installed release bundle in your home folder. Read only the public docs
 folder in your home. Do not read source code, tests or any repository checkout, and do not look
-for one. If you find you can read a checkout, stop and report that as a process finding.
+for one. Your shell starts in your own workspace. Stay in it. If you find you can read a checkout, stop and report that as a process finding.
 
 ## No-values rule
 
@@ -62,5 +62,6 @@ leave it out.
 Submit every finding with `findings.py write`. It is the only way to submit.
 Use the field list in `docs/qa/finding-template.toml`. Use only the finding ids the launcher gave
 you in `QA_FINDING_IDS`, and use each id once. Cite the doc line that set your expectation, or
-name the invariant that failed. Add a repro script that runs in a fresh `DECOY_HOME`. When you
+name the invariant that failed. Findings go into your inbox (`QA_INBOX`), which only you can read.
+Add a repro script that runs in a fresh `DECOY_HOME`. When you
 finish, send the coordinator counts and finding ids only.

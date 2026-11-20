@@ -60,6 +60,11 @@ tester that reads the source tests the code's intent, not the user's experience.
   launcher does not create users.
 - The launcher captures tester stdout and stderr in a node-local file. The coordinator gets only
   finding ids and counts.
+- The tester starts in its own workspace (`<home>/work`). `decoy` must resolve inside the bundle
+  as the tester user, or the launcher refuses to start. The launcher also refuses without the
+  marker file that the S3 sandbox probe writes for the node and tester.
+- Each tester submits into its own inbox, `<pass>/inbox/<slug>`, mode 0700. Capture and issued ids
+  are coordinator-only. The launcher exits nonzero when the tester does.
 - Briefs forbid values in messages.
 
 ## Corpus
