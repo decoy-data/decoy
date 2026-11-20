@@ -231,13 +231,15 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
         )
         if path is not None
     )
-    try:
-        databases = tuple(
-            resolve_path(flag.db_path, ctx.config.parent) for flag in parse_flags(ctx.duckdb_source)
-        )
-    except DuckDBSourceError:
-        # A bad `--duckdb-source` spelling is refused by its own parser, not here.
-        databases = ()
+    # Each well-formed entry is protected even when another is malformed: the refusal for the bad
+    # spelling still writes a result document, and it must not land on a good database.
+    databases: list[Path] = []
+    for value in ctx.duckdb_source:
+        try:
+            (flag,) = parse_flags([value])
+        except DuckDBSourceError:
+            continue
+        databases.append(resolve_path(flag.db_path, ctx.config.parent))
     if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, databases)
-    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=databases)
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases))
+    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=tuple(databases))

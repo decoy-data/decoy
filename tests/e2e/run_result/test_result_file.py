@@ -196,6 +196,10 @@ def test_duckdb_source_database_is_protected(tmp_path: Path) -> None:
     _refused_and_kept(
         ["run", str(cfg), "--json", *flags, "--notify", "bogus", "--result", str(db)], db
     )
+    # A malformed second entry is refused, and the good database is still kept.
+    _refused_and_kept(
+        ["run", str(cfg), "--json", *flags, "--duckdb-source", "nope", "--result", str(db)], db
+    )
 
 
 def test_project_pipeline_source_is_protected(tmp_path: Path, monkeypatch) -> None:
