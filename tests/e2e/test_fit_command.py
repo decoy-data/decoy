@@ -275,6 +275,16 @@ class TestFitDpModeSelectionFailClosed:
         counts = {str(t["value"]): t["count"] for t in stats["top_values"]}
         assert counts == {"False": 30, "True": 1}
 
+    @pytest.mark.parametrize("bins", ["2", "1000"])
+    def test_plain_numeric_bins_edges_of_the_range_are_accepted(
+        self, tmp_path: Path, bins: str
+    ) -> None:
+        out = tmp_path / "snap.json"
+        result = runner.invoke(
+            app, ["fit", str(_dp_source_csv(tmp_path)), "--numeric-bins", bins, "-o", str(out)]
+        )
+        assert result.exit_code == 0, result.output
+
     def test_plain_large_numeric_bins_release_no_bin_under_ten_rows(self, tmp_path: Path) -> None:
         src = tmp_path / "small.csv"
         # Round thousands, the shape the profiler leaves unflagged.
