@@ -356,7 +356,7 @@ Mutations that must turn it red, each seen before merge (the cross-cutting rule 
 | `src/decoy_engine/reason_adapter.py` | engine | register `PreScanBlockedError` and `PreScanFailedError` as coded families, namespace `pre_scan` | the one adapter that decides which codes are trusted | +2 rows |
 | `src/decoy_engine/profiling/pre_scan_check.py` | engine | new: `evaluate_pre_scan`, `PreScanVerdict`, `PreScanBlockedError`, `PreScanFailedError`, `PreScanWarning` | engine CODEMAP row 73 (`bound_baseline.py`, `evaluate_drift -> DriftVerdict`); sits beside it | ~150 |
 | `src/decoy_engine/profiling/__init__.py` | engine | export the five names | public profiling API; `profiling/` gets its 25th direct module, at the limit of 25 | 178 to ~185 |
-| `src/decoy_engine/reasons/pre_scan/_part1.py` | engine | two codes; registry minor | the `pre_scan` namespace | 108 to ~130 |
+| `src/decoy_engine/reasons/pre_scan/_part1.py` | engine | two codes, `since=UNRELEASED` | the `pre_scan` namespace | 108 to ~130 |
 | `src/decoy_engine/run_result/_model.py`, `_build.py` | engine | `CheckId` gains `pre_scan`; `pre_checks` accepts it | the one run result constructor | 411 and 274, +~8 |
 | `docs/compatibility-contract.md`, `CHANGELOG.md`, `CODEMAP.md` row 73 | engine | additive entries | | |
 | `src/decoy/cli/run/_pre_scan.py` | CLI | new: `check_pre_scan` (the shared core), `PreScanModelRefused`, `run_pre_scan` (the CLI adapter), `pre_scan_member` (the one `--json` serializer), the pass-through tuple | CLI CODEMAP row "`decoy run` internals", `run/_<noun>.py`; the package goes from 12 to 13 modules | ~140 |
@@ -398,7 +398,7 @@ After: R. Lands on the repinned engine with `pre_scan` and `scan_baseline.on_dri
 
 ### E1. Engine config, codes, check id and the drift warning code (engine, R2, ~400 lines)
 
-After: none. Reason registry minor; rebase the bump if another registry slice merges first.
+After: none. New codes carry `since=UNRELEASED`; REGISTRY_VERSION is never edited by hand (CONTRIBUTING.md), the release stamp sets it.
 
 | Test | Asserts | Mutation |
 |---|---|---|
@@ -547,7 +547,7 @@ Order, strict: E1, E2, R (engine release and CLI repin), C0, C1, C1b, C2. C0 lan
 | 7 | Check then use (TOCTOU) | the scan reads a head sample, then the run reads the source again | stated limit: a source that changes between the two reads is not detected (the same limit as `decoy scan` then `decoy run`); the coverage rule is about columns, which a mid-run edit to rows does not change | doc note, F11 | n/a (recorded known limit) |
 | 8 | Weak tests | coverage and policy tests | every verdict test has a passing and a failing case; e2e tests assert exit, check status and the absence of output under `fail` | E2-T5, C1-T4, C1-T5 | swap the policy branch |
 | 9 | Refactor drift | configs without `pre_scan`; the run path later refactored | byte-identical dump and envelope when absent; G-CONFIG-READER keeps a reader on the run path | E1-T1, C1-T1, C0-T3 | restore the by-value drop; delete the call |
-| 10 | Frozen contract drift | config schema, plan hash, `decoy-run-result/v1`, registry, `--json` shapes | additive members recorded in `docs/compatibility-contract.md`; registry minor; shapes snapshot regenerated | E1-T3, E1-T6, C1-T1 | strict `CheckId` read |
+| 10 | Frozen contract drift | config schema, plan hash, `decoy-run-result/v1`, registry, `--json` shapes | additive members recorded in `docs/compatibility-contract.md`; new reason codes `since=UNRELEASED`; shapes snapshot regenerated | E1-T3, E1-T6, C1-T1 | strict `CheckId` read |
 | 11 | Parallel tables kept by hand | "passthrough" strategy names; config field list against the reader manifest | the verdict reads the strategy name from the engine catalog constant for passthrough; the sentry walks the live model, not a copied list | E2-T2, C0-T1, C0-T5 | hard-code a second passthrough list |
 
 ## 12b. Pre-mortem
@@ -576,7 +576,7 @@ It is three months after 1.0 and this row went wrong. The likely reasons, and th
 - LIB L3a (CLI PR #309, evidence half; PR #367, run-result half): not a blocker. The check rides the run result document, which `_result.py` already builds on main. When #367 merges, the stored record carries the check with no change here (C1-T12).
 - Row 32 DRIFT D-2 (Later): reuses the step from C1. Recorded on the scan-checks plan.
 - PR #368 (the roadmap row text): the row exists only on that branch. This plan does not depend on it, but the row state update in C1 does.
-- Reason registry minor: E1 rebases its bump if another registry slice merges first (the parallel ledger rule).
+- Reason codes: new codes carry `since=UNRELEASED`; the release stamp versions them, so no slice bumps the registry.
 
 ## 15. Expected size
 
