@@ -183,14 +183,6 @@ def test_a_preview_stores_no_evidence(project: Path) -> None:
     assert _evidence_rows(project) == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "engine fix pending: the out-of-core route attaches out_of_core_caller_managed_residency "
-        "with an empty provider and a list in detail, which EvidencePayload refuses; rerun on the "
-        "release that makes every engine warning validate against the evidence model"
-    ),
-)
 def test_an_out_of_core_fk_run_stores_its_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

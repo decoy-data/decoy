@@ -7,7 +7,7 @@ from rich.text import Text
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
-from decoy.cli.io import LayoutError, find_project
+from decoy.cli.io import LayoutError, find_project, project_relative_posix
 from decoy.cli.run._context import EvidenceWriteRefusal, RunContext
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
@@ -27,13 +27,11 @@ def _marked_project_root(config: Path) -> Path | None:
 
 
 def _pipeline_label(config: Path) -> str:
-    """The YAML's path from its project root, POSIX: the `pipeline` label on the run's records,
-    which `decoy library list --pipeline` matches (plan 4.3). Absolute when it is outside."""
-    resolved = config.resolve()
+    """The `pipeline` label on the run's records: what `decoy library list --pipeline` matches."""
     try:
-        return resolved.relative_to(find_project(resolved.parent, None).root.resolve()).as_posix()
-    except (LayoutError, ValueError):
-        return resolved.as_posix()
+        return project_relative_posix(find_project(config.resolve().parent, None).root, config)
+    except LayoutError:
+        return config.resolve().as_posix()
 
 
 def _write_file(ctx: RunContext, manifest: dict) -> None:

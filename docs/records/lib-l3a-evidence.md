@@ -73,28 +73,15 @@ Not built (run-result half, RESULT C1a/C1b): L3-records' run-result part, L3-pay
 L3-failed-run's run-result part, L3-log-link, ML3-nolink, ML3-two-way. L3-report-id (`report
 show`, `verify` and `diff` by id) is not built in this part either (see Deviations).
 
-## Finding: some runs' manifests fail the engine's evidence model (owner decision needed)
+## Finding: some runs' manifests failed the engine's evidence model (resolved by engine 0.28.1)
 
-When the freeze snapshot regenerated, its two-table FK mask run (hash and redact) stored nothing:
-`record_invalid`. The run itself is fine. Its manifest carries an engine warning that
-`EvidencePayload.warnings` refuses:
-
-```
-code: out_of_core_caller_managed_residency
-provider: ""                                  # Name needs at least 1 character
-detail: {"shapes": [..two strings..], "message": "..."}   # detail values must be scalars
-```
-
-The engine attaches that warning on the out-of-core route whenever the caller passes resident
-tables, so CLI runs on that route warn `record_invalid` every time and store no evidence record.
-Following 4.17, the exit code is unchanged.
-
-Two places can fix it, and they are not mine to choose:
-- (a) The engine `EvidenceWarning` accepts what the CLI writes: an empty or null `provider`, and
-  lists of scalars in `detail`. This is an engine slice and release, then a repin.
-- (b) The CLI manifest normalizes engine warnings before hashing: `""` becomes `null`, and a list
-  detail becomes a count or a joined string. This changes the `cli-local-1` files `--evidence-out`
-  writes.
+On the first head, the freeze snapshot's two-table FK mask run (hash and redact) stored nothing:
+`record_invalid`. The engine's out-of-core route attached the warning
+`out_of_core_caller_managed_residency` with `provider: ""` and a list in `detail`, which
+`EvidencePayload.warnings` refused. Engine 0.28.1 (the CLI pin since the merge of main into this
+branch) accepts it. The strict xfail that pinned the gap came out XPASS on the merge head, so it is
+removed: `test_an_out_of_core_fk_run_stores_its_evidence` now runs as a plain test. No owner
+decision is needed.
 
 ## Checks
 
@@ -153,8 +140,6 @@ mypy (no gate in `ci.yml`). The run-result half and `report ... <id>`.
 
 ## V2-LOG
 
-- The pipeline label rule here is a few lines in `cli/run/_evidence.py`. L4a (#215) adds
-  `decoy.cli.io.project_relative_posix` for the same rule; once both are on main, the label should
-  call it.
+- The pipeline label now calls `decoy.cli.io.project_relative_posix`, the helper L4a added.
 - `decoy library list` on a project after this lands shows evidence rows. `library show` of one
   prints raw warning text, which is #215's V2-LOG a.
