@@ -85,7 +85,9 @@ _RATIONALE_NONE = "no strategy declared"
 
 
 def compile(
-    config: str = pipeline_argument(help="Path or name of the pipeline YAML config to compile."),
+    config: str = pipeline_argument(
+        help="Path or name of the pipeline file (.yaml or .decoy) to compile."
+    ),
     explain: bool = typer.Option(
         False,
         "--explain",

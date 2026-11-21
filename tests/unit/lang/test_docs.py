@@ -30,7 +30,7 @@ def test_a_program_in_a_guide_compiles(page: str, index: int, program: str) -> N
 def test_the_error_page_lists_every_code_in_the_registry() -> None:
     # The registry is the one list of codes (`tests/unit/lang/test_codes.py` keeps the source
     # to it), so the page is checked against it and not against a scan of the source.
-    listed = set(re.findall(r"`(lang\.[a-z_]+)`", (_GUIDES / "07-errors.md").read_text("utf-8")))
+    listed = set(re.findall(r"`(lang\.[a-z0-9_]+)`", (_GUIDES / "07-errors.md").read_text("utf-8")))
     assert set(CODES) - listed == set()
     assert listed - set(CODES) == set()
 

@@ -2,7 +2,7 @@
  "sentry_id": "config-load-allow",
  "created_in": "CL3",
  "entries": {
-  "ci/locations.py::YamlSourceIndex.from_text::1": {
+  "_source_positions.py::YamlPositionIndex.from_text::1": {
    "reason": "source index: yaml.compose of text the gate already loaded, for SARIF line marks"
   },
   "ci/manifest.py::_parse::1": {
@@ -35,5 +35,8 @@
   "cli/scan.py::_parse_layout::1": {
    "reason": "fixed-width layout file: YAML with a JSON fallback, not a pipeline config; scan.py is a hot lane"
   }
+ },
+ "moved_from": {
+  "_source_positions.py::YamlPositionIndex.from_text::1": "ci/locations.py::YamlSourceIndex.from_text::1"
  }
 }

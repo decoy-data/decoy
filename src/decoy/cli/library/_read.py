@@ -77,7 +77,7 @@ def list_command(
     pipeline: str | None = pipeline_option(
         None,
         "--pipeline",
-        help="Only this pipeline's records: its name in the project, or the path to its YAML.",
+        help="Only this pipeline's records: its name in the project, or the path to its file.",
     ),
     table: str | None = typer.Option(
         None, "--table", metavar="T", help="Only records naming this table."

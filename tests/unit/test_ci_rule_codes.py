@@ -308,6 +308,7 @@ def test_every_cli_gate_code_and_preflight_template_is_allowlisted() -> None:
     codes, templates = _cli_gate_codes()
     assert {"yaml.parse_error", "missing_extra", "compile.needs_profile"} <= codes
     assert {"yaml.not_utf8", "yaml.empty", "yaml.not_mapping"} <= codes
+    assert {"lang.not_utf8", "lang.empty"} <= codes
     assert sorted(codes - validation_codes()) == []
     assert templates, "the preflight scan found no templated check names"
     for template in templates:

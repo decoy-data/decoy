@@ -9,6 +9,8 @@ that is not on this page.
 
 | Code | Means | Fix |
 |---|---|---|
+| `lang.not_utf8` | The file is not UTF-8 text | Save it as UTF-8 |
+| `lang.empty` | The file has no text | Write a program |
 | `lang.syntax` | A word or symbol is not where the language expects one | The hint lists what would fit there |
 | `lang.version` | The first line is not `decoy 1` | Write `decoy 1` |
 | `lang.string_escape` | A backslash sequence in double quotes is not one the language reads | Use single quotes, or double the backslash |
@@ -35,7 +37,7 @@ that is not on this page.
 
 | Code | Means | Fix |
 |---|---|---|
-| `lang.unknown_strategy` | The name after `:` is not a strategy or a `let` | The hint suggests the nearest |
+| `lang.unknown_strategy` | The name after `:` is not a strategy or a `let` | The hint suggests the nearest strategy |
 | `lang.strategy_arguments` | A strategy was given more than one plain value | Only the provider is plain; the rest are `key: value` |
 | `lang.column_repeated` | A column has two rules, or two links | Keep one |
 | `lang.group_too_small` | `{...}` has one column | A group needs at least two |
@@ -52,7 +54,7 @@ that is not on this page.
 
 | Code | Means | Fix |
 |---|---|---|
-| `lang.link_unknown_table` | The parent table is not in the pipeline | The hint suggests the nearest |
+| `lang.link_unknown_table` | The parent table is not in the pipeline | Check the name against the tables the pipeline declares |
 | `lang.link_unknown_column` | The parent table has no rule for that key | Add one |
 | `lang.link_arity` | The child and parent keys have different numbers of columns | Make them match |
 | `lang.link_needs_namespace` | The parent key has no namespace | Add `in <namespace>` to its rule or to the link |

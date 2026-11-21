@@ -431,7 +431,7 @@ def test_a_rule_ending_in_a_question_mark_is_reported_as_unreviewed() -> None:
 
 def test_other_problems_are_reported_before_the_review_marks() -> None:
     codes = [p.code for p in _errors(_with_rule("ssn : redcat ?"))]
-    assert codes == ["lang.unknown_strategy"]
+    assert codes == ["lang.unknown_strategy", "lang.unreviewed"]
 
 
 def test_a_csv_source_must_say_whether_it_has_a_header() -> None:

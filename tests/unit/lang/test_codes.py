@@ -1,7 +1,9 @@
 """G-ONE-LANG-CODE: every `lang.*` diagnostic is built from the registry `lang/_codes.py`.
 
 - no string literal under `src/decoy` outside the registry holds a `lang.<code>` token
-  (docstrings aside), so a code is spelled once and a message is written once;
+  (docstrings aside), so a code is spelled once and a message is written once. The loader
+  `decoy/_config_file.py` is the one other file that spells a code, for the two it raises before
+  any program exists; each is in `CODES` (`LOADER_CODES`) and the loader uses each;
 - no module but `lang/_errors.py` builds a `Diagnostic` (through any alias or attribute),
   so a diagnostic cannot skip the registry's message;
 - no `ConvertError` is built from a hand-written message: its first argument is always a
@@ -24,7 +26,7 @@ from decoy.lang import _codes as registry
 
 SRC = Path(__file__).resolve().parents[3] / "src" / "decoy"
 LANG = SRC / "lang"
-_TOKEN = re.compile(r"(?<![\w.])lang\.[a-z]+(?:_[a-z]+)*")
+_TOKEN = re.compile(r"(?<![\w.])lang\.[a-z][a-z0-9]*(?:_[a-z0-9]+)*")
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
 
 
@@ -40,7 +42,7 @@ def _docstrings(tree: ast.AST) -> set[int]:
 
 def literal_findings(source: str, rel: str) -> list[str]:
     """`file:line` of each string literal, including the pieces of an f-string, with a code."""
-    if rel == "lang/_codes.py":
+    if rel in ("lang/_codes.py", "_config_file.py"):
         return []
     tree = ast.parse(source)
     docs = _docstrings(tree)
@@ -160,8 +162,9 @@ def test_the_registry_is_well_formed() -> None:
     descriptors = [v for v in vars(registry).values() if isinstance(v, registry.Code)]
     assert set(descriptors) == set(registry.DESCRIPTORS)
     assert len(registry.DESCRIPTORS) == len(descriptors)
-    assert {d.code for d in descriptors} == set(registry.CODES)
-    assert all(re.fullmatch(r"lang\.[a-z]+(_[a-z]+)*", code) for code in registry.CODES)
+    assert {d.code for d in descriptors} | registry.LOADER_CODES == set(registry.CODES)
+    assert not {d.code for d in descriptors} & registry.LOADER_CODES
+    assert all(re.fullmatch(r"lang\.[a-z][a-z0-9]*(_[a-z0-9]+)*", code) for code in registry.CODES)
     assert all(meaning.strip() for meaning in registry.CODES.values())
 
 
@@ -183,3 +186,22 @@ def test_every_message_fills_from_its_own_fields() -> None:
 def test_the_registry_is_public() -> None:
     assert "CODES" in public.__all__
     assert public.CODES is registry.CODES
+
+
+def test_the_loader_spells_exactly_the_loader_codes() -> None:
+    source = (SRC / "_config_file.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    docs = _docstrings(tree)
+    used = {
+        match.group(0)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
+        for match in _TOKEN.finditer(node.value)
+    }
+    assert used == set(registry.LOADER_CODES)
+
+
+def test_a_loader_literal_missing_from_the_registry_would_be_seen() -> None:
+    seeded = 'raise ConfigFileError("lang.not_in_the_registry", "m")'
+    tokens = {m.group(0) for m in _TOKEN.finditer(seeded)}
+    assert tokens - set(registry.CODES) == {"lang.not_in_the_registry"}
