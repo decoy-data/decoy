@@ -152,7 +152,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Changed
 
-- **The update check and installers use `trydecoy.com`; pinned bundles are GitHub release assets (REL-WEB RW-C2a).** The default version endpoint is now `https://trydecoy.com/cli/version.json` in the update notice, `decoy upgrade`, `install.sh` and `install.ps1`. `decoy upgrade` now reads `DECOY_VERSION_URL` too (`--url` still wins). A pinned install (`decoy upgrade --version X`, `install.sh --version X`, `install.ps1 -Version X`) now fetches `<base>/vX/decoy-X-<target>.tar.gz` from `https://github.com/louiskeep/decoy/releases/download`, not from beside the version document. `DECOY_BUNDLE_BASE` overrides that base, for the latest version too. The signature check against the pinned key is unchanged.
+- **The update check and installers use `trydecoy.com`; pinned bundles are GitHub release assets (REL-WEB RW-C2a).** The default version endpoint is now `https://trydecoy.com/cli/version.json` in the update notice, `decoy upgrade`, `install.sh` and `install.ps1`. `decoy upgrade` now reads `DECOY_VERSION_URL` too (`--url` still wins). A pinned install (`decoy upgrade --version X`, `install.sh --version X`, `install.ps1 -Version X`) now fetches `<base>/vX/decoy-X-<target>.tar.gz` from the release download base (`ARTIFACT_BASE` in `decoy.distribution.release_identity`, today `https://github.com/decoy-data/decoy/releases/download`), not from beside the version document. `DECOY_BUNDLE_BASE` overrides that base, for the latest version too. The signature check against the pinned key is unchanged.
 
 - **The startup update check sends a fixed User-Agent and follows no redirect (REL-WEB RW-C1, roadmap row 91).** The request now carries only `Host`, `User-Agent: decoy-update-check`, `Accept-Encoding: identity` and `Connection: close`; before, urllib's default User-Agent named the Python version. A 3xx response ends the check with no notice instead of being followed to another host. The response is read up to 64 KiB, and the notice shows the latest version only in its canonical PEP 440 form; any other answer is cached as unknown for 24 hours. The opt-outs are unchanged (`--no-update-check`, `DECOY_NO_UPDATE_CHECK`); the module text no longer mentions a config setting, which never existed.
 
@@ -832,4 +832,4 @@ index; first publish lands with OSS.7.
 Tracked in `decoy/PLAN.md` so they do not rot.
 
 [Unreleased]: https://github.com/decoy-data/decoy/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/louiskeep/decoy/releases/tag/v0.1.0
+[0.1.0]: https://github.com/decoy-data/decoy/releases/tag/v0.1.0
