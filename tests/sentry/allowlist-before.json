@@ -123,7 +123,6 @@
   "decoy.cli.preflight::preflight::run_config_only_checks": {"reason": "The same third copy of steps 1-3 also runs the config-only checks itself until CONFIG-EXPLICIT C2 folds it onto the gate."}
  },
  "kind-canary-pending": {
-  "evidence": {"reason": "L3a-cli writes evidence records and adds the evidence canary."},
   "run-result": {"reason": "L3a-cli writes run-result records and adds the canary fixture."},
   "sample-run": {"reason": "L3b-cli writes sample-run records and adds the canary fixture."},
   "scan-set": {"reason": "L2-cli writes scan records and adds the scan-set canary fixture."}
@@ -137,7 +136,7 @@
   "src/decoy/cli/report.py::compare_manifests::_fp_changes": {"reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."}
  },
  "module-size": {
-  "src/decoy/cli/fit.py": {"max": 818, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
+  "src/decoy/cli/fit.py": {"max": 817, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/report.py": {"max": 2270, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/scan.py": {"max": 930, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}

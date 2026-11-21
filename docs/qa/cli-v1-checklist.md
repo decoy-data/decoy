@@ -14,6 +14,7 @@ engine section that owns the behaviour is named in the group's notes.
 
 It is not a roadmap and tracks no work. Results go to a dated record (see "Recording a run").
 A check that fails becomes a roadmap row in `docs/ROADMAP.md`, as the 2026-11-08 QA findings did.
+Triage (owner 2026-11-21): each failed check is given a severity and assigned to V1 remediation or a 1.x row. Format, code-correctness and architecture findings are fixed before any new 1.x feature (see `docs/ROADMAP.md` section 1).
 
 Agent testers, the shared test corpus and the invariant oracle that run beside these checks are
 described in [beta-program.md](beta-program.md) (roadmap row QA-BETA).
@@ -40,7 +41,7 @@ row's plan and are corrected here when the row merges, before the group's pass.
 
 ## Groups
 
-Sixteen groups, 204 checks.
+Sixteen groups, 205 checks.
 
 | # | Group | Ids | Waits on rows |
 |---|---|---|---|
@@ -48,7 +49,7 @@ Sixteen groups, 204 checks.
 | 2 | [Projects, init and layout](#2-projects-init-and-layout) | PROJ-01 to PROJ-18 | 24, 24e, 24o, 24t, 32b |
 | 3 | [Validate and the pre-run gate](#3-validate-and-the-pre-run-gate) | GATE-01 to GATE-19 | 19, 20, 20b, 22, 23, 24a, 24b, 24e, 24k, 24o, 24zf |
 | 4 | [Scan](#4-scan) | SCAN-01 to SCAN-17 | 22, 24c, 24e, 27, 29, 30, 31, 32, 32a, 36, 56, 80, 81 |
-| 5 | [Mask run](#5-mask-run) | RUN-01 to RUN-20 | 19, 20, 21b, 24d, 24e, 24zb, 24zd, 24zh, 38, 57, 61a, 62, 63, 63a, 90, 95 |
+| 5 | [Mask run](#5-mask-run) | RUN-01 to RUN-21 | 19, 20, 21b, 24d, 24e, 24zb, 24zd, 24zh, 38, 57, 61a, 62, 63, 63a, 90, 95 |
 | 6 | [Delivery, run result, resume and connectors](#6-delivery-run-result-resume-and-connectors) | DLV-01 to DLV-12 | 24t, 61, 62, 64, 64b, 66, 85, 86, 87 |
 | 7 | [Keys and secrets](#7-keys-and-secrets) | KEY-01 to KEY-09 | 24zb, 65, 73, 79, 83 |
 | 8 | [Unmask, tokenize and the vault](#8-unmask-tokenize-and-the-vault) | REV-01 to REV-12 | 21, 24e, 24zh, 79 |
@@ -293,6 +294,7 @@ sections 02, 11 and 15 own the routes. Every run below passes `--mask-secret env
 | RUN-18 | Ctrl-C during `decoy run mask-big` | 130 | No partial target; scratch removed | 62 | |
 | RUN-19 | For each CLI item marked fixed in `docs/records/2026-11-12-duplication-census/REMEDIATION.md`, its repro | none | Each copy now agrees with the other | 24zd | |
 | RUN-20 | `decoy run mask-fk` | 0 | The summary shows rows, files and tables for each table | 24e | |
+| RUN-21 | `decoy validate <config>` (its capacity estimate) and then `decoy run <config>` on the same config, for one config per route (streamed, out-of-core, chunked, native) | 0, 0 | The route the estimate names is the route the run takes and records. Known risk: capacity and the job estimate prepare routing separately from the run (health row ENGINE-ARCH finding 5); a mismatch becomes a roadmap row | 63a | |
 
 ## 6. Delivery, run result, resume and connectors
 
@@ -377,7 +379,7 @@ null shape and the generation catalog. Engine sections 12 and 13 own the generat
 | GEN-11 | `decoy run gen-basic --rows 20`; `decoy run <mask config> --rows 20` with a mask table in the config; `decoy run gen-basic --rows 20 --vault v.bin` | 0, 1, 1 | Prints rows and writes nothing; both others are refused | 24o | |
 | GEN-12 | `decoy run gen-basic --mode generate --fidelity` (no mask table) | 1 | Refused before any engine call | 24o | |
 | GEN-13 | `decoy run gen-basic --mode generate` on a run that triggers the fidelity warning; then `decoy run gen-basic --mode generate --json` | 0, 0 | The warning reaches stdout and `--json` | 24o | |
-| GEN-14 | The catalog command; `decoy list templates` | tbd | **Not built.** Every generate type, option and provider from the engine registries; one starter template each for healthcare, banking, insurance, retail, telecom and HR | 24s | |
+| GEN-14 | `decoy list generate-types`; `decoy list faker-types`; `decoy list codesets`; `decoy list providers`; `decoy list templates` | 0, 0, 0, 0, 0 | The first four read the engine registries; the templates list shows one starter template each for healthcare, banking, insurance, retail, telecom and HR | 24s | |
 | GEN-15 | `decoy run gen-basic --mode generate` with `DECOY_MASTER_KEY` set; `decoy run gen-basic --mode generate` without it | 0, 0 | With a key, `global_settings.seed` does not change generated tables; without, the seeded path is used and the summary says which | 24o | |
 | GEN-16 | `decoy init gen-x --preset generate --json` | 0 | The written YAML carries no stale `mode:` text and validates | 24e | |
 
@@ -584,7 +586,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 61a | ATOMIC-CHUNKED | RUN-04 |
 | 62 | RESULT | RUN-16, RUN-18, DLV-02, DLV-05, DLV-06, EXIT-02, CI-05 |
 | 63 | SAMPLE CLI half | RUN-12 |
-| 63a | RUN-STREAM | RUN-06 to RUN-08, OPS-01, OPS-02 |
+| 63a | RUN-STREAM | RUN-06 to RUN-08, RUN-21, OPS-01, OPS-02 |
 | 64 | CLI-CLOUD | DLV-08 |
 | 64b | CLI-DB-SRC | DLV-09 |
 | 65 | F31 | KEY-07, EVD-10, OPS-03 |
