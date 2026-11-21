@@ -71,8 +71,29 @@ def fit_exact_snapshot(
     include_values: bool = False,
     contingency_top_k: int | None = None,
     fanout_columns: Sequence[str] = (),
+    numeric_bins: int | None = None,
 ) -> ExactFit:
-    """Fit the exact (non-DP) snapshot of `source`. Raises `FitSourceError`."""
+    """Fit the exact (non-DP) snapshot of `source`. Raises `FitSourceError`.
+
+    `numeric_bins` sets the finest bin width a plain fit may use (the range divided by N), so a
+    fit can write fewer bins; `None` keeps the engine default.
+    """
+    if numeric_bins is not None:
+        from decoy_engine.quality import MAX_NUMERIC_BINS, check_numeric_bins
+        from decoy_engine.quality.snapshot import DistributionSnapshotError
+
+        # The ceiling is the engine's; the floor of 2 is the DP fit's, kept on the plain fit.
+        try:
+            if numeric_bins < 2:
+                raise ValueError
+            check_numeric_bins(numeric_bins)
+        except (ValueError, DistributionSnapshotError):
+            msg = f"--numeric-bins must be a whole number from 2 to {MAX_NUMERIC_BINS}."
+            bad_bins = FitSourceError(msg, "fit_numeric_bins_invalid")
+        else:
+            bad_bins = None
+        if bad_bins is not None:  # raised outside the except block: no exception context
+            raise bad_bins
     import numpy as np
     from decoy_engine import distribution_snapshot_document
     from decoy_engine.quality.snapshot import DEFAULT_CONTINGENCY_TOP_K, DistributionSnapshotError
@@ -160,6 +181,7 @@ def fit_exact_snapshot(
 
     # Detection and the snapshot see exactly the rows read above.
     # No profile_row_cap: it profiles head rows only, and a sensitive column can start late.
+    bins_kwargs = {} if numeric_bins is None else {"numeric_bins": numeric_bins}
     try:
         snapshot = distribution_snapshot_document(
             df,
@@ -168,6 +190,7 @@ def fit_exact_snapshot(
             joint_columns=list(joint_pairs) if joint_pairs else None,
             contingency_top_k=contingency_top_k or DEFAULT_CONTINGENCY_TOP_K,
             fanout_columns=list(fanout_columns),
+            **bins_kwargs,
         )
     except DistributionSnapshotError as exc:
         if exc.code == FANOUT_COLUMN_UNKNOWN:

@@ -27,7 +27,23 @@ class CanaryCase:
     produce: Callable[[Path], None]
 
 
-CASES: dict[str, CanaryCase] = {}
+def _evidence(project: Path) -> None:
+    """`decoy run` of a mask pipeline whose every cell holds the canary (L3a)."""
+    from typer.testing import CliRunner
+
+    from decoy.__main__ import app
+    from tests.e2e.library.test_run_evidence_records import write_pipeline
+
+    (project / ".git").mkdir()
+    (project / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
+    yaml_path = write_pipeline(project, cells=(f"{CANARY}@a.example", f"{CANARY}@b.example"))
+    result = CliRunner().invoke(
+        app, ["run", str(yaml_path), "--mode", "mask"], env={"DECOY_LIBRARY": ""}
+    )
+    assert result.exit_code == 0, result.output
+
+
+CASES: dict[str, CanaryCase] = {"evidence": CanaryCase("evidence", _evidence)}
 
 
 def leaks(decoy_dir: Path, canary: str = CANARY) -> list[str]:
