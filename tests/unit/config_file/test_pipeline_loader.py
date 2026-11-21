@@ -30,7 +30,7 @@ from decoy.cli.completers import _config_paths
 from decoy.cli.io._pipelines import looks_like_path
 
 MARKER = "SECRET_MARKER_5d1c"
-TWIN = Path(__file__).parent / "lang" / "twins" / "minimal.decoy"
+TWIN = Path(__file__).parent.parent / "lang" / "twins" / "minimal.decoy"
 PROGRAM = TWIN.read_text(encoding="utf-8")
 # The marker rides in a path value: a message may name a strategy or a table, never a value.
 WITH_VALUE = PROGRAM.replace("./input.csv", f"./{MARKER}.csv")
