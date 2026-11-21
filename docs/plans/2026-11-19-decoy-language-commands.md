@@ -605,6 +605,8 @@ New machinery and its reason: `_source_positions.py` (the walker must sit below 
 | `<name>.decoy` (11) | `src/decoy/templates/` | "Packaged templates"; the row changes to name both suffixes | `<name>.yaml` |
 | `test_source_positions.py` | `tests/unit/` | moved from `tests/unit/test_ci_locations.py` | |
 | `test_member_file_names.py` | `tests/sentry/io_policy/` | beside the other io-policy sentries | `test_config_load_choke_point.py` |
+| `test_lang_hint_value_free.py` | `tests/sentry/io_policy/` | beside the other io-policy sentries; no hint repeats a declared table or `let` name | `test_config_load_choke_point.py` |
+| `test_config_file.py`, `test_pipeline_loader.py` | `tests/unit/config_file/` | the private-shared-primitives row names the package (moved from flat `tests/unit/`) | `tests/unit/private_file/` |
 
 Deleted: `src/decoy/lang/__main__.py`, `tests/unit/lang/test_module_entry.py`,
 `src/decoy/ci/locations.py`, `tests/unit/lang/twins/` (moved to `src/decoy/templates/`).
