@@ -475,8 +475,7 @@ def staged_private_target(path: Path) -> AbstractContextManager[Path]:
 
 
 def is_device_name(name: str) -> bool:
-    """True when Windows would treat `name` as a device (CON, NUL, COM1...), with or without an
-    extension. The one device-name rule; layout's portable-component check calls it."""
+    """True when Windows treats `name` as a device (CON, NUL, COM1...), with or without extension."""
     return name.split(".", 1)[0].rstrip(" ").upper() in _DEVICE_STEMS
 
 
@@ -493,13 +492,12 @@ def _require_component(name: str) -> None:
 
 
 def _require_name(name: str) -> None:
-    ok = (
+    if not (
         _NAME_PATTERN.fullmatch(name) is not None
         and not name.endswith(".")
         and not is_device_name(name)
         and PureWindowsPath(name).name == PurePosixPath(name).name == name
-    )
-    if not ok:
+    ):
         raise AtomicWriteError(ATOMIC_BAD_NAME)
 
 

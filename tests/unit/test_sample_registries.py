@@ -39,7 +39,7 @@ def test_sample_and_result_hold_no_format_registry_of_their_own() -> None:
     for name in ("_sample.py", "_result.py"):
         text = (RUN / name).read_text(encoding="utf-8")
         assert not re.search(r"""["']fixed_width["']\s*[,:]\s*["'.]""", text), name
-        assert "_FORMATS" not in text and "_SUFFIX" not in text, name
+        assert not re.search(r"\b_(FORMATS|SUFFIX)\b", text), name
 
 
 def test_an_unsupported_file_format_is_refused_as_the_gate_refuses_it() -> None:

@@ -32,6 +32,7 @@ from decoy.cli._sources import (
     resolved_source_config,
     source_schema_and_chunks,
 )
+from decoy.cli.io._component import is_portable_component
 from decoy.cli.io._integrity_report import (
     INTEGRITY_OUT_OPTION,
     INTEGRITY_WRITE_FAILED,
@@ -60,7 +61,6 @@ from decoy.cli.io._layout import (
     has_placed_output,
     is_absolute_local,
     is_placed_relative,
-    is_portable_component,
     is_run_id,
     is_valid_name,
     member_yaml,
