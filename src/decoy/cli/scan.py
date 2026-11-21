@@ -23,7 +23,8 @@ non-negotiable disciplines:
   any aggregate that could expose raw cell data. `--output` writes the
   value-free `scan-set/v1` core as well.
 
-Reuses the engine's `profile_columns` function. Does NOT reimplement detection.
+Reaches the engine's `scan_sources` only through `decoy.cli.scanning`. Does NOT reimplement
+detection.
 """
 
 from __future__ import annotations
@@ -35,11 +36,17 @@ from pathlib import Path
 
 import typer
 
-from decoy._row_sample import sample_frame
+from decoy.cli import scanning as _scanning
 from decoy.cli._default_group import make_default_group
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
-from decoy.cli.scanning import diff_scan_sets, pii_bucket, saved_field_facts
+from decoy.cli.scanning import (
+    DEFAULT_SCAN_ROWS,
+    SampleStrategy,
+    diff_scan_sets,
+    pii_bucket,
+    saved_field_facts,
+)
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 from decoy.ui.table import make_table
@@ -53,17 +60,6 @@ _SCAN_GROUP_HELP = (
     "Subcommands operate on a saved scan: list fields (`fields`), per-field "
     "detail (`show`), compare two scans (`diff`)."
 )
-
-
-# PII score threshold to surface a field as a candidate. Mirrors the engine's
-# scan internal threshold (>=0.6 is a "PII candidate" / "high" bucket).
-_PII_CANDIDATE_THRESHOLD = 0.6
-
-
-class SampleStrategy(str, Enum):
-    full = "full"
-    head = "head"
-    random = "random"
 
 
 class PiiLevel(str, Enum):
@@ -90,11 +86,6 @@ class InputFormat(str, Enum):
     parquet = "parquet"
     fixed_width = "fixed-width"
 
-
-# File extensions that map to fixed-width format (require --layout).
-_FIXED_WIDTH_EXTENSIONS: frozenset[str] = frozenset({".fwf", ".dat", ".fixed", ".fw"})
-# File extensions that map to parquet format.
-_PARQUET_EXTENSIONS: frozenset[str] = frozenset({".parquet", ".pq"})
 
 # Suffixes that almost certainly mean "this is raw data, not a saved scan."
 # Used by `_emit_load_error` to swap the generic JSON parse hint for a
@@ -204,58 +195,12 @@ scan_app = typer.Typer(
 
 
 # ---------------------------------------------------------------------------
-# Source loaders (format dispatch + sampling). Moved from the old scan group with `scan`.
+# Layout file rules for fixed-width input (the readers live in the engine).
 # ---------------------------------------------------------------------------
 
 
-def _infer_format(path: Path) -> InputFormat:
-    """Infer InputFormat from the file extension.
-
-    Returns fixed_width for known fixed-width extensions, parquet for
-    parquet extensions, and delimited for everything else (CSV/TSV).
-    """
-    suffix = path.suffix.lower()
-    if suffix in _PARQUET_EXTENSIONS:
-        return InputFormat.parquet
-    if suffix in _FIXED_WIDTH_EXTENSIONS:
-        return InputFormat.fixed_width
-    return InputFormat.delimited
-
-
-def _parse_layout(layout_path: Path) -> list[dict]:
-    """Load a layout spec from a YAML or JSON file.
-
-    Expected shape (YAML or JSON):
-        columns:
-          - name: field_name
-            start: 0      # 0-indexed start position (inclusive)
-            width: 10     # column width in characters
-
-    Returns the `columns` list.
-    """
-    import json as _json_mod
-
-    import yaml as _yaml
-
-    text = layout_path.read_text(encoding="utf-8")
-    try:
-        data = _yaml.safe_load(text)
-    except Exception:
-        data = _json_mod.loads(text)
-
-    if not isinstance(data, dict) or "columns" not in data:
-        raise ValueError(
-            f"Layout file {layout_path.name} must be a mapping with a 'columns' key. "
-            "Each column must have 'name', 'start', and 'width'."
-        )
-
-    columns = data["columns"]
-    if not isinstance(columns, list):
-        raise ValueError(
-            f"Layout file {layout_path.name}: 'columns' must be a list of column dicts, "
-            f"got {type(columns).__name__}. Each column needs a string 'name' and integer 'start'/'width'."
-        )
-
+def _check_layout_columns(columns: list) -> list[dict]:
+    """Check each layout column; one rule set for a layout file and for a parsed list."""
     for i, col in enumerate(columns):
         if not isinstance(col, dict):
             raise ValueError(
@@ -296,89 +241,41 @@ def _parse_layout(layout_path: Path) -> list[dict]:
     return list(columns)
 
 
-def _load_csv_with_sampling(path: Path, rows: int | None, strategy: SampleStrategy):
-    import pandas as pd
+def _parse_layout(layout_path: Path) -> list[dict]:
+    """Load a layout spec from a YAML or JSON file.
 
-    if strategy is SampleStrategy.full or rows is None:
-        return pd.read_csv(path)
-    if strategy is SampleStrategy.head:
-        return pd.read_csv(path, nrows=rows)
-    if strategy is SampleStrategy.random:
-        df = pd.read_csv(path)
-        if len(df) <= rows:
-            return df
-        return sample_frame(df, rows, 42)
-    return pd.read_csv(path)
+    Expected shape (YAML or JSON):
+        columns:
+          - name: field_name
+            start: 0      # 0-indexed start position (inclusive)
+            width: 10     # column width in characters
 
-
-def _load_parquet_with_sampling(path: Path, rows: int | None, strategy: SampleStrategy):
-    """Load a Parquet file into a DataFrame, respecting the row cap and strategy.
-
-    pyarrow is a core decoy-engine dependency so it is always available.
-    For Parquet, 'head' and 'random' sampling work on the in-memory DataFrame
-    after loading. Future optimization could use pyarrow row groups for head.
+    Returns the `columns` list.
     """
-    from decoy.cli._sources import read_file
+    import json as _json_mod
 
-    df = read_file(path, "parquet", None, table=path.stem)
-    if rows is None or strategy is SampleStrategy.full or len(df) <= rows:
-        return df
-    if strategy is SampleStrategy.head:
-        return df.head(rows)
-    if strategy is SampleStrategy.random:
-        return sample_frame(df, rows, 42)
-    return df
+    import yaml as _yaml
 
+    text = layout_path.read_text(encoding="utf-8")
+    try:
+        data = _yaml.safe_load(text)
+    except Exception:
+        data = _json_mod.loads(text)
 
-def _load_fixed_width_with_sampling(
-    path: Path,
-    layout: list[dict],
-    rows: int | None,
-    strategy: SampleStrategy,
-):
-    """Load a fixed-width file into a DataFrame using an explicit layout spec.
+    if not isinstance(data, dict) or "columns" not in data:
+        raise ValueError(
+            f"Layout file {layout_path.name} must be a mapping with a 'columns' key. "
+            "Each column must have 'name', 'start', and 'width'."
+        )
 
-    Layout must be a list of dicts with 'name', 'start', and 'width' keys.
-    Maps to pandas read_fwf colspecs=(list of (start, start+width)) tuples.
-    """
-    import pandas as pd
+    columns = data["columns"]
+    if not isinstance(columns, list):
+        raise ValueError(
+            f"Layout file {layout_path.name}: 'columns' must be a list of column dicts, "
+            f"got {type(columns).__name__}. Each column needs a string 'name' and integer 'start'/'width'."
+        )
 
-    names = [col["name"] for col in layout]
-    colspecs = [(int(col["start"]), int(col["start"]) + int(col["width"])) for col in layout]
-
-    if strategy is SampleStrategy.full or rows is None:
-        return pd.read_fwf(path, colspecs=colspecs, names=names, header=None)
-
-    if strategy is SampleStrategy.head:
-        return pd.read_fwf(path, colspecs=colspecs, names=names, header=None, nrows=rows)
-
-    # random: load all then sample
-    df = pd.read_fwf(path, colspecs=colspecs, names=names, header=None)
-    if len(df) <= rows:
-        return df
-    return sample_frame(df, rows, 42)
-
-
-def _load_data(
-    path: Path,
-    fmt: InputFormat,
-    layout: list[dict] | None,
-    rows: int | None,
-    strategy: SampleStrategy,
-):
-    """Format-dispatching loader for all supported input formats."""
-    if fmt is InputFormat.parquet:
-        return _load_parquet_with_sampling(path, rows, strategy)
-    if fmt is InputFormat.fixed_width:
-        if not layout:
-            raise ValueError(
-                f"Fixed-width input requires --layout: column boundaries in {path.name} "
-                "are ambiguous without an explicit layout spec. "
-                "Run: decoy scan <file> --layout <layout.yaml>"
-            )
-        return _load_fixed_width_with_sampling(path, layout, rows, strategy)
-    # Default: delimited (CSV/TSV)
-    return _load_csv_with_sampling(path, rows, strategy)
+    return _check_layout_columns(columns)
 
 
 # ---------------------------------------------------------------------------
@@ -414,9 +311,7 @@ def _looks_like_raw_data(scan_path: str) -> bool:
     return bool(head) and head[0] != "{"
 
 
-def _emit_load_error(
-    state: OutputState, scan: str, exc: Exception, command_name: str
-) -> None:
+def _emit_load_error(state: OutputState, scan: str, exc: Exception, command_name: str) -> None:
     """Friendly error UX when a scan path won't load.
 
     Detects three cases: missing file, raw-data-mistaken-for-scan, and
@@ -452,11 +347,15 @@ def _emit_load_error(
         state.err_console.print(error("error:"), message)
         if scan_cmd is not None:
             state.err_console.print(
-                " ", hint("hint:"), "scan it first:", code(scan_cmd),
+                " ",
+                hint("hint:"),
+                "scan it first:",
+                code(scan_cmd),
             )
         else:
             state.err_console.print(
-                " ", hint("hint:"),
+                " ",
+                hint("hint:"),
                 "pass the JSON file produced by",
                 code("decoy scan --output scan.json"),
             )
@@ -492,7 +391,7 @@ def _scan(
         help="Show per-field detail: dtype, null_rate, distinct_count, PII candidate flag.",
     ),
     rows: int = typer.Option(
-        10_000,
+        DEFAULT_SCAN_ROWS,
         "--rows",
         help=(
             "Limit the scan to the first N rows (a bounded sample). "
@@ -545,6 +444,8 @@ def _scan(
         "--column-names",
         help="Comma-separated column names for one headerless CSV (needs --no-header).",
     ),
+    detectors: str | None = _scanning.DETECTORS_OPTION,
+    ner_model: str | None = _scanning.NER_MODEL_OPTION,
     json_: bool = typer.Option(
         False,
         "--json",
@@ -581,6 +482,8 @@ def _scan(
         layout=layout,
         has_header=has_header,
         column_names=column_names,
+        detectors=detectors,
+        ner_model=ner_model,
     )
 
 
@@ -590,15 +493,15 @@ def _scan(
 
 
 def _fields(
-    scan: str = typer.Argument(
-        ..., help="Path to a saved scan JSON, or `-` for stdin."
-    ),
+    scan: str = typer.Argument(..., help="Path to a saved scan JSON, or `-` for stdin."),
     pii: PiiLevel | None = typer.Option(
-        None, "--pii",
+        None,
+        "--pii",
         help="Filter to fields whose PII score falls in this bucket.",
     ),
     quasi: bool = typer.Option(
-        False, "--quasi",
+        False,
+        "--quasi",
         help="Only fields that participate in any quasi-identifier group.",
     ),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
@@ -668,7 +571,10 @@ def _fields(
         return
 
     table = make_table(
-        "Field", "PII score", "Bucket", "QI",
+        "Field",
+        "PII score",
+        "Bucket",
+        "QI",
         title=f"Fields in {label} ({len(rows)} of {total})",
     )
     for r in rows:
@@ -700,9 +606,7 @@ def _fields(
 
 
 def _show(
-    scan: str = typer.Argument(
-        ..., help="Path to a saved scan JSON, or `-` for stdin."
-    ),
+    scan: str = typer.Argument(..., help="Path to a saved scan JSON, or `-` for stdin."),
     field: str = typer.Argument(..., help="Field name to inspect."),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
     json_: bool = typer.Option(
@@ -748,16 +652,19 @@ def _show(
                 },
             )
         elif state.mode is not OutputMode.quiet:
-            state.err_console.print(
-                error("error:"), f"Field {field!r} not in scan."
-            )
+            state.err_console.print(error("error:"), f"Field {field!r} not in scan.")
             if suggestion:
                 state.err_console.print(
-                    " ", hint("hint:"), "did you mean", code(suggestion[0]),
+                    " ",
+                    hint("hint:"),
+                    "did you mean",
+                    code(suggestion[0]),
                 )
             else:
                 state.err_console.print(
-                    " ", hint("hint:"), "list all fields with",
+                    " ",
+                    hint("hint:"),
+                    "list all fields with",
                     code(f"decoy scan fields {scan}"),
                 )
         raise typer.Exit(code=EXIT_USAGE)
@@ -818,14 +725,11 @@ def _show(
 
 
 def _diff(
-    old: str = typer.Argument(
-        ..., help="Path to the older saved scan JSON, or `-` for stdin."
-    ),
-    new: str = typer.Argument(
-        ..., help="Path to the newer saved scan JSON, or `-` for stdin."
-    ),
+    old: str = typer.Argument(..., help="Path to the older saved scan JSON, or `-` for stdin."),
+    new: str = typer.Argument(..., help="Path to the newer saved scan JSON, or `-` for stdin."),
     strict: bool = typer.Option(
-        False, "--strict",
+        False,
+        "--strict",
         help="Exit 4 on drift -- any PII bucket bumped up, any new high-PII field, or any new quasi-identifier group.",
     ),
     table: str | None = typer.Option(None, "--table", help=_TABLE_HELP),
@@ -859,12 +763,8 @@ def _diff(
                 },
             )
         elif state.mode is not OutputMode.quiet:
-            state.err_console.print(
-                error("error:"), "only one of OLD or NEW can be `-` (stdin)."
-            )
-            state.err_console.print(
-                " ", hint("hint:"), "pipe one scan, pass the other as a path."
-            )
+            state.err_console.print(error("error:"), "only one of OLD or NEW can be `-` (stdin).")
+            state.err_console.print(" ", hint("hint:"), "pipe one scan, pass the other as a path.")
         raise typer.Exit(code=EXIT_USAGE)
 
     try:
@@ -993,9 +893,7 @@ def _diff(
         state.console.print(t)
 
     if removed_rows:
-        t = make_table(
-            "Field", "PII score (was)", "Bucket (was)", title="Fields removed"
-        )
+        t = make_table("Field", "PII score (was)", "Bucket (was)", title="Fields removed")
         for r in removed_rows:
             score = r["pii_score"]
             score_cell = f"{score:.2f}" if isinstance(score, (int, float)) else "-"
@@ -1029,6 +927,4 @@ scan_app.command(name="fields", epilog=_FIELDS_EPILOG)(_fields)
 scan_app.command(name="show", epilog=_SHOW_EPILOG)(_show)
 scan_app.command(name="diff", epilog=_DIFF_EPILOG)(_diff)
 
-SCAN_EPILOG = _SCAN_EPILOG
-
-__all__ = ["SCAN_EPILOG", "scan_app"]
+__all__ = ["scan_app"]

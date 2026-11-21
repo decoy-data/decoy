@@ -4,6 +4,8 @@ Usage: ratchet_check.py [--root DIR] [--base REF] [--slice NAME]
   --base   default: merge-base of origin/main and HEAD
   --slice  a newly registered baseline's created_in must equal NAME
 The logic lives in tests/sentry/_ratchet.py so the unit tests and this gate step share it.
+A key may not be added, except a key the registry lists under that baseline's `approved_growth`
+(an exact key plus a dated `owner YYYY-MM-DD ...` decision; stale or malformed rows fail).
 Exit 0 clean, 1 on a finding, 2 when there is no merge base.
 """
 

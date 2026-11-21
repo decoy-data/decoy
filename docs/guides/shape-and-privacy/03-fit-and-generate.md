@@ -31,7 +31,7 @@ signup_date (datetime), is_active (categorical)
 | `--joint a,b` | Also record how two columns go together. Repeatable. Needed for `condition_on`. |
 | `--joint-max-cells N` | Keep up to N combinations of each `--joint` pair (default 25, at most 1000). Needs `--joint`. Without `--include-values`, a cap above 25 works only when both columns are plain categories. See [Using `condition_on`](#using-condition_on). |
 | `--rows N` | Fit on at most N rows. See [Large files](#large-files-the-row-limit). Not allowed with `--epsilon`. |
-| `--numeric-bins N` | Least number of bins for each number column, a whole number of 2 or more. Works for the plain fit and for `--epsilon`. A plain fit can write more bins than N, because bin edges sit on round numbers. |
+| `--numeric-bins N` | Least number of bins for each number column, a whole number from 2 to 1000. Works for the plain fit and for `--epsilon`. A plain fit folds any bin held by fewer than 10 rows into its neighbour, so it can write fewer bins than N. |
 | `--include-values` | Keep the real values of columns the profiler flags as sensitive. The file then holds real data. Not allowed with `--epsilon`. |
 
 The source must be a CSV. The snapshot file is written readable by its owner

@@ -1,0 +1,207 @@
+"""G-ONE-LANG-CODE: every `lang.*` diagnostic is built from the registry `lang/_codes.py`.
+
+- no string literal under `src/decoy` outside the registry holds a `lang.<code>` token
+  (docstrings aside), so a code is spelled once and a message is written once. The loader
+  `decoy/_config_file.py` is the one other file that spells a code, for the two it raises before
+  any program exists; each is in `CODES` (`LOADER_CODES`) and the loader uses each;
+- no module but `lang/_errors.py` builds a `Diagnostic` (through any alias or attribute),
+  so a diagnostic cannot skip the registry's message;
+- no `ConvertError` is built from a hand-written message: its first argument is always a
+  registry descriptor, and no module outside `_errors.py` renders `error[<code>]: <text>` itself;
+- the registry is well formed: every descriptor names a registered code, every code has a
+  descriptor, and every descriptor is used somewhere.
+
+Named limit: a code assembled at run time (`"lang." + name`) is not seen.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+import string
+from pathlib import Path
+
+import decoy.lang as public
+from decoy.lang import _codes as registry
+
+SRC = Path(__file__).resolve().parents[3] / "src" / "decoy"
+LANG = SRC / "lang"
+_TOKEN = re.compile(r"(?<![\w.])lang\.[a-z][a-z0-9]*(?:_[a-z0-9]+)*")
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)
+
+
+def _docstrings(tree: ast.AST) -> set[int]:
+    found: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, _SCOPES) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant):
+                found.add(id(first.value))
+    return found
+
+
+def literal_findings(source: str, rel: str) -> list[str]:
+    """`file:line` of each string literal, including the pieces of an f-string, with a code."""
+    if rel in ("lang/_codes.py", "_config_file.py"):
+        return []
+    tree = ast.parse(source)
+    docs = _docstrings(tree)
+    return [
+        f"{rel}:{node.lineno} {match.group(0)}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
+        for match in _TOKEN.finditer(node.value)
+    ]
+
+
+def diagnostic_findings(source: str, rel: str) -> list[str]:
+    """`file:line` of each call that builds a `Diagnostic`, by name, alias or attribute."""
+    if rel == "lang/_errors.py":
+        return []
+    tree = ast.parse(source)
+    aliases = {"Diagnostic"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            aliases |= {a.asname for a in node.names if a.name == "Diagnostic" and a.asname}
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if (isinstance(func, ast.Name) and func.id in aliases) or (
+            isinstance(func, ast.Attribute) and func.attr == "Diagnostic"
+        ):
+            found.append(f"{rel}:{node.lineno} Diagnostic(...)")
+    return found
+
+
+def convert_findings(source: str, rel: str) -> list[str]:
+    """`file:line` of each `ConvertError(...)` whose first argument is not a registry descriptor,
+    and of each hand-rendered `error[...]` line, outside `_errors.py`."""
+    if rel == "lang/_errors.py":
+        return []
+    names = {n for n, v in vars(registry).items() if isinstance(v, registry.Code)}
+    tree = ast.parse(source)
+    docs = _docstrings(tree)
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            func = node.func
+            called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+            if called == "ConvertError":
+                first = node.args[0] if node.args else None
+                head = first.id if isinstance(first, ast.Name) else getattr(first, "attr", "")
+                if head not in names:
+                    found.append(f"{rel}:{node.lineno} ConvertError(...)")
+        elif (
+            isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
+        ):
+            if "error[" in node.value and rel.startswith("lang/"):
+                found.append(f"{rel}:{node.lineno} hand-rendered error[...]")
+    return found
+
+
+def _scan(finder) -> list[str]:  # type: ignore[no-untyped-def]
+    out: list[str] = []
+    for path in sorted(SRC.rglob("*.py")):
+        out += finder(path.read_text(encoding="utf-8"), path.relative_to(SRC).as_posix())
+    return out
+
+
+def test_no_code_is_written_outside_the_registry() -> None:
+    assert _scan(literal_findings) == []
+
+
+def test_no_diagnostic_is_built_outside_the_error_module() -> None:
+    assert _scan(diagnostic_findings) == []
+
+
+def test_no_convert_error_is_built_or_rendered_by_hand() -> None:
+    assert _scan(convert_findings) == []
+
+
+def test_the_convert_scan_sees_each_seeded_bypass() -> None:
+    assert convert_findings('raise ConvertError(path, "a message I wrote")', "lang/_convert.py")
+    assert convert_findings('raise ConvertError("x", "a message")', "lang/_convert.py")
+    assert convert_findings('raise _convert.ConvertError(path, f"{x}")', "lang/_lower.py")
+    assert convert_findings(
+        'sys.stderr.write(f"{name}: error[{CONVERT_SHAPE.code}]: {error}")', "lang/__main__.py"
+    )
+    assert convert_findings('print("error[lang.convert]: " + str(error))', "lang/__main__.py")
+    assert not convert_findings("raise ConvertError(CONVERT_SHAPE, path)", "lang/_convert.py")
+    assert not convert_findings("raise _x.ConvertError(CONVERT_SHAPE)", "lang/_convert.py")
+    assert not convert_findings('f"error[{d.code}]"', "lang/_errors.py")
+
+
+def test_the_scan_sees_each_seeded_spelling() -> None:
+    assert literal_findings('x = "lang.syntax"', "lang/_lower.py")
+    assert literal_findings('x = "lang.nesting"', "cli/anything.py")  # outside the package too
+    assert literal_findings('CODE = "lang.syntax"\nfail(CODE, "m")', "lang/_lower.py")  # alias
+    assert literal_findings('errors.fail("lang.option_repeated", "m")', "lang/_lower.py")
+    assert literal_findings('print(f"error[lang.convert]: {x}")', "lang/__main__.py")
+    assert not literal_findings('"""A `lang.syntax` docstring."""\nx = 1', "lang/_lower.py")
+    assert not literal_findings('x = "lang.syntax"', "lang/_codes.py")
+    assert not literal_findings('x = "a language.syntax"', "lang/_lower.py")
+    assert diagnostic_findings('Diagnostic(CODE, "m")', "lang/_lower.py")
+    assert diagnostic_findings(
+        "from decoy.lang._errors import Diagnostic as D\nD(CODE, 'm')", "lang/_lower.py"
+    )
+    assert diagnostic_findings("_errors.Diagnostic(CODE, 'm')", "lang/_lower.py")
+    assert not diagnostic_findings("Diagnostic(CODE, 'm')", "lang/_errors.py")
+    assert not diagnostic_findings("diagnostic(CODE)", "lang/_lower.py")
+
+
+def test_a_raw_literal_added_to_a_real_module_is_caught() -> None:
+    source = (LANG / "_lower.py").read_text(encoding="utf-8")
+    assert literal_findings(source, "lang/_lower.py") == []
+    mutant = source + '\n_EXTRA = "lang.option_repeated"\n'
+    assert literal_findings(mutant, "lang/_lower.py")
+
+
+def test_the_registry_is_well_formed() -> None:
+    descriptors = [v for v in vars(registry).values() if isinstance(v, registry.Code)]
+    assert set(descriptors) == set(registry.DESCRIPTORS)
+    assert len(registry.DESCRIPTORS) == len(descriptors)
+    assert {d.code for d in descriptors} | registry.LOADER_CODES == set(registry.CODES)
+    assert not {d.code for d in descriptors} & registry.LOADER_CODES
+    assert all(re.fullmatch(r"lang\.[a-z][a-z0-9]*(_[a-z0-9]+)*", code) for code in registry.CODES)
+    assert all(meaning.strip() for meaning in registry.CODES.values())
+
+
+def test_every_descriptor_is_used() -> None:
+    text = "\n".join(
+        p.read_text(encoding="utf-8") for p in LANG.glob("*.py") if p.name != "_codes.py"
+    )
+    names = [n for n, v in vars(registry).items() if isinstance(v, registry.Code)]
+    unused = [n for n in names if not re.search(rf"\b{n}\b", text)]
+    assert unused == []
+
+
+def test_every_message_fills_from_its_own_fields() -> None:
+    for code in registry.DESCRIPTORS:
+        fields = {name for _, name, _, _ in string.Formatter().parse(code.message) if name}
+        assert code.message.format(**dict.fromkeys(fields, "x"))
+
+
+def test_the_registry_is_public() -> None:
+    assert "CODES" in public.__all__
+    assert public.CODES is registry.CODES
+
+
+def test_the_loader_spells_exactly_the_loader_codes() -> None:
+    source = (SRC / "_config_file.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    docs = _docstrings(tree)
+    used = {
+        match.group(0)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs
+        for match in _TOKEN.finditer(node.value)
+    }
+    assert used == set(registry.LOADER_CODES)
+
+
+def test_a_loader_literal_missing_from_the_registry_would_be_seen() -> None:
+    seeded = 'raise ConfigFileError("lang.not_in_the_registry", "m")'
+    tokens = {m.group(0) for m in _TOKEN.finditer(seeded)}
+    assert tokens - set(registry.CODES) == {"lang.not_in_the_registry"}

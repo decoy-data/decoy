@@ -1,6 +1,8 @@
 # Binds each sentry id to exactly one baseline file under tests/sentry/baselines/.
 # scripts/dev/ratchet_check.py compares every baseline with its merge-base copy and fails
-# when keys are added. A new sentry adds its row here in the slice that introduces it.
+# when keys are added. A row may list `approved_growth` entries (exact key plus a dated owner
+# decision, `owner YYYY-MM-DD <text>`); only a listed key may be added without failing.
+# A new sentry adds its row here in the slice that introduces it.
 #
 # kind says where the sentry's allowlist comes from:
 #   json       the baseline file is the allowlist; the `consumer` file reads it with
@@ -37,6 +39,12 @@ id = "gate-single-entry-allow"
 baseline = "tests/sentry/baselines/gate-single-entry-allow.json"
 kind = "json"
 consumer = "tests/sentry/test_gate_single_entry.py"
+
+[[sentry]]
+id = "scan-call-allow"
+baseline = "tests/sentry/baselines/scan-call-allow.json"
+kind = "json"
+consumer = "tests/sentry/scan/test_one_scan_call.py"
 
 [[sentry]]
 id = "csv-read-allow"
@@ -117,6 +125,9 @@ consumer = "tests/sentry/io_policy/test_canonical_json.py"
 [[sentry]]
 id = "library-writer-allow"
 baseline = "tests/sentry/baselines/library-writer-allow.json"
+approved_growth = [
+  { key = "_config_file.py", decision = "owner 2026-11-20 W3 pipeline file suffix allow entry" },
+]
 kind = "json"
 consumer = "tests/sentry/io_policy/test_library_writer.py"
 
@@ -170,3 +181,21 @@ id = "outbound-network-owners"
 baseline = "tests/sentry/baselines/outbound-network-owners.json"
 kind = "json"
 consumer = "tests/sentry/io_policy/outbound/test_outbound_choke_point.py"
+
+[[sentry]]
+id = "run-exit-owners"
+baseline = "tests/sentry/baselines/run-exit-owners.json"
+kind = "json"
+consumer = "tests/sentry/run/test_one_run_exit.py"
+
+[[sentry]]
+id = "run-exit-owners-io"
+baseline = "tests/sentry/baselines/run-exit-owners-io.json"
+kind = "json"
+consumer = "tests/sentry/run/test_one_run_exit.py"
+
+[[sentry]]
+id = "old-org-refs"
+baseline = "tests/sentry/baselines/old-org-refs.json"
+kind = "json"
+consumer = "tests/sentry/release/test_old_org_refs.py"

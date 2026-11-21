@@ -97,10 +97,7 @@ ENGINE_ENTRIES = frozenset({"run_pipeline", "run_mask_pipeline_chunked", "profil
 # pairs, each with its reason; any other call of a reader must follow a gate.
 CALLER_NAMED: dict[tuple[str, str], str] = {
     ("cli/init.py", "_load_dataframe"): "`decoy init` reads the one input file the caller named",
-    (
-        "cli/scan.py",
-        "_load_parquet_with_sampling",
-    ): "`decoy scan` reads the Parquet the caller named",
+    ("api.py", "scan"): "`decoy.scan()` stages the caller's own DataFrame; it declares no source",
     ("cli/unmask.py", "unmask"): "reads the masked file the caller named, reversed from the vault",
     (
         "cli/tokenize.py",

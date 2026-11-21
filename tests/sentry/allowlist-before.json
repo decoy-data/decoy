@@ -17,7 +17,7 @@
   "notify.py": {"reason": "Webhook body signed with HMAC; different bytes on the wire by design (ASCII-escaped, platform webhook contract), not a content hash (plan 3.1).", "sites": 1}
  },
  "config-load-allow": {
-  "ci/locations.py::YamlSourceIndex.from_text::1": {"reason": "source index: yaml.compose of text the gate already loaded, for SARIF line marks"},
+  "_source_positions.py::YamlPositionIndex.from_text::1": {"reason": "source index: yaml.compose of text the gate already loaded, for SARIF line marks"},
   "ci/manifest.py::_parse::1": {"reason": "CI manifest: strict loader with its own ci.manifest_invalid code and event check"},
   "cli/demo.py::_run_v2_mask::1": {"reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"},
   "cli/init.py::_build_scaffold_yaml::1": {"reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"},
@@ -35,9 +35,7 @@
   "cli/io/_scan_set.py::_from_core::validate-engine#1": {"reason": "validates the engine's scan-set read model, catches the error without reading it and raises a fixed message outside the handler; a scan file is not a pipeline config"}
  },
  "csv-read-allow": {
-  "cli/gen/_fit.py::read_fit_csv": {"reason": "A caller-named file with its own parse flags; not a declared source.", "sites": 1},
-  "cli/scan.py::_load_csv_with_sampling": {"reason": "A caller-named file with its own sampling flags; not a declared source.", "sites": 4},
-  "cli/scan.py::_load_fixed_width_with_sampling": {"reason": "A caller-named fixed-width file with its own layout flags; not a declared source.", "sites": 3}
+  "cli/gen/_fit.py::read_fit_csv": {"reason": "A caller-named file with its own parse flags; not a declared source.", "sites": 1}
  },
  "engine-internal-allow": {
   "ci/engine_logging.py::decoy_engine.internal.logging": {"count": 1, "reason": "Silences the engine's cwd-relative file logger during `decoy ci` and restores its singleton; the engine has no public logging configuration (only the `Logger` protocol).", "removal": "Engine exports a public logging opt-out (docs/handoffs/inputs/cli-needs-engine-public-api.md #1); then delete this entry."},
@@ -131,6 +129,7 @@
   "scan-set": {"reason": "L2-cli writes scan records and adds the scan-set canary fixture."}
  },
  "library-writer-allow": {
+  "_config_file.py": {"reason": "Pipeline file suffix, not the project folder (owner decision 2026-11-20, W3 exception).", "sites": 1},
   "cli/io/_project.py": {"reason": "DECOY_DIR, the one home of the project folder name; the library imports it from decoy.cli.io (re-FRAME placement map).", "sites": 1},
   "distribution/layout.py": {"reason": "The managed runtime home ~/.decoy (versions, current, cache); swapped on upgrade and never a record library (plan 4.1).", "sites": 1}
  },
@@ -140,8 +139,8 @@
  "module-size": {
   "src/decoy/cli/fit.py": {"max": 817, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/report.py": {"max": 2299, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/scan.py": {"max": 1034, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
+  "src/decoy/cli/report.py": {"max": 2295, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
+  "src/decoy/cli/scan.py": {"max": 930, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
  },
  "output-name-allow": {
  },
@@ -149,7 +148,7 @@
   "cli/io/_layout.py::RunLayout.place_target": {"reason": "The one placement site: a fixed layout and an absolute path resolve as the old code did.", "sites": 1},
   "cli/io/_targets.py::_is_declared_target": {"reason": "Compares a file with the declared target path; reads, writes nothing.", "sites": 1},
   "cli/run/_execute.py::_run_chunked_mask": {"reason": "Resolves the chunked source path for the empty-parquet schema; an input.", "sites": 1},
-  "cli/run/_prepare.py::prepare": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
+  "cli/run/_context.py::output_placement": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
  },
  "package-fanout": {
   "src/decoy/cli": {"max": 29, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}

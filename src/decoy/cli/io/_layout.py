@@ -47,7 +47,6 @@ if TYPE_CHECKING:
 # clash, up to all 32.
 _RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}(?:[0-9a-f]{4}){0,6}")
 
-
 MAX_RUN_ID_LENGTH = 55
 WINDOWS_PATH_LIMIT = 259
 _CLAIM_NAME = "PIPELINE"
@@ -132,11 +131,12 @@ def owning_run(path: Path, root: Path, name: str) -> RunFolder | None:
     return None
 
 
-SideKind = Literal["unmasked", "detokenized", "snapshot"]
+SideKind = Literal["unmasked", "detokenized", "snapshot", "post_scan"]
 _SIDE_SUFFIX: dict[str, str] = {
     "unmasked": ".unmasked.csv",
     "detokenized": ".detokenized.csv",
     "snapshot": ".snapshot.json",
+    "post_scan": ".post-scan.json",
 }
 
 

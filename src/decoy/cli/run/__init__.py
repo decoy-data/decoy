@@ -19,7 +19,7 @@ from pathlib import Path
 import typer
 
 from decoy import _resources
-from decoy.cli.io import out_dir_option, pipeline_argument, resolve_pipeline
+from decoy.cli.io import INTEGRITY_OUT_OPTION, out_dir_option, pipeline_argument, resolve_pipeline
 from decoy.cli.io import resolve_path as _resolve_path
 from decoy.cli.run import _flow
 from decoy.cli.run._context import DEFAULT_CHUNK_SIZE, Mode, NotifyOn, RunContext
@@ -110,7 +110,7 @@ def run(
     ctx: typer.Context,
     config: str = pipeline_argument(
         help=(
-            "Path or name of the YAML pipeline config (a name is looked up in the project). "
+            "Path or name of the pipeline file (.yaml or .decoy; a name is looked up in the project). "
             "Optional when the project has exactly one pipeline."
         ),
         optional=True,
@@ -121,7 +121,7 @@ def run(
         help=(
             "Run every pipeline of the project, one process each, in name order. The exit "
             "code is the first of 5 > 3 > 1 > 6 > 4 > 2 > 0 that any child produced. Takes no "
-            "pipeline name and refuses --evidence-out, --vault and --out-dir."
+            "pipeline name and refuses --evidence-out, --vault, --result and --out-dir."
         ),
     ),
     mode: Mode = typer.Option(
@@ -241,6 +241,19 @@ def run(
             "See: decoy report show."
         ),
     ),
+    result: Path = typer.Option(
+        None,
+        "--result",
+        help=(
+            "Write the run result document (JSON, the `result` member of --json) to this "
+            "path, whatever the outcome: success, refusal, error or Ctrl-C. The path follows "
+            "the same rules as --evidence-out: it may not equal an output, the quarantine "
+            "file, --evidence-out or --vault, and may not sit under the project's out/ "
+            "folder. An existing file is replaced. A failed write is a warning and does not "
+            "change the exit code. Not accepted with --all."
+        ),
+    ),
+    integrity_out: Path = INTEGRITY_OUT_OPTION,
     out_dir: Path = out_dir_option(),
     notify: list[str] = typer.Option(
         [],
@@ -368,6 +381,23 @@ def run(
             "--native, --duckdb-source and --out-dir."
         ),
     ),
+    sample: int = typer.Option(
+        None,
+        "--sample",
+        metavar="N",
+        hidden=True,  # shown once the run branch lands (SAMPLE SC2)
+        help=(
+            "Mask a small, whole-row-consistent sample of the sources into a private scratch "
+            "folder and write nothing else. N is 1 to 1000 head rows per root table."
+        ),
+    ),
+    sample_root: str = typer.Option(
+        None,
+        "--sample-root",
+        metavar="TABLE",
+        hidden=True,  # shown once the run branch lands (SAMPLE SC2)
+        help="With --sample: the table whose first N rows start the sample.",
+    ),
     otel_endpoint: str = typer.Option(
         None,
         "--otel-endpoint",
@@ -415,6 +445,8 @@ def run(
             vault=vault,
             key_label=key_label,
             evidence_out=evidence_out,
+            result=result,
+            integrity_out=integrity_out,
             out_dir=out_dir,
             notify=notify,
             notify_on=notify_on,
@@ -428,6 +460,8 @@ def run(
             no_subset=no_subset,
             otel_endpoint=otel_endpoint,
             rows=rows,
+            sample=sample,
+            sample_root=sample_root,
         )
     )
 

@@ -16,7 +16,14 @@ import typer
 
 from decoy import _native_gate, _resources
 from decoy.cli.gate import GateFinding
-from decoy.cli.io import PipelineRef, RunLayout
+from decoy.cli.io import (
+    DuckDBSourceError,
+    OutputPlacement,
+    PipelineRef,
+    RunLayout,
+    parse_flags,
+    resolve_path,
+)
 from decoy.ui.output import OutputState
 
 # Rows per chunk when `--chunk-size` is not given. The option has no default of its own so a
@@ -26,8 +33,41 @@ DEFAULT_CHUNK_SIZE = 100_000
 # The machine-readable `code` of each warning the CLI raises itself. Closed: a new code is
 # added here, so the `--json` `warnings` vocabulary has one list.
 CLI_WARNING_CODES: frozenset[str] = frozenset(
-    {"chunked_key_check_not_run", "run_result_build_failed"}
+    {"chunked_key_check_not_run", "run_result_build_failed", "run_result_write_failed"}
 )
+
+
+class RunRefusal(Exception):
+    """A refusal `decoy run` raises itself, before or after the engine runs.
+
+    `_errors.refused` turns it into the run result document, the one stderr line and the exit.
+    The text names flags and codes, never a value. Raise one only after any `except` block has
+    closed, so it carries no `__context__` (the document never holds the cause).
+    """
+
+    category = "usage"  # the run result's failure category; the exit integer comes from the map
+
+    def __init__(self, text: str, *, code: str | None = None) -> None:
+        super().__init__(text)
+        self.text = text
+        self.code = code
+
+
+class UsageRefusal(RunRefusal):
+    """A request the CLI refuses before the run starts (exit 1): a bad `--notify`, a `--rows`
+    preview that cannot run, `--fidelity` with no mask table."""
+
+
+class EvidenceWriteRefusal(RunRefusal):
+    """The `--evidence-out` manifest could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
+
+
+class IntegrityWriteRefusal(RunRefusal):
+    """The post-scan report could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
 
 
 class Mode(str, Enum):
@@ -63,6 +103,8 @@ class RunContext:
     vault: Path
     key_label: str
     evidence_out: Path
+    result: Path | None
+    integrity_out: Path | None
     out_dir: Path | None
     notify: list[str]
     notify_on: NotifyOn
@@ -76,6 +118,8 @@ class RunContext:
     no_subset: bool
     otel_endpoint: str
     rows: int | None
+    sample: int | None
+    sample_root: str | None
     state: OutputState
 
     # Set by `_flow.execute` from `pipeline`, or from the project's only pipeline.
@@ -106,10 +150,20 @@ class RunContext:
     layout: RunLayout | None = field(init=False, default=None)
     # The one engine progress sink (`_progress.ProgressFanout`), built by `_flow`.
     progress: Any = field(init=False, default=None)
+    # SHA-256 of the YAML bytes read; the post-scan report and its file (`cli/io`, SCAN-ML C2a).
+    config_sha256: str | None = field(init=False, default=None)
+    _post_scan: dict | None = field(init=False, default=None)
+    _post_scan_file: Path | None = field(init=False, default=None)
     # The run-result collector riding on that sink, and the engine's `ExecutionResult` of the plain
     # branch; the one result builder (`_result`) reads both.
     _collector: Any = field(init=False, default=None)
     _execution: Any = field(init=False, default=None)
+
+    # `--sample`: the project found for the pipeline, the library holding its scratch, and the
+    # private scratch folder every sample output lands in (`_sample`).
+    _sample_project: Any = field(init=False, default=None)
+    _library: Any = field(init=False, default=None)
+    _scratch: Path | None = field(init=False, default=None)
 
     # Temp dir holding Parquet snapshots acquired from --duckdb-source inputs;
     # created only when the flag is used, torn down in the run's finally.
@@ -182,3 +236,30 @@ class RunContext:
         if folder is not None and any(folder in f.parents for f in files):
             members["output_dir"] = str(folder)
         return members
+
+
+def output_placement(ctx: RunContext) -> OutputPlacement:
+    """Where this run's relative outputs land, for the gate: the typed `--out-dir`, else the
+    project run folder; the typed side files join the collision rule either way."""
+    typed = tuple(
+        (flag, path)
+        for flag, path in (
+            ("--evidence-out", ctx.evidence_out),
+            ("--integrity-out", ctx.integrity_out),
+            ("--vault", ctx.vault),
+            ("--result", ctx.result),
+        )
+        if path is not None
+    )
+    # Each well-formed entry is protected even when another is malformed: the refusal for the bad
+    # spelling still writes a result document, and it must not land on a good database.
+    databases: list[Path] = []
+    for value in ctx.duckdb_source:
+        try:
+            (flag,) = parse_flags([value])
+        except DuckDBSourceError:
+            continue
+        databases.append(resolve_path(flag.db_path, ctx.config.parent))
+    if ctx.out_dir is not None:
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases))
+    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=tuple(databases))

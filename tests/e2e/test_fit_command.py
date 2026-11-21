@@ -244,8 +244,10 @@ class TestFitDpModeSelectionFailClosed:
         )
         assert [kw["numeric_bins"] for kw in seen] == [17]
 
-    @pytest.mark.parametrize("bins", ["0", "1", "-3"])
-    def test_plain_numeric_bins_below_two_is_a_usage_error(self, tmp_path: Path, bins: str) -> None:
+    @pytest.mark.parametrize("bins", ["0", "1", "-3", "1001", "100000"])
+    def test_plain_numeric_bins_outside_two_to_1000_is_a_usage_error(
+        self, tmp_path: Path, bins: str
+    ) -> None:
         out = tmp_path / "snap.json"
         result = runner.invoke(
             app,
@@ -273,18 +275,13 @@ class TestFitDpModeSelectionFailClosed:
         counts = {str(t["value"]): t["count"] for t in stats["top_values"]}
         assert counts == {"False": 30, "True": 1}
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="engine 0.28.1 can release a numeric bin held by 1 to 9 rows; fixed by engine "
-        "PR #732 (interior bin floor). Remove this marker when the CLI pins the release with it.",
-    )
     def test_plain_large_numeric_bins_release_no_bin_under_ten_rows(self, tmp_path: Path) -> None:
         src = tmp_path / "small.csv"
         # Round thousands, the shape the profiler leaves unflagged.
         values = np.random.default_rng(5).integers(40, 150, 200) * 1000.0
         pd.DataFrame({"salary": values}).to_csv(src, index=False)
         out = tmp_path / "snap.json"
-        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "100000", "-o", str(out)])
+        result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "1000", "-o", str(out)])
         assert result.exit_code == 0, result.output
         stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["salary"]["stats"]
         assert [c for c in stats["bin_counts"] if 0 < c < 10] == []

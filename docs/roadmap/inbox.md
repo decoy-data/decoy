@@ -18,6 +18,9 @@ Triage empties this page. Each item gets exactly one outcome:
 
 ## Untriaged
 
+- 2026-11-21, language write-up (owner: go with recommended): `decoy validate` on a `.decoy` file shows an engine schema error with the config path but no line number, while `compile_text` has the line. Fix inside row DECOY-LANG.
+- 2026-11-21, language write-up: check that the guide's `date_shift(min_days: -30, max_days: 30)` examples (02-masking.md, cheat-sheet.md, agent-card.md) still compile now that DATE-SHIFT-FORMAT requires `date_format` on text dates; fix the guide in that row if not.
+- 2026-11-21, language write-up: `decoy validate` accepts an S3 target that `decoy run` refuses. Cloud buckets are out of 1.0 (owner 2026-11-21), so this goes with row 64 CLI-CLOUD.
 - 2026-11-18, engine #695 review (FAKER-MIGRATE S1): masking with Faker `address_city` (and the
   reflected `city`) in locale `it_IT` is not deterministic across processes. The same seed and key
   give different output under different `PYTHONHASHSEED` values, on the real `run_pipeline` route,
@@ -41,6 +44,21 @@ Carried from the old open-questions list:
   `report summary`, `run --dry-run`, help panels, `relationships detect`.
 - The SBOM lock-mode refusal prints lock package names.
 - The engine `vault_key_mismatch` message still says "the config's seed does not decrypt this vault".
+
+- 2026-11-19, DECOY-LANG foreign-key experiment (engine 0.28.0 checkout, three-row tables, one run,
+  not investigated further): with a parent key masked by `faker` (`person_email`, namespace set,
+  `deterministic` off) and a relationship with `orphan_policy: remap`, the orphan child key was
+  remapped to the same fake value as an existing parent row, so the orphan joins to a parent it never
+  had. With `deterministic: true`, or with `hash`, the orphan got a distinct value. Possible safety
+  item (a wrong join reported as success); needs a repro on the pinned engine before triage.
+
+- 2026-11-19, owner question during DECOY-LANG: a fixed-width `layout` can only be written inline
+  in the pipeline file; there is no way to keep it in a separate file, as `column_names_file` does
+  for a headerless CSV. Idea: an engine source option `layout_file` (and the same on a fixed-width
+  target), read where `column_names_file` is read. YAML and `.decoy` would both get it with no
+  language change, since options pass through. The engine's fixed-width notes already name a COBOL
+  copybook import as a separate later step; this is the plain-file form of the same need. Engine
+  work, additive; likely Later.
 
 ## Freeze candidates (decide before REL-GATE)
 

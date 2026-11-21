@@ -47,6 +47,7 @@ CREATED_IN = {
     "atomic-writer-allow": "L1b.1",
     "gate-single-entry-allow": "VALIDATE-ALWAYS-P1",
     "csv-read-allow": "CLI-DIALECT-C",
+    "scan-call-allow": "FREEZE-ITEM3-C1",
     "target-writes-allow": "CLI-FMT-A2",
     "manifest-path-forward-allow": "PROJECT-LAYOUT-P3",
     "output-placement-allow": "PROJECT-LAYOUT-P2b",
@@ -62,6 +63,8 @@ CREATED_IN = {
     "library-writer-allow": "L1b.2",
     "kind-canary-pending": "L1c.2",
     "one-error-emitter": "CL0",
+    "run-exit-owners": "RESULT-C-DOC2",
+    "run-exit-owners-io": "SCAN-ML-C2a",
     "env-reads": "CL2",
     "json-stdout-writes": "CL2",
     "exit-code-owner": "CL3",
@@ -69,6 +72,7 @@ CREATED_IN = {
     "retired-name-pending": "NAME-REMOVAL-C1",
     "banned-text-allow": "PROP-C-G1",
     "outbound-network-owners": "FREEZE-S6",
+    "old-org-refs": "CLI-REL-S0id",
 }
 SNAPSHOT = json.loads(
     (bs.SENTRY / "allowlist-before.json").read_text(encoding="utf-8")

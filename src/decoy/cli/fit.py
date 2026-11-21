@@ -334,7 +334,7 @@ def fit(
     numeric_bins: int = typer.Option(
         None,
         "--numeric-bins",
-        help="Least bin count per number column, 2 or more (engine default if omitted).",
+        help="Least bin count per number column, 2 to 1000 (engine default if omitted). A plain fit floors interior bins at 10 rows, so it can write fewer bins.",
     ),
     dp_allow_omit: bool = typer.Option(
         False,

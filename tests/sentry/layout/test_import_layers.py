@@ -49,7 +49,8 @@ LAYERS: tuple[str, ...] = (
     "ui | distribution | notify | telemetry | templates",
     "_mask_secret | _mask_secret_guidance | _native_gate | _atomic | _row_sample | _env_flags",
     "_config_file | _outbound",
-    "_private_file | _version | _yaml_errors",
+    "_private_file | _version | _yaml_errors | lang",
+    "_source_positions",
 )
 
 
@@ -317,14 +318,14 @@ def test_a_reviewed_new_package_goes_green_only_with_its_snapshot(
     before = ignore_keys(cfg.read_text(encoding="utf-8"))
     _edit(
         cfg,
-        "    _private_file | _version | _yaml_errors\n",
-        "    _private_file | _version | _yaml_errors | _probe_leaf\n",
+        "    _private_file | _version | _yaml_errors | lang\n",
+        "    _private_file | _version | _yaml_errors | lang | _probe_leaf\n",
     )
     assert lint_scratch(tree)
     text = cfg.read_text(encoding="utf-8")
     assert ignore_keys(text) == before
     assert not _snapshot_with(text, LAYERS), "a config edit without its snapshot must be red"
-    reviewed = (*LAYERS[:-1], LAYERS[-1] + " | _probe_leaf")
+    reviewed = (*LAYERS[:-2], LAYERS[-2] + " | _probe_leaf", LAYERS[-1])
     assert _snapshot_with(text, reviewed)
     row = (
         "| Probe leaf | `src/decoy/_probe_leaf/` | `src/decoy/_probe_leaf/__init__.py`"

@@ -4,11 +4,30 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-21 (Windows QA).** Windows stays in 1.0 (the 2026-11-18 call) and is built last, after the V1 build. QA covers the Windows build as well as Linux and macOS: the Windows install, upgrade, rollback and demo run are QA items before release. Install stays a one-line script (`install.ps1`), with no `.exe` or setup wizard in 1.0. A Windows code-signing certificate is an open owner question.
+- **2026-11-21 (REL-GATE Q3, go with recommended).** (a): the engine flips `RELEASE_PHASE` to `"ga"` in the D-4 launch engine release, so the 1.0.0 CLI ships on a binding compatibility contract. RG-GA and RG-GA-C are built before the freeze.
+- **2026-11-21 (work found off the roadmap, go with recommended).** COLUMN-SHAPE-RULE (owner decision of the same day; `bucket_perturb` format detection is a freeze item) becomes a 1.0 row in the mask group. PRE-SCAN-RUN stays the 1.0 row added by CLI #368. F07 82-E3b (engine #684) is a new feature on row 82, which the 2026-11-18 scope triage moved to 1.1, so it is held as a draft until 1.1 and no further F07 slices are built before 1.0.
+- **2026-11-21 (language write-up findings).** Cloud bucket delivery stays out of 1.0 (row 64 CLI-CLOUD). Go with recommended on the rest: `decoy run` running the `pre_scan` block becomes 1.0 row PRE-SCAN-RUN; the missing line number on `.decoy` schema errors goes into DECOY-LANG; the guide `date_shift` examples are checked inside DATE-SHIFT-FORMAT.
+- **2026-11-21 (engine data-flow gaps).** Go with recommended on the twelve gaps in vault `30_Resources/Decoy-Engine-Data-Flow-Gaps.md`. Gap 2 (no row-count check after a mask handler on the pandas paths) becomes 1.0 row HANDLER-ROW-COUNT. Gap 1 (config read after compile) and gaps 4, 5, 6 and 8 (mutation and golden-test depth) are v1+ candidates in the run group. Gap 9 (the `Plan` docstring seed history) and the gap 7 contract sentence on `vault-key` are doc fixes carried by the HANDLER-ROW-COUNT slice. Gaps 3, 7, 10, 11 and 12 are not gaps.
 - **2026-11-19 (init wizard stops).** The `decoy init` guided wizard (row 32b) is not developed further. Finish
   what is open (engine #653 E1 and #654 E2) and stop; that is the 1.0 scope for this surface. If the surface
   is incomplete as it stands, 1.0 reduces it to simple table structures only. The owner is building a different
   way to author pipelines. E1 and E2 ship in the experimental tier, since no 1.0 command calls them. The rest of
   `C:plan/init-wizard-v1-rest` is stopped.
+- **2026-11-19 (Decoy language).** The Decoy language (`.decoy` files) is a 1.0 focus: it is the
+  native way to define a pipeline, ahead of the wizard plus hand-edited YAML. YAML stays supported.
+  `decoy validate`, `decoy run` and the other pipeline commands read `.decoy` directly in 1.0. An
+  inferred line from `decoy init` carries a `?` review marker and `decoy run` refuses until it is
+  cleared. The `lark` dependency and the lock regeneration it needs are approved. Row DECOY-LANG;
+  plan `docs/plans/2026-11-19-decoy-language-completion.md` (decisions E1, E3, E4, E5).
+- **2026-11-19 (Decoy language commands, O1 to O5).** The format command is `decoy fmt`. A run
+  record keeps the compiled YAML next to the `.decoy` file's hash. A folder with both
+  `pipeline.yaml` and `pipeline.decoy` is refused. `decoy init` writes `.decoy` by default at 1.0,
+  with `--yaml` for the old output, after the loader and the run commands read `.decoy`; this is
+  an output-format change only, so the wizard freeze otherwise holds. The subset guard gets one
+  narrow exemption: `lang/_subset.py` may build the `subset` block (stores and dict displays);
+  pop, delete and filtering stay banned everywhere. Plan
+  `docs/plans/2026-11-19-decoy-language-commands.md`.
 - **2026-11-19 (physical seam and Faker).**
   - Physical seam: option C. The physical-plan compiler stays and becomes a "what would run and why"
     explainer for every route; execution stays in today's routes. The shadow-only execution branches

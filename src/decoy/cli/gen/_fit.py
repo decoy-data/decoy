@@ -77,9 +77,9 @@ def fit_exact_snapshot(
 
     `numeric_bins` is the least bin count of a number column; `None` keeps the engine default.
     """
-    if numeric_bins is not None and numeric_bins < 2:
+    if numeric_bins is not None and not 2 <= numeric_bins <= 1000:
         raise FitSourceError(
-            "--numeric-bins must be a whole number of 2 or more.", "fit_numeric_bins_invalid"
+            "--numeric-bins must be a whole number from 2 to 1000.", "fit_numeric_bins_invalid"
         )
     import numpy as np
     from decoy_engine import distribution_snapshot_document

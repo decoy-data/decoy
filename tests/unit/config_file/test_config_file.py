@@ -15,7 +15,7 @@ import pytest
 from decoy._config_file import (
     ConfigFileError,
     load_config_mapping,
-    parse_config_mapping,
+    load_pipeline,
     read_config_text,
 )
 
@@ -81,10 +81,12 @@ def test_a_read_failure_is_the_os_error_unchanged(tmp_path: Path) -> None:
         load_config_mapping(tmp_path / "missing.yaml")
 
 
-def test_parse_config_mapping_takes_text() -> None:
-    assert parse_config_mapping("a: 1\n") == {"a": 1}
+def test_load_pipeline_takes_text_without_reading_the_path(tmp_path: Path) -> None:
+    path = tmp_path / "absent.yaml"
+    assert load_pipeline(path, text="a: 1\n").config == {"a": 1}
+    assert load_pipeline(path, text=b"\xef\xbb\xbfa: 1\n").config == {"a": 1}
     with pytest.raises(ConfigFileError) as info:
-        parse_config_mapping("")
+        load_pipeline(path, text="")
     assert info.value.code == "yaml.empty"
 
 

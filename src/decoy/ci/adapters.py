@@ -12,6 +12,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from decoy._config_file import ConfigFileError, read_config_text
+from decoy._source_positions import Position, YamlPositionIndex
 from decoy.ci.contracts import (
     CheckOutcome,
     DriftCheck,
@@ -19,9 +20,9 @@ from decoy.ci.contracts import (
     PipelineRef,
     RegressionRef,
     SafeFinding,
+    SourceLocation,
 )
 from decoy.ci.debug import DebugSink
-from decoy.ci.locations import YamlSourceIndex
 from decoy.ci.manifest import LoadedManifest
 from decoy.ci.rule_codes import EVIDENCE_KINDS, rule_code, validation_codes
 from decoy.cli.exit_codes import (
@@ -32,6 +33,19 @@ from decoy.cli.exit_codes import (
     EXIT_USAGE,
     EXIT_WARNINGS,
 )
+
+
+def _source_location(rel: str, position: Position | None) -> SourceLocation | None:
+    """The report's location for a file-relative `Position`; a file-level one has no region."""
+    if position is None:
+        return None
+    return SourceLocation(
+        uri=rel,
+        start_line=position.line,
+        start_column=position.column,
+        end_line=position.end_line,
+        end_column=position.end_column,
+    )
 
 
 def failed(check_id: str, kind: str, sink: DebugSink) -> CheckOutcome:
@@ -101,7 +115,7 @@ def validation_outcome(
                 findings=[finding],
                 exit_code=EXIT_USAGE,
             )
-        index = YamlSourceIndex.from_text(rel, text)
+        index = YamlPositionIndex.from_text(text)
         result = run_config_gate(path, text) if mode == "config" else run_gate(path, text)
         findings: list[SafeFinding] = []
         for item in result.findings:
@@ -116,7 +130,7 @@ def validation_outcome(
                         else "ci.validation_warning"
                     ),
                     check_id=check_id,
-                    location=index.locate(logical),
+                    location=_source_location(rel, index.locate(logical)),
                     logical_path=logical,
                     artifact_path=rel,
                 )

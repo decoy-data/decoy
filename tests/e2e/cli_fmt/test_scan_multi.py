@@ -199,6 +199,7 @@ _FLAT_GOLDEN: dict[str, type | tuple[type, ...]] = {
     "reid_risk_score": (int, float),
     "quasi_identifier_groups": list,
     "saved": type(None),
+    "detectors": list,
 }
 
 

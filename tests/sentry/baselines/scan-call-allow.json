@@ -1,0 +1,9 @@
+{
+ "sentry_id": "scan-call-allow",
+ "created_in": "FREEZE-ITEM3-C1",
+ "entries": {
+  "cli/init.py::_scaffold_from_file": {
+   "reason": "`decoy init` profiles its input for strategy inference; the wizard is stopped and the profile is not a scan result."
+  }
+ }
+}

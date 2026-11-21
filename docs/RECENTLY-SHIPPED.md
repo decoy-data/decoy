@@ -11,6 +11,52 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-21: merges of the day
+
+- **Engine #747 (STAMP-IMPORT, `94ec3cb6`):** the release stamp no longer deletes the `UNRELEASED` import from a reason module, so a new unreleased code on a stamped module no longer fails at import. A sentry checks every reason module.
+- **Engine #741 (row 79, F09 E1, `152de220`):** vaults are written as v3 with an authenticated, versioned header; v2 vaults open read-only. An older engine cannot open a v3 vault.
+- **CLI #365 (row 63, SAMPLE SC1, `1c63fe74`):** the sample run writes into a staged folder and refuses unsafe output names before it writes.
+- **Engine #745 (COLUMN-SHAPE-RULE E0, `5bc0227e`):** `bucket_perturb` never writes an unparsed date cell through unmasked.
+- **CLI #368 (`0da58741`):** roadmap rows PRE-SCAN-RUN and HANDLER-ROW-COUNT.
+- **Engine #684 (row 82, F07 E3b) not merged:** held as a draft until 1.1, because row 82 is a Later row.
+
+## 2026-11-21: engine 0.28.2 repin (CLI)
+
+- **CLI**: the engine repin to 0.28.2 (tag `v0.28.2`, engine #740, `2bee0c523`). `requirements-certified.txt` keeps its 70 pins; fingerprint is now `44aaa90f...`, a certified row in the engine.
+
+## 2026-11-21: roadmap catch-up for merges of 2026-11-13 to 2026-11-20
+
+- Row 24zx (MAC-WHEEL-RUNNERS) is closed. Its only slice, E5 of the V1 fix batch, is engine #651 (2026-11-20): a PR that does not touch the native companion no longer waits for a macOS runner. The owner swapped the three required `companion-wheel-macos` checks for `companion-wheel-macos-ok` on 2026-11-20. Row 24zo (CI-SELECT-GAP) shares slice E5 (`engine-gate/verdict` status and the `verify` check) but stays open until the owner adds that status to the required checks. Earlier slices of the same batch: E1 #649 (row 24zp) and E2 #648 (row 24zu).
+- Row 24zi (PROP-FALLBACK) stays open. E-F0 is engine #617 (2026-11-20): `text_mask` refuses detector and strategy pairs the engine cannot run, which closed a live leak. Slices E-F1, E-F2, C-F1a and C-F1b are not merged.
+- FREEZE-SURFACE: S2 (CLI #343, hidden `decoy demo --ref` and `--rows` removed), S7b (CLI #341, CLI tag census) and the public renames table (engine #730) are merged. Every slice is now merged; the row waits only on a sign-off.
+- FREEZE-OUTPUT: O1 (engine #702, 2026-11-19). `when:` compares integers exactly beyond 2**53, and one blank-row rule holds on every route. O2 is not merged.
+- DATE-SHIFT-FORMAT: S4a (engine #721, `jitter_days` through one window resolver), S4b (engine #728, `date_format` required with a coded refusal, detected format in the starter) and C1 (CLI #342, `decoy init` writes `date_format`). Left: the engine release and the CLI repin.
+- GEN-WINDOWED-BATCH S1 (engine #718, 2026-11-19): batched derive, parse, shift and format for `windowed_date`, same bytes.
+- NONFK-OOM S1 (engine #719) and S4a (engine #717): the resident lower bound with its baseline, and the multi-table split decided in `decide_route`.
+- OUTPUT-METADATA-LEAK: E0 (engine #692), E1 (engine #700) and E2 (engine #726, 2026-11-20). Left: C1.
+- Row 74 (F26): E1 (engine #638) and E2a (engine #641), both 2026-11-20.
+- Row 24p (GEN-PROVIDERS) E1 (engine #661, 2026-11-20). Row 24n (GEN-REL) slice 1 (engine #523, 2026-11-20). Row 24s (GEN-CATALOG) GC3-E (engine #643, 2026-11-20). Row 24f E2 (engine #732, 2026-11-20).
+- Row 24e (CLI-QA1) DI close: E0 (engine #611), E1 (engine #615) and E2 (engine #736). Left: C1 and C2.
+- Row 56: C1 (CLI #292), C1b (CLI #293) and C2 (CLI #304) of the retired-name removal. Left: C3.
+- DECOY-LANG: the compiler, converter and formatter (CLI #333, 2026-11-20).
+- Row 63a E5b (engine #605, 2026-11-16) and row 61 DELIV C1 (CLI #237, 2026-11-13).
+- Rows 24zk and 24zl: C-S1a (CLI #312), C-G1 (CLI #318) and E-G1 (engine #688, 2026-11-20).
+- QA-BETA S0 (CLI #356), S1a (CLI #358) and S1b (CLI #360), all 2026-11-20. The owner paused the program after S1b.
+- Also merged on 2026-11-20: CLI #362 (the baseline ratchet gains owner-approved `approved_growth` rows) and engine #739 (contract checklist wording; docs only).
+
+## 2026-11-20: `decoy.scan()` returns the scan document (FREEZE-SURFACE item 3)
+
+- FREEZE-SURFACE item 3 (audit J2) is done. CLI C1 #354 put `decoy scan` and `decoy demo` behind one shared scan call, `decoy.cli.scanning.scan_descriptors`. C2 ports `decoy.scan()` onto it: it returns the value-free `scan-set/v1` document that `decoy scan --output` writes, with the CLI's input rules (a CSV states `has_header`, `.tsv` is tab-delimited, the default is 10,000 rows). This is a breaking Python API change, owner-approved before GA. A sentry now fails on any other first-party call of `scan_sources`, `scan_set_to_dict` or `profile_columns`, except `decoy init`.
+
+## 2026-11-20: optional ML detectors in scans (row 32a)
+
+- Row 32a (SCAN-ML) is closed. Engine: M0 #396, M1 #405, M5 #508, M4 #512 and M3a #602. CLI: C1 #298 (`decoy models`, the setup step, the model preflight and `decoy doctor` rows), C2a #301 (the run post-scan report and the exit 4 block) and C2b #351 (`decoy scan --detectors`; a model that is not installed is refused before any data is read). The last slice, M3b (classifier suggestions in a starter config), moves to the DECOY-LANG row as S8 (owner 2026-11-20), because the init wizard it was planned onto stopped on 2026-11-19.
+
+## 2026-11-20: run result document and F29 remainder (rows 62 and 66)
+
+- Row 62 (RESULT) is closed. Every slice of plan `result-remainder` is merged. Engine: E2a #535, E-CAP #536, E3a #538, E-OOM #544, E2b #543, E3b #552 and the exit 5 disk code #551, all in engine 0.28.1, which the CLI pins. CLI: C-EXIT #228, C-REASON #229, C-CAP #240, C-DOC1 #336, C-DOC2 #344 and C-DOC3 #350, which adds `--result PATH` to write the run result document.
+- Row 66 (F29 remainder) is closed. Its CLI consumer work (C1) is the row 62 CLI work above, all merged, and C0 is engine #367. The F31 hook no longer applies: the owner closed F31 for CLI V1 on 2026-11-12.
+
 ## 2026-11-20: freeze slices S5 and S7a (engine)
 
 - `when:` filters reserve `null`, `true`, `false`, `between`, `like`, `ilike`, `matches`, `startswith` and `endswith` as column names, so later grammar can use them (engine #722).
@@ -33,13 +79,16 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-20
 
+- **Roadmap** (rows 24zb and 24b, both closed): row 24zb DATE-SHIFT-UNKEYED. An unkeyed `date_shift` is refused in V1. The engine deletes the MD5 offset path and pins the refusal (engine #612, `57f5d25f1`, 2026-11-16). CLI #346 (`be6e452e`, 2026-11-20) tests that `decoy run`, `decoy run --chunked` and `decoy.mask()` each refuse an unkeyed `date_shift` with `keyed_strategy_requires_secret` and write nothing. Row 24b QA-GATE: `decoy validate` refuses what `run` would refuse. A declared column missing from the source exits 1 at validate (CLI #300, `f7deac1e`, 2026-11-17). `fpe` with no namespace exits 1 at validate (engine #569, `e6eeea105`, 2026-11-13). A statistical column with no usable labels gives `statistical_stats_degenerate` at validate (engine #619, `b3206c042`, 2026-11-17; CLI test in #348, `73b85a43`, 2026-11-20). Remote s3 and gcs sources get a warning at validate, not an open, by design (CLI #300).
+- **Roadmap** (row 84, closed): F24 engine half, the full-lifecycle job estimate. Its slices 84-E1 and 84-E2 shipped in engine 0.28.0, and the row closed once the CLI pinned that engine; it now pins 0.28.1. The plan has no CLI change.
+- **Roadmap** (row 34, closed): L1b-cli, the local record store. Every slice is merged: L1b.1 shared atomic writer (#85, `c16a5fa`), L1b.2 store core (CLI #205, `16135525`), L1b.3 refs and retention (CLI #206, `f9f6b680`) and L1d library scratch (CLI #214, `b1478867`). Its Windows lane runs with the Windows chain (row 6) after the V1 build.
 - **CLI** (CLI #340, stacked on #327): the CLI halves that wait on engine 0.28.1, closing four rows. PROFILE-SAMPLE-LABELS C1: `decoy scan` labels a sampled count (`10,000 of about 28,058 (sample, head)`), lists no key on a sample, and `--json` gains `basis`, `scanned_rows` and `row_count_exact` with `row_count` now the source count; `scan show` labels a sampled saved scan. Row 24zm C1: the `decoy.scan()` docstring says the saved profile is floored. Row 24z Z-C1: `decoy run --post-validate` prints a line for a deterministic `faker` column whose distinct sources merged. Row 24zu: a test pins that `decoy demo` then `decoy report integrity` exits 0.
 - **CLI** (CLI #327): the engine repin to 0.28.1 (tag `v0.28.1`, carries 0.28.0). `requirements-certified.txt` has 70 pins (adds `joserfc`, `rfc8785` and `pynacl`) and fingerprint `b61dcfd6...`, which the engine lists as a certified row. Rows 24zp FIT-YEAR-CODING and 24zq NESTED-INIT-REG (engine halves merged) close with the pin. The CLI halves of rows 24zm, 24f, 24z, 24zu and PROFILE-SAMPLE-LABELS follow in a stacked change.
 - **Roadmap**: row 32b INIT-WIZARD closed under the owner's 2026-11-19 decision to stop the guided wizard. 1.0 keeps today's `decoy init` (presets, and `decoy init <file>` with `# REVIEW:` comments) plus the engine pieces E3 (engine #407), E1 (engine #653, `56a06f1b3`, 2026-11-19: `column_entry` and `apply_review`) and E2 (engine #654, `40e2bb275`, 2026-11-19: `finding_edits`). E1 and E2 ship in the experimental tier. The rest of `C:plan/init-wizard-v1-rest` is stopped; pipeline authoring moves to DECOY-LANG.
 
 ## 2026-11-19
 
-Engine 0.28.0 (tag `v0.28.0`, engine #698, `7dc9e30bd`) was cut at 00:45 UTC. The CLI pins 0.28.1 (CLI #327). Engine entries below 0.28.0 marked "after the tag" are in no release yet.
+Engine 0.28.0 (tag `v0.28.0`, engine #698, `7dc9e30bd`) was cut at 00:45 UTC. The CLI pins 0.28.2 (CLI #327, then the 0.28.2 repin). Engine entries below 0.28.0 marked "after the tag" are in no release yet.
 
 - **Engine** (`fa656aa23`, engine #700; `ce542ffaa`, engine #692, 2026-11-18): OUTPUT-METADATA-LEAK slices E0 and E1 (roadmap row OUTPUT-METADATA-LEAK, partly merged). E0 is the canary matrix across every output route. E1: published Parquet files carry only an allow-list of key/value metadata, through new `output_schema` and `output_table`. Extension-type columns are written as their storage type, except `arrow.uuid`, `arrow.bool8`, `arrow.json` and the pandas period and interval types. E2 (carrier sites) and C1 (CLI) are left.
 - **Engine** (`cc0149152`, engine #707): PROFILE-SAMPLE-LABELS slice E0 (partly merged). `ProfileSource.sample_frame(n)` returns n rows unless the source ended. Cloud CSV scans now profile the requested 10,000 rows, so their null counts, distinct counts and profile hash can change.

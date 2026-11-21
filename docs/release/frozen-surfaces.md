@@ -8,6 +8,8 @@ reads this table: every path in the last two columns must exist, every item of t
 `src/decoy/__init__.py` and each file in `docs/schemas/`. A row with no test says
 `accepted-known-limit: <V2-LOG id>` instead, and the readiness record lists it.
 
+The "Hidden commands and options" row lists each hidden command and option as `name: tier`, with tier `internal` (a `_` command, outside the contract) or `frozen-hidden` (frozen like a visible name). The sentry for that row walks the live command tree and fails on a hidden name with no span or a span with no hidden name.
+
 The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 
 | Surface | Completeness source | Owning code | Pinning test or snapshot |
@@ -19,7 +21,7 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | `--json` error object | versioning.md item 4, `docs/schemas/decoy-error-v1.schema.json` | `src/decoy/ui/output.py` | `tests/unit/test_ui_emit_error.py`, `tests/e2e/first_user/test_items_error_envelope.py`; gate and warning reason codes (`GATE_CODES`, `WARNING_CODES`, `_CLI_GATE_CODES`, owned by `src/decoy/cli/io/_layout_errors.py` and `src/decoy/ci/rule_codes.py`): `tests/sentry/io_policy/test_layout_errors.py`, every other reason code, including `CLI_WARNING_CODES`, is not pinned (a known limit) |
 | Bundled template set | versioning.md item 5 | `src/decoy/templates/` | `tests/e2e/test_release_smoke.py`, `tests/unit/test_bundled_templates.py` |
 | CI manifest | `docs/schemas/decoy-ci-v1.schema.json` | `src/decoy/ci/` | `tests/unit/test_ci_manifest.py` |
-| Python API: `mask`, `scan`, `MaskSecretConfigError`, `ConfigValidationError`, `UnsupportedCloudEndpointError` | `_LAZY_API` in `src/decoy/__init__.py` | `src/decoy/api.py` | `tests/unit/test_api.py` (the signature tests pin `mask` and `scan`) |
+| Python API: `mask`, `scan`, `MaskSecretConfigError`, `ConfigValidationError`, `UnsupportedCloudEndpointError` | `_LAZY_API` in `src/decoy/__init__.py` | `src/decoy/api.py` | `tests/unit/test_api.py` (the signature tests pin `mask` and `scan`), `tests/unit/api_scan/` (`scan` returns the same document as `decoy scan --output`) |
 | Version document and installer contract (tags `cli-version-document/v1`, `cli-bundle-manifest/v1`) | `src/decoy/distribution/` | `src/decoy/distribution/` | `tests/unit/test_distribution.py`, `tests/unit/test_distribution_acceptance.py`, `tests/unit/test_version_document_schema.py` |
 | `cli-local-1` evidence payload | the evidence writer | `src/decoy/cli/evidence.py` | `tests/unit/test_evidence.py` |
 | CLI version literal | `src/decoy/_version.py` | `src/decoy/_version.py` | `tests/unit/release/test_version_agreement.py` |
@@ -29,6 +31,7 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | `decoy-project/v1` project marker kind | tag census | `src/decoy/cli/io/_project.py` | `tests/unit/project_layout/test_layout.py` |
 | `scan-set/v1` saved scan tag | tag census | `src/decoy/cli/io/_scan_set.py` | `tests/e2e/test_scan_command.py` |
 | Tag literals built with f-strings or concatenation | tag census | `tests/sentry/release/_tags.py` | accepted-known-limit: S7B-KL-1 |
+| Hidden commands and options | `scan _scan: internal`; `validate _gate: internal`; `upgrade --url: frozen-hidden`; `ci check --unsafe-debug-log: frozen-hidden`; `run --sample: frozen-hidden`; `run --sample-root: frozen-hidden` | `src/decoy/cli/scan.py`, `src/decoy/cli/validate.py`, `src/decoy/cli/upgrade.py`, `src/decoy/cli/ci.py`, `src/decoy/cli/run/__init__.py` | `tests/sentry/release/test_hidden_names.py` |
 | Public renames before 1.0 (pointer to the engine contract) | the engine taxonomy rename | `docs/release/public-renames.md` | `tests/sentry/release/test_retired_name_residual.py` |
 
 ## Limits of the `--json` snapshot
