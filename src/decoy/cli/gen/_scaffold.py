@@ -1,7 +1,7 @@
 """`decoy init <csv> --preset generate`: fit a snapshot from a CSV and write a generate config.
 
 The snapshot and the config are one unit. The pair is validated from a temporary folder with the
-same relative layout first, then `_atomic.publish_local_targets` publishes both: a failure on
+same relative layout first, then `_atomic_batch.publish_local_targets` publishes both: a failure on
 either replace restores the old files or removes the new ones. Source patterns: dbt init
 (scaffold, then the user edits) and the stage-then-rename discipline in `_atomic.py`.
 """
@@ -17,8 +17,9 @@ from typing import Any, NoReturn
 import typer
 import yaml
 
-from decoy import _atomic
-from decoy._atomic import LocalTarget, WriteMode
+from decoy import _atomic, _atomic_batch
+from decoy._atomic import WriteMode
+from decoy._atomic_batch import LocalTarget
 from decoy._config_file import load_pipeline
 from decoy._resources import ResourceError, read_fit_max_rows
 from decoy.cli.exit_codes import EXIT_USAGE
@@ -312,7 +313,7 @@ def _publish_pair(
         if columns != declared:
             raise _OptIn(columns)
 
-    _atomic.publish_local_targets(
+    _atomic_batch.publish_local_targets(
         [
             LocalTarget(
                 layout.snapshot,

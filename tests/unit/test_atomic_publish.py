@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from decoy import _atomic, _private_file
-from decoy._atomic import AtomicWriteError, LocalTarget, WriteMode, publish_local_targets
+from decoy._atomic import AtomicWriteError, WriteMode
+from decoy._atomic_batch import LocalTarget, publish_local_targets
 
 posix = pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits and directory locks")
 
@@ -330,3 +331,13 @@ def test_a_failed_removal_of_a_new_target_is_reported_not_ignored(
     assert err.left == ("a.json",) and err.kept == ()
     assert "/secret" not in str(err)
     assert first.read_bytes() == b"new-a" and not second.exists()
+
+
+def test_the_batch_module_imports_first_in_a_fresh_interpreter() -> None:
+    import subprocess
+    import sys
+
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", "import decoy._atomic_batch"], capture_output=True
+    )
+    assert done.returncode == 0, done.stderr.decode()

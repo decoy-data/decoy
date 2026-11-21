@@ -80,13 +80,11 @@ __all__ = [
     "ATOMIC_TARGET_EXISTS",
     "ATOMIC_WRITE_FAILED",
     "AtomicWriteError",
-    "LocalTarget",
     "WriteMode",
     "describe",
     "destination_entry",
     "fsync_directory",
     "is_device_name",
-    "publish_local_targets",
     "replace_symlink",
     "staged_local_target",
     "staged_private_target",
@@ -655,7 +653,3 @@ def _backup(real: Path) -> str:
     name = real.parent / f".{real.name}.decoy-{secrets.token_hex(6)}.bak"
     os.link(real, name)
     return str(name)
-
-
-# Last, because `_atomic_batch` reads this module's names while it loads.
-from decoy._atomic_batch import LocalTarget, publish_local_targets  # noqa: E402

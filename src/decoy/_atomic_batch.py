@@ -1,13 +1,11 @@
 """The one-folder batch publish, split out of `_atomic` to keep that file under its size cap.
 
 `publish_local_targets` publishes a few files of one folder as one rollback unit; the rules
-are in `_atomic`'s docstring. `_atomic` re-exports `LocalTarget` and `publish_local_targets`,
-so callers and the sentries keep importing them from `decoy._atomic`. Import this module only
-through `decoy._atomic`: the two modules need each other, and `_atomic` is the one that loads
-first. Every step that moves or links a file (`_stage_bytes`, `_backup`, `_publish`,
-`_rollback`) stays in `_atomic`, the one choke point for them, and is read off that module at
-call time, so a test that patches `_atomic._publish` still reaches the batch. This module
-holds the folder lock and the order of the steps.
+are in `_atomic`'s docstring. This module depends on `_atomic` and `_atomic` never imports it.
+Every step that moves or links a file (`_stage_bytes`, `_backup`, `_publish`, `_rollback`)
+stays in `_atomic`, the one choke point for them, and is read off that module at call time,
+so a test that patches `_atomic._publish` still reaches the batch. This module holds the
+folder lock and the order of the steps.
 """
 
 from __future__ import annotations
