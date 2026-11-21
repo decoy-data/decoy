@@ -44,7 +44,7 @@ def test_the_registry_lists_every_planned_surface_once() -> None:
 
 def test_every_surface_names_its_check() -> None:
     for s in _doc()["surface"]:
-        assert set(s) == {"id", "name", "check"}
+        assert {"id", "name", "check"} <= set(s) <= {"id", "name", "check", "numeric_matches"}
         assert s["check"] in CHECKS
     cells = [s["id"] for s in _doc()["surface"] if s["check"] == "cells"]
     assert cells == ["output-data-files"]

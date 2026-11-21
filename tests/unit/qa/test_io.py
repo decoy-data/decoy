@@ -234,3 +234,40 @@ def test_safe_errors_carry_no_cause_or_context(tmp_path: Path) -> None:
         qio.make_private_dir(tmp_path / "plain")
     for err in (first.value, second.value):
         assert err.__cause__ is None and err.__context__ is None
+
+
+def test_an_exclusive_claim_serializes_holders_and_leaves_no_lock_behind(tmp_path) -> None:
+    import threading
+
+    from scripts.qa import io as qio
+
+    key = tmp_path / "pass" / "x.toml"
+    inside = []
+    order: list[str] = []
+
+    def work(n: int) -> None:
+        with qio.exclusive_claim(key):
+            inside.append(n)
+            assert len(inside) == 1, "two holders at once"
+            order.append(f"in{n}")
+            inside.remove(n)
+
+    threads = [threading.Thread(target=work, args=(n,)) for n in range(8)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(order) == 8
+    assert list((tmp_path / "pass").iterdir()) == []
+
+
+def test_append_private_line_is_private_and_refuses_a_symlink(tmp_path) -> None:
+    import pytest
+    from scripts.qa import io as qio
+
+    path = tmp_path / "w.jsonl"
+    qio.append_private_line(path, "a")
+    qio.append_private_line(path, "b")
+    assert path.read_text() == "a\nb\n" and oct(path.stat().st_mode & 0o777) == "0o600"
+    link = tmp_path / "link"
+    link.symlink_to(path)
+    with pytest.raises(OSError):
+        qio.append_private_line(link, "c")

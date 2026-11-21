@@ -127,9 +127,9 @@ No fixture YAML sets `global_settings.mask_secret_ref`. Every command that needs
 
 Marker sweep: every text cell holds `qamark` plus a number, and `data/markers.txt` lists every text
 marker and every `code` value (the digits `fpe` reverses carry no text marker). The sweep is
-`grep -rFf data/markers.txt <captured files>`, run only on files that exist. Exit 1 (no match) is a
-pass; exit 0 is a finding unless the match is in a `passthrough` column of a masked output; exit 2
-(missing file) means the check did not run.
+`python -m scripts.qa.sweep --needles data/markers.txt <captured files>`, run from the repository
+root. Exit 1 (no match) is a pass; exit 0 is a finding unless the match is in a `passthrough`
+column of a masked output; exit 2 (a missing file, or nothing read) means the check did not run.
 
 Services: the checks that reach an external service get it from a local container where a faithful
 one exists, and otherwise from test credentials the owner provides for a throwaway account. Every
