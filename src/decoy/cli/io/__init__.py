@@ -117,6 +117,7 @@ from decoy.cli.io._pipelines import (
     out_dir_option,
     parse_pipeline_token,
     pipeline_argument,
+    pipeline_label,
     pipeline_option,
     resolve_pipeline,
     run_history,
@@ -144,6 +145,7 @@ from decoy.cli.io._project import (
     write_decoy_gitignore,
     write_project_marker,
 )
+from decoy.cli.io._run_outputs import RunOutput, run_outputs
 from decoy.cli.io._scan_set import (
     ScanSetFormatError,
     load_scan_set,
@@ -212,6 +214,7 @@ __all__ = [
     "RunFolder",
     "RunHistory",
     "RunLayout",
+    "RunOutput",
     "ScanSetFormatError",
     "TargetFormatError",
     "UnsafeFileError",
@@ -268,6 +271,7 @@ __all__ = [
     "parse_pipeline_token",
     "pipeline_argument",
     "pipeline_identity",
+    "pipeline_label",
     "pipeline_name_for",
     "pipeline_option",
     "post_scan_members",
@@ -292,6 +296,7 @@ __all__ = [
     "resolved_output_collisions",
     "resolved_source_config",
     "run_history",
+    "run_outputs",
     "run_report",
     "sample_target_format",
     "scan_set_from_data",
