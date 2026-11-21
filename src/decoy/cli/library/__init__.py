@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from decoy.cli.library._prune import Rule as PruneRule
     from decoy.cli.library._prune import policy_rules, prune_apply, prune_preview
     from decoy.cli.library._resolve import TargetError, resolve_target
-    from decoy.cli.library._run_records import StoreOutcome, store_evidence
+    from decoy.cli.library._run_records import StoreOutcome, store_evidence, store_run_result
     from decoy.cli.library._scratch import clean_all, clean_preview
     from decoy.cli.library._store import Library, PutResult, open_library
 
@@ -72,6 +72,7 @@ __all__ = [
     "resolve_root",
     "resolve_target",
     "store_evidence",
+    "store_run_result",
     "write_export",
 ]
 
@@ -106,6 +107,7 @@ _LAZY = {
     "resolve_root": ("_paths", "resolve_root"),
     "StoreOutcome": ("_run_records", "StoreOutcome"),
     "store_evidence": ("_run_records", "store_evidence"),
+    "store_run_result": ("_run_records", "store_run_result"),
 }
 
 
