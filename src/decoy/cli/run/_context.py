@@ -22,9 +22,8 @@ from decoy.cli.io import (
     OutputPlacement,
     PipelineRef,
     RunLayout,
-    find_project,
     parse_flags,
-    project_relative_posix,
+    pipeline_label,
     resolve_path,
 )
 from decoy.ui.output import OutputState
@@ -84,12 +83,17 @@ class NotifyOn(str, Enum):
     always = "always"
 
 
-def pipeline_label(config: Path) -> str:
-    """The `pipeline` label on the run's records: what `decoy library list --pipeline` matches."""
+def library_label(config: Path) -> str | Any:
+    """The record label of this run (`decoy.cli.io.pipeline_label`, the resolver `library list`
+    uses), or a failed `StoreOutcome` carrying the layout code: a record is lost, the run is not."""
+    from decoy.cli.library import StoreOutcome
+
     try:
-        return project_relative_posix(find_project(config.resolve().parent, None).root, config)
-    except LayoutError:
-        return config.resolve().as_posix()
+        return pipeline_label(config)
+    except LayoutError as exc:
+        return StoreOutcome(
+            "failed", code=str(getattr(exc, "code", None) or "library_write_failed")
+        )
 
 
 @dataclass(slots=True)
@@ -154,6 +158,9 @@ class RunContext:
     _report_flags: bool = field(init=False)
     _run_started_at: datetime = field(init=False)
     started: float = field(init=False)
+    # True from the moment `_execute.execute` hands the pipeline to the engine. A failure before
+    # it is a refusal (nothing ran); one after it is a run that failed, whatever its category.
+    execution_started: bool = field(init=False, default=False)
     # One id per command: the run folder name, the evidence `run_id` and later records share it.
     invocation_id: str = field(init=False)
     # Where this run writes; opened by `_execute` once the gate has passed.

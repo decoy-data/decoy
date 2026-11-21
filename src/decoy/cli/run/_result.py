@@ -29,7 +29,7 @@ from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_tar
 from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
-from decoy.cli.run._context import RunContext, output_placement, pipeline_label
+from decoy.cli.run._context import RunContext, library_label, output_placement
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
@@ -270,13 +270,17 @@ def _store_record(ctx: RunContext, document: Document) -> None:
     """Store the document as a `run-result` record: the one store call, so every exit path that
     writes the envelope stores it, built once by `build`. Never changes the exit code (plan 4.17).
 
-    A preview, `--no-library`, a refusal before the run starts, a failed build and a second call for the same run store nothing, and
-    neither does a run whose evidence store already failed (it warned once; the root is the cause).
+    A preview, `--no-library`, a refusal before the run starts, a failed build and a second call
+    for the same run store nothing, and neither does a run whose evidence store already failed
+    (it warned once; the root is the cause). "Before the run starts" is `ctx.execution_started`,
+    never the failure category: a post-start engine fault can be a `usage` failure.
     """
-    if ctx.no_library or ctx.rows is not None or document.payload is None:
-        return
-    # A refusal before the run starts (a usage or parameter fault) writes nothing, as it never has.
-    if (document.payload.get("failure") or {}).get("category") in ("usage", "parameter"):
+    if (
+        ctx.no_library
+        or ctx.rows is not None
+        or document.payload is None
+        or not ctx.execution_started
+    ):
         return
     prior = ctx.library_outcome
     if prior is not None and (prior.result or prior.status == "failed"):
@@ -285,15 +289,21 @@ def _store_record(ctx: RunContext, document: Document) -> None:
 
     from decoy.cli.library import store_run_result
 
-    outcome = store_run_result(
-        document.payload,
-        pipeline=_Path(ctx.config),
-        label=pipeline_label(ctx.config),
-        invocation_id=ctx.invocation_id,
-        prior=prior,
+    label = library_label(ctx.config)
+    outcome = (
+        store_run_result(
+            document.payload,
+            pipeline=_Path(ctx.config),
+            label=label,
+            invocation_id=ctx.invocation_id,
+            prior=prior,
+        )
+        if isinstance(label, str)
+        else label
     )
     ctx.library_outcome = outcome
-    if outcome.status == "failed" and ctx.state.mode is not OutputMode.quiet:
+    # Not gated on --quiet: a warning about a lost record is not chatter.
+    if outcome.status == "failed":
         ctx.state.err_console.print(
             warn("warning:"),
             f"{outcome.code}: the run's result record was not stored in the library",
