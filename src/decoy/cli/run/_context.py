@@ -118,6 +118,8 @@ class RunContext:
     no_subset: bool
     otel_endpoint: str
     rows: int | None
+    sample: int | None
+    sample_root: str | None
     state: OutputState
 
     # Set by `_flow.execute` from `pipeline`, or from the project's only pipeline.
@@ -156,6 +158,12 @@ class RunContext:
     # branch; the one result builder (`_result`) reads both.
     _collector: Any = field(init=False, default=None)
     _execution: Any = field(init=False, default=None)
+
+    # `--sample`: the project found for the pipeline, the library holding its scratch, and the
+    # private scratch folder every sample output lands in (`_sample`).
+    _sample_project: Any = field(init=False, default=None)
+    _library: Any = field(init=False, default=None)
+    _scratch: Path | None = field(init=False, default=None)
 
     # Temp dir holding Parquet snapshots acquired from --duckdb-source inputs;
     # created only when the flag is used, torn down in the run's finally.
