@@ -321,7 +321,8 @@ def _resolve(used: nodes.Treatment, lets: dict[str, nodes.Treatment]) -> nodes.T
                 name=name.text,
             )
         return lets[name.text]
-    close = difflib.get_close_matches(name.text, sorted(_strategies() | set(lets)), n=1)
+    # Registry words only: a `let` name is the user's identifier, so no hint repeats one.
+    close = difflib.get_close_matches(name.text, sorted(_strategies()), n=1)
     raise fail(
         UNKNOWN_STRATEGY,
         name.span,

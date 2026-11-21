@@ -13,7 +13,6 @@ upward when that column is itself a foreign key.
 
 from __future__ import annotations
 
-import difflib
 from typing import Any
 
 from decoy.lang import _ast as nodes
@@ -75,8 +74,8 @@ def relationships(
         parent = link.parent_table.text
         before = len(problems)
         if parent not in declared:
-            close = difflib.get_close_matches(parent, sorted(declared), n=1)
-            hint = f"did you mean `{close[0]}`?" if close else None
+            # Fixed words: a table name is the user's identifier, so no hint repeats one.
+            hint = "check the table name against the tables this pipeline declares"
             problems.append(
                 diagnostic(LINK_UNKNOWN_TABLE, link.parent_table.span, hint, parent=parent)
             )

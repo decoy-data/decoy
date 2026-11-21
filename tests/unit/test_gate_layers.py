@@ -137,7 +137,9 @@ def test_new_result_fields_are_last_with_defaults() -> None:
     names = [f.name for f in dataclasses.fields(GateResult)]
     assert names[-2:] == ["checks_run", "config"]
     assert GateResult([], frozenset(), False).config is None
-    assert dataclasses.fields(GateFinding)[-1].name == "extra"
+    finding_fields = dataclasses.fields(GateFinding)
+    assert [f.name for f in finding_fields[-2:]] == ["extra", "hint"]
+    assert all(f.default is None for f in finding_fields[-2:])
 
 
 # -- extra (missing_extra) -----------------------------------------------------

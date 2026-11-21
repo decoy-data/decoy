@@ -136,6 +136,7 @@ def _message(f: GateFinding) -> dict[str, Any]:
         "code": f.code,
         "message": cap_error_text(f.message),
         "location": f.location,
+        **({"hint": f.hint} if f.hint else {}),
     }
 
 

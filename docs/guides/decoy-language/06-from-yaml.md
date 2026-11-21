@@ -2,12 +2,8 @@
 
 Status: current
 
-A `.decoy` file compiles to exactly the YAML you would have written, and an existing YAML
-pipeline converts the other way:
-
-```
-python -m decoy.lang --to-decoy pipeline.yaml > pipeline.decoy
-```
+A `.decoy` file compiles to exactly the YAML you would have written. An existing YAML pipeline
+can be converted the other way, but converting is not available from the command line yet.
 
 The converter checks its own work. It compiles the program it wrote and compares the result with
 your YAML as the engine sees it. If they differ it refuses, naming the block that would change,

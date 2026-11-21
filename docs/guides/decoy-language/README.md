@@ -20,16 +20,17 @@ pipeline {
 }
 ```
 
-For now a `.decoy` file is compiled in one step and then run as usual:
+A `.decoy` file runs like a YAML file:
 
 ```
-python -m decoy.lang pipeline.decoy > pipeline.yaml
-decoy run pipeline.yaml
+decoy run pipeline.decoy
 ```
+
+Converting from YAML and formatting are not available from the command line yet.
 
 | Page | For |
 |---|---|
-| [1. A first pipeline](01-first-pipeline.md) | The shape of a file, and the three commands |
+| [1. A first pipeline](01-first-pipeline.md) | The shape of a file, and how to run it |
 | [2. Masking](02-masking.md) | Rules, conditions, shaping a table before it is masked |
 | [3. Joins and groups](03-joins-and-groups.md) | Foreign keys that survive masking; columns that stay consistent |
 | [4. Generating data](04-generating.md) | Tables made from nothing |
