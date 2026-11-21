@@ -1,4 +1,8 @@
-"""Logical config paths -> physical YAML marks, without guessing.
+"""Logical config paths -> places in a pipeline file, without guessing.
+
+`Position` and `segments` are shared by every kind of pipeline file; `YamlPositionIndex` is the
+YAML half. It sits at the bottom of the import tiers so the loader, the language package and the
+CI adapter can all reach it.
 
 The pipeline loader is `yaml.safe_load`, which discards source marks. This module makes a
 parallel, read-only `yaml.compose` pass over the SAME text and indexes marks under three
@@ -22,12 +26,38 @@ from dataclasses import dataclass, field
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
-from decoy.ci.contracts import SourceLocation
-
 _AMBIGUOUS = object()
 _MERGE_TAG = "tag:yaml.org,2002:merge"
 _BRACKET = re.compile(r"\[(\d+)\]")
 _MAX_NODES = 200_000
+
+
+@dataclass(frozen=True)
+class Position:
+    """A one-based place in a pipeline file. The end column is exclusive (SARIF 2.1.0 3.30).
+
+    Every field is optional. All `None` means "this file, no region" and never satisfies a test
+    that asks for a line."""
+
+    line: int | None = None
+    column: int | None = None
+    end_line: int | None = None
+    end_column: int | None = None
+
+
+def segments(logical_path: str | None) -> tuple[str, ...] | None:
+    """A dotted or bracketed config path as its segments, or `None` when it names no place.
+
+    Numeric (`tables.0`), bracket (`tables[0]`), semantic (`tables.customers`) and plain
+    mapping-key spellings all arrive here. An empty path, a `*` wildcard and a `<pseudo>` segment
+    are not places: the engine reports them for things that have no single source line."""
+    if not logical_path or not isinstance(logical_path, str):
+        return None
+    normalized = _BRACKET.sub(r".\1", logical_path).strip(".")
+    parts = tuple(normalized.split("."))
+    if any((not s) or s == "*" or s.startswith("<") for s in parts):
+        return None
+    return parts
 
 
 @dataclass(frozen=True)
@@ -39,23 +69,22 @@ class _Mark:
 
 
 @dataclass
-class YamlSourceIndex:
-    uri: str
+class YamlPositionIndex:
     _marks: dict[str, object] = field(default_factory=dict)
 
     # -- construction ---------------------------------------------------------
 
     @classmethod
-    def from_bytes(cls, uri: str, data: bytes) -> YamlSourceIndex:
+    def from_bytes(cls, data: bytes) -> YamlPositionIndex:
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
-            return cls(uri)
-        return cls.from_text(uri, text)
+            return cls()
+        return cls.from_text(text)
 
     @classmethod
-    def from_text(cls, uri: str, text: str) -> YamlSourceIndex:
-        index = cls(uri)
+    def from_text(cls, text: str) -> YamlPositionIndex:
+        index = cls()
         try:
             root = yaml.compose(text, Loader=yaml.SafeLoader)
         except (yaml.YAMLError, ValueError, RecursionError):
@@ -70,15 +99,12 @@ class YamlSourceIndex:
 
     # -- lookup ---------------------------------------------------------------
 
-    def locate(self, logical_path: str | None) -> SourceLocation | None:
-        """Exact region, file-level location for a proven parent, or None."""
-        if not logical_path or not isinstance(logical_path, str):
+    def locate(self, logical_path: str | None) -> Position | None:
+        """Exact region, file-level position for a proven parent, or None."""
+        parts = segments(logical_path)
+        if parts is None:
             return None
-        normalized = _BRACKET.sub(r".\1", logical_path).strip(".")
-        segments = normalized.split(".")
-        if any((not s) or s == "*" or s.startswith("<") for s in segments):
-            return None
-        prefixes = [".".join(segments[:d]) for d in range(1, len(segments) + 1)]
+        prefixes = [".".join(parts[:d]) for d in range(1, len(parts) + 1)]
         # Ambiguity anywhere along the path (duplicate key/name) forbids any location.
         if any(self._marks.get(p) is _AMBIGUOUS for p in prefixes):
             return None
@@ -90,20 +116,15 @@ class YamlSourceIndex:
                 assert isinstance(hit, _Mark)
                 return self._region(hit)
             # Leaf absent but a parent key is proven in this very file.
-            return SourceLocation(uri=self.uri)
+            return Position()
         return None
 
-    def _region(self, mark: _Mark) -> SourceLocation:
-        return SourceLocation(
-            uri=self.uri,
-            start_line=mark.line,
-            start_column=mark.column,
-            end_line=mark.end_line,
-            end_column=mark.end_column,
-        )
+    @staticmethod
+    def _region(mark: _Mark) -> Position:
+        return Position(mark.line, mark.column, mark.end_line, mark.end_column)
 
     def __repr__(self) -> str:
-        return f"YamlSourceIndex(uri={self.uri!r}, entries={len(self._marks)})"
+        return f"YamlPositionIndex(entries={len(self._marks)})"
 
 
 class _Walker:

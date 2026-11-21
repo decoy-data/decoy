@@ -20,6 +20,8 @@ from functools import lru_cache
 
 import typer
 
+from decoy._config_file import PIPELINE_SUFFIXES
+
 # Transform IDs are static -- one entry per mask strategy shipped by the engine.
 # Keep this list in sync with `decoy_engine.execution._strategies.SCALAR_HANDLERS`
 # if a new one ships. (composite/orphan are generation/FK handlers, not column
@@ -116,8 +118,8 @@ def init_presets() -> list[str]:
     return template_names()
 
 
-def _yaml_paths(incomplete: str) -> list[str]:
-    """Folders and YAML files at the typed location, so a path still completes."""
+def _config_paths(incomplete: str) -> list[str]:
+    """Folders and pipeline files (`.yaml`, `.yml`, `.decoy`) at the typed location, so a path still completes."""
     head, sep, stem = incomplete.rpartition("/")
     try:
         entries = sorted(os.scandir(head or ("/" if sep else ".")), key=lambda e: e.name)
@@ -127,7 +129,7 @@ def _yaml_paths(incomplete: str) -> list[str]:
                 continue
             if entry.is_dir():
                 found.append(f"{head}{sep}{entry.name}/")
-            elif entry.name.lower().endswith((".yaml", ".yml")):
+            elif entry.name.lower().endswith(PIPELINE_SUFFIXES):
                 found.append(f"{head}{sep}{entry.name}")
     except OSError:
         return []
@@ -135,12 +137,12 @@ def _yaml_paths(incomplete: str) -> list[str]:
 
 
 def pipeline_names(ctx: typer.Context, incomplete: str) -> list[str]:
-    """Tab-complete a pipeline parameter: project pipeline names, then folders and YAML files.
+    """Tab-complete a pipeline parameter: project pipeline names, then folders and pipeline files.
 
     The project is `--project` already on the line, else `DECOY_PROJECT`, else the walk from the
     current folder. Typer 0.26 turns every `autocompletion` entry into a plain item (its
     `compat_autocompletion` rejects `CompletionItem`), so the shell's own file completion is not
-    available here and the path candidates come from `_yaml_paths`. A failed project lookup
+    available here and the path candidates come from `_config_paths`. A failed project lookup
     leaves the paths alone: it never breaks Tab.
     """
     names: list[str] = []
@@ -152,4 +154,4 @@ def pipeline_names(ctx: typer.Context, incomplete: str) -> list[str]:
             names = [e.name for e in list_pipelines(project) if e.name.startswith(incomplete)]
     except Exception:
         names = []
-    return names + _yaml_paths(incomplete)
+    return names + _config_paths(incomplete)

@@ -1,8 +1,8 @@
 """The compiler is self-contained, so it can move to another package without a rewrite.
 
-Inside `decoy.lang` only the command-line entry (`__main__`) imports from the rest of `decoy`,
-and only the shared config-file reader. Every other module imports the engine's public API,
-Lark, PyYAML and its own siblings.
+Nothing inside `decoy.lang` imports from the rest of `decoy`. Every module imports the engine's
+public API, Lark, PyYAML and its own siblings. The loader (`decoy._config_file`) imports the
+package, never the other way, and the import-layer contract keeps `lang` below it.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import ast
 from pathlib import Path
 
 _PACKAGE = Path(__file__).resolve().parents[3] / "src" / "decoy" / "lang"
-ALLOWED = {("__main__.py", "decoy._config_file")}
+ALLOWED: set[tuple[str, str]] = set()
 
 
 def decoy_imports(source: str) -> set[str]:
@@ -32,7 +32,7 @@ def decoy_imports(source: str) -> set[str]:
     return found
 
 
-def test_only_the_entry_point_imports_the_rest_of_the_cli() -> None:
+def test_the_package_imports_nothing_else_from_decoy() -> None:
     found = {
         (path.name, name)
         for path in sorted(_PACKAGE.glob("*.py"))

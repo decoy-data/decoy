@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from decoy.lang._ast import Table
+from decoy.lang._ast import Program, Table
 from decoy.lang._codes import CODES, NESTING, UNREVIEWED
 from decoy.lang._convert import ConvertError, convert_config
 from decoy.lang._errors import Diagnostic, LangError, SourceMap, Span, diagnostic, render
@@ -35,11 +35,13 @@ __all__ = [
     "ConvertError",
     "Diagnostic",
     "LangError",
+    "Lowered",
     "Span",
     "compile_text",
     "convert_config",
     "emit_yaml",
     "format_text",
+    "lower_text",
     "render",
 ]
 
@@ -50,29 +52,59 @@ class Compiled:
     source_map: SourceMap
 
 
+@dataclass(frozen=True)
+class Lowered:
+    """A program that parsed and lowered: its config, where each part came from, and one
+    `lang.unreviewed` diagnostic for each rule that still ends with `?`. The config is not yet
+    checked by the engine."""
+
+    config: dict[str, Any]
+    source_map: SourceMap
+    unreviewed: tuple[Diagnostic, ...]
+
+
+def _marks(program: Program) -> tuple[Diagnostic, ...]:
+    return tuple(
+        diagnostic(UNREVIEWED, s.span, "check the rule, then remove the `?`")
+        for table in program.tables
+        if isinstance(table, Table)
+        for s in table.statements
+        if getattr(s, "unreviewed", False)
+    )
+
+
+def lower_text(text: str) -> Lowered:
+    """Parse and lower a `.decoy` program, with no engine validation.
+
+    A parse failure raises its syntax problems. A lowering failure raises the lowering problems
+    followed by the marks: the program parsed, so the marks are known and a caller sees every
+    problem at once. Success returns the marks as data, so the caller decides what they mean."""
+    try:
+        program = parse(text)
+        try:
+            config, spans = lower(program)
+        except LangError as failure:
+            lowering = failure
+        else:
+            return Lowered(config, spans, _marks(program))
+    except RecursionError:
+        too_deep = LangError([diagnostic(NESTING)])
+    else:
+        # Raised outside the handler so the lowering error is not attached as context.
+        raise LangError([*lowering.diagnostics, *_marks(program)])
+    raise too_deep
+
+
 def compile_text(text: str) -> Compiled:
     """Compile a `.decoy` program: parse, lower, then the engine's own validation.
 
     Raises `LangError` with every problem found. A rule that still ends with `?` is a problem
     too, reported last, so no caller is handed a config for a pipeline nobody has checked."""
-    try:
-        program = parse(text)
-        config, spans = lower(program)
-    except RecursionError:
-        too_deep = LangError([diagnostic(NESTING)])
-    else:
-        validate(config, spans)
-        marked = [
-            diagnostic(UNREVIEWED, s.span, "check the rule, then remove the `?`")
-            for table in program.tables
-            if isinstance(table, Table)
-            for s in table.statements
-            if getattr(s, "unreviewed", False)
-        ]
-        if marked:
-            raise LangError(marked)
-        return Compiled(config, spans)
-    raise too_deep
+    lowered = lower_text(text)
+    validate(lowered.config, lowered.source_map)
+    if lowered.unreviewed:
+        raise LangError(list(lowered.unreviewed))
+    return Compiled(lowered.config, lowered.source_map)
 
 
 def emit_yaml(config: dict[str, Any]) -> str:

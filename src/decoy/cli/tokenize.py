@@ -123,7 +123,7 @@ See also: decoy tokenize, decoy explain tokenize.
 
 def tokenize(
     config: str = pipeline_argument(
-        help="Path or name of the YAML pipeline config (with `strategy: tokenize` columns).",
+        help="Path or name of the pipeline file (.yaml or .decoy) with tokenize columns.",
     ),
     vault: Path = typer.Option(
         ...,
@@ -462,7 +462,7 @@ def tokenize(
 
 def detokenize(
     config: str = pipeline_argument(
-        help="The pipeline config the tokenize run used (carries each column's namespace).",
+        help="The pipeline file (.yaml or .decoy) the tokenize run used; it carries each namespace.",
     ),
     tokenized: Path = typer.Argument(
         ...,

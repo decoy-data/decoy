@@ -110,7 +110,7 @@ def run(
     ctx: typer.Context,
     config: str = pipeline_argument(
         help=(
-            "Path or name of the YAML pipeline config (a name is looked up in the project). "
+            "Path or name of the pipeline file (.yaml or .decoy; a name is looked up in the project). "
             "Optional when the project has exactly one pipeline."
         ),
         optional=True,
