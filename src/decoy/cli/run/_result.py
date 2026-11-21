@@ -266,6 +266,40 @@ def _placement_refused(ctx: RunContext) -> str | None:
     return "output_path_refused" if found else None
 
 
+def _store_record(ctx: RunContext, document: Document) -> None:
+    """Store the document as a `run-result` record: the one store call, so every exit path that
+    writes the envelope stores it, built once by `build`. Never changes the exit code (plan 4.17).
+
+    A preview, `--no-library`, a failed build and a second call for the same run store nothing, and
+    neither does a run whose evidence store already failed (it warned once; the root is the cause).
+    """
+    prior = ctx.library_outcome
+    if ctx.rows is not None or document.payload is None:
+        return
+    if prior is not None and (prior.result or prior.status == "failed"):
+        return
+    from pathlib import Path as _Path
+
+    from decoy.cli.library import store_run_result
+    from decoy.cli.run._evidence import pipeline_label
+
+    outcome = store_run_result(
+        document.payload,
+        pipeline=_Path(ctx.config),
+        label=pipeline_label(ctx.config),
+        invocation_id=ctx.invocation_id,
+        prior=prior,
+        enabled=not ctx.no_library,
+    )
+    ctx.library_outcome = outcome
+    if outcome.status == "failed" and ctx.state.mode is not OutputMode.quiet:
+        ctx.state.err_console.print(
+            warn("warning:"),
+            f"{outcome.code}: the run's result record was not stored in the library",
+            markup=False,
+        )
+
+
 def _write_file(ctx: RunContext, document: Document) -> Document:
     """Write the document to `--result` and return it with `result_status.file` filled.
 
@@ -274,6 +308,7 @@ def _write_file(ctx: RunContext, document: Document) -> Document:
     placement rules first, then `write_local_target` (replace, atomic). A failure is one stderr
     line with the code and no path, and never changes the exit integer.
     """
+    _store_record(ctx, document)
     if ctx.result is None:
         return document
     status = dict(document.status)
@@ -319,6 +354,8 @@ def emit(ctx: RunContext, document: Document, payload: dict | None) -> None:
     """
     document = _write_file(ctx, document)
     if payload is not None:
+        if ctx.library_outcome is not None and "library" in payload:
+            payload = {**payload, "library": ctx.library_outcome.to_json()}
         emit_json(ctx.state, {**payload, **members(document)})
 
 

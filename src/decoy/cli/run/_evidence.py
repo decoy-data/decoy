@@ -26,7 +26,7 @@ def _marked_project_root(config: Path) -> Path | None:
     return None if found.implicit else found.root
 
 
-def _pipeline_label(config: Path) -> str:
+def pipeline_label(config: Path) -> str:
     """The `pipeline` label on the run's records: what `decoy library list --pipeline` matches."""
     try:
         return project_relative_posix(find_project(config.resolve().parent, None).root, config)
@@ -83,7 +83,7 @@ def write_evidence(ctx: RunContext) -> None:
     ctx.library_outcome = store_evidence(
         manifest,
         pipeline=ctx.config,
-        label=_pipeline_label(ctx.config),
+        label=pipeline_label(ctx.config),
         invocation_id=ctx.invocation_id,
         enabled=store,
     )
