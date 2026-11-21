@@ -27,6 +27,7 @@ from decoy.cli.io import (
     resolve_path,
 )
 from decoy.ui.output import OutputState
+from decoy.ui.theme import warn
 
 # Rows per chunk when `--chunk-size` is not given. The option has no default of its own so a
 # preview can tell whether it was passed.
@@ -190,6 +191,8 @@ class RunContext:
     _ev_engine_warnings: tuple = field(init=False, default=())
     # The library's `StoreOutcome` for this run's evidence record; None until stored or skipped.
     library_outcome: Any = field(init=False, default=None)
+    # The library root this run resolved, once (`library_choice`); None until first asked.
+    _library: Any = field(init=False, default=None)
     # Row count for the --notify event; unconditional (unlike _ev_row_counts,
     # which only fills for --evidence-out). None for --chunked runs (no
     # ExecutionResult to count).
@@ -275,7 +278,7 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
         except DuckDBSourceError:
             continue
         databases.append(resolve_path(flag.db_path, ctx.config.parent))
-    library = _library_root(ctx)
+    library = library_choice(ctx).root
     if ctx.out_dir is not None:
         return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases), library)
     return OutputPlacement(
@@ -283,16 +286,45 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
     )
 
 
-def _library_root(ctx: RunContext) -> Path | None:
-    """The resolved record-library root when this run stores records, else None; the gate keeps
-    outputs off it. A project the finder refuses is reported by the gate itself."""
+@dataclass(frozen=True)
+class LibraryChoice:
+    """Where this run's records go: `root` is the resolved library root, or None when records
+    are off or the project finder refused (the gate reports that). `code` is set when the root
+    could not be resolved: the run delivers, stores nothing and warns once."""
+
+    root: Path | None = None
+    code: str | None = None
+
+
+def library_choice(ctx: RunContext) -> LibraryChoice:
+    """The library root of this run, resolved once and kept on the context.
+
+    The gate, the evidence store and the result store all read this one answer, so a root the
+    gate did not check is never written. A root that cannot be resolved (`library_path_unsafe`)
+    is warned about here, once, and recorded as the run's failed library outcome; the run's exit
+    code is its own (plan 4.17).
+    """
+    if ctx._library is None:
+        ctx._library = _resolve_library(ctx)
+    return ctx._library
+
+
+def _resolve_library(ctx: RunContext) -> LibraryChoice:
     if ctx.no_library or ctx.rows is not None:
-        return None
-    from decoy.cli.io import LayoutError
-    from decoy.cli.library import resolve_root
+        return LibraryChoice()
+    from decoy.cli.library import LibraryError, StoreOutcome, resolve_root
 
     try:
         found = resolve_root(pipeline=Path(ctx.config))
     except LayoutError:
-        return None
-    return found.path if found.records else None
+        return LibraryChoice()
+    except LibraryError as exc:
+        ctx.library_outcome = StoreOutcome("failed", code=exc.code)
+        # Not gated on --quiet: a warning about a lost record is not chatter.
+        ctx.state.err_console.print(
+            warn("warning:"),
+            f"{exc.code}: the run's records were not stored in the library",
+            markup=False,
+        )
+        return LibraryChoice(code=exc.code)
+    return LibraryChoice(root=found.path) if found.records else LibraryChoice()

@@ -142,6 +142,7 @@ from decoy.cli.io._project import (
     write_decoy_gitignore,
     write_project_marker,
 )
+from decoy.cli.io._run_outputs import RunOutput, run_outputs
 from decoy.cli.io._scan_set import (
     ScanSetFormatError,
     load_scan_set,
@@ -204,6 +205,7 @@ __all__ = [
     "RunFolder",
     "RunHistory",
     "RunLayout",
+    "RunOutput",
     "ScanSetFormatError",
     "TargetFormatError",
     "UnsafeFileError",
@@ -281,6 +283,7 @@ __all__ = [
     "resolved_output_collisions",
     "resolved_source_config",
     "run_history",
+    "run_outputs",
     "run_report",
     "scan_set_from_data",
     "select_table",

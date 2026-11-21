@@ -57,15 +57,16 @@ def _put_record(
     kind: str,
     payload: Mapping[str, Any],
     *,
-    pipeline: Path,
+    root: Path,
     invocation_id: str,
     meta: Callable[[], tuple[Mapping[str, Any], list[dict[str, str]]]],
-    environ: Mapping[str, str] | None,
-    skipped: StoreOutcome | None = None,
     stored: Callable[[Path, str], StoreOutcome],
     failed: Callable[[Path | None, str], StoreOutcome],
 ) -> StoreOutcome:
-    """The one write path of a run's records: root, budget, envelope, put, and the exception map.
+    """The one write path of a run's records: budget, envelope, put, and the exception map.
+
+    `root` is the library root the run resolved once (`run/_context.py`): this path never
+    resolves one, so a root the gate did not check cannot be written.
 
     `stored` and `failed` build the outcome (a record kind decides which ids it reports). Never
     raises: every library, layout and engine fault becomes a coded `failed` outcome (plan 4.17).
@@ -75,16 +76,11 @@ def _put_record(
 
     from decoy._version import __version__
     from decoy.cli.io import LayoutError
-    from decoy.cli.library._paths import check_root_budget, resolve_root
+    from decoy.cli.library._paths import check_root_budget
     from decoy.cli.library._store import open_library
 
     code: str | None = None
-    root: Path | None = None
     try:
-        found = resolve_root(pipeline=pipeline, environ=environ)
-        if not found.records:
-            return skipped or StoreOutcome("skipped")
-        root = found.path  # already anchored: absolute, links resolved
         check_root_budget(root)
         labels, links = meta()  # inside the try: a malformed payload is a failed store, not a raise
         envelope = records.build(
@@ -113,26 +109,25 @@ def _put_record(
 def store_evidence(
     manifest: Mapping[str, Any],
     *,
-    pipeline: Path,
+    root: Path | None,
     label: str,
     invocation_id: str,
     enabled: bool = True,
-    environ: Mapping[str, str] | None = None,
 ) -> StoreOutcome:
-    """Put the run's manifest as an `evidence` record in the library of the run's YAML,
-    `pipeline`. `label` is the YAML's project-relative POSIX path. Never raises."""
-    if not enabled:
+    """Put the run's manifest as an `evidence` record in the library at `root`, the root the run
+    resolved (None when records are off). `label` is the YAML's project-relative POSIX path.
+    Never raises."""
+    if not enabled or root is None:
         return StoreOutcome("skipped")
     return _put_record(
         "evidence",
         manifest,
-        pipeline=pipeline,
+        root=root,
         invocation_id=invocation_id,
         meta=lambda: (
             {"pipeline": label, "tables": sorted(manifest.get("output_fingerprints") or {})},
             [],
         ),
-        environ=environ,
         stored=lambda root, rid: StoreOutcome("stored", root=root, evidence=rid),
         failed=lambda root, code: StoreOutcome("failed", root=root, code=code),
     )
@@ -141,12 +136,11 @@ def store_evidence(
 def store_run_result(
     payload: Mapping[str, Any],
     *,
-    pipeline: Path,
+    root: Path | None,
     label: str,
     invocation_id: str,
     prior: StoreOutcome | None,
     enabled: bool = True,
-    environ: Mapping[str, str] | None = None,
 ) -> StoreOutcome:
     """Put the run's result document (the payload `_result.build` made) as a `run-result` record.
 
@@ -154,12 +148,12 @@ def store_run_result(
     `evidence` link. Returns the outcome with the result id added; never raises.
     """
     evidence = None if prior is None else prior.evidence
-    if not enabled:
+    if not enabled or root is None:
         return prior or StoreOutcome("skipped")
     return _put_record(
         "run-result",
         payload,
-        pipeline=pipeline,
+        root=root,
         invocation_id=invocation_id,
         meta=lambda: (
             {
@@ -170,8 +164,6 @@ def store_run_result(
             },
             [{"rel": "evidence", "id": evidence}] if evidence else [],
         ),
-        environ=environ,
-        skipped=prior,
         stored=lambda root, rid: StoreOutcome("stored", root=root, evidence=evidence, result=rid),
         failed=lambda root, code: StoreOutcome("failed", root=root, evidence=evidence, code=code),
     )

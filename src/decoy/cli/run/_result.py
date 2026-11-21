@@ -29,7 +29,7 @@ from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_tar
 from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
-from decoy.cli.run._context import RunContext, library_label, output_placement
+from decoy.cli.run._context import RunContext, library_choice, library_label, output_placement
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
@@ -282,18 +282,17 @@ def _store_record(ctx: RunContext, document: Document) -> None:
         or not ctx.execution_started
     ):
         return
+    choice = library_choice(ctx)
     prior = ctx.library_outcome
     if prior is not None and (prior.result or prior.status == "failed"):
         return
-    from pathlib import Path as _Path
-
     from decoy.cli.library import store_run_result
 
     label = library_label(ctx.config)
     outcome = (
         store_run_result(
             document.payload,
-            pipeline=_Path(ctx.config),
+            root=choice.root,
             label=label,
             invocation_id=ctx.invocation_id,
             prior=prior,

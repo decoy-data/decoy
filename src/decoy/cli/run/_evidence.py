@@ -8,7 +8,7 @@ from rich.text import Text
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
 from decoy.cli.io import LayoutError, find_project
-from decoy.cli.run._context import EvidenceWriteRefusal, RunContext, library_label
+from decoy.cli.run._context import EvidenceWriteRefusal, RunContext, library_choice, library_label
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
 
@@ -72,11 +72,14 @@ def write_evidence(ctx: RunContext) -> None:
             ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
     from decoy.cli.library import store_evidence
 
+    choice = library_choice(ctx)
+    if choice.code is not None:
+        return  # the root fault was warned about once, where it was found
     label = library_label(ctx.config)
     ctx.library_outcome = (
         store_evidence(
             manifest,
-            pipeline=ctx.config,
+            root=choice.root,
             label=label,
             invocation_id=ctx.invocation_id,
             enabled=store,
@@ -98,4 +101,5 @@ def write_evidence(ctx: RunContext) -> None:
 def _record_skipped(ctx: RunContext) -> None:
     from decoy.cli.library import StoreOutcome
 
-    ctx.library_outcome = StoreOutcome("skipped")
+    if ctx.library_outcome is None or ctx.library_outcome.status != "failed":
+        ctx.library_outcome = StoreOutcome("skipped")

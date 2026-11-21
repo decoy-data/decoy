@@ -91,6 +91,15 @@ starts, such as a bad option, stores nothing.
   `--json` says `failed`, and the exit code is the run's own (a delivered run is never reported
   as failed, so an orchestrator does not deliver twice).
 
+A run never writes an output onto the library root. The gate lists every file the run writes
+(targets, quarantine, the post-scan report, `--result`, `--evidence-out`, `--vault`, and the
+project run folder's own files) and refuses the run before anything is written when one of them
+is the root, sits inside it, or holds it, even through a link: `layout.output_path_collision`
+with `the record library` as the first party, exit 1. A library root that cannot be resolved
+(a link loop, a NUL byte) is `library_path_unsafe`: the run delivers its outputs, stores no
+record, warns once and keeps its own exit code, and `--json` says `library.status: failed`.
+`decoy library` commands report the same fault as a coded error with exit 3.
+
 Paths in the record are what the manifest holds: project-relative inside a `decoy.yaml` project,
 absolute otherwise. `export` reduces them to file names unless `--keep-paths` is given.
 
