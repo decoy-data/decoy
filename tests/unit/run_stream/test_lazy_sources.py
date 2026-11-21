@@ -47,7 +47,10 @@ def test_parquet_and_csv_mask_tables_become_candidates(tmp_path: Path) -> None:
 def test_relative_path_resolves_against_the_config_folder(tmp_path: Path) -> None:
     _parquet(tmp_path / "p.parquet")
     cfg = _cfg({"p": {"type": "file", "format": "parquet", "path": "p.parquet"}}, ["p"])
-    assert sorted(lazy_sources(cfg, tmp_path)) == ["p"]
+    found = lazy_sources(cfg, tmp_path)
+    assert sorted(found) == ["p"]
+    # The candidate names the file by the config folder, never the working directory.
+    assert Path(found["p"].path) == tmp_path / "p.parquet"
 
 
 def test_compressed_csv_stays_resident(tmp_path: Path) -> None:
