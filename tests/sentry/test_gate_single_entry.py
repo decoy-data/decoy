@@ -25,16 +25,15 @@ method call on an object built elsewhere.
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "decoy"
 GATE_DIR = "cli/gate"
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "gate-single-entry-allow.json"
 
 RULE_CONFIG_ONLY = "run_config_only_checks"
 RULE_COMPILE = "compile_plan_no_profile"
@@ -58,28 +57,9 @@ class Allowed:
     reason: str
 
 
-ALLOWLIST: tuple[Allowed, ...] = (
-    Allowed(
-        "decoy.cli.preflight",
-        "preflight",
-        RULE_PREFLIGHT,
-        "The `validate preflight` command body is the third copy of steps 1-3 and calls the "
-        "layer checks itself until CONFIG-EXPLICIT C2 folds it onto the gate.",
-    ),
-    Allowed(
-        "decoy.cli.preflight",
-        "preflight",
-        RULE_CONFIG_ONLY,
-        "The same third copy of steps 1-3 also runs the config-only checks itself until "
-        "CONFIG-EXPLICIT C2 folds it onto the gate.",
-    ),
-    Allowed(
-        "decoy.cli.compile_explain",
-        "compile",
-        RULE_COMPILE,
-        "`validate compile --no-profile` is the single-layer command the gate's compile layer "
-        "reuses helpers from; it keeps its own compile call and its unique-column error.",
-    ),
+ALLOWLIST: tuple[Allowed, ...] = tuple(
+    Allowed(*key.split("::"), e["reason"])
+    for key, e in load_allowlist("gate-single-entry-allow").items()
 )
 
 
@@ -217,13 +197,6 @@ def test_no_pre_run_check_outside_the_gate() -> None:
 def test_allowlist_has_reasons_and_unique_identities() -> None:
     assert len({(e.module, e.function, e.rule) for e in ALLOWLIST}) == len(ALLOWLIST) == 3
     assert all(len(e.reason.strip()) >= 15 for e in ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_entries_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    assert {k: v["reason"] for k, v in entries.items()} == {
-        f"{e.module}::{e.function}::{e.rule}": e.reason for e in ALLOWLIST
-    }
 
 
 def test_choke_point_package_exists_and_is_excluded() -> None:

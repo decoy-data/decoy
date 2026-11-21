@@ -21,6 +21,7 @@ from tests.ci_support import (
     write_clean_pipeline,
 )
 from tests.run_outputs import latest_output
+from tests.scan_docs import scan_set_doc
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -70,9 +71,7 @@ def test_validate_fail_on_warning_exit_is_unchanged(tmp_path: Path) -> None:
 
 
 def _scan(fields: list[dict], qi: list[list[str]] | None = None) -> str:
-    return json.dumps(
-        {"fields": fields, "quasi_identifier_groups": qi or [], "reid_risk_score": 0.1}
-    )
+    return json.dumps(scan_set_doc(fields, quasi_identifier_groups=qi or [], reid_risk_score=0.1))
 
 
 def test_scan_diff_strict_keeps_its_direct_command_exit(tmp_path: Path) -> None:

@@ -48,6 +48,7 @@ EXEMPT: dict[str, str] = {
 # `/`; arrays are walked without a segment.
 DYNAMIC: dict[str, list[str]] = {
     "fit": ["/columns", "/null_rates"],
+    "library show": ["/record/payload/table_rows", "/record/payload/subset_seed_counts"],
     "report show": [
         "/manifest/input_fingerprints",
         "/manifest/output_fingerprints",
@@ -56,6 +57,14 @@ DYNAMIC: dict[str, list[str]] = {
 }
 OPAQUE: dict[str, dict[str, str]] = {
     "info": {"/native_companion": "null|object"},
+    # Each row's fields are null or text by whether that model can run on this host.
+    "models list": {
+        "/models/version": "null|string",
+        "/models/runtime_version": "null|string",
+        "/models/reason": "null|string",
+        "/models/cause": "null|string",
+        "/models/hint": "null|string",
+    },
     # `library` is always present; its members depend on the store outcome (plan 4.16, 4.17).
     "run": {"/library": "object", "/warnings": "array"},
 }
@@ -208,6 +217,15 @@ relationships:
     namespace: patient_ids
 """.replace("MARKER_COL", MARKER_COL)
 
+# The `run` step's pipeline: post-scan integrity on, so `run --json` carries its `post_scan`
+# block. `full_name` is hashed because a redacted name column is a regex `fail` that blocks.
+_INTEGRITY = (
+    _PIPELINE.replace(
+        "{name: full_name, strategy: redact}", "{name: full_name, strategy: hash, namespace: names}"
+    )
+    + "post_scan: {integrity: true}\n"
+)
+
 _TOKENIZE = """version: 2
 global_settings: {seed: 7, mask_secret_ref: "env:SECRET_ENV"}
 sources:
@@ -272,6 +290,7 @@ def build_workspace(root: Path) -> None:
         "patient_id,diagnosis\n" + "".join(f"{i},flu\n" for i in range(1, 6)), encoding="utf-8"
     )
     (root / "pipeline.yaml").write_text(_PIPELINE, encoding="utf-8")
+    (root / "integrity.yaml").write_text(_INTEGRITY, encoding="utf-8")
     (root / "tokenize.yaml").write_text(_TOKENIZE, encoding="utf-8")
     (root / "vaulted.yaml").write_text(_VAULTED, encoding="utf-8")
     (root / "subset.yaml").write_text(_SUBSET, encoding="utf-8")
@@ -279,6 +298,47 @@ def build_workspace(root: Path) -> None:
     pd.DataFrame({"id": range(1, 21), "cust_id": [i % 10 + 1 for i in range(20)]}).to_parquet(
         root / "orders.parquet"
     )
+    wheels = root / "wheels"
+    wheels.mkdir()
+    for name in ("en_core_web_sm-3.8.0-py3-none-any.whl", "spacy-3.8.18-py3-none-any.whl"):
+        (wheels / name).write_bytes(b"not a real wheel")
+
+
+@contextlib.contextmanager
+def _fake_installer() -> Iterator[None]:
+    """`models install` with its one installer seam replaced: no network, nothing installed.
+
+    The success document is the real one; only the subprocess and the probes it reads are fakes.
+    """
+    from unittest import mock
+
+    from decoy_engine import ModelStatus
+
+    from decoy.cli.models import _install
+
+    done = {"ran": False}
+    before = (("decoy-cli", "0.1.0"), ("numpy", "2.2.6"))
+    after = (*before, ("en-core-web-sm", "3.8.0"), ("spacy", "3.8.18"))
+
+    def run(argv: list[str]) -> int:
+        done["ran"] = True
+        return 0
+
+    def status(model: str = "en_core_web_sm") -> ModelStatus:
+        if done["ran"]:
+            return ModelStatus("ner", model, True, "3.8.0", "3.8.18", None)
+        return ModelStatus("ner", model, False, None, None, "provider.ner_spacy_not_installed")
+
+    with (
+        mock.patch.object(_install, "run_installer", run),
+        mock.patch.object(_install, "pip_available", lambda: True),
+        mock.patch.object(_install, "managed_home", lambda: None),
+        mock.patch.object(_install, "ner_status", status),
+        mock.patch.object(
+            _install, "installed_distribution_set", lambda: after if done["ran"] else before
+        ),
+    ):
+        yield
 
 
 @contextlib.contextmanager
@@ -313,7 +373,7 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("scan fields", ["scan", "fields", "scan.json"]),
         ("scan show", ["scan", "show", "scan.json", "ssn"]),
         ("scan diff", ["scan", "diff", "scan.json", "scan2.json"]),
-        ("run", ["run", "pipeline.yaml", *mask, "--evidence-out", "ev1.json"]),
+        ("run", ["run", "integrity.yaml", *mask]),
         ("report show", ["report", "show", "ev1.json"]),
         ("report render", ["report", "render", "ev1.json", "-o", "report.html"]),
         ("report verify", ["report", "verify", "ev1.json"]),
@@ -335,13 +395,52 @@ def _steps() -> list[tuple[str, list[Any]]]:
         ("list", ["list", "templates"]),
         ("show", ["show", "template", "minimal"]),
         ("info", ["info"]),
+        ("models list", ["models", "list"]),
+        ("models install", ["models", "install", "ner", "--from", "wheels", "--yes"]),
         ("demo", ["demo"]),
         ("init", ["init", "--preset", "minimal", "-o", "minimal.yaml"]),
         ("fit", ["fit", "patients.csv"]),
+        ("library list", ["library", "list", "--library", "lib"]),
+        ("library show", ["library", "show", "sample-run/latest", "--library", "lib"]),
+        (
+            "library diff",
+            ["library", "diff", "sample-run/latest~1", "sample-run/latest", "--library", "lib"],
+        ),
         ("project new", ["project", "new", "proj"]),
         ("project list", ["project", "list", "."]),
         ("project show", ["project", "show"]),
     ]
+
+
+def _seed_library(root: Path) -> None:
+    """Two `sample-run` records, a day apart, for `library list`, `show` and `diff`."""
+    from datetime import datetime, timezone
+
+    from decoy_engine import records
+
+    from decoy.cli.library import open_library
+
+    library = open_library(root)
+    for n in (1, 2):
+        payload = {
+            "sample_size": n,
+            "root_table": MARKER_COL,
+            "table_rows": {MARKER_COL: n},
+            "subset_seed_counts": {MARKER_COL: n},
+            "approximate_columns": (),
+            "scratch_dir": "scratch/sample",
+            "outputs": (),
+            "ttl_seconds": 60,
+        }
+        library.put(
+            records.build(
+                "sample-run",
+                payload,
+                producer={"name": "decoy-cli", "version": "0.0.0", "engine_version": "0.0.0"},
+                invocation_id="0b6c9a3e-1d2f-4c5b-8a7e-9f0e1d2c3b4a",
+                created_at=datetime(2026, 11, n, tzinfo=timezone.utc),
+            )
+        )
 
 
 def capture(root: Path) -> dict[str, Any]:
@@ -363,7 +462,8 @@ def capture(root: Path) -> dict[str, Any]:
             if name == "scan fields":
                 for out in ("scan.json", "scan2.json"):
                     runner.invoke(app, ["scan", "patients.csv", "--has-header", "-o", out])
-            if name == "report diff":
+            if name in ("report show", "report diff"):
+                evidence = "ev1.json" if name == "report show" else "ev2.json"
                 runner.invoke(
                     app,
                     [
@@ -372,13 +472,19 @@ def capture(root: Path) -> dict[str, Any]:
                         "--mask-secret",
                         f"env:{SECRET_ENV}",
                         "--evidence-out",
-                        "ev2.json",
+                        evidence,
                     ],
                 )
             if name == "report vault":
                 runner.invoke(app, ["run", "vaulted.yaml", "--vault", "vault.bin"])
+            if name == "library list":
+                _seed_library(root / "lib")
             if name == "project show":
                 os.chdir(root / "proj")
+            if name == "models install":
+                with _fake_installer():
+                    docs[name] = call(argv)
+                continue
             docs[name] = call(argv)
     return docs
 

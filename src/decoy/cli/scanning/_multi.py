@@ -12,9 +12,9 @@ scan. The richer per-table detail, which can hold cell values, is never requeste
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -23,10 +23,18 @@ import typer
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy.cli._sources import csv_file_source
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.scanning import _detectors
+from decoy.cli.scanning._engine_call import (
+    ScanUsageError,
+    check_scan_options,
+    core_bytes,
+    scan_descriptors,
+)
 from decoy.ui.card import render_card
 from decoy.ui.output import (
     OutputMode,
     OutputState,
+    detector_log,
     emit_error,
     emit_json,
     emit_json_document,
@@ -53,14 +61,6 @@ _WARNING_TEXT = {
     ),
     "scan_key_type_mismatch": "the declared key columns differ in type",
 }
-
-
-class ScanUsageError(Exception):
-    """A bad invocation, found before any file is read. The message is fixed text plus names."""
-
-    def __init__(self, message: str, hint_text: str | None = None) -> None:
-        super().__init__(message)
-        self.hint_text = hint_text
 
 
 def table_name_from_path(path: Path) -> str:
@@ -92,9 +92,99 @@ def safe_field_record(field: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def is_sample(table: Mapping[str, Any]) -> bool:
+    """True unless the read reached the end of the source. An unknown basis reads as a sample,
+    as the engine read model does."""
+    return table.get("basis") != "whole"
+
+
+def rows_scanned_text(table: Mapping[str, Any]) -> str:
+    """The one rows label: `10,000 of about 28,058 (sample, head)` or `4,812 (whole file)`."""
+    scanned = table["scanned_rows"]
+    if not is_sample(table):
+        return f"{scanned:,} (whole file)"
+    total = table["row_count"]
+    about = "" if table["row_count_exact"] else "about "
+    return f"{scanned:,} of {about}{total:,} (sample, {table['sample_strategy']})"
+
+
+def key_candidates_text(table: Mapping[str, Any]) -> str:
+    """A claimed key needs counts over every row, so a sampled scan lists none."""
+    if is_sample(table):
+        return "not checked (sampled scan; --rows 0 reads every row)"
+    return ", ".join(table["key_candidates"]) or "none"
+
+
+def scanned_rows_note(table: Mapping[str, Any]) -> str | None:
+    """The suffix a sampled saved scan puts on a count: "in 10,000 scanned rows".
+
+    None for a whole read. A saved scan written before the basis labels has no `scanned_rows`
+    (the read model fills `basis` with `sample`, so only that member tells it apart): it says
+    so instead of naming a row count it never recorded.
+    """
+    if not is_sample(table):
+        return None
+    scanned = table.get("scanned_rows")
+    if scanned is None:
+        return "basis not recorded; read as a sample"
+    return f"in {scanned:,} scanned rows"
+
+
+def saved_field_facts(field: Mapping[str, Any], table: Mapping[str, Any]) -> list[tuple[str, str]]:
+    """The Type, Nulls and Distinct rows of `decoy scan show`, labelled with the table's basis."""
+    note = scanned_rows_note(table)
+    facts: list[tuple[str, str]] = []
+    for key, label in (("dtype", "Type"), ("null_count", "Nulls"), ("distinct_count", "Distinct")):
+        value = field.get(key)
+        if value is None:
+            continue
+        counted = key != "dtype" and note is not None
+        facts.append((label, f"{value} ({note})" if counted else str(value)))
+    return facts
+
+
 # ---------------------------------------------------------------------------
 # Argument resolution (no file is read here)
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ScanSpelling:
+    """How usage errors name the caller's own inputs: flags for the CLI, keywords for the API.
+
+    One message template per rule, so the two routes cannot drift apart; only these names differ.
+    """
+
+    has_header: str
+    no_header: str
+    column_names: str
+    column_names_example: str
+    names_shape: str
+    layout: str
+    layout_hint: str
+    format: str
+
+
+CLI_SPELLING = ScanSpelling(
+    has_header="--has-header",
+    no_header="--no-header",
+    column_names="--column-names",
+    column_names_example="--column-names a,b,c",
+    names_shape="a comma-separated list",
+    layout="--layout",
+    layout_hint="provide a layout file: decoy scan FILE --layout layout.yaml",
+    format="--format",
+)
+API_SPELLING = ScanSpelling(
+    has_header="has_header=True",
+    no_header="has_header=False",
+    column_names="column_names",
+    column_names_example="column_names=['a', 'b', 'c']",
+    names_shape="a list",
+    layout="layout=",
+    layout_hint="pass layout= a layout file path, or a list of {name, start, width} columns",
+    format="format",
+)
 
 
 def _kind(path: Path, fmt: str | None) -> str:
@@ -108,12 +198,14 @@ def _kind(path: Path, fmt: str | None) -> str:
     return "csv"
 
 
-def _split_names(raw: str) -> list[str]:
-    names = [n.strip() for n in raw.split(",")]
+def _split_names(raw: str | Sequence[str], spelling: ScanSpelling) -> list[str]:
+    names = [n.strip() for n in (raw.split(",") if isinstance(raw, str) else raw)]
     if any(not n for n in names):
-        raise ScanUsageError("--column-names must be a comma-separated list of non-empty names.")
+        raise ScanUsageError(
+            f"{spelling.column_names} must be {spelling.names_shape} of non-empty names."
+        )
     if len(set(names)) != len(names):
-        raise ScanUsageError("--column-names must not repeat a name.")
+        raise ScanUsageError(f"{spelling.column_names} must not repeat a name.")
     return names
 
 
@@ -122,37 +214,55 @@ def _check_header_flags(
     kinds: Sequence[str],
     has_header: bool | None,
     names: list[str] | None,
+    spelling: ScanSpelling,
 ) -> None:
     csv_files = [p for p, k in zip(paths, kinds, strict=True) if k == "csv"]
     if names is not None:
         if has_header is not False:
-            raise ScanUsageError("--column-names requires --no-header.")
+            raise ScanUsageError(f"{spelling.column_names} requires {spelling.no_header}.")
         if len(paths) != 1 or len(csv_files) != 1:
-            raise ScanUsageError("--column-names applies to exactly one CSV file.")
+            raise ScanUsageError(f"{spelling.column_names} applies to exactly one CSV file.")
     if csv_files and has_header is None:
         raise ScanUsageError(
             f"{csv_files[0]}: say whether the first row is a header.",
-            "pass --has-header (row 1 holds the column names) or --no-header "
-            "(row 1 is data; give the names with --column-names a,b,c).",
+            f"pass {spelling.has_header} (row 1 holds the column names) or {spelling.no_header} "
+            f"(row 1 is data; give the names with {spelling.column_names_example}).",
         )
     if csv_files and has_header is False and names is None:
         raise ScanUsageError(
-            "--no-header needs --column-names a,b,c (one name per column).",
+            f"{spelling.no_header} needs {spelling.column_names_example} (one name per column).",
             "a headerless file has no column names to read.",
         )
+
+
+def _check_files(paths: Sequence[Path]) -> None:
+    for p in paths:
+        if p.is_dir():
+            raise ScanUsageError(f"{p}: is a directory, not a file.")
+        if not p.exists():
+            raise ScanUsageError(f"{p}: file not found.")
 
 
 def resolve_sources(
     paths: Sequence[Path],
     *,
     fmt: str | None,
-    layout: Path | None,
+    layout: Path | list[dict] | None,
     has_header: bool | None,
-    column_names: str | None,
+    column_names: str | Sequence[str] | None,
+    spelling: ScanSpelling = CLI_SPELLING,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-    """Positional files to `(name -> source descriptor, name -> path as given)`, in order."""
+    """Positional files to `(name -> source descriptor, name -> path as given)`, in order.
+
+    The one place that checks input rules, for `decoy scan` and for `decoy.scan()`.
+    """
+    if fmt is not None and fmt not in _FORMAT_FLAG:
+        raise ScanUsageError(
+            f"{spelling.format} must be one of {sorted(_FORMAT_FLAG)}, got {fmt!r}."
+        )
+    _check_files(paths)
     if len(paths) > 1 and (fmt is not None or layout is not None):
-        raise ScanUsageError("--format and --layout apply to exactly one file.")
+        raise ScanUsageError(f"{spelling.format} and {spelling.layout} apply to exactly one file.")
     shown: dict[str, str] = {}
     for p in paths:
         name = table_name_from_path(p)
@@ -163,9 +273,9 @@ def resolve_sources(
             )
         shown[name] = str(p)
     kinds = [_kind(p, fmt) for p in paths]
-    names = _split_names(column_names) if column_names is not None else None
-    _check_header_flags(paths, kinds, has_header, names)
-    layout_columns = _layout_columns(layout) if "fixed_width" in kinds else None
+    names = _split_names(column_names, spelling) if column_names is not None else None
+    _check_header_flags(paths, kinds, has_header, names, spelling)
+    layout_columns = _layout_columns(layout, spelling) if "fixed_width" in kinds else None
     sources: dict[str, dict[str, Any]] = {}
     for name, p, kind in zip(shown, paths, kinds, strict=True):
         absolute = p.resolve()
@@ -188,27 +298,31 @@ def resolve_sources(
     return sources, shown
 
 
-def _layout_columns(layout: Path | None) -> list[dict]:
+def _layout_columns(layout: Path | list[dict] | None, spelling: ScanSpelling) -> list[dict]:
     if layout is None:
         raise ScanUsageError(
-            "Fixed-width input requires --layout: column boundaries are ambiguous "
+            f"Fixed-width input requires {spelling.layout}: column boundaries are ambiguous "
             "without an explicit layout spec.",
-            "provide a layout file: decoy scan FILE --layout layout.yaml",
+            spelling.layout_hint,
         )
-    if not layout.exists():
+    if isinstance(layout, Path) and not layout.exists():
         raise ScanUsageError(f"Layout file not found: {layout}")
-    from decoy.cli.scan import _parse_layout
+    from decoy.cli.scan import _check_layout_columns, _parse_layout
 
+    what = f"layout file {layout.name}" if isinstance(layout, Path) else "the layout list"
     columns: list[dict] | None = None
     try:
-        columns = _parse_layout(layout)
+        if isinstance(layout, Path):
+            columns = _parse_layout(layout)
+        else:
+            columns = _check_layout_columns(layout)
     except Exception:
         columns = None
     # Raised outside the handler with fixed text: the parser's message quotes the rejected
     # layout literal, and the error must not chain to it.
     if columns is None:
         raise ScanUsageError(
-            f"Could not parse layout file {layout.name}: it must be a mapping with a "
+            f"Could not parse {what}: it must be a mapping with a "
             "'columns' list, each column with a string 'name' and integer 'start' and 'width'."
         )
     return columns
@@ -249,7 +363,10 @@ def _table_summary(core_table: Mapping[str, Any], scan: Any, shown_path: str, sh
     summary: dict[str, Any] = {
         "name": core_table["name"],
         "source": shown_path,
-        "row_count": scan.profile.row_count,
+        "row_count": core_table["row_count"],
+        "row_count_exact": core_table["row_count_exact"],
+        "scanned_rows": core_table["scanned_rows"],
+        "basis": core_table["basis"],
         "field_count": len(fields),
         "sample_strategy": scan.profile.sample_strategy,
         "pii_candidate_count": sum(1 for f in fields if f["pii_candidate"]),
@@ -264,19 +381,25 @@ def _table_summary(core_table: Mapping[str, Any], scan: Any, shown_path: str, sh
     return summary
 
 
-def _flat_payload(t: Mapping[str, Any], saved: str | None, show: bool) -> dict[str, Any]:
+def _flat_payload(
+    t: Mapping[str, Any], saved: str | None, show: bool, detectors: list[dict[str, Any]]
+) -> dict[str, Any]:
     """The long-standing single-file `--json` keys, unchanged."""
     payload: dict[str, Any] = {
         "command": "scan",
         "status": "ok",
         "source": t["source"],
         "row_count": t["row_count"],
+        "row_count_exact": t["row_count_exact"],
+        "scanned_rows": t["scanned_rows"],
+        "basis": t["basis"],
         "field_count": t["field_count"],
         "sample_strategy": t["sample_strategy"],
         "pii_candidate_count": t["pii_candidate_count"],
         "pii_note": PII_NOTE,
         "reid_risk_score": t["reid_risk_score"],
         "quasi_identifier_groups": t["quasi_identifier_groups"],
+        "detectors": detectors,
         "saved": saved,
     }
     if show:
@@ -286,7 +409,9 @@ def _flat_payload(t: Mapping[str, Any], saved: str | None, show: bool) -> dict[s
     return payload
 
 
-def _multi_payload(tables: list[dict], saved: str | None) -> dict[str, Any]:
+def _multi_payload(
+    tables: list[dict], saved: str | None, detectors: list[dict[str, Any]]
+) -> dict[str, Any]:
     return {
         "command": "scan",
         "status": "ok",
@@ -294,14 +419,26 @@ def _multi_payload(tables: list[dict], saved: str | None) -> dict[str, Any]:
         "pii_note": PII_NOTE,
         "tables": tables,
         "relationships": [],
+        "detectors": detectors,
         "saved": saved,
     }
 
 
-def render_fields(state: OutputState, field_records: list[dict], pii_candidate_count: int) -> None:
-    """The privacy-safe per-field table, then the honesty framing (H4)."""
+def render_fields(
+    state: OutputState,
+    field_records: list[dict],
+    pii_candidate_count: int,
+    *,
+    sample: bool = False,
+    models: bool = False,
+) -> None:
+    """The privacy-safe per-field table, then the honesty framing (H4).
+
+    On a sampled scan the null and distinct columns say so in their headers.
+    """
     state.console.print(accent(f"Fields ({len(field_records)}):"))
-    tbl = make_table("Field", "Type", "Null rate", "Distinct", "PII candidate")
+    tag = " (sample)" if sample else ""
+    tbl = make_table("Field", "Type", f"Null rate{tag}", f"Distinct{tag}", "PII candidate")
     for f in field_records:
         pii_cell = ""
         if f["pii_candidate"]:
@@ -319,14 +456,15 @@ def render_fields(state: OutputState, field_records: list[dict], pii_candidate_c
     state.console.print(tbl)
     state.console.print()
     if pii_candidate_count > 0:
-        render_pii_honesty(state, pii_candidate_count)
+        render_pii_honesty(state, pii_candidate_count, models)
 
 
-def render_pii_honesty(state: OutputState, pii_candidate_count: int) -> None:
+def render_pii_honesty(state: OutputState, pii_candidate_count: int, models: bool = False) -> None:
     """The profile-honesty framing block (H4): candidates are suggestions."""
+    how = "pattern matching and the detector models" if models else "pattern matching"
     state.console.print(
         warn("PII candidates:"),
-        f"{pii_candidate_count} field(s) flagged by pattern matching.",
+        f"{pii_candidate_count} field(s) flagged by {how}.",
     )
     state.console.print(
         " ", hint("These are SUGGESTIONS for review -- NOT authoritative classifications.")
@@ -352,12 +490,12 @@ def _pii_fact(count: int) -> str:
 
 
 def _render_single(
-    state: OutputState, t: Mapping[str, Any], saved: str | None, header_flag: str
+    state: OutputState, t: Mapping[str, Any], saved: str | None, header_flag: str, line: str
 ) -> None:
     k = t["k_anonymity"]
     facts: list[tuple[str, str]] = [
         ("Source", Path(t["source"]).name),
-        ("Rows scanned", f"{t['row_count']:,} ({t['sample_strategy']})"),
+        ("Rows scanned", rows_scanned_text(t)),
         ("Columns", str(t["field_count"])),
         ("PII candidates", _pii_fact(t["pii_candidate_count"])),
         ("Reid risk", f"{_score(t['reid_risk_score'])} / 100 (k={k if k is not None else 'n/a'})"),
@@ -365,7 +503,8 @@ def _render_single(
     if t["quasi_identifier_groups"]:
         qi = ", ".join("(" + " + ".join(g) + ")" for g in t["quasi_identifier_groups"])
         facts.append(("Quasi-identifiers", qi))
-    facts.append(("Key candidates", ", ".join(t["key_candidates"]) or "none"))
+    facts.append(("Key candidates", key_candidates_text(t)))
+    facts.append(("Detectors", line))
     if saved is not None:
         facts.append(("Saved", saved))
         next_hint = f"decoy scan fields {saved}"
@@ -378,11 +517,12 @@ def _render_single(
     render_card(state, command="decoy scan", facts=facts, next_hint=next_hint, status="ok")
 
 
-def _render_multi(state: OutputState, tables: list[dict], saved: str | None) -> None:
+def _render_multi(state: OutputState, tables: list[dict], saved: str | None, line: str) -> None:
     facts = [
         ("Tables", str(len(tables))),
-        ("Rows scanned", f"{sum(t['row_count'] for t in tables):,}"),
+        ("Rows scanned", f"{sum(t['scanned_rows'] for t in tables):,}"),
         ("PII candidates", _pii_fact(sum(t["pii_candidate_count"] for t in tables))),
+        ("Detectors", line),
     ]
     if saved is not None:
         facts.append(("Saved", saved))
@@ -394,11 +534,11 @@ def _render_multi(state: OutputState, tables: list[dict], saved: str | None) -> 
     for t in tables:
         tbl.add_row(
             f"{t['name']} <- {t['source']}",
-            f"{t['row_count']:,} ({t['sample_strategy']})",
+            rows_scanned_text(t),
             str(t["field_count"]),
             str(t["pii_candidate_count"]),
             _score(t["reid_risk_score"]),
-            ", ".join(t["key_candidates"]) or "-",
+            key_candidates_text(t),
         )
     state.console.print(tbl)
 
@@ -415,6 +555,8 @@ def run_scan(
     layout: Path | None,
     has_header: bool | None,
     column_names: str | None,
+    detectors: str | None = None,
+    ner_model: str | None = None,
 ) -> None:
     """The body of `decoy scan SOURCES...`. Exits through `typer.Exit`."""
     given = [str(p) for p in sources]
@@ -431,32 +573,28 @@ def run_scan(
         descriptors, paths = resolve_sources(
             sources, fmt=fmt, layout=layout, has_header=has_header, column_names=column_names
         )
-    except ScanUsageError as exc:
-        _emit_error(state, where, str(exc), exc.hint_text)
+        pre_scan = _detectors.resolve_pre_scan(detectors, ner_model)
+        check_scan_options(rows, strategy)
+    except (ScanUsageError, _detectors.DetectorsUsageError) as exc:
+        _emit_error(state, where, str(exc), getattr(exc, "hint_text", None))
         raise typer.Exit(code=EXIT_USAGE) from None
+    # A model that cannot run refuses here, before the first table is read.
+    _detectors.preflight(state, where, pre_scan)
 
-    # --rows 0 reads the whole file; otherwise --strategy picks the bounded sample.
-    row_cap: int | None = None if rows == 0 else rows
-    effective = "full" if rows == 0 else strategy
     out_path: Path | None = out if (out is not None and not streamed) else None
     try:
-        from decoy_engine import scan_set_to_dict, scan_sources
-
-        with scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms:
-            result = scan_sources(
-                descriptors,
-                sample_rows=row_cap,
-                strategy=effective,  # type: ignore[arg-type]
+        with (
+            detector_log(state, state.verbose),
+            scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms,
+        ):
+            run = scan_descriptors(
+                descriptors, rows=rows, strategy=strategy, pre_scan=pre_scan, on_stage=ms.complete
             )
-            ms.complete()
-            core = scan_set_to_dict(result, detail=False)
-            ms.complete()
+            core = run.core
             # PERSIST ONLY on --output (H7b). The file is the value-free core, written once
             # after every table succeeded, so a failed table leaves no partial file.
             if out_path is not None:
-                write_local_target(
-                    out_path, json.dumps(core, indent=2).encode("utf-8"), WriteMode.REPLACE
-                )
+                write_local_target(out_path, core_bytes(core), WriteMode.REPLACE)
             ms.complete()
     except Exception as exc:
         # Never str(exc): engine parse errors can embed raw cell data.
@@ -473,17 +611,20 @@ def run_scan(
         return
 
     saved = str(out_path) if out_path else None
+    members = _detectors.detector_members(core)
+    line = _detectors.detectors_line(members)
+    models = _detectors.has_models(members)
     tables = [
         _table_summary(ct, st, paths[ct["name"]], show_fields)
-        for ct, st in zip(core["tables"], result.tables, strict=True)
+        for ct, st in zip(core["tables"], run.result.tables, strict=True)
     ]
     single = len(tables) == 1
     if state.mode is OutputMode.json:
         emit_json(
             state,
-            _flat_payload(tables[0], saved, show_fields)
+            _flat_payload(tables[0], saved, show_fields, members)
             if single
-            else _multi_payload(tables, saved),
+            else _multi_payload(tables, saved, members),
         )
         return
     if state.mode is OutputMode.quiet:
@@ -496,17 +637,19 @@ def run_scan(
         header_flag = (
             "" if has_header is None else (" --has-header" if has_header else " --no-header")
         )
-        _render_single(state, tables[0], saved, header_flag)
+        _render_single(state, tables[0], saved, header_flag, line)
     else:
-        _render_multi(state, tables, saved)
+        _render_multi(state, tables, saved, line)
     total_pii = sum(t["pii_candidate_count"] for t in tables)
     if show_fields:
         for t in tables:
             state.console.print()
             if not single:
                 state.console.print(accent(f"Table {t['name']}"))
-            render_fields(state, t["fields"], t["pii_candidate_count"])
+            render_fields(
+                state, t["fields"], t["pii_candidate_count"], sample=is_sample(t), models=models
+            )
     elif total_pii > 0:
         state.console.print()
-        render_pii_honesty(state, total_pii)
+        render_pii_honesty(state, total_pii, models)
         state.console.print(hint("Tip:"), "add", code("--show-fields"), "for per-field detail.")

@@ -128,8 +128,10 @@ def test_extras_topic_lists_every_pass_through_extra():
     name every one of them with its exact install line."""
     result = runner.invoke(app, ["explain", "extras"])
     assert result.exit_code == 0
-    for extra in ("cloud", "ner", "ml", "vault", "all"):
+    for extra in ("cloud", "vault", "all"):
         assert f"decoy-cli[{extra}]" in result.stdout, result.stdout
+    assert "decoy models install ner" in result.stdout, result.stdout
+    assert "decoy-cli[ml]" not in result.stdout, "the ml extra is gone (SCAN-ML C1)"
 
 
 def test_explain_keys_states_the_keyed_mask_secret_is_required():

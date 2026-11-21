@@ -37,6 +37,7 @@ ORDER = (
     "_context",
     "_notify",
     "_vault",
+    "_result",
     "_execute",
     "_prepare",
     "_errors",

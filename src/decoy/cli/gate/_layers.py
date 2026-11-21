@@ -15,7 +15,12 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from decoy._config_file import ConfigFileError, parse_config_mapping, read_config_text
+from decoy._config_file import (
+    ConfigFileError,
+    decode_config_bytes,
+    parse_config_mapping,
+    read_config_text,
+)
 from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_OK, EXIT_USAGE, EXIT_WARNINGS
 
 if TYPE_CHECKING:
@@ -89,17 +94,20 @@ def _plan_error_fields(error: Exception) -> tuple[str, str, str | None]:
 
 
 def parse_pipeline_yaml(
-    config_path: Path, source_text: str | None = None
+    config_path: Path, source_text: str | bytes | None = None
 ) -> tuple[dict[str, Any] | None, list[GateFinding]]:
     """The pipeline YAML as a mapping, through the one config loader.
 
-    Reads `config_path` unless `source_text` is given. Returns `(raw, [])`, or `(None,
+    Reads `config_path` unless `source_text` is given; bytes are decoded by the loader.
+    Returns `(raw, [])`, or `(None,
     [finding])` when the file is not UTF-8, does not parse, is empty or is not a mapping: the
     finding carries the loader's code (`yaml.not_utf8`, `yaml.parse_error`, `yaml.empty`,
     `yaml.not_mapping`) and its text. An `OSError` from the read passes through.
     """
     try:
-        text = read_config_text(config_path) if source_text is None else source_text
+        if source_text is None:
+            source_text = read_config_text(config_path)
+        text = decode_config_bytes(source_text) if isinstance(source_text, bytes) else source_text
         return parse_config_mapping(text), []
     except ConfigFileError as exc:
         return None, [GateFinding("config", "error", exc.code, exc.message)]
@@ -465,6 +473,9 @@ def run_gate_on_config(
     preflight_findings, capacity_insufficient = _run_preflight_layer(
         raw, config_path, route, compile_errors, validated=config, skip_subset=skip_subset
     )
+    from decoy.cli.gate._models import post_scan_model_findings
+
+    preflight_findings += post_scan_model_findings(config)
     return GateResult(
         config_findings + compile_findings + preflight_findings,
         frozenset({"config", "compile", "preflight"}),

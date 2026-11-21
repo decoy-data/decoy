@@ -34,6 +34,8 @@ import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 
+from tests.sentry._ratchet import load_allowlist
+
 _ROOT = Path(__file__).resolve().parents[2]
 _SRC = _ROOT / "src" / "decoy"
 _ENGINE = "decoy_engine"
@@ -53,37 +55,9 @@ class AllowedInternal:
 # reference (import or access) to an allowed symbol, fails until reviewed and listed here.
 # A bare use of a name already imported under an entry is the same reviewed symbol.
 _NEEDS = "docs/handoffs/inputs/cli-needs-engine-public-api.md"
-_LOG = "decoy_engine.internal.logging"
-_STRAT = "decoy_engine.execution._strategies.SCALAR_HANDLERS"
-_REG = "decoy_engine.validators._registry._REGISTRY"
-_LOG_WHY = (
-    "Silences the engine's cwd-relative file logger during `decoy ci` and restores its "
-    "singleton; the engine has no public logging configuration (only the `Logger` protocol)."
-)
-_LOG_GONE = f"Engine exports a public logging opt-out ({_NEEDS} #1); then delete this entry."
-_STRAT_WHY = (
-    "`decoy list/show strategy` reads the live SCALAR_HANDLERS registry; no public listing."
-)
-_STRAT_GONE = f"Engine exports a strategy-registry accessor ({_NEEDS} #2); then delete this entry."
-_REG_WHY = "`decoy list validators` reads the live validator registry; no public listing."
-_REG_GONE = f"Engine exports a validator-name accessor ({_NEEDS} #4); then delete this entry."
-ALLOWLIST: tuple[AllowedInternal, ...] = (
-    AllowedInternal("ci/engine_logging.py", _LOG, 1, _LOG_WHY, _LOG_GONE),
-    AllowedInternal("ci/engine_logging.py", f"{_LOG}.get_logger", 1, _LOG_WHY, _LOG_GONE),
-    AllowedInternal("ci/engine_logging.py", f"{_LOG}._LOGGER_INSTANCE", 3, _LOG_WHY, _LOG_GONE),
-    AllowedInternal("cli/cockpit.py", _STRAT, 2, _STRAT_WHY, _STRAT_GONE),
-    AllowedInternal("cli/cockpit.py", f"{_STRAT}.items", 1, _STRAT_WHY, _STRAT_GONE),
-    AllowedInternal("cli/cockpit.py", f"{_STRAT}.get", 1, _STRAT_WHY, _STRAT_GONE),
-    AllowedInternal("cli/cockpit.py", f"{_STRAT}.keys", 1, _STRAT_WHY, _STRAT_GONE),
-    AllowedInternal(
-        "cli/cockpit.py",
-        "decoy_engine.checksums._KNOWN_SCHEMES",
-        1,
-        "`decoy list checksums` reads the live scheme set; no public listing.",
-        f"Engine exports a checksum-scheme accessor ({_NEEDS} #3); then delete this entry.",
-    ),
-    AllowedInternal("cli/cockpit.py", _REG, 1, _REG_WHY, _REG_GONE),
-    AllowedInternal("cli/cockpit.py", f"{_REG}.keys", 1, _REG_WHY, _REG_GONE),
+ALLOWLIST: tuple[AllowedInternal, ...] = tuple(
+    AllowedInternal(*key.split("::"), e["count"], e["reason"], e["removal"])
+    for key, e in load_allowlist("engine-internal-allow").items()
 )
 
 

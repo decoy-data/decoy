@@ -1,8 +1,10 @@
 """Fail-closed guard for decoy-cli's optional extras.
 
 CLI install DX (2026-09-25): `pip install decoy-cli` stays lean by default;
-cloud connectors, NER, and ML weight are opt-in via extras (cloud/ner/ml,
-see pyproject.toml). A pipeline that exercises one of these paths without
+cloud connectors and NER are opt-in (see pyproject.toml). The classifier's
+packages are base dependencies of the engine (SCAN-ML M2), so there is no
+`ml` extra. NER installs through `decoy models install ner`, which also
+installs the pinned model wheel. A pipeline that exercises one of these paths without
 the extra installed should fail with the exact install line, not a raw
 ImportError/ModuleNotFoundError -- generalizes the DE-02 keyprovider probe
 in run.py (see _MaskSecretUsageError) into one reusable translator any
@@ -27,10 +29,16 @@ _MODULE_TO_EXTRA: dict[str, str] = {
     "botocore": "cloud",
     "google.cloud": "cloud",
     "spacy": "ner",
-    "sklearn": "ml",
-    "lightgbm": "ml",
     "opentelemetry": "otel",
 }
+
+# An extra whose fix is a decoy command rather than a pip line.
+_INSTALL_COMMAND: dict[str, str] = {"ner": "decoy models install ner"}
+
+
+def install_line(extra: str) -> str:
+    """The one command that installs `extra`, as the hints print it."""
+    return _INSTALL_COMMAND.get(extra, f"pip install decoy-cli[{extra}]")
 
 
 class MissingExtraError(Exception):
@@ -94,7 +102,7 @@ def require_extra(module_name: str, *, why: str) -> None:
         if extra is None:
             raise
         raise MissingExtraError(
-            f"{why} isn't installed. Add it with:  pip install decoy-cli[{extra}]",
+            f"{why} isn't installed. Add it with:  {install_line(extra)}",
             extra=extra,
         ) from exc
 
@@ -173,8 +181,8 @@ def check_cloud_endpoints(config_dict: dict) -> None:
 
 def translate_ner_unavailable(exc: Exception) -> MissingExtraError | None:
     """Rewrite the engine's NerUnavailableError (text_mask/text_redact
-    `ner`, the engine's ensure_ner_available) to point at decoy-cli's own
-    pass-through `[ner]` extra instead of `decoy-engine[ner]` -- correct for
+    `ner`, the engine's ensure_ner_available) to point at
+    `decoy models install ner` instead of `decoy-engine[ner]` -- correct for
     someone who installed decoy-engine directly, not for a decoy-cli user.
 
     `compile_plan` (`plan/_checks.py`) catches `NerUnavailableError` at
@@ -201,8 +209,7 @@ def translate_ner_unavailable(exc: Exception) -> MissingExtraError | None:
     if getattr(exc, "code", None) != "ner_spacy_not_installed":
         return None
     return MissingExtraError(
-        "PII autodetect (NER) isn't installed. Add it with:  pip install decoy-cli[ner] "
-        "(then run: python -m spacy download en_core_web_sm)",
+        f"PII autodetect (NER) isn't installed. Add it with:  {install_line('ner')}",
         extra="ner",
     )
 
@@ -253,6 +260,6 @@ def translate_missing_extra(exc: ImportError) -> MissingExtraError | None:
         return None
     return MissingExtraError(
         "this pipeline needs an optional capability that isn't installed. "
-        f"Add it with:  pip install decoy-cli[{extra}]",
+        f"Add it with:  {install_line(extra)}",
         extra=extra,
     )

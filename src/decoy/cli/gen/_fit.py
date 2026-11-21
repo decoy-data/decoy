@@ -1,7 +1,7 @@
 """The exact-mode fit behind `decoy fit` and `decoy init <csv> --preset generate`.
 
 One function reads the CSV (whole, or a seeded sample spread across it when it is over the row
-limit) and builds the `distribution-snapshot/v1` document, so both commands fit identically.
+limit) and builds the `distribution-snapshot/v2` document, so both commands fit identically.
 `read_fit_csv` is the one `pandas.read_csv` call of the fit path; the DP mode in `cli/fit.py`
 reads through it too.
 """

@@ -891,12 +891,6 @@ def compare_data(
     EVIDENCE-SAFE: reports aggregate counts only. Raw row/cell values are
     never included in the output.
     """
-    try:
-        import pandas  # noqa: F401  (the dependency guard; the readers import it themselves)
-    except ImportError as _err:
-        raise RuntimeError(
-            "pandas is required for data-level diff. Install with: pip install pandas"
-        ) from _err
     from decoy_engine import DecoyError
 
     output_fps_a: dict[str, Any] = manifest_a.get("output_fingerprints") or {}
@@ -1971,19 +1965,21 @@ def _integrity(
     config_path = ref.yaml if ref else None
     masked_str = str(masked)
     source_str = str(source)
+    members = {"masked": masked_str, "source": source_str}
 
     try:
         from decoy_engine.verification.postmask import run_post_mask
 
-        config_dict: dict
+        from decoy.cli.io import bare_report_config, read_report_config, report_detectors
+
         table_name: str
+        config_sha: str | None = None
         if config_path is not None:
             from decoy_engine import parse_pipeline_config
 
             try:
-                raw = load_config_mapping(config_path)
+                raw, config_sha = read_report_config(config_path)
             except (ConfigFileError, OSError) as exc:
-                members = {"masked": masked_str, "source": source_str}
                 emit_error(state, "report integrity", context=members, **config_refusal(exc))
                 raise typer.Exit(code=exit_code_for(exc))
             config_dict = parse_pipeline_config(raw).model_dump()
@@ -2007,23 +2003,15 @@ def _integrity(
                 )
         else:
             # No config: a minimal dict; the runner's branches degrade when it is bare.
-            table_name = masked.stem
-            config_dict = {
-                "version": 2,
-                "global_settings": {"seed": 0},
-                "sources": {},
-                "tables": [],
-                "targets": {},
-                "relationships": [],
-            }
+            table_name, config_dict = masked.stem, bare_report_config()
 
         source_dir = config_path.parent if config_path else Path.cwd()
         try:
             gated = gate_report_source(config_dict, source_dir, source, table_name)
         except ReportSourceError as exc:
-            context = {"masked": masked_str, "source": source_str}
-            emit_error(state, "report integrity", exc.message, code=exc.code, context=context)
+            emit_error(state, "report integrity", exc.message, code=exc.code, context=members)
             raise typer.Exit(code=EXIT_USAGE)
+        detectors = report_detectors(state, config_dict, members)  # before either CSV is read
         source_df = read_report_source(source, config_dict, source_dir, gated)
         masked_df = read_report_source(masked, {}, Path.cwd())
 
@@ -2031,7 +2019,9 @@ def _integrity(
             source_frames={table_name: source_df},
             output_frames={table_name: masked_df},
             config=config_dict,
+            detectors=detectors,
         )
+        report["config_sha256"] = config_sha
 
         target = report_dest("integrity", masked, ref, out)
         written = _write_out(state, target, _json.dumps(report, indent=2))
@@ -2148,10 +2138,10 @@ Examples:
   decoy report vault vault.bin --config pipeline.yaml --quiet
     Silent mode; exit code 0 = vault opened successfully.
 
-The vault is encrypted under a key derived from the config's seed. The
-config passed to --config must be the SAME config (or at least the same
-global_settings.seed) used by the `decoy run --vault` call that wrote
-the vault, otherwise the decrypt will fail and the command exits 1.
+The vault opens only under the mask secret that the `decoy run --vault`
+call used. Pass the same secret with --mask-secret, or name it in the
+config's global_settings.mask_secret_ref. The seed is not key material.
+A missing or wrong secret exits 1.
 
 See also: decoy run --vault, decoy unmask --vault.
 """

@@ -1,4 +1,4 @@
-"""The `layout.*` descriptors: one registry of codes and fixed, value-free messages.
+"""The `layout.*` and `report.*` descriptors: one registry of codes and fixed, value-free messages.
 
 Every refusal and warning of the project layout (project root, pipeline names, run folders)
 is built from a `Descriptor` here. A message template names folders, files, pipeline names
@@ -157,10 +157,14 @@ CONFIG_INSIDE_OUT = Descriptor(
     "The pipeline YAML {path} is inside an out/ folder, where run folders live.",
 )
 REPORT_SOURCE_AMBIGUOUS = Descriptor(
-    "layout.report_source_ambiguous",
+    "report.source_ambiguous",
     "--source matches no declared source and the config declares several tables; "
     "pass the declared file",
 )
+
+# `report.*` refusals of the `report` commands. They live here, in the one descriptor module, but
+# sit outside the `layout.` namespace because no layout rule produces them.
+REPORT_DESCRIPTORS: tuple[Descriptor, ...] = (REPORT_SOURCE_AMBIGUOUS,)
 
 # Codes a gate or command can refuse with (exit 1); the CI rule-code set is derived from them.
 GATE_DESCRIPTORS: tuple[Descriptor, ...] = (
@@ -181,7 +185,7 @@ GATE_DESCRIPTORS: tuple[Descriptor, ...] = (
     SIDE_FILE_IN_OUT,
     CLOUD_TARGET_INVALID,
     CLOUD_TARGET_UNSUPPORTED,
-    REPORT_SOURCE_AMBIGUOUS,
+    *REPORT_DESCRIPTORS,
 )
 WARNING_DESCRIPTORS: tuple[Descriptor, ...] = (
     LATEST_INVALID,

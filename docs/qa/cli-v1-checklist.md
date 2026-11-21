@@ -3,7 +3,7 @@
 Status: current
 
 Roadmap row 92a (CLI-QA-CHECKLIST). Written 2026-11-15 from CLI `origin/main` `5628920`
-(`src/decoy/cli/`, `docs/cli-reference.md`, `README.md`, `docs/`) and roadmap section 5.3. Not yet
+(`src/decoy/cli/`, `docs/cli-reference.md`, `README.md`, `docs/`) and the roadmap track (old section 5.3; now the group files under `docs/roadmap/groups/`). Not yet
 run.
 
 This file lists what the V1 `decoy` CLI must do, grouped by feature group, and the check a QA pass
@@ -15,11 +15,14 @@ engine section that owns the behaviour is named in the group's notes.
 It is not a roadmap and tracks no work. Results go to a dated record (see "Recording a run").
 A check that fails becomes a roadmap row in `docs/ROADMAP.md`, as the 2026-11-08 QA findings did.
 
+Agent testers, the shared test corpus and the invariant oracle that run beside these checks are
+described in [beta-program.md](beta-program.md) (roadmap row QA-BETA).
+
 ## When a group is ready for QA
 
 Owner rule (2026-11-11, standing): QA runs only on a feature group that is V1 complete. A group is
 ready when every row in its "Waits on rows" line has a State that starts with `MERGED` or `DONE` in
-`docs/ROADMAP.md` section 5.3. Never run part of a group, so no check is run twice. Repo-wide scans
+the roadmap track. Never run part of a group, so no check is run twice. Repo-wide scans
 (pip-audit, semgrep, gitleaks) file their findings against the group and wait for its pass.
 
 Some rows never hold a group, although checks cite them:
@@ -58,7 +61,7 @@ Sixteen groups, 204 checks.
 | 15 | [Help, explain and docs truth](#15-help-explain-and-docs-truth) | DOC-01 to DOC-10 | 24e, 24o, 56, 75, 92 |
 | 16 | [Release build and repo health](#16-release-build-and-repo-health) | BLD-01 to BLD-08 | 5, 5b, 5c, 7, 18, 24ze, 46, 53, 76 |
 
-The row index at the end lists every section 5.3 row that touches the CLI and the checks that cover
+The row index at the end lists every track row that touches the CLI and the checks that cover
 it, and the rows no check covers.
 
 ## Conventions for a QA pass
@@ -124,9 +127,9 @@ No fixture YAML sets `global_settings.mask_secret_ref`. Every command that needs
 
 Marker sweep: every text cell holds `qamark` plus a number, and `data/markers.txt` lists every text
 marker and every `code` value (the digits `fpe` reverses carry no text marker). The sweep is
-`grep -rFf data/markers.txt <captured files>`, run only on files that exist. Exit 1 (no match) is a
-pass; exit 0 is a finding unless the match is in a `passthrough` column of a masked output; exit 2
-(missing file) means the check did not run.
+`python -m scripts.qa.sweep --needles data/markers.txt <captured files>`, run from the repository
+root. Exit 1 (no match) is a pass; exit 0 is a finding unless the match is in a `passthrough`
+column of a masked output; exit 2 (a missing file, or nothing read) means the check did not run.
 
 Services: the checks that reach an external service get it from a local container where a faithful
 one exists, and otherwise from test credentials the owner provides for a throwaway account. Every
@@ -242,7 +245,7 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 | SCAN-01 | `decoy scan data/t1.csv --has-header` | 0 | Rows, fields, PII candidates labelled as suggestions, reid risk with its unit | 24e, 27 | |
 | SCAN-02 | `decoy scan data/t1.csv` with no header flag | 1 | Refused: scan never guesses | 22, 27 | |
 | SCAN-03 | `decoy scan data/parent.csv data/child.csv --has-header --output scan.json`; `decoy scan fields scan.json --table parent --json` | 0, 0 | One table per file, named from the file stem; the field list for `parent` | 27 | |
-| SCAN-04 | `decoy scan data/t1.csv --has-header --output t1-scan.json`; the marker sweep over it; `decoy scan show t1-scan.json contact --table t1`; then the `scan.json` that `decoy demo` writes | 0, 0, 0 | The scan file is the value-free core: no per-value members, sweep clean; `scan show` prints counts and labels only; in the demo's `scan.json`, sensitive columns show `[redacted]` and `redacted_columns` lists them; no flag brings values back | 24c | |
+| SCAN-04 | `decoy scan data/t1.csv --has-header --output t1-scan.json`; the marker sweep over it; `decoy scan show t1-scan.json contact --table t1`; then the `scan.json` that `decoy demo` writes | 0, 0, 0 | The scan file is the value-free core: no per-value members, sweep clean; `scan show` prints counts and labels only; the demo's `scan.json` is the same value-free core with no value member; a sampled scan labels its counts a sample and lists no key; no flag brings values back. A saved `decoy_engine.profile_document` and a plain `decoy fit` snapshot floor every column the profiler did not flag at 10 rows | 24c | |
 | SCAN-05 | `decoy scan data/raw.csv --no-header --column-names a,b,c`; then `decoy scan data/raw.csv --has-header --column-names a,b,c` | 0, 1 | Named columns; the second is refused | 27 | |
 | SCAN-06 | `decoy scan data/rec.fwf --layout data/layout.yaml`; then `decoy scan data/rec.fwf` without `--layout` | 0, 1 | Scans; the second is refused | 27 | |
 | SCAN-07 | `decoy scan diff old.json new.json --strict` where `new` adds a high-PII field; then `decoy scan diff old.json old.json --strict` with no drift; then `decoy scan diff - -` | 4, 0, 1 | Drift is a finding; no drift is clean; both inputs from stdin is refused | 27 | |
@@ -513,7 +516,7 @@ same change. Each failure becomes a roadmap row.
 
 ## Row index
 
-Every section 5.3 row whose Repo column names the CLI, plus rows 6 (infra) and 91 (web) because CLI
+Every track row whose Repo column names the CLI, plus rows 6 (infra) and 91 (web) because CLI
 checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a group is ready").
 
 | Row | Item | Checks |

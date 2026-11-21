@@ -65,7 +65,7 @@ the release you run. The steps match the certified CI job.
 Build the CLI wheel from the checkout:
 
 ```bash
-git clone https://github.com/louiskeep/decoy.git && cd decoy
+git clone https://github.com/decoy-data/decoy.git && cd decoy
 ```
 
 ```bash
@@ -85,7 +85,7 @@ source dp-env/bin/activate
 Install the engine from its git tag and the CLI wheel, with no dependencies:
 
 ```bash
-uv pip install --no-deps "git+https://github.com/louiskeep/decoy-engine@v0.27.0" dist/*.whl
+uv pip install --no-deps "git+https://github.com/decoy-data/decoy-engine@v0.28.1" dist/*.whl
 ```
 
 Install the pinned set from the lock file at the root of the checkout:

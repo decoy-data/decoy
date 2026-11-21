@@ -34,7 +34,7 @@ def _cond_rows() -> tuple[list[str], list[str]]:
     kids: list[str] = []
     for i, weight in enumerate(_PARENT_WEIGHTS, start=1):
         for j, share in enumerate((6, 3, 1)):
-            count = weight * 60 * share // 10
+            count = max(weight * 60 * share // 10, 10)  # the engine floors a cell under 10 rows
             parents += [f"SENTP{i:02d}"] * count
             kids += [f"SENTK{(i + j) % 6 + 1}"] * count
     return parents, kids
@@ -79,7 +79,7 @@ def test_at9_default_cap_warns_once_on_stderr(tmp_path: Path) -> None:
     assert err.count("warning:") == 1, err
     # The snapshot stores a pair sorted by name, and the line names it that way.
     assert "joint kid x parent: 36 combinations, 25 kept; 11 dropped by the cell cap" in err
-    assert "366 rows in all fall outside the kept ones" in err
+    assert "370 rows in all fall outside the kept ones" in err
     assert "Raise --joint-max-cells (at most 1000) to keep the 11." in err
     assert out.exists()
     _no_markers(result.stdout, _stderr(result))
@@ -94,7 +94,7 @@ def test_at9_default_cap_warning_in_json(tmp_path: Path) -> None:
     detail = warnings[0]["detail"]
     assert detail["cell_count"] == 36 and detail["cells_kept"] == 25
     assert detail["cap_dropped"] == 11 and detail["policy_dropped"] == 0
-    assert detail["other_count"] == 366
+    assert detail["other_count"] == 370
     _no_markers(result.stdout)
 
 

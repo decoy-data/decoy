@@ -15,7 +15,6 @@ adds the case. The list only shrinks (tests/sentry/baselines/kind-canary-pending
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -23,9 +22,9 @@ from typing import Any
 
 from decoy_engine import records
 from tests.e2e.library._canary import CASES, CanaryCase
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[3]
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "kind-canary-pending.json"
 
 
 @dataclass(frozen=True)
@@ -34,10 +33,8 @@ class PendingKind:
     reason: str
 
 
-PENDING_ALLOWLIST: tuple[PendingKind, ...] = (
-    PendingKind("scan-set", "L2-cli writes scan records and adds the scan-set canary fixture."),
-    PendingKind("run-result", "L3a-cli writes run-result records and adds the canary fixture."),
-    PendingKind("sample-run", "L3b-cli writes sample-run records and adds the canary fixture."),
+PENDING_ALLOWLIST: tuple[PendingKind, ...] = tuple(
+    PendingKind(kind, e["reason"]) for kind, e in load_allowlist("kind-canary-pending").items()
 )
 
 
@@ -73,13 +70,6 @@ def test_pending_rows_are_unique_and_explained() -> None:
     kinds = [p.kind for p in PENDING_ALLOWLIST]
     assert len(set(kinds)) == len(kinds) == 3
     assert all(len(p.reason.strip()) >= 15 for p in PENDING_ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_rows() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    assert {k: v["reason"] for k, v in entries.items()} == {
-        p.kind: p.reason for p in PENDING_ALLOWLIST
-    }
 
 
 @dataclass(frozen=True)

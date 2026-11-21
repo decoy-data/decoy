@@ -94,30 +94,6 @@ disposition = "public"
 reason = "Synthetic demo config and data, shareable by design."
 
 [[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 1
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 2
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 3
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
 file = "cli/init.py"
 function = "_init"
 sink = "write_text"
@@ -285,3 +261,20 @@ sink = "os.open"
 ordinal = 1
 disposition = "public"
 reason = "Empty install lock file; holds no data."
+
+[[row]]
+file = "cli/models/_private.py"
+function = "private_workdir"
+sink = "tempfile.gettempdir"
+ordinal = 1
+disposition = "read"
+reason = "Reads the system temp folder's name; create_private_directory then makes the 0700 install work folder inside it."
+
+[[row]]
+file = "cli/models/_private.py"
+function = "write_private"
+sink = "write_bytes"
+ordinal = 1
+disposition = "private"
+reason = "Writes the install's constraints file, pinned-model requirements file and --from wheel copies into the file open_private just created 0600."
+via = "open_private"

@@ -72,9 +72,7 @@ def test_init_overwrites_with_yes_flag(tmp_path: Path):
 
 def test_init_preset_hipaa_writes_hipaa_template(tmp_path: Path):
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "hipaa", "--output", str(out), "--quiet"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "hipaa", "--output", str(out), "--quiet"])
     assert result.exit_code == 0
     body = out.read_text()
     # Pulled from the bundled hipaa template -- must include PHI columns.
@@ -98,9 +96,7 @@ def test_init_preset_json_envelope_carries_preset_and_count(tmp_path: Path):
     import json as _json
 
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "pci", "--output", str(out), "--json"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "pci", "--output", str(out), "--json"])
     assert result.exit_code == 0
     payload = _json.loads(result.stdout)
     assert payload["preset"] == "pci"
@@ -112,9 +108,7 @@ def test_init_preset_generate_produces_generator_yaml(tmp_path: Path):
     (2026-06-02): V1 `generator_settings:` block folded into the unified
     V2 `global_settings:`."""
     out = tmp_path / "pipeline.yaml"
-    result = runner.invoke(
-        app, ["init", "--preset", "generate", "--output", str(out), "--quiet"]
-    )
+    result = runner.invoke(app, ["init", "--preset", "generate", "--output", str(out), "--quiet"])
     assert result.exit_code == 0
     body = out.read_text()
     assert "tables:" in body

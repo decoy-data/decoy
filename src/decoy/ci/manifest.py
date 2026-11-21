@@ -28,7 +28,7 @@ from decoy.ci._git import GitBudget, toplevel
 from decoy.ci.contracts import CiManifest
 
 MAX_MANIFEST_BYTES = 1024 * 1024
-SCHEMA_ID = "https://github.com/louiskeep/decoy/blob/main/docs/schemas/decoy-ci-v1.schema.json"
+SCHEMA_ID = "https://github.com/decoy-data/decoy/blob/main/docs/schemas/decoy-ci-v1.schema.json"
 
 _ALLOWED_TAGS = frozenset(
     f"tag:yaml.org,2002:{t}" for t in ("str", "int", "float", "bool", "null", "map", "seq")

@@ -1,9 +1,8 @@
-"""The `decoy library` command group: `path` and `fsck [--repair]` (plan 4.15; L1c.2).
-
-Later slices add `list`, `show`, `diff`, `ref`, `prune`, `export` and `clean` here. This module
-imports nothing from the record engine at import time, so registering the group in
-`decoy.__main__` keeps `decoy --help` and `--version` free of the engine import; each command
-loads the library when it runs.
+"""The `decoy library` command group (plan 4.15): `path`, `fsck` (L1c.2), the read commands
+`list`, `show`, `diff`, `ref` (L4a, in `_read`), and `prune`, `clean` (in `_destructive`) and
+`export` (in `_export`) (L4b). This module imports nothing from the record engine at import
+time, so registering the group in `decoy.__main__` keeps `decoy --help` and `--version` free of
+the engine import; each command loads the library when it runs.
 """
 
 from __future__ import annotations
@@ -12,8 +11,11 @@ from pathlib import Path
 
 import typer
 
-from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK, EXIT_USAGE
-from decoy.ui.output import OutputState, emit_error, setup_output
+from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_OK
+from decoy.cli.library._cli import SOURCE, library_option, start
+from decoy.cli.library._destructive import clean_command, prune_command
+from decoy.cli.library._export import export_command
+from decoy.cli.library._read import diff_command, list_command, ref_command, show_command
 from decoy.ui.theme import error, hint, success, warn
 
 __all__ = ["library_app"]
@@ -24,46 +26,17 @@ library_app = typer.Typer(
     no_args_is_help=True,
 )
 
-_LIBRARY_HELP = "Use DIR as the library (else DECOY_LIBRARY, else the project's .decoy/ folder)."
-_SOURCE = {"flag": "--library", "env": "DECOY_LIBRARY", "project": "project"}
-
-
-def _root(state: OutputState, command: str, library: Path | None):
-    from decoy.cli.io import LayoutError
-    from decoy.cli.library import resolve_root
-
-    failure: LayoutError | None = None
-    try:
-        return resolve_root(flag=library)
-    except LayoutError as exc:
-        failure = exc
-    raise _usage(state, command, failure)
-
-
-def _usage(state: OutputState, command: str, exc: Exception | None) -> typer.Exit:
-    """Report a refusal through the one error emitter; its code, never its cause."""
-    emit_error(state, command, str(exc), code=getattr(exc, "code", None))
-    return typer.Exit(code=EXIT_USAGE)
-
 
 @library_app.command("path")
-def path_command(
-    library: Path | None = typer.Option(None, "--library", metavar="DIR", help=_LIBRARY_HELP),
-) -> None:
+def path_command(library: Path | None = library_option()) -> None:
     """Print the library root, where it came from, and whether it runs in degraded mode."""
-    from decoy.cli.library import LibraryError, open_library
-
-    state = setup_output(False, False, False)
-    root = _root(state, "library path", library)
-    caught: LibraryError | None = None
-    try:
-        opened = open_library(root.path)
-    except LibraryError as exc:
-        caught = exc
-    if caught is not None:
-        raise _usage(state, "library path", caught)
-    state.console.print("root:", str(root.path))
-    state.console.print("from:", _SOURCE[root.source])
+    cmd = start("library path")
+    state = cmd.state
+    root = cmd.root(library)
+    opened = cmd.library(root.path)
+    # Never read a path as Rich markup; the console keeps the line whole off a terminal.
+    state.console.print("root:", str(root.path), markup=False, highlight=False)
+    state.console.print("from:", SOURCE[root.source])
     state.console.print("records:", "on" if root.records else "off (DECOY_LIBRARY=off)")
     if opened.degraded is None:
         state.console.print("mode:", "normal")
@@ -86,7 +59,7 @@ def fsck_command(
             "records and rebuild the index. Never deletes a valid record."
         ),
     ),
-    library: Path | None = typer.Option(None, "--library", metavar="DIR", help=_LIBRARY_HELP),
+    library: Path | None = library_option(),
 ) -> None:
     """Check every record, ref, link, the index, temp files, modes and job logs.
 
@@ -94,8 +67,9 @@ def fsck_command(
     """
     from decoy.cli.library import LibraryError, check_root_budget, fsck_check, fsck_repair
 
-    state = setup_output(False, False, False)
-    root = _root(state, "library fsck", library)
+    cmd = start("library fsck")
+    state = cmd.state
+    root = cmd.root(library)
     caught: LibraryError | None = None
     try:
         check_root_budget(root.path)
@@ -106,7 +80,7 @@ def fsck_command(
     except LibraryError as exc:
         caught = exc
     if caught is not None:
-        raise _usage(state, "library fsck", caught)
+        cmd.fail_library(caught)
     state.console.print("library:", str(root.path))
     for action in actions:
         state.console.print(success("repaired"), action.code, action.target)
@@ -122,3 +96,12 @@ def fsck_command(
         f"{count['warning']} warnings, {count['note']} notes"
     )
     raise typer.Exit(code=EXIT_OK if report.clean else EXIT_FINDINGS)
+
+
+library_app.command("list")(list_command)
+library_app.command("show")(show_command)
+library_app.command("diff")(diff_command)
+library_app.command("ref")(ref_command)
+library_app.command("prune")(prune_command)
+library_app.command("clean")(clean_command)
+library_app.command("export")(export_command)

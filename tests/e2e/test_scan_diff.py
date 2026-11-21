@@ -10,33 +10,19 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_FINDINGS
+from tests.scan_docs import scan_set_doc
 
 runner = CliRunner()
 
 
 def _write_scan(path: Path, fields: list[dict], **extra) -> Path:
-    payload = {
-        "row_count": 5,
-        "source_label": "sample.csv",
-        "sample_strategy": "head",
-        "sample_row_cap": None,
-        "reid_risk_score": 50.0,
-        "quasi_identifier_groups": [],
-        "fields": fields,
-    }
-    payload.update(extra)
-    path.write_text(_json.dumps(payload))
+    options = {"reid_risk_score": 50.0, "quasi_identifier_groups": [], **extra}
+    path.write_text(_json.dumps(scan_set_doc(fields, table="sample", **options)))
     return path
 
 
 def _field(name: str, score: float = 0.0) -> dict:
-    return {
-        "name": name,
-        "pii_score": score,
-        "top_values": [],
-        "detector_matches": [],
-        "sentinels": [],
-    }
+    return {"name": name, "pii_score": score}
 
 
 @pytest.fixture

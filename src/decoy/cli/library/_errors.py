@@ -15,6 +15,8 @@ from __future__ import annotations
 from decoy_engine.reasons import runtime, warning
 
 __all__ = [
+    "EXPORT_DESTINATION_UNSAFE",
+    "EXPORT_NOT_CLOSED",
     "LIBRARY_BUSY",
     "LIBRARY_FILE_TOO_LARGE",
     "LIBRARY_INDEX_CORRUPT",
@@ -26,13 +28,16 @@ __all__ = [
     "LIBRARY_POLICY_INVALID",
     "LIBRARY_POLICY_UNTRUSTED",
     "LIBRARY_READ_FAILED",
+    "LIBRARY_UNEXPLAINED_ENTRIES",
     "LIBRARY_WRITE_FAILED",
     "RECORD_CORRUPT",
     "RECORD_INVALID",
     "RECORD_LINK_MISSING",
     "RECORD_NOT_FOUND",
+    "REF_KIND_MISMATCH",
     "REF_NAME_INVALID",
     "REF_NAME_RESERVED",
+    "USAGE_CODES",
     "LibraryError",
     "library_error",
 ]
@@ -56,6 +61,8 @@ RECORD_LINK_MISSING = "record_link_missing"
 RECORD_NOT_FOUND = "record_not_found"
 # A ref kind that is not a registered kind, or a name outside the ref grammar (plan 4.5).
 REF_NAME_INVALID = "ref_name_invalid"
+# A ref may point only at a record of its own kind (`scan-set/main` names a scan-set record).
+REF_KIND_MISMATCH = "ref_kind_mismatch"
 # A one-part ref name that is a scope other refs live under (`scan-set/baseline/<slug>`).
 REF_NAME_RESERVED = "ref_name_reserved"
 # `.decoy/library.yaml` is unreadable, not YAML, or fails the policy model (field names only).
@@ -66,6 +73,30 @@ LIBRARY_POLICY_UNTRUSTED = "library_policy_untrusted"
 LIBRARY_READ_FAILED = "library_read_failed"
 # A library file larger than its cap: refused unread, so a planted huge file cannot exhaust memory.
 LIBRARY_FILE_TOO_LARGE = "library_file_too_large"
+
+
+# prune or export met an entry it cannot account for (a ref it cannot read, a record file with
+# no index row, a link or pipe among the objects): acting could delete or drop what that entry
+# protects, so `--yes` and export refuse until `decoy library fsck` explains or repairs it.
+LIBRARY_UNEXPLAINED_ENTRIES = "library_unexplained_entries"
+# `export --output` names a file inside the library or its scratch area, or a symlink.
+EXPORT_DESTINATION_UNSAFE = "export_destination_unsafe"
+# export would write a set whose records link outside it; refused before anything is written.
+EXPORT_NOT_CLOSED = "export_not_closed"
+
+# Codes that describe what the user typed; every other code is the library's own state. The
+# commands exit `EXIT_USAGE` for these and `EXIT_RUNTIME` for the rest (`_cli.LibraryCommand`).
+USAGE_CODES = frozenset(
+    {
+        REF_NAME_INVALID,
+        REF_NAME_RESERVED,
+        REF_KIND_MISMATCH,
+        LIBRARY_PATH_TOO_LONG,
+        LIBRARY_POLICY_INVALID,
+        LIBRARY_POLICY_UNTRUSTED,
+        EXPORT_DESTINATION_UNSAFE,
+    }
+)
 
 
 class LibraryError(Exception):

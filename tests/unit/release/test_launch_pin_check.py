@@ -18,8 +18,8 @@ lpc = importlib.util.module_from_spec(_spec)
 sys.modules["launch_pin_check"] = lpc
 _spec.loader.exec_module(lpc)
 
-TAG = "v0.27.0"
-SPEC = f"git+https://github.com/louiskeep/decoy-engine@{TAG}"
+TAG = "v0.28.1"
+SPEC = f"git+https://github.com/decoy-data/decoy-engine@{TAG}"
 
 
 def _version() -> str:
@@ -52,9 +52,9 @@ def test_spec_on_the_d4_tag_passes() -> None:
 
 
 def test_spec_on_another_tag_fails() -> None:
-    results = lpc.check("v0.28.0", FakeRunner(), ROOT)
+    results = lpc.check("v0.29.0", FakeRunner(), ROOT)
     assert results[0].code == "launch_pin_not_d4_tag"
-    assert lpc.main(["--engine-tag", "v0.28.0"], runner=FakeRunner()) == 1
+    assert lpc.main(["--engine-tag", "v0.29.0"], runner=FakeRunner()) == 1
 
 
 def test_a_failing_agreement_step_fails() -> None:

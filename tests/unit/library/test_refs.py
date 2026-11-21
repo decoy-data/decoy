@@ -451,7 +451,7 @@ def test_the_reserved_scope_name_is_refused_up_front(root: Path, kind: str) -> N
 def test_the_scoped_baseline_and_the_reserved_name_do_not_clash(root: Path) -> None:
     a, b = _stored(root, 0), _stored(root, 1)
     library = open_library(root)
-    library.set_ref("scan-set", "baseline/claims", a)
-    library.set_ref("scan-set", "baseline/members", b)
-    assert library.read_ref("scan-set", "baseline/claims") == a
-    assert _ref_file(root, "scan-set", "baseline").is_dir()  # the folder the name would hit
+    library.set_ref("sample-run", "baseline/claims", a)
+    library.set_ref("sample-run", "baseline/members", b)
+    assert library.read_ref("sample-run", "baseline/claims") == a
+    assert _ref_file(root, "sample-run", "baseline").is_dir()  # the folder the name would hit

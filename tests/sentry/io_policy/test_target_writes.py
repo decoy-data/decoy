@@ -23,11 +23,11 @@ adds it to the watch set. `csv.writer` and `write_text` are not table writers he
 from __future__ import annotations
 
 import ast
-import json
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.io_policy._calls import (
     call_contexts,
     call_sites,
@@ -47,7 +47,6 @@ STAGED_WRITERS = ("_write_table", "write_chunked_output")
 # `_write_table` receives its stager as `stage`; the callers below are checked to pass real ones.
 STAGE_CALLS = frozenset({"stage", "staged_local_target", "staged_private_target"})
 STAGERS = frozenset({"staged_local_target", "staged_private_target"})
-BASELINE = ROOT / "tests" / "sentry" / "baselines" / "target-writes-allow.json"
 
 _METHODS = frozenset({"to_csv", "to_parquet"})
 _PARQUET = {"write_table", "ParquetWriter", "write_to_dataset"}
@@ -63,14 +62,9 @@ class AllowedWrite:
     reason: str
 
 
-ALLOWLIST: tuple[AllowedWrite, ...] = (
-    AllowedWrite(
-        "api.py",
-        "_stage_source_entry",
-        1,
-        "Spools in-memory data= to a private temp Parquet read back as a source; "
-        "not a target write.",
-    ),
+ALLOWLIST: tuple[AllowedWrite, ...] = tuple(
+    AllowedWrite(*key.split("::"), e["sites"], e["reason"])
+    for key, e in load_allowlist("target-writes-allow").items()
 )
 
 
@@ -116,12 +110,6 @@ def test_allowlist_entries_are_live_and_exact() -> None:
 def test_allowlist_has_reasons_and_unique_identities() -> None:
     assert len(_allowed()) == len(ALLOWLIST)
     assert all(len(a.reason) >= 15 for a in ALLOWLIST)
-
-
-def test_baseline_json_records_the_same_entries_and_reasons() -> None:
-    entries = json.loads(BASELINE.read_text(encoding="utf-8"))["entries"]
-    expected = {f"{a.file}::{a.function}": {"reason": a.reason} for a in ALLOWLIST}
-    assert entries == expected
 
 
 def _outside_writers(source: str) -> list[str]:

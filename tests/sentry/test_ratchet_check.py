@@ -359,10 +359,10 @@ _CASES = pytest.mark.parametrize(
 )
 
 
-def _max_baseline(sid: str, max_value: int | None) -> str:
+def _max_baseline(sid: str, max_value: int | None, field: str = "max") -> str:
     entry: dict[str, object] = {"reason": REASON}
     if max_value is not None:
-        entry["max"] = max_value
+        entry[field] = max_value
     return json.dumps({"sentry_id": sid, "created_in": "S0", "entries": {"m::f": entry}})
 
 
@@ -395,3 +395,171 @@ def test_a_rename_may_not_raise_a_numeric_max(
     assert (res.returncode == 1) is red, res.stdout + res.stderr
     if red:
         assert "replacement or split of a raised or dropped max for key(s): m::f" in res.stderr
+
+
+@pytest.mark.parametrize("field", ["count", "sites"])
+@_CASES
+def test_count_and_sites_are_ceilings_like_max(
+    repo: Path, field: str, base_max: int | None, head_max: int | None, red: bool
+) -> None:
+    """A moved ``count`` or ``sites`` entry must not rise unseen (it was invisible to the ratchet)."""
+    _write(repo, A, _max_baseline("a", base_max, field))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _max_baseline("a", head_max, field))
+    res = _run(repo)
+    assert (res.returncode == 1) is red, res.stdout + res.stderr
+    if red:
+        assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def _entry_baseline(sid: str, entry: dict[str, object]) -> str:
+    return json.dumps(
+        {"sentry_id": sid, "created_in": "S0", "entries": {"m::f": {"reason": REASON, **entry}}}
+    )
+
+
+@pytest.mark.parametrize(
+    ("base", "head"),
+    [
+        ({"count": 3}, {"count": 99, "max": 1}),
+        ({"sites": 4}, {"sites": 9, "count": 0}),
+        ({"max": 5, "count": 3}, {"max": 1, "count": 4}),
+        ({"count": 3}, {"max": 1}),
+    ],
+    ids=["count-up-max-added", "sites-up-count-added", "second-field-up", "field-swapped"],
+)
+def test_each_ceiling_field_is_checked_on_its_own(
+    repo: Path, base: dict[str, object], head: dict[str, object]
+) -> None:
+    """Adding a lower field beside a raised one, or swapping fields, must not hide growth."""
+    _write(repo, A, _entry_baseline("a", base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", head))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+@pytest.mark.parametrize(
+    ("base", "head"),
+    [
+        ({"count": 3}, {"count": 2, "max": 99}),
+        ({"sites": 4}, {"sites": 1, "count": 50}),
+        ({"max": 5}, {"max": 4, "sites": 9}),
+    ],
+    ids=["count-lowered-max-added", "sites-lowered-count-added", "max-lowered-sites-added"],
+)
+def test_a_new_ceiling_field_beside_an_old_one_is_refused(
+    repo: Path, base: dict[str, object], head: dict[str, object]
+) -> None:
+    """Lowering the old field while adding another would move the cap to the new field."""
+    _write(repo, A, _entry_baseline("a", base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", head))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "a: max raised or dropped for key(s): m::f" in res.stderr
+
+
+def test_an_entry_with_no_ceiling_may_gain_one(repo: Path) -> None:
+    _write(repo, A, _entry_baseline("a", {}))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "ceiling")
+    _write(repo, A, _entry_baseline("a", {"count": 2}))
+    assert _run(repo).returncode == 0
+
+
+# -- approved_growth: the one recorded way to admit a key the merge base lacks -------------------
+
+DECISION = "owner 2026-11-20 W3 pipeline file suffix allow entry"
+
+
+def _approve(repo: Path, rows: list[tuple[str, str]], sid: str = "a", path: str = A) -> None:
+    lines = ", ".join(f'{{ key = "{k}", decision = "{d}" }}' for k, d in rows)
+    _write(
+        repo, REG, f'[[sentry]]\nid = "{sid}"\nbaseline = "{path}"\napproved_growth = [{lines}]\n'
+    )
+
+
+def _grow(repo: Path, *keys: str) -> None:
+    _write(repo, A, _baseline("a", ["m::f", "m::g", *keys]))
+
+
+def test_unlisted_growth_still_fails(repo: Path) -> None:
+    _grow(repo, "m::new")
+    _approve(repo, [("m::other", DECISION)])
+    _assert_red(repo, "m::new")
+
+
+def test_listed_growth_passes_and_reports_the_decision(repo: Path) -> None:
+    _grow(repo, "m::new")
+    _approve(repo, [("m::new", DECISION)])
+    res = _run(repo)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert "approved growth m::new" in res.stdout
+
+
+def test_only_the_listed_key_is_exempt(repo: Path) -> None:
+    _grow(repo, "m::new", "m::new2")
+    _approve(repo, [("m::new", DECISION)])
+    res = _run(repo)
+    assert res.returncode == 1 and "m::new2" in res.stdout + res.stderr
+
+
+@pytest.mark.parametrize("key", ["m::*", "m::ne?", "m::[nx]ew"])
+def test_a_glob_entry_is_refused(repo: Path, key: str) -> None:
+    _grow(repo, "m::new")
+    _approve(repo, [(key, DECISION)])
+    _assert_red(repo, "pattern")
+
+
+def test_a_prefix_entry_does_not_exempt_a_longer_key(repo: Path) -> None:
+    _grow(repo, "m::new")
+    _approve(repo, [("m::ne", DECISION)])
+    res = _run(repo)
+    out = res.stdout + res.stderr
+    assert res.returncode == 1 and "stale approved_growth" in out and "m::new" in out
+
+
+@pytest.mark.parametrize(
+    "decision",
+    [
+        "",
+        "approved",
+        "owner 2026-11-17",
+        "owner 2026-1-17 enough text here",
+        "cam 2026-11-17 enough text here",
+        "owner 2026-99-99 enough text here",
+        "owner 2026-02-30 enough text here",
+    ],
+)
+def test_a_bad_decision_is_refused(repo: Path, decision: str) -> None:
+    _grow(repo, "m::new")
+    _approve(repo, [("m::new", decision)])
+    _assert_red(repo, "needs a decision")
+
+
+def test_a_listed_key_missing_from_the_baseline_fails(repo: Path) -> None:
+    _approve(repo, [("m::absent", DECISION)])
+    _assert_red(repo, "stale approved_growth")
+
+
+def test_a_row_on_another_baseline_gives_no_exemption(repo: Path) -> None:
+    b = "tests/sentry/baselines/b.json"
+    _write(repo, b, _baseline("b", ["x::y"]))
+    _write(repo, REG, _registry({"a": A, "b": b}))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "b")
+    _grow(repo, "m::new")
+    _write(
+        repo,
+        REG,
+        _registry({"a": A})
+        + f'[[sentry]]\nid = "b"\nbaseline = "{b}"\napproved_growth = [{{ key = "m::new", decision = "{DECISION}" }}]\n',
+    )
+    res = _run(repo)
+    out = res.stdout + res.stderr
+    assert res.returncode == 1 and "a: baseline gained key(s)" in out and "m::new" in out

@@ -87,8 +87,8 @@ and which folder you ran the command from.
 
 ### "Extra inputs are not permitted (tables.0.columns.5...)"
 
-A strategy option is at the wrong level. Options such as `width`, `min_days`
-and `max_days` go under `provider_config:`.
+A strategy option is at the wrong level. Options such as `width`, `min_days`,
+`max_days` and `date_format` go under `provider_config:`.
 
 ## Surprising results
 

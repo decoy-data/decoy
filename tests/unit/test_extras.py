@@ -29,8 +29,10 @@ class TestMatchExtra:
         assert _match_extra("spacy") == "ner"
         assert _match_extra("boto3") == "cloud"
         assert _match_extra("botocore") == "cloud"
-        assert _match_extra("sklearn") == "ml"
-        assert _match_extra("lightgbm") == "ml"
+        # The classifier's packages are base engine dependencies (no `ml` extra), so a
+        # missing one is a broken install, never a missing extra.
+        assert _match_extra("sklearn") is None
+        assert _match_extra("lightgbm") is None
 
     def test_cryptography_is_not_mapped(self) -> None:
         # cryptography is a base engine dependency (FF1's
@@ -72,7 +74,7 @@ class TestRequireExtra:
         )
         with pytest.raises(MissingExtraError) as exc_info:
             require_extra("decoy_cli_test_fixture_not_a_real_module", why="PII autodetect (NER)")
-        assert "pip install decoy-cli[ner]" in str(exc_info.value)
+        assert "decoy models install ner" in str(exc_info.value)
         assert "PII autodetect (NER)" in str(exc_info.value)
 
     def test_unmapped_missing_module_reraises_plain_import_error(self) -> None:
@@ -157,7 +159,7 @@ class TestTranslateMissingExtra:
         exc = ModuleNotFoundError("No module named 'spacy'", name="spacy")
         translated = translate_missing_extra(exc)
         assert translated is not None
-        assert "pip install decoy-cli[ner]" in str(translated)
+        assert "decoy models install ner" in str(translated)
 
     def test_google_namespace_shell_absent_still_matches_cloud(self) -> None:
         # When the `google` namespace package itself is
@@ -274,7 +276,7 @@ class TestTranslateNerUnavailable:
         exc = NerUnavailableError(code="ner_spacy_not_installed", message="spaCy is not installed")
         translated = translate_ner_unavailable(exc)
         assert translated is not None
-        assert "pip install decoy-cli[ner]" in str(translated)
+        assert "decoy models install ner" in str(translated)
 
     def test_leaves_model_not_installed_untranslated(self) -> None:
         # spaCy IS present here, just not the requested model -- the fix is
@@ -306,7 +308,7 @@ class TestTranslateNerUnavailable:
         )
         translated = translate_ner_unavailable(exc)
         assert translated is not None
-        assert "pip install decoy-cli[ner]" in str(translated)
+        assert "decoy models install ner" in str(translated)
         assert translated.extra == "ner"
 
     def test_wrapped_plancompileerror_leaves_model_not_installed_untranslated(self) -> None:
@@ -332,7 +334,7 @@ class TestPlanCompileErrorFields:
         )
         code, message = plan_compile_error_fields(exc)
         assert code == "missing_extra"
-        assert "pip install decoy-cli[ner]" in message
+        assert "decoy models install ner" in message
         # The [missing_extra] code prefix belongs to the
         # exception's __str__, not this rendered message -- callers already
         # display `code` and `message` as separate fields, so duplicating

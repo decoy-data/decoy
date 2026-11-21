@@ -11,24 +11,18 @@ the engine's class 6 facade cell has nothing to check here.
 from __future__ import annotations
 
 import ast
-import json
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 from tests.sentry.defects import _defect_scan as scan
 
 SRC = scan.ROOT / "src" / "decoy"
 BASELINE = Path(__file__).resolve().parents[1] / "baselines" / "exception-context.json"
 
 
-def _baseline() -> dict[str, dict[str, str]]:
-    data = json.loads(BASELINE.read_text(encoding="utf-8"))
-    assert data["sentry_id"] == "exception-context"
-    return data["entries"]  # type: ignore[no-any-return]
-
-
 # The ratchet's keys, read by tests/sentry/_baseline_sources.py; they live in the baseline only.
-BASELINE_KEYS: tuple[str, ...] = tuple(sorted(_baseline()))
+BASELINE_KEYS: tuple[str, ...] = tuple(sorted(load_allowlist("exception-context")))
 
 
 def _keys(source: str, rel: str = "decoy/x.py") -> list[str]:

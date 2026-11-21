@@ -21,7 +21,6 @@ The name is spelled in two pieces so this file does not hold it. Other tests imp
 from __future__ import annotations
 
 import fnmatch
-import json
 import re
 import subprocess
 from collections.abc import Mapping
@@ -29,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.sentry._ratchet import load_allowlist
 
 ROOT = Path(__file__).resolve().parents[3]
 THIS_FILE = "tests/sentry/release/test_retired_name_residual.py"
@@ -70,13 +70,25 @@ HISTORY = (
     Allowed("docs/RECENTLY-SHIPPED.md", "the dated shipped log"),
 )
 
+
+# The old public engine names from the detection taxonomy split. The engine contract (section 1) and
+# the engine changelog own the table that maps each one to its new name; the CLI keeps this list
+# only to prove no CLI source uses one. They are built from RETIRED_NAME like the name itself.
+RETIRED_SYMBOLS = (
+    f"run_{RETIRED_NAME}",
+    f"{RETIRED_NAME.capitalize()}Profile",
+    f"run_{RETIRED_NAME}_post_mask",
+    f"{RETIRED_NAME.capitalize()}PostMaskReport",
+    f"{RETIRED_NAME}_profiles_to_snapshot",
+    f"_run_{RETIRED_NAME}_inner",
+    f"decoy_engine.{RETIRED_NAME}",
+)
+
+
 # {path: lines that still carry the name}, kept in a registered baseline so the ratchet check
 # lets it only shrink. A path that holds the name is written with `{n}` in the file.
-PENDING_FILE = ROOT / "tests" / "sentry" / "baselines" / "retired-name-pending.json"
-
-
 def _pending() -> dict[str, int]:
-    entries = json.loads(PENDING_FILE.read_text(encoding="utf-8"))["entries"]
+    entries = load_allowlist("retired-name-pending")
     return {path.format(n=RETIRED_NAME): int(e["max"]) for path, e in entries.items()}
 
 
@@ -158,6 +170,27 @@ def tracked_files() -> dict[str, bytes]:
 def test_no_retired_name_outside_history_and_pending() -> None:
     found = violations(tracked_files(), _pending())
     assert not found, "the retired name is still present:\n" + "\n".join(found)
+
+
+def _old_name_pattern() -> re.Pattern[str]:
+    return re.compile("|".join(rf"\b{re.escape(n)}\b" for n in RETIRED_SYMBOLS))
+
+
+def test_no_cli_source_uses_an_old_public_engine_name() -> None:
+    pattern = _old_name_pattern()
+    offenders = [
+        str(p.relative_to(ROOT))
+        for p in sorted((ROOT / "src" / "decoy").rglob("*.py"))
+        if pattern.search(p.read_text(encoding="utf-8"))
+    ]
+    assert offenders == []
+
+
+def test_the_old_name_list_has_seven_names_and_finds_a_use() -> None:
+    assert len(set(RETIRED_SYMBOLS)) == 7
+    assert all(RETIRED_PATTERN.search(n) for n in RETIRED_SYMBOLS)
+    for name in RETIRED_SYMBOLS:
+        assert _old_name_pattern().search(f"x = {name}(1)"), name
 
 
 def test_history_globs_sit_under_the_fixed_roots() -> None:

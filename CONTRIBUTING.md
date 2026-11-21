@@ -1,10 +1,10 @@
 # Contributing to decoy
 
-Thanks for considering a contribution. `decoy` is the CLI front end for [`decoy-engine`](https://github.com/louiskeep/decoy-engine); most data-plane changes belong in the engine repo rather than here.
+Thanks for considering a contribution. `decoy` is the CLI front end for [`decoy-engine`](https://github.com/decoy-data/decoy-engine); most data-plane changes belong in the engine repo rather than here.
 
 ## Reporting bugs and requesting features
 
-[GitHub Issues](https://github.com/louiskeep/decoy/issues) is the right channel for both. A good bug report includes:
+[GitHub Issues](https://github.com/decoy-data/decoy/issues) is the right channel for both. A good bug report includes:
 
 - CLI version (`decoy --version`)
 - Engine version (`python -c "import decoy_engine; print(decoy_engine.__version__)"`)
@@ -17,7 +17,7 @@ For security issues, do not file a public issue: see [`SECURITY.md`](SECURITY.md
 ## Local development
 
 ```
-git clone https://github.com/louiskeep/decoy
+git clone https://github.com/decoy-data/decoy
 cd decoy
 python -m venv .venv
 source .venv/bin/activate    # PowerShell: .venv\Scripts\Activate.ps1

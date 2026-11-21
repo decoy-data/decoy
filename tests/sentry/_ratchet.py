@@ -3,8 +3,16 @@
 A baseline is a JSON file ``{"sentry_id", "created_in", "entries": {key: {"reason"}}}``
 under ``tests/sentry/baselines/``. ``scripts/dev/sentry_registry.toml`` binds each sentry id to
 exactly one baseline path. ``check`` compares the working tree with a base commit and returns
-findings; an empty list means the ratchet holds. An entry that carries a numeric ``max`` may keep
-or lower it, never raise or drop it (see ``max_raised``). Messages carry ids, paths and keys only.
+findings; an empty list means the ratchet holds. An entry that carries a numeric ceiling
+(``max``, ``count`` or ``sites``, each on its own) may keep or lower it, never raise or drop it (see
+``max_raised``). Messages carry ids, paths and keys only. ``load_allowlist`` is the one reader a
+sentry uses for its allowlist: the registered baseline JSON, which is the only copy.
+
+Growth has one recorded path: a registry row may list ``approved_growth`` entries, each an exact
+key and a dated owner decision ``owner YYYY-MM-DD <text>``. Ported from decoy-engine
+``tests/sentry/_ratchet.py`` (``DECISION``, ``parse_approvals`` and the stale-row check) and its
+``scripts/dev/sentry_registry.toml`` rows. A listed key may be added; a pattern, a bad decision, or
+a key the baseline does not hold is a finding.
 
 Ported from decoy-engine ``tests/sentry/_ratchet.py`` (X0a), plus the platform's
 ``created_in`` rules: every baseline names a non-empty ``created_in``, and a first inventory
@@ -21,10 +29,13 @@ sentries compare entries exactly.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
+from typing import Any
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -35,6 +46,10 @@ REGISTRY = "scripts/dev/sentry_registry.toml"
 BASELINE_DIR = "tests/sentry/baselines"
 MIN_REASON = 15
 PLACEHOLDERS = frozenset({"todo", "tbd", "fixme", "xxx", "n/a", "none"})
+# Numeric fields a baseline entry may carry as a count the ratchet lets only fall, each checked.
+CEILING_FIELDS = ("max", "count", "sites")
+DECISION = re.compile(r"^owner \d{4}-\d{2}-\d{2} .{10,}$")
+_GLOB_CHARS = frozenset("*?[]")
 
 
 @dataclass(frozen=True)
@@ -62,6 +77,52 @@ def parse_registry(text: str) -> tuple[dict[str, str], list[str]]:
             findings.append(f"registry: two sentries ({', '.join(ids)}) share baseline {path}")
         if not path.startswith(BASELINE_DIR + "/"):
             findings.append(f"registry: baseline {path} is outside {BASELINE_DIR}/")
+    return out, findings
+
+
+def load_allowlist(sentry_id: str, root: Path | None = None) -> dict[str, dict[str, Any]]:
+    """The entries of the baseline the registry names for ``sentry_id``: ``{key: entry}``."""
+    base = root if root is not None else Path(__file__).resolve().parents[2]
+    registered, _ = parse_registry((base / REGISTRY).read_text(encoding="utf-8"))
+    doc = json.loads((base / registered[sentry_id]).read_text(encoding="utf-8"))
+    return dict(doc["entries"])
+
+
+def _decision_ok(decision: object) -> bool:
+    """A dated owner decision: the whole string matches and the date is a real calendar day."""
+    if not isinstance(decision, str) or not DECISION.fullmatch(decision):
+        return False
+    try:
+        date.fromisoformat(decision.split(" ", 2)[1])
+    except ValueError:
+        return False
+    return True
+
+
+def parse_approvals(text: str) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """``{sentry id: {key: decision}}`` from ``approved_growth`` rows, and findings for bad rows.
+
+    A row is ``{ key, decision }``; the key compares exactly (no glob or prefix) and the decision
+    must name a dated owner decision. Growth of a baseline passes only through a row here.
+    """
+    out: dict[str, dict[str, str]] = {}
+    findings: list[str] = []
+    for row in tomllib.loads(text).get("sentry", []):
+        sid = row.get("id", "")
+        for item in row.get("approved_growth", []):
+            key = item.get("key") if isinstance(item, dict) else None
+            decision = item.get("decision") if isinstance(item, dict) else None
+            if not isinstance(key, str) or not key:
+                findings.append(f"{sid}: approved_growth row has no key")
+            elif _GLOB_CHARS & set(key):
+                findings.append(f"{sid}: approved_growth key {key} is a pattern; list exact keys")
+            elif not _decision_ok(decision):
+                findings.append(
+                    f"{sid}: approved_growth for {key} needs a decision "
+                    "'owner YYYY-MM-DD <text of 10+ chars>'"
+                )
+            else:
+                out.setdefault(sid, {})[key] = decision
     return out, findings
 
 
@@ -105,15 +166,31 @@ def _base_entries(root: Path, ref: str, path: str) -> dict[str, object]:
     return dict(parse_baseline(text).reasons) if text is not None else {}
 
 
-def _max_of(entry: object) -> int | None:
-    value = entry.get("max") if isinstance(entry, dict) else None
-    return value if isinstance(value, int) else None
+def _int_field(entry: dict[str, object], field: str) -> int | None:
+    value = entry.get(field)
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def max_raised(head: object, base: object) -> bool:
-    """True when a numeric ``max`` rose, or was dropped, against the base entry."""
-    old, new = _max_of(base), _max_of(head)
-    return old is not None and (new is None or new > old)
+    """True when the ceiling of an entry rose, was dropped, or moved to another field.
+
+    Each ceiling field (``max``, ``count``, ``sites``) the base entry holds as an integer is
+    checked on its own. An entry that had a ceiling may not gain a ceiling field it did not have:
+    lowering ``count`` while adding ``max`` would move the cap to the new field.
+    """
+    if not isinstance(base, dict):
+        return False
+    held = [f for f in CEILING_FIELDS if _int_field(base, f) is not None]
+    if not held:
+        return False
+    head_entry = head if isinstance(head, dict) else {}
+    if any(_int_field(head_entry, f) is not None for f in CEILING_FIELDS if f not in held):
+        return True
+    for field in held:
+        old, new = _int_field(base, field), _int_field(head_entry, field)
+        if old is not None and (new is None or new > old):
+            return True
+    return False
 
 
 def _base_baseline(root: Path, ref: str, path: str) -> Baseline | None:
@@ -170,9 +247,10 @@ def _fmt(keys: frozenset[str]) -> str:
 def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[list[str], list[str]]:
     """Return ``(findings, report_lines)`` for the tree at ``root`` against ``base_ref``."""
     reg_file = root / REGISTRY
-    head, findings = parse_registry(
-        reg_file.read_text(encoding="utf-8") if reg_file.exists() else ""
-    )
+    reg_text = reg_file.read_text(encoding="utf-8") if reg_file.exists() else ""
+    head, findings = parse_registry(reg_text)
+    approvals, approval_findings = parse_approvals(reg_text)
+    findings += approval_findings
     base_text = _git_show(root, base_ref, REGISTRY)
     base_reg = parse_registry(base_text)[0] if base_text is not None else {}
     report: list[str] = []
@@ -195,6 +273,10 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
         if not base.created_in.strip():
             findings.append(f"{path}: created_in is missing or not a non-empty string")
         findings += reason_findings(path, base)
+        findings += [
+            f"{sid}: stale approved_growth, {key} is not in {path}"
+            for key in sorted(set(approvals.get(sid, {})) - base.keys)
+        ]
 
     removed = set(base_reg) - set(head)
     # A key a replacement keeps must keep its max too, or a rename would launder a raised max.
@@ -217,6 +299,11 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
             moved_f, admitted = move_findings(path, base, base_doc, grown)
             findings += moved_f
             grown -= admitted
+            approved = grown & frozenset(approvals.get(sid, {}))
+            report += [
+                f"{sid}: approved growth {k} ({approvals[sid][k]})" for k in sorted(approved)
+            ]
+            grown -= approved
             if grown:
                 findings.append(
                     f"{sid}: baseline gained key(s) not in the merge base: {_fmt(grown)}"

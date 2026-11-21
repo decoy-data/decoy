@@ -42,7 +42,7 @@ from tests.sentry.ci_scan._shell_tokens import normalise
 POLICY = load_policy()
 SHA = "d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86"
 DEV = "-c requirements-dev.lock"
-ENGINE = "git+https://github.com/louiskeep/decoy-engine@v0.18.0"
+ENGINE = "git+https://github.com/decoy-data/decoy-engine@v0.18.0"
 LE = {"uses": LOCK_ENV_USES}
 WHEEL = f"uv pip install --python .smoke/bin/python {DEV} dist/*.whl"
 SMOKE_CERT = ".venv-certified/bin/python scripts/cert_smoke.py"
@@ -524,7 +524,7 @@ def test_vendor_ledger_matches_the_copies(tmp_path: Path) -> None:
 def test_vendored_files_are_byte_identical_to_the_engine_at_their_commit() -> None:
     for entry in _ledger()["vendored"]:
         assert re.fullmatch(r"[0-9a-f]{40}", entry["commit"]), f"{entry['engine_path']}: no commit"
-        fetched = fetch_raw("louiskeep/decoy-engine", entry["commit"], entry["engine_path"])
+        fetched = fetch_raw("decoy-data/decoy-engine", entry["commit"], entry["engine_path"])
         if should_skip(fetched, os.environ):
             pytest.skip("offline: the cross-repository check runs in CI and on networked builders")
         local = (ROOT / entry["local_path"]).read_bytes()

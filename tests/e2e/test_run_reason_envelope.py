@@ -135,6 +135,13 @@ def _refusal_ids() -> list[str]:
     return [t.__name__ for t in _errors._cli_refusal_types()]
 
 
+_RUNTIME_REFUSALS = (
+    _errors._VaultWriteError,
+    _errors.EvidenceWriteRefusal,
+    _errors.IntegrityWriteRefusal,
+)
+
+
 @pytest.mark.parametrize("index", range(len(_errors._cli_refusal_types()) or 1), ids=_refusal_ids())
 def test_cli_owned_refusals_have_no_reason(tmp_path: Path, index: int) -> None:
     types = _errors._cli_refusal_types()
@@ -145,8 +152,9 @@ def test_cli_owned_refusals_have_no_reason(tmp_path: Path, index: int) -> None:
         exc = _make(types[index])
     code, payload, _ = _run_failing(tmp_path, exc)
     assert "reason" not in payload
-    # The vault write failure is a runtime refusal; every other owned type is a usage one.
-    assert code == (3 if types[index] is _errors._VaultWriteError else 1)
+    # The vault write failure and the evidence write refusal are runtime refusals; every other
+    # owned type is a usage one.
+    assert code == (3 if types[index] in _RUNTIME_REFUSALS else 1)
 
 
 @pytest.mark.parametrize(("exit_code", "kind"), [(1, "validation"), (5, "capacity")])
@@ -165,11 +173,18 @@ def test_required_refusals_are_cli_owned() -> None:
         "OutDirUsageError",
         "PreRunCheckError",
         "_OtelSettingsUsageError",
+        "EvidenceWriteRefusal",
+        "UsageRefusal",
     } <= names
 
 
 def test_usage_types_single_source(tmp_path: Path) -> None:
-    from decoy_engine import ConfigError, PipelineValidationError
+    from decoy_engine import (
+        ConfigError,
+        ModelUnavailableError,
+        PipelineValidationError,
+        PostScanRouteError,
+    )
     from decoy_engine.detection.ner import NerUnavailableError
     from decoy_engine.keyprovider import MaskSecretError
     from decoy_engine.plan import PlanCompileError
@@ -177,12 +192,14 @@ def test_usage_types_single_source(tmp_path: Path) -> None:
     from decoy import _native_gate
     from decoy.cli.extras import UnsupportedCloudEndpointError
     from decoy.cli.io import DuckDBSourceError, LayoutError, TargetFormatError
-    from decoy.cli.run import _execute, _notify, _prepare, _vault
+    from decoy.cli.run import _context, _execute, _notify, _prepare, _vault
 
     base = (
         PlanCompileError,
         PipelineValidationError,
         ConfigError,
+        ModelUnavailableError,
+        PostScanRouteError,
         _execute._ChunkedGenerateError,
         _execute._ChunkedFixedWidthError,
         _execute._ChunkedIntegrityError,
@@ -202,6 +219,7 @@ def test_usage_types_single_source(tmp_path: Path) -> None:
         NerUnavailableError,
         _native_gate.NativeGateError,
         MaskSecretError,
+        _context.UsageRefusal,
     )
     assert exit_codes.usage_error_types() == base
 

@@ -24,6 +24,7 @@ from tests.ci_support import (
     write,
     write_clean_pipeline,
 )
+from tests.scan_docs import scan_set_doc
 
 CANARY = "UNEXPECTED_CANARY_77e1d0aa"
 PATTERN = {
@@ -40,11 +41,7 @@ def _boom(*_a, **_k):
 def _fixture(tmp_path: Path, kind: str) -> Path:
     repo = make_repo(tmp_path / "leakroot_9c3a")
     write_clean_pipeline(repo)
-    old = {
-        "fields": [{"name": "a", "pii_score": 0.1}],
-        "quasi_identifier_groups": [],
-        "reid_risk_score": 0.1,
-    }
+    old = scan_set_doc([{"name": "a", "pii_score": 0.1}], reid_risk_score=0.1)
     write(repo, "old.json", json.dumps(old))
     write(repo, "new.json", json.dumps(old))
     if kind == "evidence":

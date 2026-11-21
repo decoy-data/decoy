@@ -68,7 +68,7 @@ class TestNerMissingExtraThroughRealCompile:
         result = runner.invoke(app, ["validate", "config", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         collapsed = " ".join(result.output.split())
-        assert "pip install decoy-cli[ner]" in collapsed, result.output
+        assert "decoy models install ner" in collapsed, result.output
         # The regression this test exists to catch: before the H1 fix, this
         # showed the engine's own message pointing at `decoy-engine[ner]`,
         # wrong for someone who installed decoy-cli, not decoy-engine
@@ -82,14 +82,14 @@ class TestNerMissingExtraThroughRealCompile:
         cfg = _ner_pipeline(tmp_path)
         result = runner.invoke(app, ["validate", "config", str(cfg), "--json"])
         assert result.exit_code == EXIT_USAGE, result.output
-        assert "pip install decoy-cli[ner]" in result.output, result.output
+        assert "decoy models install ner" in result.output, result.output
         assert "decoy-engine[ner]" not in result.output, result.output
 
     def test_model_not_installed_leaves_engine_message_untranslated(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # spaCy present, just not the requested model: the fix is `spacy
-        # download <model>`, not an extra -- the engine's own message
+        # download <model>`, not an extra -- the engine's own message (it names the wheel URL)
         # should reach the operator unchanged (translate_ner_unavailable
         # only rewrites ner_spacy_not_installed).
         monkeypatch.setattr("decoy_engine.detection.ner.spacy_installed", lambda: True)
@@ -98,8 +98,8 @@ class TestNerMissingExtraThroughRealCompile:
         result = runner.invoke(app, ["validate", "config", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         collapsed = " ".join(result.output.split())
-        assert "install its wheel" in collapsed, result.output
-        assert "pip install decoy-cli[ner]" not in collapsed, result.output
+        assert "NER model 'en_core_web_sm' is not installed: install " in collapsed, result.output
+        assert "decoy models install ner" not in collapsed, result.output
 
 
 class TestNerMissingExtraThroughPreflight:
@@ -115,7 +115,7 @@ class TestNerMissingExtraThroughPreflight:
         result = runner.invoke(app, ["validate", "preflight", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         collapsed = " ".join(result.output.split())
-        assert "pip install decoy-cli[ner]" in collapsed, result.output
+        assert "decoy models install ner" in collapsed, result.output
         assert "decoy-engine[ner]" not in collapsed, result.output
 
     def test_preflight_json_mode_shows_the_literal_extra_name(
@@ -125,7 +125,7 @@ class TestNerMissingExtraThroughPreflight:
         cfg = _ner_pipeline(tmp_path)
         result = runner.invoke(app, ["validate", "preflight", str(cfg), "--json"])
         assert result.exit_code == EXIT_USAGE, result.output
-        assert "pip install decoy-cli[ner]" in result.output, result.output
+        assert "decoy models install ner" in result.output, result.output
 
 
 class TestNerMissingExtraThroughCompile:
@@ -142,7 +142,7 @@ class TestNerMissingExtraThroughCompile:
         result = runner.invoke(app, ["validate", "compile", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         collapsed = " ".join(result.output.split())
-        assert "pip install decoy-cli[ner]" in collapsed, result.output
+        assert "decoy models install ner" in collapsed, result.output
         assert "[missing_extra]" in collapsed, result.output
         assert "decoy-engine" not in collapsed, result.output
 
@@ -154,7 +154,7 @@ class TestNerMissingExtraThroughCompile:
         result = runner.invoke(app, ["validate", "compile", str(cfg), "--explain"])
         assert result.exit_code == EXIT_USAGE, result.output
         collapsed = " ".join(result.output.split())
-        assert "pip install decoy-cli[ner]" in collapsed, result.output
+        assert "decoy models install ner" in collapsed, result.output
         assert "decoy-engine" not in collapsed, result.output
 
     def test_compile_json_mode_shows_cli_extra(
@@ -169,5 +169,5 @@ class TestNerMissingExtraThroughCompile:
         payload = json.loads(result.output)
         assert payload["status"] == "error"
         assert payload["code"] == "missing_extra"
-        assert "pip install decoy-cli[ner]" in payload["error"], payload
+        assert "decoy models install ner" in payload["error"], payload
         assert "decoy-engine" not in payload["error"], payload

@@ -1,7 +1,7 @@
 """`decoy fit` -- fit a distribution snapshot from a source CSV.
 
 Capability-gaps WS3 (2026-06-12). Wraps the engine's
-`compute_distribution_snapshot` (distribution-snapshot/v1): the JSON it
+`compute_distribution_snapshot` (distribution-snapshot/v2): the JSON it
 writes is the fitted-model artifact that `type: statistical` generate
 columns consume. The loop is:
 
@@ -11,7 +11,7 @@ columns consume. The loop is:
 
 The snapshot is written through the engine's `distribution_snapshot_document`:
 columns the sensitivity profile flags have their cell values withheld
-(`value_policy: flagged-redacted/v1`, names in `redacted_columns`).
+(`value_policy: flagged-redacted/v2`, names in `redacted_columns`).
 `--include-values` keeps them and stamps `value_policy: raw`. Unflagged
 categorical `top_values` still carry real source values; that is why
 statistical categorical columns require the `allow_real_categories: true`
@@ -382,7 +382,7 @@ def fit(
         help="Enable debug-level CLI logs on stderr.",
     ),
 ) -> None:
-    """Fit a distribution-snapshot/v1 artifact for statistical generation.
+    """Fit a distribution-snapshot/v2 artifact for statistical generation.
 
     Without --epsilon: reads the source CSV, captures per-column
     distribution shape (numeric histograms + quantiles, categorical top-k,

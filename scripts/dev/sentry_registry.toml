@@ -1,107 +1,192 @@
 # Binds each sentry id to exactly one baseline file under tests/sentry/baselines/.
 # scripts/dev/ratchet_check.py compares every baseline with its merge-base copy and fails
-# when keys are added. A new sentry adds its row here in the slice that introduces it.
+# when keys are added. A row may list `approved_growth` entries (exact key plus a dated owner
+# decision, `owner YYYY-MM-DD <text>`); only a listed key may be added without failing.
+# A new sentry adds its row here in the slice that introduces it.
+#
+# kind says where the sentry's allowlist comes from:
+#   json       the baseline file is the allowlist; the `consumer` file reads it with
+#              load_allowlist("<id>") and no other file may (checked by test_baseline_registry)
+#   from_scan  the keys are recomputed from the source tree by a scanner module
+#   from_file  the keys are read from a committed config file (a reader in _baseline_sources.py)
 
 [[sentry]]
 id = "engine-internal-allow"
 baseline = "tests/sentry/baselines/engine-internal-allow.json"
+kind = "json"
+consumer = "tests/sentry/test_engine_internal_boundary.py"
 
 [[sentry]]
 id = "root-help-omitted"
 baseline = "tests/sentry/baselines/root-help-omitted.json"
+kind = "json"
+consumer = "tests/unit/test_surface_docs_consistency.py"
 
 [[sentry]]
 id = "readme-table-omitted"
 baseline = "tests/sentry/baselines/readme-table-omitted.json"
+kind = "json"
+consumer = "tests/unit/test_surface_docs_consistency.py"
 
 [[sentry]]
 id = "atomic-writer-allow"
 baseline = "tests/sentry/baselines/atomic-writer-allow.json"
+kind = "json"
+consumer = "tests/sentry/test_atomic_writer.py"
 
 [[sentry]]
 id = "gate-single-entry-allow"
 baseline = "tests/sentry/baselines/gate-single-entry-allow.json"
+kind = "json"
+consumer = "tests/sentry/test_gate_single_entry.py"
+
+[[sentry]]
+id = "scan-call-allow"
+baseline = "tests/sentry/baselines/scan-call-allow.json"
+kind = "json"
+consumer = "tests/sentry/scan/test_one_scan_call.py"
 
 [[sentry]]
 id = "csv-read-allow"
 baseline = "tests/sentry/baselines/csv-read-allow.json"
+kind = "json"
+consumer = "tests/sentry/test_csv_read_choke_point.py"
 
 [[sentry]]
 id = "target-writes-allow"
 baseline = "tests/sentry/baselines/target-writes-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_target_writes.py"
 
 [[sentry]]
 id = "manifest-path-forward-allow"
 baseline = "tests/sentry/baselines/manifest-path-forward-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_manifest_path_resolution.py"
 
 [[sentry]]
 id = "output-placement-allow"
 baseline = "tests/sentry/baselines/output-placement-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_output_placement.py"
 
 [[sentry]]
 id = "output-name-allow"
 baseline = "tests/sentry/baselines/output-name-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_output_placement.py"
 
 [[sentry]]
 id = "config-route-allow"
 baseline = "tests/sentry/baselines/config-route-allow.json"
+kind = "json"
+consumer = "tests/sentry/defects/test_config_error_routes.py"
 
 [[sentry]]
 id = "exception-context"
 baseline = "tests/sentry/baselines/exception-context.json"
+kind = "json"
+consumer = "tests/sentry/defects/test_exception_context.py"
 
 [[sentry]]
 id = "private-file-sinks"
 baseline = "tests/sentry/baselines/private-file-sinks.json"
+kind = "from_file"
 
 [[sentry]]
 id = "engine-reason-code-copies"
 baseline = "tests/sentry/baselines/engine-reason-code-copies.json"
+kind = "json"
+consumer = "tests/sentry/test_engine_reason_code_copies.py"
 
 [[sentry]]
 id = "module-size"
 baseline = "tests/sentry/baselines/module-size.json"
+kind = "json"
+consumer = "tests/sentry/layout/test_module_size.py"
 
 [[sentry]]
 id = "package-fanout"
 baseline = "tests/sentry/baselines/package-fanout.json"
+kind = "json"
+consumer = "tests/sentry/layout/test_package_fanout.py"
 
 [[sentry]]
 id = "import-layers"
 baseline = "tests/sentry/baselines/import-layers.json"
+kind = "from_file"
 
 [[sentry]]
 id = "canonical-json-allow"
 baseline = "tests/sentry/baselines/canonical-json-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_canonical_json.py"
 
 [[sentry]]
 id = "library-writer-allow"
 baseline = "tests/sentry/baselines/library-writer-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_library_writer.py"
 
 [[sentry]]
 id = "kind-canary-pending"
 baseline = "tests/sentry/baselines/kind-canary-pending.json"
+kind = "json"
+consumer = "tests/sentry/defects/test_kind_canary.py"
 
 [[sentry]]
 id = "one-error-emitter"
 baseline = "tests/sentry/baselines/one-error-emitter.json"
+kind = "from_scan"
 
 [[sentry]]
 id = "env-reads"
 baseline = "tests/sentry/baselines/env-reads.json"
+kind = "from_scan"
 
 [[sentry]]
 id = "json-stdout-writes"
 baseline = "tests/sentry/baselines/json-stdout-writes.json"
+kind = "from_scan"
 
 [[sentry]]
 id = "exit-code-owner"
 baseline = "tests/sentry/baselines/exit-code-owner.json"
+kind = "json"
+consumer = "tests/sentry/defects/test_exit_code_owner.py"
 
 [[sentry]]
 id = "config-load-allow"
 baseline = "tests/sentry/baselines/config-load-allow.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/test_config_load_choke_point.py"
 
 [[sentry]]
 id = "retired-name-pending"
 baseline = "tests/sentry/baselines/retired-name-pending.json"
+kind = "json"
+consumer = "tests/sentry/release/test_retired_name_residual.py"
+
+[[sentry]]
+id = "banned-text-allow"
+baseline = "tests/sentry/baselines/banned-text-allow.json"
+kind = "json"
+consumer = "tests/sentry/cli_text/_banned_text.py"
+
+[[sentry]]
+id = "outbound-network-owners"
+baseline = "tests/sentry/baselines/outbound-network-owners.json"
+kind = "json"
+consumer = "tests/sentry/io_policy/outbound/test_outbound_choke_point.py"
+
+[[sentry]]
+id = "run-exit-owners"
+baseline = "tests/sentry/baselines/run-exit-owners.json"
+kind = "json"
+consumer = "tests/sentry/run/test_one_run_exit.py"
+
+[[sentry]]
+id = "run-exit-owners-io"
+baseline = "tests/sentry/baselines/run-exit-owners-io.json"
+kind = "json"
+consumer = "tests/sentry/run/test_one_run_exit.py"
