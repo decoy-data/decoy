@@ -332,7 +332,8 @@ def test_industry_template_money_columns_are_two_decimal_in_range(name: str, tmp
     cfg, frames = _generated_frames(name, tmp_path)
     for table in cfg["tables"]:
         for col in table["generate_columns"]:
-            if col.get("output_type") == "decimal(2)":
+            if col["type"] == "distribution":
+                assert col.get("output_type") == "decimal(2)", f"{name}.{col['name']}"
                 values = frames[table["name"]][col["name"]]
                 assert _all_match(values, r"-?[0-9]+\.[0-9]{2}")
                 assert all(col["low"] <= float(v) <= col["high"] for v in values)
