@@ -1,12 +1,12 @@
 """AT-Q1 to AT-Q8: the CLI QA checklist keeps its shape and names an exit code for each command.
 
-`docs/qa/cli-v1-checklist.md` lists 204 checks in 16 groups. This sentry fails on a table row with
+`docs/qa/cli-v1-checklist.md` lists 205 checks in 16 groups. This sentry fails on a table row with
 the wrong number of cells, an unknown or miscounted exit code, a broken id sequence, a wrong count,
 a row-index entry that names no check, a fixture value in a check cell, a DOC-05 that does not point
 at the journey, and a run template without the `Exit observed` column.
 
 Seeded mutations (each makes the named test red): drop the Exit cell of one row, or delete a
-group's table header (AT-Q1); set an Exit to `7`, or `tbd` on GATE-01 (AT-Q2); add a check row and change the document total to 205 in
+group's table header (AT-Q1); set an Exit to `7`, or `tbd` on GATE-01 (AT-Q2); add a check row and change the document total to 206 in
 the same edit, or duplicate RUN-05 (AT-Q3); remove DOC-05 from row 75's index line (AT-Q4); paste a
 fixture address in RUN-01 (AT-Q5); restore DOC-05's old text (AT-Q6); remove the template column
 (AT-Q7); give a row two `decoy` spans and one code, or `none` on a row with a `decoy` span (AT-Q8).
@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[3]
 CHECKLIST = ROOT / "docs" / "qa" / "cli-v1-checklist.md"
 RUN_TEMPLATE = ROOT / "docs" / "qa" / "cli-v1-run-template.md"
 
-EXPECTED_CHECKS = 204
+EXPECTED_CHECKS = 205
 EXPECTED_GROUPS = 16
 CHECK_HEADER = ("Id", "Command", "Exit", "Expected", "Rows", "Pass/fail")
 TEMPLATE_HEADER = ("Id", "Platform", "Exit observed", "Result", "Notes (value-free)")
