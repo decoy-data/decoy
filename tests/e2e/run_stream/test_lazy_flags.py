@@ -24,7 +24,7 @@ from tests.e2e.run_stream._support import (
     single_build,
     write_config,
 )
-from tests.keyed_secret import secret_env
+from tests.keyed_secret import TEST_MASK_SECRET_REF, secret_env
 
 
 @pytest.fixture(autouse=True)
@@ -100,31 +100,77 @@ def test_targetless_table_parity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert set(lazy.files) == {"a.csv"}
 
 
+def _fixed_width_build(tmp: Path) -> Any:
+    from tests.csv_sources import file_source
+
+    path = tmp / "data" / "f.dat"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(
+        "".join(f"{i:<6}{f'user{i}@example.invalid':<40}\n" for i in range(3000)), "utf-8"
+    )
+    layout = {
+        "columns": [
+            {"name": "id", "start": 0, "width": 6},
+            {"name": "email", "start": 6, "width": 40},
+        ]
+    }
+
+    def build(out: Path) -> tuple[Path, list[Path]]:
+        cfg = {
+            "version": 2,
+            "global_settings": {"seed": 5, "mask_secret_ref": TEST_MASK_SECRET_REF},
+            "sources": {"people": file_source(path, "fixed_width", layout=layout)},
+            "tables": [{"name": "people", "columns": PLAIN}],
+            "targets": {
+                "people": {"type": "file", "format": "csv", "path": str(out / "people.csv")}
+            },
+        }
+        return write_config(out / "p.yaml", cfg), [out / "people.csv"]
+
+    return build, path
+
+
+@pytest.mark.parametrize("fmt", ["parquet", "fixed_width"])
 def test_file_changed_after_the_facts_pass_exits_3_and_writes_nothing(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fmt: str
 ) -> None:
-    """AT-C1f: the source is replaced after routing read its footer and before the first batch."""
-    from decoy_engine.profile import LazySource
+    """AT-C1f and AT-C1w: the source is replaced after routing read its facts and before the
+    first batch. The run fails with `runtime.lazy_source_changed` and publishes nothing."""
+    from decoy_engine.profile import FixedWidthLazySource, LazySource
 
     install_probe(monkeypatch, chunk_rows=500)  # small chunks put the run on the streamed lane
-    build = single_build(tmp_path, columns=PLAIN)
+    if fmt == "parquet":
+        build = single_build(tmp_path, columns=PLAIN)
+        source = tmp_path / "data" / "people.parquet"
+        cls: Any = LazySource
+
+        def replace() -> None:
+            pq.write_table(pa.table({"id": [1], "email": ["x@example.invalid"]}), source)
+
+    else:
+        build, source = _fixed_width_build(tmp_path)
+        cls = FixedWidthLazySource
+
+        def replace() -> None:
+            source.write_text("1     x@example.invalid" + " " * 21 + "\n", encoding="utf-8")
+
     out = tmp_path / "run"
     out.mkdir()
     config, targets = build(out)
-    source = tmp_path / "data" / "people.parquet"
-    real = LazySource.open_batches
+    real = cls.open_batches
     swapped: list[bool] = []
 
     def swap_then_open(self: Any, *args: Any, **kwargs: Any) -> Any:
         if not swapped:
             swapped.append(True)
-            pq.write_table(pa.table({"id": [1], "email": ["x@example.invalid"]}), source)
+            replace()
         return real(self, *args, **kwargs)
 
-    monkeypatch.setattr(LazySource, "open_batches", swap_then_open)
-    result = CliRunner().invoke(app, ["run", str(config)])
-    assert swapped, result.output
+    monkeypatch.setattr(cls, "open_batches", swap_then_open)
+    result = CliRunner().invoke(app, ["run", str(config), "--json"])
+    assert swapped, result.output[-700:]
     assert result.exit_code == 3, result.output
+    assert '"namespace": "runtime", "code": "lazy_source_changed"' in result.output
     assert not targets[0].exists()
     assert "x@example.invalid" not in result.output
 
@@ -157,3 +203,50 @@ def test_native_decline_refuses_with_no_output(tmp_path: Path, columns: list[dic
     assert not targets[0].exists()
     doc = json.loads(result.stdout) if result.stdout.strip().startswith("{") else {}
     assert doc.get("code", "native_require_no_evidence") == "native_require_no_evidence"
+
+
+def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AT-C1w: with no record the lazy source reports the layout schema, so an `int` field is
+    `int64`; the resident read of the same empty file gave `null`. The layout wins (CHANGELOG)."""
+    from tests.csv_sources import file_source
+
+    path = tmp_path / "data" / "e.dat"
+    path.parent.mkdir()
+    path.write_text("", encoding="utf-8")
+    layout = {
+        "columns": [
+            {"name": "i", "start": 0, "width": 4, "type": "int", "align": "right"},
+            {"name": "s", "start": 4, "width": 6},
+        ]
+    }
+
+    def build(out: Path) -> tuple[Path, list[Path]]:
+        cfg = {
+            "version": 2,
+            "global_settings": {"seed": 1},
+            "sources": {"t": file_source(path, "fixed_width", layout=layout)},
+            "tables": [
+                {
+                    "name": "t",
+                    "columns": [
+                        {"name": "i", "strategy": "passthrough"},
+                        {"name": "s", "strategy": "passthrough"},
+                    ],
+                }
+            ],
+            "targets": {"t": {"type": "file", "format": "parquet", "path": str(out / "t.parquet")}},
+        }
+        return write_config(out / "p.yaml", cfg), [out / "t.parquet"]
+
+    lazy, base, _ = run_both(monkeypatch, tmp_path, build)
+    assert lazy.exit_code == 0, lazy.output
+    assert base.exit_code == 0, base.output
+
+    def schema(run: Any) -> pa.Schema:
+        return pq.read_schema(pa.BufferReader(run.files["t.parquet"]))
+
+    assert schema(lazy).field("i").type == pa.int64()
+    assert schema(base).field("i").type == pa.null()
+    assert schema(lazy).field("s").type == schema(base).field("s").type

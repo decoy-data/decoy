@@ -152,7 +152,7 @@ expect = "refusal before any output is written, as for an FK table (unconfirmed 
 id = "mask-native-bucketize-no-evidence"
 kind = "refused_after_run"
 when = { native = "--native", strategy_mix = "bucketize and truncate" }
-doc = "src/decoy/_native_gate.py:450"
+doc = "src/decoy/_native_gate.py:463"
 cites = ["native_require_no_evidence"]
 expect = "refusal before any output is written; bucketize has no native operator"
 

@@ -70,6 +70,9 @@ OPAQUE: dict[str, dict[str, str]] = {
 OPTIONAL: dict[str, list[str]] = {
     # `_render.py` adds each of these only when the run used the feature.
     "run": ["/native_route", "/notify", "/report", "/subset"],
+    # The engine's out-of-core residency warning sets `resident_source` only for a source passed
+    # resident; a plain run now passes a local source lazily, so the key depends on the path.
+    "report show": ["/manifest/warnings/detail/resident_source"],
 }
 
 _TYPES = {bool: "boolean", int: "integer", float: "number", str: "string", type(None): "null"}

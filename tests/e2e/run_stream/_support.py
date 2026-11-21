@@ -45,6 +45,7 @@ class Probe:
     prepass_reads: list[type] = field(default_factory=list)
     route_reads: list[type] = field(default_factory=list)
     batches: int = 0
+    prepass_tables: list[Any] = field(default_factory=list)
 
     @property
     def lazy_materialized(self) -> bool:
@@ -67,7 +68,9 @@ def install_probe(monkeypatch: pytest.MonkeyPatch, *, chunk_rows: int | None = N
 
     def pre(value: Any) -> Any:
         probe.prepass_reads.append(type(value))
-        return real_pre(value)
+        table = real_pre(value)
+        probe.prepass_tables.append(table)
+        return table
 
     def route(value: Any) -> Any:
         probe.route_reads.append(type(value))
@@ -106,7 +109,8 @@ def run_both(
 ) -> tuple[Outcome, Outcome, Probe | None]:
     """Run `build(out_dir)` (returns config path and target paths) lazy, then resident.
 
-    A `{out}` in `args` becomes that run's output folder. The probe, when given, is snapshotted after the lazy run and reset for the resident one.
+    A `{out}` in `args` becomes that run's output folder. The probe, when given, is copied
+    after the lazy run and never reset; the copy is what the lazy run saw.
     """
     import decoy_engine
     from decoy_engine import route_summary
@@ -132,7 +136,12 @@ def run_both(
         if label == "base":
             monkeypatch.setattr("decoy.cli.run._execute.lazy_sources", lambda c, b: {})
             if probe is not None:
-                snapshot = Probe(list(probe.prepass_reads), list(probe.route_reads), probe.batches)
+                snapshot = Probe(
+                    list(probe.prepass_reads),
+                    list(probe.route_reads),
+                    probe.batches,
+                    list(probe.prepass_tables),
+                )
         run_args = [a.replace("{out}", str(out)) for a in args]
         result = runner.invoke(app, ["run", str(config), *run_args])
         outcomes.append(
