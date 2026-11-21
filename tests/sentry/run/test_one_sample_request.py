@@ -25,7 +25,17 @@ def findings(source: str, rel: str) -> list[str]:
     out: list[str] = []
     # `decoy subset` is the engine's whole-table subsetter; it never builds a sample.
     banned = BANNED - {"plan_subset", "run_subset"} if rel == "cli/subset.py" else BANNED
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    # Names bound to `sample_request` by `from x import sample_request as y`, and `import x as y`
+    # module aliases (their `y.sample_request(...)` call is read through the attribute name).
+    request_names = {"sample_request"} | {
+        a.asname
+        for n in ast.walk(tree)
+        if isinstance(n, ast.ImportFrom)
+        for a in n.names
+        if a.name == "sample_request" and a.asname
+    }
+    for node in ast.walk(tree):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.ImportFrom):
             out += [f"{rel}:{line}: imports {a.name}" for a in node.names if a.name in banned]
@@ -39,7 +49,7 @@ def findings(source: str, rel: str) -> list[str]:
             out.append(f"{rel}:{line}: names {node.attr}")
         elif isinstance(node, ast.Call):
             name = _called(node.func)
-            if name == "sample_request" and rel != BUILDER:
+            if name in request_names and rel != BUILDER:
                 out.append(f"{rel}:{line}: sample_request called outside {BUILDER}")
             if (
                 rel.startswith("cli/run/")
@@ -85,6 +95,9 @@ def test_sample_request_is_allowed_only_in_the_builder() -> None:
     call = "from decoy_engine.subset import sample_request\nsample_request({}, rows=1)"
     assert findings(call, BUILDER) == []
     assert any("outside" in f for f in findings(call, "cli/run/_execute.py"))
+    aliased = "from decoy_engine.subset import sample_request as sr\nsr({}, rows=1)"
+    assert any("outside" in f for f in findings(aliased, "cli/run/_execute.py"))
+    assert findings(aliased, BUILDER) == []
     attr = "import decoy_engine.subset as s\ns.sample_request({}, rows=1)"
     assert any("outside" in f for f in findings(attr, "cli/other.py"))
 
