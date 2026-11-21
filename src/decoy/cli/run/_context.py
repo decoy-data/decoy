@@ -289,7 +289,7 @@ def _library_root(ctx: RunContext) -> Path | None:
     if ctx.no_library or ctx.rows is not None:
         return None
     from decoy.cli.io import LayoutError
-    from decoy.cli.library._paths import resolve_root
+    from decoy.cli.library import resolve_root
 
     try:
         found = resolve_root(pipeline=Path(ctx.config))
