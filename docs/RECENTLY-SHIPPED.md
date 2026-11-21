@@ -11,6 +11,26 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-21: roadmap catch-up for merges of 2026-11-13 to 2026-11-20
+
+- Rows 24zo (CI-SELECT-GAP) and 24zx (MAC-WHEEL-RUNNERS) are closed. Their only slice, E5 of the V1 fix batch, is engine #651 (2026-11-20): the self-hosted gate posts an `engine-gate/verdict` status that `required_checks.py verify` requires on the exact PR head, and a PR that does not touch the native companion no longer waits for a macOS runner. The owner swapped the three required `companion-wheel-macos` checks for `companion-wheel-macos-ok` on 2026-11-20. Earlier slices of the same batch: E1 #649 (row 24zp) and E2 #648 (row 24zu).
+- Row 24zi (PROP-FALLBACK) stays open. E-F0 is engine #617 (2026-11-20): `text_mask` refuses detector and strategy pairs the engine cannot run, which closed a live leak. Slices E-F1, E-F2, C-F1a and C-F1b are not merged.
+- FREEZE-SURFACE: S2 (CLI #343, hidden `decoy demo --ref` and `--rows` removed), S7b (CLI #341, CLI tag census) and the public renames table (engine #730) are merged. Every slice is now merged; the row waits only on a sign-off.
+- FREEZE-OUTPUT: O1 (engine #702, 2026-11-19). `when:` compares integers exactly beyond 2**53, and one blank-row rule holds on every route. O2 is not merged.
+- DATE-SHIFT-FORMAT: S4a (engine #721, `jitter_days` through one window resolver), S4b (engine #728, `date_format` required with a coded refusal, detected format in the starter) and C1 (CLI #342, `decoy init` writes `date_format`). Left: the engine release and the CLI repin.
+- GEN-WINDOWED-BATCH S1 (engine #718, 2026-11-19): batched derive, parse, shift and format for `windowed_date`, same bytes.
+- NONFK-OOM S1 (engine #719) and S4a (engine #717): the resident lower bound with its baseline, and the multi-table split decided in `decide_route`.
+- OUTPUT-METADATA-LEAK: E0 (engine #692), E1 (engine #700) and E2 (engine #726, 2026-11-20). Left: C1.
+- Row 74 (F26): E1 (engine #638) and E2a (engine #641), both 2026-11-20.
+- Row 24p (GEN-PROVIDERS) E1 (engine #661, 2026-11-20). Row 24n (GEN-REL) slice 1 (engine #523, 2026-11-20). Row 24s (GEN-CATALOG) GC3-E (engine #643, 2026-11-20). Row 24f E2 (engine #732, 2026-11-20).
+- Row 24e (CLI-QA1) DI close: E0 (engine #611), E1 (engine #615) and E2 (engine #736). Left: C1 and C2.
+- Row 56: C1 (CLI #292), C1b (CLI #293) and C2 (CLI #304) of the retired-name removal. Left: C3.
+- DECOY-LANG: the compiler, converter and formatter (CLI #333, 2026-11-20).
+- Row 63a E5b (engine #605, 2026-11-16) and row 61 DELIV C1 (CLI #237, 2026-11-13).
+- Rows 24zk and 24zl: C-S1a (CLI #312), C-G1 (CLI #318) and E-G1 (engine #688, 2026-11-20).
+- QA-BETA S0 (CLI #356), S1a (CLI #358) and S1b (CLI #360), all 2026-11-20. The owner paused the program after S1b.
+- Also merged on 2026-11-20: CLI #362 (the baseline ratchet gains owner-approved `approved_growth` rows) and engine #739 (contract checklist wording; docs only).
+
 ## 2026-11-20: `decoy.scan()` returns the scan document (FREEZE-SURFACE item 3)
 
 - FREEZE-SURFACE item 3 (audit J2) is done. CLI C1 #354 put `decoy scan` and `decoy demo` behind one shared scan call, `decoy.cli.scanning.scan_descriptors`. C2 ports `decoy.scan()` onto it: it returns the value-free `scan-set/v1` document that `decoy scan --output` writes, with the CLI's input rules (a CSV states `has_header`, `.tsv` is tab-delimited, the default is 10,000 rows). This is a breaking Python API change, owner-approved before GA. A sentry now fails on any other first-party call of `scan_sources`, `scan_set_to_dict` or `profile_columns`, except `decoy init`.
