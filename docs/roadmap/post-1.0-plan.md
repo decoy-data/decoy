@@ -66,6 +66,40 @@ before and after numbers.
 | 1.x | OOC-QUARANTINE, then OOC-DATE-BUCKET | [run](groups/run.md) |
 | 1.x, on demand | FK-CHUNKED-HASH-CHILD | [run](groups/run.md) |
 
+## Outside review, 2026-11-18
+
+An outside readiness review scored the product and listed 20 changes. Owner direction (2026-11-18): items the roadmap
+or this page already plan are left as they are; the rest get a bucket here. V1 QA (row 92a and the engine checklist)
+runs after the build and may close some of these first. A defect that V1 QA reproduces and that breaks a function or
+loses data is a V1 row under the V1 bar, not an item on this page.
+
+Already planned, so not listed: `validate` catching a missing mask secret (row 24b), signing key, SBOM, install URL and
+release smoke (rows 88, 90, 93, 94), pip-audit and semgrep in CI (row 1, engine #678), execution routes and legacy code
+(proportionality audit, the post-V1 structure review), comment history sweeps (package F), MySQL, SQL Server and
+Snowflake (X-06), license values (row 93), benchmarks (open owner question).
+
+| Item | Bucket | Why |
+|---|---|---|
+| `examples/mask_example.yaml` fails `validate` | 1.x patch | A shipped example file; no contract surface. |
+| `init --preset generate` fails on the demo's own CSV | 1.x patch | A fix that turns a failure into a success. |
+| README says the wrong output location and exit-code meanings | 1.x patch | Docs. |
+| A test that runs every README flow and bundled example end to end in a clean install | 1.x patch | Tests. |
+| Generate: a sequential id came out negative; a date column came out as lorem text | Before 1.0 freeze | The fix changes the output of a config valid today. If V1 QA reproduces it, it is a V1 function break. |
+| Fidelity report scored the lorem date column 1.000; the run card and the report disagree (0.66 and 0.788) | Before 1.0 freeze | Changes report numbers for runs valid today. Same V1 QA rule. |
+| `duckdb` upper cap; declare the imports the CLI and engine use without declaring them (yaml, pandas, pyarrow, numpy) | 1.x patch | Install metadata. The signed bundle ships a fixed runtime. |
+| Publish the engine (and CLI) on PyPI | 1.x minor | A new distribution channel beside the signed bundle. |
+| Support Python 3.11 to 3.13 | 1.x minor | Adds platforms. |
+| Drop Python 3.10; move the certified DP profile to a supported version | Before 1.0 freeze, else 2.0 | Dropping a supported runtime breaks installs that work today. |
+| Coverage floor in CI; a type checker on the CLI | 1.x patch | Process. |
+| Config objects in place of wide signatures (`run_pipeline`, `stream_table`); split `fit()` and `report.py` by cohesion | 1.x if the old keywords keep working, else 2.0 | `run_pipeline` keywords are public (see B7). |
+| Size rule changed to "split by reason to change" | 1.x patch | Process. |
+| Widen the public/internal boundary sentry; the CLI stops importing engine internals | 1.x patch | Internal imports only. |
+
+Not code rows (owner): 3 to 5 design partners before the freeze, an external security review of the FF1, HKDF and
+keyed-masking paths, a second maintainer or outside reviewer, plans moved from the vault into the repo, a contribution
+path for outside contributors, and the LLC, contact and CLA. The proposal to cut V1 scope conflicts with the owner's
+2026-11-09 answer (keep full V1 scope) and is not taken.
+
 ## Corrective backlog (vault)
 
 The vault holds the corrective backlog in one file, `handoffs/V2-CORRECTIVE-BACKLOG.md`, merged on 2026-11-16 from two
