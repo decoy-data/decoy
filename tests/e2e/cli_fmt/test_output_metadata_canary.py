@@ -62,7 +62,7 @@ def _flat_columns(*, nested: bool = True) -> dict[str, pa.Array]:
 
 
 def _config(tmp_path: Path, *, target_format: str = "parquet", nested: bool = True) -> Path:
-    """`nested=False` for `--chunked`: its lane does not carry a nested column yet (NONFK-OOM)."""
+    """`nested=False` for `--chunked`: its lane fails on a struct column (known bug, 1.0 row CHUNKED-STRUCT)."""
     src = _canary_source(tmp_path / "people.parquet", _flat_columns(nested=nested))
     columns = _PEOPLE_COLUMNS if nested else _PEOPLE_COLUMNS[:-1]
     cfg = {
