@@ -1,4 +1,4 @@
-Status: plan (revision 1, 2026-11-21; awaiting plan review)
+Status: plan (revision 2, 2026-11-21; Dennis round 1 GO-WITH-FIXES remediated: E0 split out, one backstop rule, windowed_date dropped)
 
 # COLUMN-SHAPE-RULE: declare a column's type and format only where the engine would otherwise guess
 
@@ -12,12 +12,12 @@ Rules consulted: dev-rules `README.md`, `00-universal.md`, `development-loop.md`
 
 ### 1.1 Problem
 
-The engine reads a date or a number out of a cell in four different ways today:
+The engine reads a date or a number out of a cell in several different ways today:
 
 - `date_shift` refuses at plan compile when `provider_config.date_format` is missing (`date_shift_requires_date_format`, engine #728). The check is config-only (`E:src/decoy_engine/contracts/strategy_requirements.py`), so it also refuses a Parquet or DuckDB column that is already a native date and has nothing to parse. The only exemption is an F06 declared column (`date_shift_owns_declared_format`).
-- `bucket_perturb` detects a format from the cells when `date_format` is missing (`E:src/decoy_engine/transforms/bucket_perturb.py`, `_detect_format`). When detection fails it returns the whole column unchanged with a log line. A non-null cell that does not parse is kept as it was, with no row error. Both pass source values through.
+- `bucket_perturb` detects a format from the cells when `date_format` is missing (`_detect_format`). When detection fails it returns the whole column unchanged with a log line (`E:src/decoy_engine/transforms/bucket_perturb.py:165-170`). A non-null cell that does not parse is kept as it was, with no row error (`:181`). The native path does the same (`E:src/decoy_engine/execution/native/_bucket_perturb_ext.py:7`, `:227`). Both pass source values through. Slice E0 fixes this on its own, first.
 - `bucketize` coerces with `pd.to_numeric(errors="coerce")` and `top_code` uses its own exact parser. Both accept CSV text with no declaration.
-- `windowed_date` accepts text anchors only in one fixed ISO grammar (`_ISO_ANCHOR`), with no declaration.
+- `windowed_date` accepts text anchors only in one fixed ISO grammar (`_ISO_ANCHOR`). That grammar is a fixed, documented format, not a guess, so this row leaves `windowed_date` as it is (open question Q9).
 
 Typed sources have a second problem. `date_shift` on a typed column calls `_canonicalize_source` on the raw value. A `datetime.date` digests as its ISO text, but a tz-naive `pd.Timestamp` hard-errors at run time (`timezone_naive_datetime`). The typed path writes `shifted.astype(str)`, so a typed date comes out as text.
 
@@ -51,9 +51,9 @@ After this row, for every column whose strategy reads the value:
 2. On a text column, the strategy runs only with an explicit declaration. A missing declaration is a coded refusal at plan compile. When the source format alone proves the column is text (CSV, fixed width), the refusal comes before any data row is read.
 3. On a typed column, no declaration is needed. A declaration of the wrong kind is a coded refusal.
 4. No strategy detects a format from cells at run time. No strategy returns a source value unchanged because it could not parse it.
-5. The rule is one table in `contracts/strategy_requirements.py`, read by the plan check, the handler backstops, the strategy catalog, the starter config and the language.
+5. The rule is one table in `contracts/strategy_requirements.py`, read by the plan check, the handler backstops, the strategy catalog, the starter config and the language. Strategies with a rule: `date_shift`, `bucket_perturb`, `bucketize`, `top_code`, `fpe`.
 
-Non-goals: date spans in free text under `text_mask` and `text_redact` (detection inside free text is not a column shape, so their `_detect_format` stays); generate tables (generators make typed values); `truncate`, `geo_generalize`, `code_set`; `nested` parents (nested children always see text and keep today's rule); typed CSV reading (the CSV reader stays all-text); a canonical digest for tz-naive timestamps; the F06 output formatter.
+Non-goals: date spans in free text under `text_mask` and `text_redact` (detection inside free text is not a column shape, so their `_detect_format` stays); `windowed_date` (keeps its fixed ISO anchor grammar); generate tables (generators make typed values); `truncate`, `geo_generalize`, `code_set`; typed CSV reading (the CSV reader stays all-text); a canonical digest for tz-naive timestamps; the F06 output formatter. `nested` children are in scope: they resolve to `text`, so a `bucket_perturb` or `date_shift` child needs `date_format`, and the shape check walks them the way `E:src/decoy_engine/plan/_checks_bucket_perturb.py:71` walks `nested` entries today.
 
 ## 2. Established solutions
 
@@ -70,7 +70,9 @@ Custom code that remains: the shape resolver (a short mapping from source format
 
 ### 3.1 Shape resolution
 
-One function, `resolve_column_shape(source_format, arrow_type, declared_logical)`, in a new leaf `E:src/decoy_engine/contracts/column_shape.py`:
+One function, `resolve_column_shape(source_format, arrow_type, declared_logical)`, in a new leaf `E:src/decoy_engine/contracts/column_shape.py`. It uses `is_text` from `E:src/decoy_engine/_arrow_types.py` for the text test and does not repeat it.
+
+One call site. The resolver is called only from `walk_dataframe` in `E:src/decoy_engine/profile/_walk.py`, which already receives `arrow_schema` from `profile/_source.py` (`:226` and `:290`). `walk_dataframe` gains a `source_format` argument. `profile_source` passes the source config's `format` (`csv`, `fixed_width`, `parquet`) for file sources, including the S3 and GCS readers, and the source kind for database, DuckDB and caller tables. The chunked path goes through the same function: `first_chunk_profile` and `walk_one_table` in `E:src/decoy_engine/execution/_chunked_profile.py` pass `first_chunk.schema` and the source format. The resolver table:
 
 | Input | Shape |
 |---|---|
@@ -88,7 +90,7 @@ One function, `resolve_column_shape(source_format, arrow_type, declared_logical)
 | Any other Arrow type | `other` |
 | No schema available (config-only check on a Parquet, database or caller-table source) | `unknown` |
 
-A column made by a `derive` transform takes the Arrow type the transform produced (open question Q6). `unknown` is never treated as typed. The config-only pass defers it. The compile pass, which has the schema, sees it only for an empty source.
+A column made by a `derive` transform takes the Arrow type the transform produced (open question Q6). `unknown` is never treated as typed. The config-only pass defers it. At compile, `unknown` gets the same rule as `text`: a declaration is required.
 
 ### 3.2 Behaviour table (source kind by strategy family)
 
@@ -96,13 +98,12 @@ A column made by a `derive` transform takes the Arrow type the transform produce
 
 - date strategies: `provider_config.date_format`. For `date_shift` only, an F06 date declaration also counts (today's exemption).
 - numeric strategies: an F06 declaration with `logical_type` `integer` or `decimal`.
-- `windowed_date`: `provider_config.anchor_format` for the anchor (section 3.4).
 
 | Strategy | `text` (CSV, fixed width, string column, nested child) | `date` | `timestamp_tz` | `timestamp_naive` | `integer`, `float`, `decimal` | `boolean`, `other` |
 |---|---|---|---|---|---|---|
 | `date_shift` | text declaration required, else `date_shift_requires_date_format` (kept) | runs with no declaration; output keeps the source type | runs; whole-day shift, zone kept | refused `column_shape_mismatch` (today it fails at run time with `timezone_naive_datetime`) | refused `column_shape_mismatch` | refused `column_shape_mismatch` |
 | `bucket_perturb` | `date_format` required, else `column_shape_required` (new refusal; today it detects) | runs with no declaration; output keeps the source type | refused `column_shape_mismatch` (Q5) | refused `column_shape_mismatch` | refused `column_shape_mismatch` | refused `column_shape_mismatch` |
-| `windowed_date` (shape of the anchor column) | `anchor_format: iso8601` required, else `column_shape_required` | runs (typed anchors work today) | refused `column_shape_mismatch` (today refused per row) | runs (works today) | refused `column_shape_mismatch` | refused `column_shape_mismatch` |
+| `windowed_date` | unchanged: no shape rule in this row; text anchors use the fixed ISO grammar; typed anchors as today | unchanged | unchanged | unchanged | unchanged | unchanged |
 | `bucketize` | F06 `integer` or `decimal` declaration required, else `column_shape_required` | refused `column_shape_mismatch` | refused | refused | runs with no declaration (as today) | refused `column_shape_mismatch` |
 | `top_code` | same as `bucketize` | refused | refused | refused | runs with no declaration | refused |
 | `fpe` | runs. The charset (default `digits`) is the shape; a value outside the charset is refused per row (as today) | refused `column_shape_mismatch` | refused | refused | `integer` runs (base-10 text, as today); `float` and `decimal` refused `column_shape_mismatch` (Q4) | refused |
@@ -125,13 +126,14 @@ This is how the plan reads "a declaration is an explicit override and a mismatch
 
 ### 3.4 `windowed_date` anchors
 
-The value read is the anchor column's, so the descriptor names its subject as `provider_config.anchor`. V1 accepts one `anchor_format` value, `iso8601`, which is exactly today's `_ISO_ANCHOR` grammar. Any other value is `column_shape_format_unsupported`. Widening to strftime patterns turns a refusal into a success, so it is a 1.x candidate.
+No change in this row. Text anchors keep the fixed `_ISO_ANCHOR` grammar (`E:src/decoy_engine/transforms/windowed_date.py:77`) with no declaration. A required `anchor_format` with one allowed value would be ceremony. A later optional `anchor_format` (default `iso8601`, strftime values allowed) is additive and is listed in section 9.4.
 
 ### 3.5 When the check runs
 
-- Config-only (`run_config_only_checks`, and the early call in `build_run_context`): shapes come from the config alone (CSV, fixed width, nested, F06). `unknown` columns are deferred, not refused. So `decoy validate` on a CSV pipeline still refuses a missing `date_format` before any read. On a Parquet pipeline the refusal moves to compile.
-- Plan compile (`compile_plan`): shapes come from the profile, which carries the resolved shape per column. Every compile site gets it, including the chunked first-chunk profile. The empty-input placeholder profile has `unknown` shapes; that run stops before any handler, so nothing is guessed.
-- The plan records the shape of each column under a shape-reading strategy (`Plan.column_shapes`). Handler backstops key on the plan, never on the cells. `declared_date_shift_columns(plan)` becomes `typed_date_columns(plan)`: F06 dates plus native dates.
+- Config-only (`run_config_only_checks` at `E:src/decoy_engine/plan/_compile.py:565`, and the early call in `build_run_context`): shapes come from the config alone (CSV, fixed width, nested, F06). `unknown` columns are deferred, not refused. So `decoy validate` on a CSV pipeline still refuses a missing `date_format` before any read. On a Parquet pipeline the refusal moves from `decoy validate` to compile. This move lands in E1a and is in E1a's compatibility note.
+- Plan compile (`compile_plan`, `_compile.py:254`): shapes come from the profile, which carries the resolved shape per column. Every compile site gets it, including the chunked first-chunk profile. `empty_input_profile` (`E:src/decoy_engine/execution/_chunked_profile.py:120`) builds object placeholders from config names, so it cannot give a shape. E1a changes it to take shapes from the source's footer or header schema, which `DeclarationRequest.for_run` has already read. When no schema exists (a caller table with zero rows), the shape is `unknown` and the declaration rule for `text` applies. A zero-row typed source therefore behaves the same as a non-empty one.
+- The plan records the shape of each column under a shape-reading strategy (`Plan.column_shapes`).
+- The one backstop rule: a handler skips the declaration only when the plan lists the column as typed (`date`, `timestamp_tz`, or a number shape). In every other case (`text`, `unknown`, a column the plan does not list, a `--no-profile` run, a caller that skipped compile) the handler refuses when the declaration is missing. Handlers never look at the pandas dtype: a Parquet date and a CSV string both arrive as `object`. `declared_date_shift_columns(plan)` becomes `typed_date_columns(plan)`: F06 dates plus native dates.
 
 ## 4. Failure modes and reason codes
 
@@ -140,15 +142,15 @@ All new codes are registered with `since` unreleased. Messages name the table, c
 | # | Failure | Code | Where | Message (fixed text, by family) |
 |---|---|---|---|---|
 | F1 | `date_shift` on text with no date declaration | `plan/date_shift_requires_date_format` (kept) | compile; runtime twin kept | "date_shift needs provider_config.date_format, the strftime format of its dates." |
-| F2 | date, numeric or anchor strategy on text with no declaration | `plan/column_shape_required` (new) | compile | date: "`<strategy>` reads dates from text; set provider_config.date_format." numeric: "`<strategy>` reads numbers from text; declare logical_type integer or decimal with a parse_format." anchor: "windowed_date reads its anchor from text; set provider_config.anchor_format." |
+| F2 | date or numeric strategy on text or `unknown` with no declaration | `plan/column_shape_required` (new) | compile | date: "`<strategy>` reads dates from text; set provider_config.date_format." numeric: "`<strategy>` reads numbers from text; declare logical_type integer or decimal with a parse_format." |
 | F3 | The strategy family or declaration kind does not match a typed source column | `plan/column_shape_mismatch` (new) | compile | "column `<c>` in table `<t>` is a `<shape>` column; `<strategy>` cannot read it." Plus one hint per cell of 3.2. For `timestamp_naive`: "cast it to a date or a zoned timestamp, or write it as text with a date_format." |
-| F4 | `anchor_format` value outside the V1 set | `plan/column_shape_format_unsupported` (new) | compile | "anchor_format must be iso8601 in this release." |
+| F4 | `bucket_perturb` gets no usable format: in E0, no `date_format` and detection found none; from E2, no `date_format` on a column the plan does not list as typed | `runtime/bucket_perturb_requires_date_format` (new) | handler and transform, both backends | "bucket_perturb needs provider_config.date_format, the strftime format of its dates." |
 | F5 | `date_format` on a typed date column | `plan/column_shape_format_unused` (new, warning) | compile warning | "date_format is not used: the source column is already a date." |
-| F6 | A handler receives a text column with no declaration (a caller that skipped compile) | `runtime/column_shape_required` (new) | `bucket_perturb`, `bucketize`, `top_code`, `windowed_date` backstops | same text as F2 |
+| F6 | A handler receives a column the plan does not list as typed, with no declaration | `runtime/column_shape_required` (new) | `bucketize`, `top_code` backstops (E3); `bucket_perturb` uses F4 | same text as F2 |
 | F7 | A non-null `bucket_perturb` cell does not parse under `date_format` | existing `RowError`, trigger `format_error` | handler, both backends | "value is not a parseable date under bucket_perturb" (as `date_shift`) |
 | F8 | The resolver meets an Arrow type it does not list | shape `other`, never a crash | resolver | none |
 
-Removed: the `bucket_perturb` path "could not detect date format; column values passed through unchanged". Removed: every use of `_detect_format` by `bucket_perturb`.
+Removed in E0: the `bucket_perturb` path "could not detect date format; column values passed through unchanged", and the per-cell keep of unparseable values. Removed in E2: every use of `_detect_format` by `bucket_perturb`.
 
 ## 5. Design notes
 
@@ -163,10 +165,10 @@ Removed: the `bucket_perturb` path "could not detect date format; column values 
 
 | Concern | Choke point | Guard test | Mutation that must turn it red |
 |---|---|---|---|
-| Which strategies need a shape declaration | `SHAPE_REQUIREMENTS_BY_STRATEGY` | `E:tests/sentry/test_shape_requirements_single_source.py` (new). Every handler named in the table reads its format only through `shape_declaration(plan, ...)`. An AST walk of `execution/_strategies/` and `transforms/` finds no `pd.to_datetime(` or `pd.to_numeric(` whose format argument is not that helper's result | add `fmt = cfg.get("date_format") or _detect_format(series)` back to `bucket_perturb` |
-| No run-time format detection | the sentry above, plus an import rule: `transforms.date_shift._detect_format` is imported only by `text_mask` | same sentry, import-graph case | import `_detect_format` in `transforms/bucket_perturb.py` |
-| No value pass-through on a parse failure | the `bucket_perturb` row-error channel | `E:tests/unit/strategies/test_bucket_perturb_shape.py::test_unparseable_cell_is_row_error` | restore `continue  # preserve null / unparseable values` for non-null cells |
-| One resolver | `resolve_column_shape` | `E:tests/sentry/test_column_shape_resolver_single.py` (new): within `plan/` and `profile/`, `pa.types.is_date` and `is_timestamp` are used for shape decisions only in `contracts/column_shape.py` | add an `is_date32` branch in `plan/checks/_required_settings.py` |
+| No run-time format detection (main sentry) | import rule: `transforms.date_shift._detect_format` is imported only by `transforms/text_mask.py` and `transforms/text_redact.py` (allowlist) | `E:tests/sentry/test_no_runtime_format_detection.py` (new), import-graph walk of `src/decoy_engine/` including `execution/native/` | import `_detect_format` in `transforms/bucket_perturb.py` |
+| Date parsing reads the declared format | `shape_declaration(plan, ...)` | same sentry, AST case: in `execution/_strategies/`, `transforms/` and `execution/native/`, every `pd.to_datetime(` call under a strategy in `SHAPE_REQUIREMENTS_BY_STRATEGY` passes `format=` from that helper or from the transform's required `date_format` parameter. `pd.to_numeric` has no format argument, so numeric strategies are covered by the F06 boundary and the E3 refusal tests, not by this case. `text_mask` and `text_redact` are allowlisted | add `fmt = cfg.get("date_format") or _detect_format(series)` back to `bucket_perturb` |
+| No value pass-through on a parse failure | the `bucket_perturb` row-error channel | `E:tests/unit/strategies/test_bucket_perturb_safety.py::test_unparseable_cell_is_row_error` (E0) | restore `continue  # preserve null / unparseable values` for non-null cells |
+| One resolver | `resolve_column_shape`, called only from `profile/_walk.py` | `E:tests/sentry/test_column_shape_resolver_single.py` (new): `resolve_column_shape` has one caller, and within `plan/` and `profile/` the `pa.types.is_date` and `is_timestamp` predicates are used for shape only in `contracts/column_shape.py` | add an `is_date32` branch in `plan/checks/_required_settings.py` |
 | Catalog and starter agree with the table | `strategy_catalog()` `StrategyInfo.shape` | `E:tests/unit/test_strategy_catalog.py::test_shape_matches_requirement_table` | drop `top_code` from the table |
 
 ### 6.1 Class table
@@ -177,10 +179,10 @@ These rows use the defect classes of the plan contract.
 |---|---|---|---|---|---|
 | 1 | Value-bearing output | the new refusal and warning messages; row errors from `bucket_perturb` | messages are fixed text plus table, column, strategy and field names; row errors use the existing value-free `RowError` | `::test_messages_value_free` in E1b, E2, E3, E4 (marker values in fixtures) | put the bad cell into the F7 message |
 | 2 | Cleanup missing on an exit path | a compile refusal after a partial read | refusals happen at plan compile, before any output is opened; no new write path | existing run-refusal tests extended by `test_codes_reach_cli_with_exit_1` (C1) | none new: no write path is added |
-| 3 | Stale state | a shape recorded in the plan that no longer matches the source at run time | `Plan.column_shapes` is part of `plan_hash`; the run reads the same profile the plan was built from; the handler backstop refuses a text column with no declaration whatever the plan says | `::test_handler_backstop_keys_on_plan` (E1b), `::test_handler_backstop_without_compile` (E2) | make the backstop trust the plan alone |
+| 3 | Stale state | a shape recorded in the plan that no longer matches the source at run time | `Plan.column_shapes` is part of `plan_hash`; the run reads the same profile the plan was built from; the one backstop rule refuses any column the plan does not list as typed when its declaration is missing | `::test_handler_backstop_keys_on_plan` (E1b), `::test_handler_refuses_unlisted_column` (E2) | make the backstop skip the check on an `object` dtype |
 | 4 | Route parity | full frame, sequential, chunked, native and mixed routes | one check at compile; handlers read one plan field; the native `bucket_perturb` path keeps parity with pandas | `::test_parquet_date32_runs_without_format` over three routes; `::test_unparseable_cell_is_row_error` on both backends; `::test_csv_top_code_with_integer_declaration_runs_on_every_route` | drop the row-error branch in the native ext only |
 | 5 | Referential integrity | `date_shift` on a key column shared by a CSV table and a Parquet table | the digest input of a typed date is its ISO text, the same bytes as the text form, so one namespace gives one offset | `::test_typed_offset_equals_iso_text_offset` | digest `str(pd.Timestamp(v))` for typed dates |
-| 6 | Untrusted producer | a source schema from a file footer; a config `anchor_format`; a `.decoy` `as` clause | the resolver maps every Arrow type to a closed enum (unknown types become `other`); `anchor_format` is a closed set; the language checks the shape name and family before lowering | `::test_unlisted_arrow_type_is_other`, `::test_anchor_format_other_value_refused`, `test_shapes.py` error tests | accept any `anchor_format` |
+| 6 | Untrusted producer | a source schema from a file footer; a `.decoy` `as` clause | the resolver maps every Arrow type to a closed enum (unknown types become `other`); the language checks the shape name and family before lowering | `::test_unlisted_arrow_type_is_other`, `test_shapes.py` error tests | map an unlisted type to `date` |
 | 7 | Check then use (TOCTOU) | the schema read at compile, then the data read at run | the schema read and the data read are the same files the declaration gate already pins (`prepare_declared_sources`); a changed type between them meets the handler backstop and fails closed | `::test_handler_backstop_keys_on_plan` | remove the backstop |
 | 8 | Weak tests and overclaimed evidence | every acceptance test in section 10 | each slice names its mutation; tests assert output types and bytes, not only the absence of an error | reviewer reruns the named mutations on the final head | removing a named mutation from the evidence is a gate finding |
 | 9 | Behavior-preserving refactor drift | E1a moves the `date_shift` rule into the new descriptor and renames `declared_date_columns` | E1a keeps today's rule for every shape; the existing #728 tests run unchanged | `::test_date_shift_rule_unchanged_on_every_shape`; the existing `date_shift_requires_date_format` tests | make the E1a descriptor skip `date` shapes |
@@ -194,10 +196,9 @@ These rows use the defect classes of the plan contract.
 |---|---|---|
 | `ColumnShape` | `text`, `date`, `timestamp_tz`, `timestamp_naive`, `integer`, `float`, `decimal`, `boolean`, `other`, `unknown` | `contracts/column_shape.py` (new) |
 | `TEXT_SOURCE_FORMATS` | `csv`, `fixed_width` | `contracts/column_shape.py`, checked against `FILE_FORMATS` in `E:src/decoy_engine/profile/_lazy_build.py` by the resolver test |
-| Config fields read | `provider_config.date_format`, `provider_config.anchor_format` (new), `provider_config.anchor`, F06 `logical_type` and `parse_format` | `SHAPE_REQUIREMENTS_BY_STRATEGY` beside `REQUIREMENTS_BY_STRATEGY` at `E:src/decoy_engine/contracts/strategy_requirements.py:60` |
+| Config fields read | `provider_config.date_format`, F06 `logical_type` and `parse_format` | `SHAPE_REQUIREMENTS_BY_STRATEGY` beside `REQUIREMENTS_BY_STRATEGY` at `E:src/decoy_engine/contracts/strategy_requirements.py:60` |
 | Profile field added | `ColumnProfile.shape`, beside `avg_length` at `E:src/decoy_engine/profile/_types.py:103` (both out of `profile_hash`) | `profile/_types.py` |
-| Strategies with a shape rule | `date_shift`, `bucket_perturb`, `windowed_date`, `bucketize`, `top_code`, `fpe` | `SHAPE_REQUIREMENTS_BY_STRATEGY` |
-| `anchor_format` values | `iso8601`, the grammar of `_ISO_ANCHOR` at `E:src/decoy_engine/transforms/windowed_date.py:77` | `contracts/strategy_requirements.py` |
+| Strategies with a shape rule | `date_shift`, `bucket_perturb`, `bucketize`, `top_code`, `fpe` | `SHAPE_REQUIREMENTS_BY_STRATEGY` |
 | Language shapes | `date(fmt)`, `integer`, `decimal(precision, scale)` | `src/decoy/lang/_shapes.py`; YAML targets come from `StrategyInfo.shape` |
 | New reason codes | the five in section 4 | `reasons/plan/_part3.py`, `reasons/runtime/_part3.py` |
 
@@ -209,7 +210,7 @@ Every route reads the shape from the plan; none resolves it again.
 |---|---|---|
 | Config-only (`decoy validate`, early `build_run_context`) | `check_required_strategy_settings(config, shapes=config_shapes)` | today's config-only call |
 | Compile in a run | both calls in `compile_plan`, `E:src/decoy_engine/plan/_compile.py:254` and `:565` | the profile comes from `build_routing_facts`, `E:src/decoy_engine/execution/pipeline/_routing_facts.py:74` (`DeclarationRequest.for_run`) then `:97` (`compile_plan`) |
-| Full frame, sequential, chunked, mixed, out of core | the handler backstop on `typed_date_columns`, today `declared_date_columns` at `E:src/decoy_engine/execution/_strategies/_date_shift.py:102` | F06 `pre_mask_cast` is in every route's set, `E:src/decoy_engine/declared_casting/_eligibility.py:43` and `:52` |
+| Full frame, sequential, chunked, mixed, out of core | the one backstop rule on `typed_date_columns`, today `declared_date_columns` at `E:src/decoy_engine/execution/_strategies/_date_shift.py:102` | F06 `pre_mask_cast` is in every route's set, `E:src/decoy_engine/declared_casting/_eligibility.py:43` and `:52` |
 | Native `bucket_perturb` and `date_shift` | admits explicit formats only today; E2 adds row-error parity | native parity tests |
 
 ### Exit paths
@@ -218,8 +219,8 @@ Every route reads the shape from the plan; none resolves it again.
 |---|---|
 | Compile refusal (F1 to F4) | `PlanValidationError` with the code; CLI config-refusal exit; no output opened |
 | Compile warning (F5) | plan warning; run continues |
-| Handler backstop (F6) | runtime refusal with the code; the run stops before writing that table |
-| Row error (F7) | existing row-error accounting; never a pass-through. Today the pass-through is at `E:src/decoy_engine/transforms/bucket_perturb.py:147` and detection at `:160` |
+| Handler backstop (F4, F6) | runtime refusal with the code; the run stops before writing that table |
+| Row error (F7) | existing row-error accounting; never a pass-through. Today the whole-column pass-through is at `E:src/decoy_engine/transforms/bucket_perturb.py:165-170` and the per-cell keep at `:181`; native at `E:src/decoy_engine/execution/native/_bucket_perturb_ext.py:7` and `:227` |
 | F06 cast failure on a declared numeric column | F06 `error_policy` (default fail) |
 
 ### FK shapes
@@ -284,18 +285,18 @@ Assume the row shipped and failed. The likely causes, and what in the plan stops
 
 | File | Change | Why there | Size after (goal 600, ceiling 700) |
 |---|---|---|---|
-| `E:src/decoy_engine/contracts/column_shape.py` (new) | `ColumnShape` enum, `TEXT_SOURCE_FORMATS`, `resolve_column_shape`, `ColumnShapes` | CODEMAP "Versioned contracts" row: a leaf contract beside `strategy_requirements.py`; imports `pyarrow` and `reasons` only | about 90 |
+| `E:src/decoy_engine/contracts/column_shape.py` (new) | `ColumnShape` enum, `TEXT_SOURCE_FORMATS`, `resolve_column_shape`, `ColumnShapes` | CODEMAP "Versioned contracts" row: a leaf contract beside `strategy_requirements.py`; imports `pyarrow`, `_arrow_types` (for `is_text`) and `reasons` only | about 80 |
 | `E:src/decoy_engine/contracts/strategy_requirements.py` | `ShapeRequirement`, `SHAPE_REQUIREMENTS_BY_STRATEGY`, `shape_requirement_for`, `shape_problem` | named by the owner; the existing one table of strategy requirements | 124 to about 230 |
 | `E:src/decoy_engine/plan/checks/_required_settings.py` | `check_required_strategy_settings(config, shapes=None)` walks the shape table; the `date_format` special case moves into the descriptor | the existing check; no sibling copy | 126 to about 210 |
-| `E:src/decoy_engine/profile/_types.py`, `profile/_source.py`, `execution/_chunked_profile.py` | `ColumnProfile.shape` (defaulted, excluded from `profile_hash` like `avg_length`), set from the resolver | every compile site already receives the profile | +15, +20, +10 |
+| `E:src/decoy_engine/profile/_types.py`, `profile/_walk.py`, `profile/_source.py`, `execution/_chunked_profile.py` | `ColumnProfile.shape` (defaulted, excluded from `profile_hash` like `avg_length`); `walk_dataframe` is the one resolver call site and gains `source_format`; `profile_source` passes it; `first_chunk_profile` and `walk_one_table` pass `first_chunk.schema`; `empty_input_profile` takes shapes from the footer or header schema | every compile site already receives the profile | +15, +15, +10, +20 |
 | `E:src/decoy_engine/plan/_types.py`, `plan/_serialize.py`, `plan/_compile.py` | `Plan.column_shapes`; serialized; built in compile | handlers key on the plan | +20, +12 (586 to 598; if it would pass 600, a sibling `_serialize_shapes.py` beside `_serialize_declared.py`), +3 |
 | `E:src/decoy_engine/declared_casting/_boundary.py` | `declared_date_shift_columns` becomes `typed_date_columns(plan)` | the existing seam the routes call | +10 |
 | `E:src/decoy_engine/execution/_adapter.py` | rename `declared_date_columns` to `typed_date_columns` | internal context field | 0 |
 | `E:src/decoy_engine/execution/_strategies/_date_shift.py` | typed output keeps the source type; backstop keys on `typed_date_columns` | the handler | 355 to about 380 |
 | `E:src/decoy_engine/transforms/date_preserve.py` | `preserve_config_problem(cfg, shape)` | its one rule site | +10 |
-| `E:src/decoy_engine/transforms/bucket_perturb.py`, `execution/_strategies/_bucket_perturb.py`, `execution/native/_bucket_perturb_ext.py` | remove detection and pass-through; typed path; row errors | the strategy | 254 to about 250; 141 to about 170; parity only |
+| `E:src/decoy_engine/transforms/bucket_perturb.py`, `execution/_strategies/_bucket_perturb.py`, `execution/native/_bucket_perturb_ext.py` | E0: refusal on a `None` format and row errors on both backends. E2: remove detection, make `date_format` a required parameter, typed path | the strategy | 254 to about 250; 141 to about 170; native +15 |
 | `E:src/decoy_engine/plan/_checks_declared_casting.py` | `strategy_output_logical`: `top_code` on integer or decimal gives `string`; `bucketize` on decimal gives `string` for `range` and `midpoint` | F06 owns which strategies are proven for a declared column | 266 to about 280 |
-| `E:src/decoy_engine/execution/_strategies/_bucketize.py`, `_top_code.py`, `_windowed_date.py`, `transforms/windowed_date.py` | backstop through `shape_problem`; `anchor_format` read | the strategies | +10 each |
+| `E:src/decoy_engine/execution/_strategies/_bucketize.py`, `_top_code.py` | backstop through `shape_problem` | the strategies | +10 each |
 | `E:src/decoy_engine/profiling/_starter_config.py`, `_starter_inference.py`, `profiling/recommendations.py` | write `date_format` only for a text column; a typed date gets `date_shift` with no format | the one starter | 457 to about 475 |
 | `E:src/decoy_engine/execution/_strategies/__init__.py` (catalog) | `StrategyInfo.shape` (family, declaration field) | the public catalog the language reads | +15 |
 | `E:src/decoy_engine/reasons/plan/_part3.py`, `reasons/runtime/_part3.py` | the new codes | the registry | +12 |
@@ -303,7 +304,7 @@ Assume the row shipped and failed. The likely causes, and what in the plan stops
 
 No directory gains a module past its fan-out limit. The new engine file is in `contracts/` (8 modules). No module is added to `plan/` (frozen at 30).
 
-Consumer pairs (proportionality exception): `ColumnProfile.shape` and `Plan.column_shapes` land in E1a; their behaviour consumers are E1b, E2, E3 and E4, which must merge before the row closes. `StrategyInfo.shape` lands in E5; its consumer is C2.
+Consumer pairs (proportionality exception): `ColumnProfile.shape` and `Plan.column_shapes` land in E1a; their behaviour consumers are E1b, E2 and E3, which must merge before the row closes. `StrategyInfo.shape` lands in E5; its consumer is C2.
 
 ## 8. Slices
 
@@ -311,18 +312,18 @@ Engine slices first, then CLI. Each merges alone and leaves main green.
 
 | Slice | What | Risk | After | Size (code, tests) |
 |---|---|---|---|---|
+| E0 | `bucket_perturb` safety fix, on its own: when the format resolves to `None` the transform raises the coded runtime refusal F4 instead of returning the column unchanged; a non-null cell that does not parse becomes a `RowError` (F7) instead of keeping its value. Both backends (pandas transform and native ext). Detection itself stays until E2 | R2 (safety, output change) | none | about 40, 150 |
 | E1a | Shape vocabulary, resolver, `ColumnProfile.shape`, `Plan.column_shapes`, `ShapeRequirement` table, `check_required_strategy_settings(config, shapes)`, sentries. The table holds only `date_shift` with today's rule (every shape requires `date_format`), so no behaviour moves. Only `plan_hash` moves, for configs with `date_shift` | R2 (plan format) | DATE-SHIFT-FORMAT release 0.28.2 | about 350, 350 |
 | E1b | `date_shift` on typed dates: no declaration, typed output, `timestamp_naive` refused at compile, `date_format` unused warning, `preserve_values` on typed columns, backstop on `typed_date_columns` | R2 | E1a | about 200, 300 |
-| E2 | `bucket_perturb`: `date_format` required on text, detection and pass-through removed, typed date path, unparseable cells become row errors on both backends | R2 (refusal, safety) | E1a | about 150, 300 |
+| E2 | `bucket_perturb`: `date_format` required on text at compile, detection removed, `date_format` becomes a required parameter of `apply_bucket_perturb`, typed date path for plan-listed columns | R2 (refusal) | E0, E1a | about 150, 300 |
 | E3 | `bucketize` and `top_code` on text need an F06 numeric declaration; typed mismatch; F06 proof widened for `top_code` and decimal `bucketize`; `fpe` typed rule | R2 | E1a | about 150, 300 |
-| E4 | `windowed_date` `anchor_format` | R1 | E1a | about 60, 120 |
-| E5 | Starter and scan: shape on `FieldStats`, starter writes formats only for text, `StrategyInfo.shape`, engine docs (`strategies.md`, `compatibility-contract.md`, CHANGELOG, CODEMAP), engine release | R1 | E1b, E2, E3, E4 | about 120, 200 |
+| E5 | Starter and scan: shape on `FieldStats`, starter writes formats only for text, `StrategyInfo.shape`, engine docs (`strategies.md`, `compatibility-contract.md`, CHANGELOG, CODEMAP), engine release | R1 | E1b, E2, E3 | about 120, 200 |
 | C0 | Roadmap row, link to this plan | R1 | none | docs |
-| C1 | Repin to the release with E1a to E5; CLI docs and templates (section 11); error table | R1 | E5 | about 40, docs |
+| C1 | Repin to the release with E0 to E5; CLI docs and templates (section 11); error table | R1 | E5 | about 40, docs |
 | C2 | Language `as <shape>` clause: grammar, lowering through `StrategyInfo.shape`, printer and converter round trip, codes, guide pages | R2 (language syntax is frozen at 1.0) | C1; DECOY-LANG S1 | about 250, 300 |
 | C3 | `decoy init` and scan output: `.decoy` rules carry `as date("...")` for text sources and no `as` for typed ones, under the `?` mark; YAML init writes `date_format` only for text | R1 | C2; DECOY-LANG S6 | about 40, 150 |
 
-E2, E3 and E4 do not depend on each other and can run in parallel after E1a.
+E0 has no dependency and should merge first; it can ship in the 0.28.x train. E2 and E3 do not depend on each other and can run in parallel after E1a. The former E4 (`windowed_date` `anchor_format`) is dropped (Q9).
 
 ## 9. The language side
 
@@ -338,7 +339,7 @@ age as integer                    : top_code(upper: 89)
 income as decimal(precision: 12, scale: 2) : bucketize(width: 10000)
 ```
 
-Grammar: `mask: names [shape] ":" treatment [REVIEW_MARK]` with `shape: AS call`. `as` becomes a contextual keyword, so a column named `as` is written `'as'`. The shape describes the column (the data), so it is on the column side of `:`, apart from the treatment. A `let` treatment stays free of shapes, so one `let` serves a CSV table and a Parquet table.
+Grammar: `mask: names [shape] ":" treatment [REVIEW_MARK]` with `shape: AS call`. `as` becomes a contextual keyword: it is a keyword only in the position after the names, so a column named `as` still works unquoted (C2 tests this). The shape describes the column (the data), so it is on the column side of `:`, apart from the treatment. A `let` treatment stays free of shapes, so one `let` serves a CSV table and a Parquet table. A `group` gets no shape: shapes go on the rule's column names only.
 
 Shapes in V1: `date("<strftime>")`, `integer`, `decimal(precision: p, scale: s)`. Nothing else.
 
@@ -359,7 +360,7 @@ New language codes:
 - `lang.shape_wrong_family`: for example `as integer` on `date_shift`.
 - The existing `lang.option_repeated` when a rule has both `as date(...)` and a `date_format:` option.
 
-All are compile-time language errors with a span. None needs the engine.
+All are compile-time language errors with a span. `lang.shape_unknown` and `lang.option_repeated` are pure language checks. `lang.shape_not_read` and `lang.shape_wrong_family` read `StrategyInfo.shape` from the engine catalog, the same data the lowering uses, so they need the engine package but no data and no plan.
 
 Converter and printer: a column with `date_format` under a date strategy prints as `as date("...")`. An F06 `integer/ascii/v1` with default parameters prints as `as integer`. `decimal/plain/v1` prints as `as decimal(...)`. Every other F06 contract (grouped, currency, COBOL, sentinels, error policy, output format) prints as options, as today. The converter's round-trip proof covers each case.
 
@@ -382,7 +383,8 @@ A typed date column gets no `as`: `dob : date_shift(min_days: -365, max_days: 36
 - A table-level shape block (`columns { dob: date("%m/%d/%Y"), age: integer }`) that also feeds `keep` columns and `windowed_date` anchors.
 - Source-level type hints, `csv("a.csv", types: {...})`, that make the reader produce typed Arrow columns (typed CSV reading).
 - `as` on `keep` and on link columns, which needs F06 on `passthrough` anchors.
-- `as date(iso)` mapped to F06 `date/iso8601/v1`, and strftime `anchor_format` for `windowed_date`.
+- `as date(iso)` mapped to F06 `date/iso8601/v1`.
+- An optional `windowed_date` `anchor_format` (default `iso8601`, strftime values allowed), with `as date(...)` on the anchor column.
 
 ## 10. Acceptance tests first
 
@@ -400,6 +402,9 @@ Each slice's tests are written before its code. "Proves" says what a red test wo
 | `E:tests/unit/plan/test_plan_column_shapes.py::test_plan_records_shapes_for_reading_strategies_only` | the plan lists shapes for shape-reading strategies and no others |
 | `::test_plan_is_deterministic` | the same config and profile give byte-identical plans |
 | `E:tests/unit/profile/test_profile_shape.py::test_shape_not_in_profile_hash` | pinned profile hashes do not move |
+| `::test_chunked_first_chunk_shape_matches_full_frame` (Parquet `date32`, CSV) | the chunked profile passes `first_chunk.schema` and the source format, so both paths give the same shape |
+| `::test_empty_typed_source_takes_footer_shape` (zero-row Parquet with a `date32` column) | a zero-row typed source behaves like a non-empty one; it is not refused as `unknown` |
+| `::test_s3_csv_shape_is_text` (cloud reader stub that infers `int64`) | the source format reaches the resolver on the cloud path |
 | The sentries of section 6 | the choke points hold |
 
 Mutation: drop `csv` from `TEXT_SOURCE_FORMATS`; `test_csv_is_text_even_when_reader_inferred_int` turns red.
@@ -416,23 +421,36 @@ Mutation: drop `csv` from `TEXT_SOURCE_FORMATS`; `test_csv_is_text_even_when_rea
 | `::test_date_format_on_typed_date_warns_and_is_unused` | F5; output is a date, not formatted text |
 | `::test_csv_without_format_still_refused` | F1 is kept for text |
 | `::test_preserve_values_on_typed_date_without_format` | sentinels work on typed dates |
-| `::test_handler_backstop_keys_on_plan` (a typed column the plan does not list as typed, and a text column the plan lists as text with no format) | the backstop reads the plan, not the cells |
+| `::test_handler_backstop_keys_on_plan` (a Parquet `date32` column the plan lists as typed runs with no format; the same column with the plan entry removed is refused; a text column with no format is refused) | the one backstop rule: only a plan-listed typed column skips the declaration |
 | `::test_messages_value_free` | no marker value in any message |
 
 Mutation: in `_shift_rows`, keep `shifted.astype(str)` for typed columns; `test_output_keeps_date32` turns red.
+
+### E0
+
+| Test | Proves |
+|---|---|
+| `E:tests/unit/strategies/test_bucket_perturb_safety.py::test_transform_refuses_when_format_resolves_to_none` (calls `apply_bucket_perturb` directly on values detection cannot read) | F4: no whole-column pass-through, at the transform itself, not only behind a handler |
+| `::test_handler_refuses_when_format_resolves_to_none` (full frame, sequential, chunked) | the refusal reaches every route with the code |
+| `::test_unparseable_cell_is_row_error` (pandas and native backends, same rows) | F7: no source value passes through, on both backends |
+| `::test_null_stays_null` | nulls are not row errors |
+| `::test_explicit_format_output_unchanged` (pandas and native) | output bytes for today's valid rows do not move |
+| `::test_messages_value_free` | no marker value in the refusal or row error |
+
+Mutations: restore `return series.copy()` on `fmt is None` (`bucket_perturb.py:165-170`), and `test_transform_refuses_when_format_resolves_to_none` turns red. Restore the per-cell `continue` at `:181`, and `test_unparseable_cell_is_row_error` (pandas case) turns red. Keep unparseable rows unchanged in `_bucket_perturb_ext.py` (`:227`), and the native case turns red.
 
 ### E2
 
 | Test | Proves |
 |---|---|
 | `E:tests/unit/strategies/test_bucket_perturb_shape.py::test_text_without_format_refused` (config-only and compile) | change (2): the new refusal, before any read for CSV |
-| `::test_no_detection_import` | `_detect_format` cannot be reached from `bucket_perturb` |
-| `::test_typed_date_runs_without_format_and_keeps_type` | the typed path |
-| `::test_unparseable_cell_is_row_error` (pandas and native backends, same rows) | F7: no source value passes through |
-| `::test_handler_backstop_without_compile` | F6 replaces the whole-column pass-through |
+| `::test_transform_does_not_detect` (calls `apply_bucket_perturb` directly with no `date_format` on clean ISO values that detection would read) | no run-time detection, at the transform, whatever the handler does |
+| `::test_typed_date_runs_without_format_and_keeps_type` | the typed path for a plan-listed column |
+| `::test_handler_refuses_unlisted_column` (a Parquet date column with its plan entry removed, no format) | the one backstop rule |
 | `::test_native_parity_unchanged_for_explicit_format` | output bytes for today's valid configs do not move |
+| the section 6 import sentry | `_detect_format` cannot be reached from `bucket_perturb` |
 
-Mutation: restore the `fmt is None` pass-through branch; `test_handler_backstop_without_compile` turns red.
+Mutation: restore `fmt = date_format or _detect_format(series)` in the transform; `test_transform_does_not_detect` and the import sentry turn red. The test calls the transform directly, so the handler backstop cannot hide the mutation.
 
 ### E3
 
@@ -447,17 +465,6 @@ Mutation: restore the `fmt is None` pass-through branch; `test_handler_backstop_
 | `::test_bad_cell_follows_error_policy_fail` | a non-numeric CSV cell under a declared column fails the run (F06 default) and never passes through |
 
 Mutation: remove `top_code` from `SHAPE_REQUIREMENTS_BY_STRATEGY`; `test_csv_top_code_without_declaration_refused` and the catalog test turn red.
-
-### E4
-
-| Test | Proves |
-|---|---|
-| `E:tests/unit/strategies/test_windowed_date_shape.py::test_text_anchor_needs_anchor_format` | the new refusal |
-| `::test_anchor_format_other_value_refused` | F4 |
-| `::test_iso8601_anchor_output_unchanged` | output bytes do not move for today's anchors |
-| `::test_typed_anchor_needs_nothing` | typed anchors |
-
-Mutation: accept any `anchor_format` string; `test_anchor_format_other_value_refused` turns red.
 
 ### E5
 
@@ -486,7 +493,7 @@ Mutation: make the starter write `date_format` for every date; `test_parquet_dat
 | `::test_as_on_hash_is_shape_not_read`, `::test_as_integer_on_date_shift_is_wrong_family`, `::test_as_and_option_repeated` | the three language errors, each with its span |
 | `::test_lowering_reads_catalog` (monkeypatch `StrategyInfo.shape`) | the language keeps no strategy list |
 | `tests/unit/lang/test_convert_roundtrip.py::test_shapes_print_and_round_trip` | the converter prints `as` and proves the program |
-| `::test_column_named_as_quoted` | the new keyword |
+| `::test_column_named_as_works_unquoted` | `as` stays a contextual keyword: `as : hash` and `as as integer : top_code(upper: 89)` both parse |
 
 Mutation: make `_shapes.py` lower `date(...)` to an F06 date; `test_as_date_lowers_to_date_format` and the round-trip test turn red.
 
@@ -503,7 +510,7 @@ Mutation: write `as date(...)` for Parquet dates too; `test_parquet_init_writes_
 
 ## 11. Docs to update
 
-- Engine: `docs/strategies.md` (the `date_shift`, `bucket_perturb`, `bucketize`, `top_code`, `windowed_date` and `fpe` sections: what each needs on text and on typed columns; remove "auto-detected from the column"), `docs/compatibility-contract.md` (one pre-GA note per freeze item below), `CHANGELOG.md`, `CODEMAP.md` (contracts row), and `docs/frozen-surfaces.md` if it lists `Plan` fields.
+- Engine: `docs/strategies.md` (the `date_shift`, `bucket_perturb`, `bucketize`, `top_code` and `fpe` sections; a note that `windowed_date` anchors keep the fixed ISO grammar: what each needs on text and on typed columns; remove "auto-detected from the column"), `docs/compatibility-contract.md` (one pre-GA note per freeze item below), `CHANGELOG.md`, `CODEMAP.md` (contracts row), and `docs/frozen-surfaces.md` if it lists `Plan` fields.
 - CLI: `docs/guides/decoy-language/cheat-sheet.md` and `02-masking.md` (the `date_shift(min_days: -30, max_days: 30)` examples have no `date_format` and are refused on CSV today; fix them and add the `as` form), `agent-card.md`, `06-from-yaml.md`, `07-errors.md` (new codes), the template comments in `src/decoy/templates/hipaa.yaml` and `pci.yaml` (the format is for text sources only), the roadmap row and the shipped log.
 - Vault: the `date_shift` section of `30_Resources/Decoy-Language-to-Delivery.md`, after merge.
 
@@ -517,16 +524,15 @@ Every item lands before the 1.0 freeze. Each gets a pre-GA note in `E:docs/compa
 | `date_shift` or `bucket_perturb` on a typed date with `date_format`: output stays a date instead of formatted text; warning added | output change | E1b, E2 |
 | `date_shift` on a tz-naive timestamp is refused at compile instead of failing at run time | earlier refusal, same outcome | E1b |
 | `bucket_perturb` on text with no `date_format` | new refusal (owner freeze item) | E2 |
-| `bucket_perturb` unparseable cells become row errors instead of passing through | output change, safety | E2 |
+| `bucket_perturb` refuses at run time when no format resolves, instead of passing the column through; unparseable cells become row errors instead of passing through | new refusal and output change, safety | E0 |
 | `bucketize` and `top_code` on text with no F06 numeric declaration | new refusal | E3 |
 | Numeric strategies on typed dates, booleans and other types | new compile refusal (today every row fails) | E3 |
 | `fpe` on typed float, decimal, date and timestamp | new refusal | E3 |
 | F06 admits `top_code` and decimal `bucketize` | refusal removed | E3 |
-| `windowed_date` text anchors with no `anchor_format` | new refusal; new config key | E4 |
 | `Plan.column_shapes`: `plan_hash` moves for configs with shape-reading strategies; `pipeline_config_hash` does not | stored format, additive | E1a |
-| New reason codes (section 4), registered unreleased | registry | E1a to E4 |
+| New reason codes (section 4), registered unreleased | registry | E0 to E3 |
 | `StrategyInfo.shape` | public name, additive | E5 |
-| Config-only `decoy validate` on a Parquet pipeline no longer refuses a missing `date_format`; `validate compile` does | moved refusal | E1a |
+| Config-only `decoy validate` (`run_config_only_checks`, `_compile.py:565`) on a Parquet pipeline no longer refuses a missing `date_format`; `validate compile` and `run` do. Recorded in E1a's compatibility note | moved refusal | E1a |
 | `.decoy` keyword `as` and the shape clause | language syntax | C2 |
 
 Platform repin checklist (platform is parked): fixtures with `bucket_perturb`, `bucketize` or `top_code` on CSV, and the disguise application path (parked row PLATFORM-DISGUISE-DATE-FORMAT).
@@ -534,6 +540,10 @@ Platform repin checklist (platform is parked): fixtures with `bucket_perturb`, `
 ## 13. Fold or stand alone
 
 Stand alone. DATE-SHIFT-FORMAT is PARTLY MERGED with only its release and CLI repin left. Reopening it would keep a near-done row open (closing-set rule) and would mix a reversal of its typed-column behaviour into its release. This row depends on that release (E1a After 0.28.2) and replaces the config-only `date_format` descriptor with the shape-aware one. DATE-SHIFT-FORMAT closes when its repin merges; COLUMN-SHAPE-RULE then owns the rule.
+
+## 13.1 Follow-up candidates (not in this row)
+
+- Move the pandas-dtype classifiers in `E:src/decoy_engine/plan/_checks_correctness.py:84` and `:104` and `E:src/decoy_engine/plan/_checks.py:209` onto `ColumnProfile.shape`, so plan checks have one notion of column type. Log it as a structure-review item after this row closes.
 
 ## 14. Open questions (recommended answer for each)
 
@@ -547,5 +557,5 @@ Stand alone. DATE-SHIFT-FORMAT is PARTLY MERGED with only its release and CLI re
 | Q6 | A column made by a `derive` transform: which shape? | The Arrow type the transform produced, read after transforms. If the profile sees only pre-transform sources (the E1a builder confirms), treat derived columns as `unknown` at compile and require the declaration. |
 | Q7 | F06's default `error_policy: fail` means one bad cell in a declared CSV numeric column fails the run, where `bucketize` today records a row error. Accept? | Yes. A bad cell under a declared type is a data problem the user must see. `error_policy: quarantine` exists for dirty data. Document it in `strategies.md`. |
 | Q8 | One generic `column_shape_required` code, or one code per strategy like `date_shift_requires_date_format`? | Generic for the new ones; keep the shipped `date_shift` code. Fewer codes, one message per family, and the strategy name is in the path. |
-| Q9 | `windowed_date` text anchors: require `anchor_format: iso8601` (a declaration with one allowed value), or keep the fixed ISO grammar with no declaration? | Require it. It follows the owner's rule that text needs an explicit declaration, costs one line, and leaves room to widen. |
+| Q9 | `windowed_date` text anchors: require `anchor_format: iso8601`, or keep the fixed ISO grammar with no declaration? | Keep the fixed grammar with no declaration (review round 1). A required field with one allowed value is ceremony. A later optional `anchor_format` with default `iso8601` is additive. |
 | Q10 | Language keyword `as`, or a word that cannot clash with column names? | `as`. It reads well, matches SQL `CAST(x AS type)`, and the language already quotes columns named after keywords. |
