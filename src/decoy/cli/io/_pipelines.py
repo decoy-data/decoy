@@ -111,7 +111,7 @@ def explicit_project(ctx: typer.Context | None) -> Path | None:
 
 
 def looks_like_path(raw: str) -> bool:
-    """True for a token with a separator, a YAML suffix, or `-`: a path, not a pipeline name."""
+    """True for a token with a separator, a pipeline-file suffix, or `-`: a path, not a name."""
     return raw == "-" or "/" in raw or "\\" in raw or raw.lower().endswith(PIPELINE_SUFFIXES)
 
 
@@ -133,7 +133,7 @@ def parse_pipeline_token(ctx: typer.Context, value: str | None) -> PipelineToken
     """Classify a pipeline argument. The declared parameter type stays `str`.
 
     An existing file is a path, even one named like a pipeline. A token with a separator or a
-    YAML suffix is a path and must exist (exit 2). Anything else is a name.
+    pipeline-file suffix (`.yaml`, `.yml`, `.decoy`) is a path and must exist (exit 2). Anything else is a name.
     """
     if value is None:
         return None

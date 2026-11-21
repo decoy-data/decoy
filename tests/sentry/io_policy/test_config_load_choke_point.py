@@ -210,7 +210,10 @@ def test_a_private_loader_name_is_seen_in_each_spelling() -> None:
     assert lang_imports.private_loader_imports(
         "from decoy import _config_file\n_config_file._parse_yaml_mapping(t)\n"
     ) == {"_parse_yaml_mapping"}
-    assert lang_imports.private_loader_imports("from decoy._config_file import load_pipeline\n") == set()
+    assert (
+        lang_imports.private_loader_imports("from decoy._config_file import load_pipeline\n")
+        == set()
+    )
 
 
 # --- the one pipeline suffix table (F10) --------------------------------------------------------

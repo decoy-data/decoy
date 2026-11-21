@@ -60,11 +60,13 @@ Locate = Callable[[str | None], Position | None]
 
 @dataclass(frozen=True)
 class ConfigProblem:
-    """One reason a pipeline file cannot be used. `message` holds no value from the file."""
+    """One reason a pipeline file cannot be used. `message` and `hint` hold no value from the
+    file: a hint names strategies and words of the language, never data."""
 
     code: str  # yaml.* or lang.*
     message: str
     position: Position | None = None
+    hint: str | None = None
 
     @property
     def text(self) -> str:
@@ -205,7 +207,7 @@ def _problem(diagnostic: Any) -> ConfigProblem:
     place = None
     if span is not None:
         place = Position(span.line, span.column, span.end_line, span.end_column)
-    return ConfigProblem(diagnostic.code, diagnostic.message, place)
+    return ConfigProblem(diagnostic.code, diagnostic.message, place, diagnostic.hint)
 
 
 def _load_decoy(text: str) -> PipelineFile:

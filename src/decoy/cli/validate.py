@@ -179,6 +179,7 @@ def _emit_result(
             "code": f.code,
             "message": f.message,
             **({"location": f.location} if f.location is not None else {}),
+            **({"hint": f.hint} if f.hint else {}),
         }
         for f in findings
     ]
@@ -225,7 +226,10 @@ def _emit_result(
             markup=False,
         )
         state.err_console.print(
-            " ", hint("hint:"), "see `decoy validate config --help` for the expected schema."
+            " ",
+            hint("hint:"),
+            first_error.hint or "see `decoy validate config --help` for the expected schema.",
+            markup=False,
         )
         return
 
@@ -351,6 +355,7 @@ def _emit_gate(
                     "code": f.code,
                     "message": f.message,
                     "location": f.location,
+                    **({"hint": f.hint} if f.hint else {}),
                 }
                 for f in findings
             ],
@@ -379,6 +384,8 @@ def _emit_gate(
         for f in errs:
             loc_hint = f" ({f.location})" if f.location else ""
             state.err_console.print(error("  fail:"), f.message + loc_hint, markup=False)
+            if f.hint:
+                state.err_console.print("   ", hint("hint:"), f.hint, markup=False)
         for f in warns:
             loc_hint = f" ({f.location})" if f.location else ""
             state.err_console.print(warn("  warning:"), f.message + loc_hint, markup=False)

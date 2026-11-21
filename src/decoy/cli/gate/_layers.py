@@ -60,6 +60,8 @@ class GateFinding:
     # The optional extra an absent dependency needs ("ner"), so `decoy run --json` can keep
     # `error_kind: "missing_extra"`.
     extra: str | None = None
+    # A value-free suggestion from the `.decoy` compiler ("did you mean `redact`?"), else None.
+    hint: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,7 +91,7 @@ def _plan_error_fields(error: Exception) -> tuple[str, str, str | None]:
 
 
 def _loader_finding(problem: ConfigProblem) -> GateFinding:
-    return GateFinding("config", "error", problem.code, problem.text)
+    return GateFinding("config", "error", problem.code, problem.text, hint=problem.hint)
 
 
 def parse_pipeline_yaml(

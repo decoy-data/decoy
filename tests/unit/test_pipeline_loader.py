@@ -26,7 +26,7 @@ from decoy._config_file import (
     read_config_text,
     read_decoy_text,
 )
-from decoy.cli.completers import _yaml_paths
+from decoy.cli.completers import _config_paths
 from decoy.cli.io._pipelines import looks_like_path
 
 MARKER = "SECRET_MARKER_5d1c"
@@ -103,6 +103,38 @@ def test_a_lowering_error_is_one_problem_per_diagnostic(tmp_path: Path) -> None:
     assert exc.problems[0].position is not None
 
 
+def test_a_lowering_hint_reaches_the_problem_and_both_outputs(tmp_path: Path) -> None:
+    path = _decoy(tmp_path, BAD_STRATEGY)
+
+    assert _refusal(path).problems[0].hint == "did you mean `redact`?"
+    text = runner.invoke(app, ["validate", "config", str(path)], env={"COLUMNS": "10000"})
+    assert "hint: did you mean `redact`?" in text.output
+    as_json = runner.invoke(
+        app, ["validate", "config", str(path), "--json"], env={"COLUMNS": "10000"}
+    )
+    assert json.loads(as_json.stdout)["messages"][0]["hint"] == "did you mean `redact`?"
+    gate = runner.invoke(app, ["validate", str(path), "--json"], env={"COLUMNS": "10000"})
+    assert json.loads(gate.stdout)["messages"][0]["hint"] == "did you mean `redact`?"
+    gate_text = runner.invoke(app, ["validate", str(path)], env={"COLUMNS": "10000"})
+    assert "hint: did you mean `redact`?" in gate_text.output
+    assert MARKER not in text.output + as_json.output + gate.output + gate_text.output
+
+
+def test_the_review_mark_hint_reaches_both_outputs(tmp_path: Path) -> None:
+    path = _decoy(tmp_path, MARKED)
+    hint = "check the rule, then remove the `?`"
+
+    text = runner.invoke(app, ["validate", "config", str(path)], env={"COLUMNS": "10000"})
+    as_json = runner.invoke(
+        app, ["validate", "config", str(path), "--json"], env={"COLUMNS": "10000"}
+    )
+    gate = runner.invoke(app, ["validate", str(path), "--json"], env={"COLUMNS": "10000"})
+
+    assert f"hint: {hint}" in text.output
+    assert [m["hint"] for m in json.loads(as_json.stdout)["messages"]] == [hint, hint]
+    assert [m["hint"] for m in json.loads(gate.stdout)["messages"]] == [hint, hint]
+
+
 def test_a_lowering_error_is_followed_by_the_marks(tmp_path: Path) -> None:
     text = BAD_STRATEGY.replace("email      : faker(person_email)", "email : faker(x) ?")
     text = text.replace("last_name  : faker(person_last_name)", "last_name : redact ?")
@@ -159,7 +191,7 @@ def test_completion_offers_every_pipeline_suffix(tmp_path: Path, monkeypatch) ->
         (tmp_path / name).write_text("x", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
 
-    assert sorted(_yaml_paths("")) == ["a.yaml", "b.YML", "c.decoy", "d.DECOY"]
+    assert sorted(_config_paths("")) == ["a.yaml", "b.YML", "c.decoy", "d.DECOY"]
 
 
 # --- the conversion cells (M6): a LangError leaves no trace in the ConfigFileError ----------
@@ -243,12 +275,24 @@ def test_bytes_given_to_the_loader_use_the_kind_decoder(tmp_path: Path) -> None:
 # --- hostile text -----------------------------------------------------------------------------
 
 
-def test_deeply_nested_parentheses_are_a_nesting_problem(tmp_path: Path) -> None:
-    deep = PROGRAM.replace("seed 42", "seed " + "(" * 10_000 + "1" + ")" * 10_000)
+def test_a_deeply_nested_list_the_grammar_accepts_is_a_nesting_problem(tmp_path: Path) -> None:
+    # Each bracket is valid on its own, so the parser accepts the text and only the depth limit
+    # can refuse it.
+    deep = PROGRAM.replace(
+        "faker(person_email)", "faker(person_email, k: " + "[" * 3000 + "]" * 3000 + ")"
+    )
 
     exc = _refusal(_decoy(tmp_path, deep))
 
-    assert exc.code in {"lang.nesting", "lang.syntax"}
+    assert exc.code == "lang.nesting"
+
+
+def test_a_lone_surrogate_escape_is_a_string_escape_problem(tmp_path: Path) -> None:
+    text = PROGRAM.replace("faker(person_email)", 'faker(person_email, k: "\\ud800")')
+
+    exc = _refusal(_decoy(tmp_path, text))
+
+    assert exc.code == "lang.string_escape"
 
 
 def test_a_large_file_and_odd_bytes_are_refused_cleanly(tmp_path: Path) -> None:
