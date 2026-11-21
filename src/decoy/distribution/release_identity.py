@@ -74,9 +74,9 @@ def check_artifact_origin(base: str, exception: str | None) -> None:
     being a registered (base, decision) pair."""
     try:
         parts = urlsplit(base)
-        host, user, password = parts.hostname, parts.username, parts.password
-    except ValueError:
-        raise ReleaseIdentityError("release_identity_mismatch") from None
+        host, user, password, _port = parts.hostname, parts.username, parts.password, parts.port
+    except ValueError as exc:
+        raise ReleaseIdentityError("release_identity_mismatch") from exc
     if parts.scheme != "https" or not host or user is not None or password is not None:
         raise ReleaseIdentityError("release_identity_mismatch")
     if _is_github_host(host) and not (
