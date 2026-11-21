@@ -293,6 +293,7 @@ sections 02, 11 and 15 own the routes. Every run below passes `--mask-secret env
 | RUN-18 | Ctrl-C during `decoy run mask-big` | 130 | No partial target; scratch removed | 62 | |
 | RUN-19 | For each CLI item marked fixed in `docs/records/2026-11-12-duplication-census/REMEDIATION.md`, its repro | none | Each copy now agrees with the other | 24zd | |
 | RUN-20 | `decoy run mask-fk` | 0 | The summary shows rows, files and tables for each table | 24e | |
+| RUN-21 | `decoy validate <config>` (its capacity estimate) and then `decoy run <config>` on the same config, for one config per route (streamed, out-of-core, chunked, native) | 0, 0 | The route the estimate names is the route the run takes and records. Known risk: capacity and the job estimate prepare routing separately from the run (health row ENGINE-ARCH finding 5); a mismatch becomes a roadmap row | ENGINE-ARCH | |
 
 ## 6. Delivery, run result, resume and connectors
 
