@@ -16,53 +16,31 @@ import pytest
 from decoy_engine.profile import LazySource
 
 from tests.csv_sources import csv_source, file_source
-from tests.e2e.run_stream._support import Probe, install_probe, run_both, write_config
+from tests.e2e.run_stream._support import (
+    EMAILS as _EMAILS,
+)
+from tests.e2e.run_stream._support import (
+    PLAIN as _PLAIN,
+)
+from tests.e2e.run_stream._support import (
+    ROWS as _ROWS,
+)
+from tests.e2e.run_stream._support import (
+    Probe,
+    install_probe,
+    run_both,
+    write_config,
+)
+from tests.e2e.run_stream._support import (
+    single_build as _single,
+)
 from tests.keyed_secret import TEST_MASK_SECRET_REF, secret_env
-
-_ROWS = 6000
-_EMAILS = [f"user{i}@example.invalid" for i in range(_ROWS)]
 
 
 @pytest.fixture(autouse=True)
 def _secret(monkeypatch: pytest.MonkeyPatch) -> None:
     for var, value in secret_env().items():
         monkeypatch.setenv(var, value)
-
-
-def _people(data: Path, name: str = "people") -> dict[str, Any]:
-    data.mkdir(exist_ok=True)
-    table = pa.table({"id": list(range(_ROWS)), "email": _EMAILS})
-    pq.write_table(table, data / f"{name}.parquet", row_group_size=500)
-    return file_source(data / f"{name}.parquet", "parquet")
-
-
-def _single(tmp: Path, *, columns: list[dict], extra: dict | None = None, transforms=None):
-    """Builder for one parquet mask table `people` with a csv target."""
-    source = _people(tmp / "data")
-
-    def build(out: Path) -> tuple[Path, list[Path]]:
-        table: dict[str, Any] = {"name": "people", "columns": columns}
-        if transforms:
-            table["transforms"] = transforms
-        cfg = {
-            "version": 2,
-            "global_settings": {"seed": 5, "mask_secret_ref": TEST_MASK_SECRET_REF},
-            "sources": {"people": source},
-            "tables": [table],
-            "targets": {
-                "people": {"type": "file", "format": "csv", "path": str(out / "people.csv")}
-            },
-            **(extra or {}),
-        }
-        return write_config(out / "p.yaml", cfg), [out / "people.csv"]
-
-    return build
-
-
-_PLAIN = [
-    {"name": "id", "strategy": "passthrough"},
-    {"name": "email", "strategy": "hash", "namespace": "em"},
-]
 
 
 def _same(lazy: Any, base: Any) -> None:
