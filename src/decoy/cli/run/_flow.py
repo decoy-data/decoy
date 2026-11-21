@@ -25,7 +25,7 @@ from decoy.cli.run import (
     _result,
     _sample,
 )
-from decoy.cli.run._context import IntegrityWriteRefusal, RunContext, RunRefusal
+from decoy.cli.run._context import IntegrityWriteRefusal, RunContext, RunRefusal, UsageRefusal
 from decoy.cli.run._notify import (
     _begin_trace,
     _dispatch_run_notifications,
@@ -216,8 +216,9 @@ def _phases(ctx: RunContext) -> None:
     except typer.Exit:
         # An inner typer.Exit already set its exit code; keep it out of the catch-all below.
         raise
-    except RunRefusal:
-        # A typed refusal ends in `execute`, with the envelope; `finally` still cleans up.
+    except UsageRefusal:
+        # A usage refusal ends in `execute`, with the envelope; `finally` still cleans up. The
+        # write refusals stay with `_errors.fail`, which already gives them their document.
         raise
     except Exception as exc:
         _failed_with = type(exc).__name__
