@@ -26,13 +26,16 @@ Approver: Cam.
 Codex returned NO-GO after the third round on #367 (head 82cfadb7). The plan
 is fixed, not the code. Each finding was checked against the code; all held.
 
+r8b: Dennis r2 fixes
+
 | Finding | Change |
 |---|---|
 | V1 implicit integrity report bypasses the collision guard (`_integrity_report.py:119`; `relative_outputs` lists targets and quarantine only) | L3a Rule 1: one inventory `run_outputs` of every file a run writes, the only input of the collision rule, with sentry G-ONE-OUTPUT-INVENTORY (static writer table plus a write audit). |
 | V1 library-root fault fails the job before execution (`_context.py:294` catches only `LayoutError`; `Path.resolve` raises `RuntimeError` on a loop) | L3a Rule 3: `anchor` maps `OSError`, `RuntimeError` and `ValueError` to `library_path_unsafe`; the root is resolved once per run; a fault warns, writes no record and keeps the exit code. |
 | V1 containment one way only (`_placement.py:182`) | L3a Rule 2: `overlaps_root`, both directions, on `_destination_key`, for the entry and the followed landing. |
 | V2-LOG guard matrix gaps | L3a acceptance matrix: a cell per kind and relation, and named mutations. |
-| Dennis round 1 on 25983c8f (4 HIGH, 3 MEDIUM, 2 LOW) | The sentry reuses `file_sinks.toml` and `collect()` with an `output_kind` field over the computed run-reached modules, covering `write_local_target`, `replace_symlink`, `publish_local_targets`, `mkdir`, `tempfile` and `cli/_token_vault.py`; inventory adds `out/.gitignore`, the `current` link and the vault lock; layout "below" is a refused cell; `LibraryCommand.root()` routes `LibraryError`; final-link alias cell; one `post_scan` name site, placed first target, `--out-dir` audit; sub-package `run_outputs/`; one warning printer; Python 3.13 resolve noted as V2-LOG. |
+| Dennis round 1 on 25983c8f (4 HIGH, 3 MEDIUM, 2 LOW) | The sentry reuses `file_sinks.toml` and `collect()` with an `output_kind` field over the computed run-reached modules, covering `write_local_target`, `replace_symlink`, `publish_local_targets`, `mkdir`, `tempfile` and `_commit_vault`; inventory adds `out/.gitignore` and the `current` link; layout "below" is a refused cell; `LibraryCommand.root()` routes `LibraryError`; final-link alias cell; one `post_scan` name site, placed first target, `--out-dir` audit; sub-package `run_outputs/`; one warning printer; Python 3.13 resolve noted as V2-LOG. |
+| Dennis round 2 on Revision 8 | Removed the nonexistent `vault-lock` kind and the unrelated `_token_vault.py` rows. The engine vault stage is covered by `vault` and the write audit. Entry rows are structurally and reachability checked, added primitives are passed to `collect()` without widening P1, function-local imports join the closure, and Python 3.13 behavior is unpinned. |
 
 ## Revision note (gap fix, 2026-11-06)
 
@@ -1785,9 +1788,12 @@ them in one round. Checked against #367 head 82cfadb7.
   | `result` | `--result` | the flag |
   | `evidence` | `--evidence-out` | the flag |
   | `vault` | `--vault` (`replaces_final` true) | the flag |
-  | `vault-lock` | `.<vault name>.lock` beside the vault (`cli/_token_vault.py:143`, `lock_exclusive`; never deleted) | `the --vault lock` |
   | `layout` | in project placement only: `out/.gitignore` (`_layout.py:256`), the pipeline folder's `PIPELINE` claim and `LATEST` pointer (`_layout.py:52`, `:442`), the `current` link (`_layout.py:444`, `:626`, POSIX only) and the run folder | `the run folder` |
 
+- The engine vault writer used by `decoy run` writes a private stage beside
+  the vault under a fresh name, links it to the final vault name, and makes no
+  lock. The stage is transient work for the `vault` kind, not a separate
+  output kind. The write audit fails if the stage is left behind.
 - `implicit_report_path(placed: Path, config_path: Path)` lives in
   `_run_outputs.py` and is the one derivation of the default report name:
   `placed.parent / side_file_name("post_scan", config_path.stem)`. It takes the
@@ -1818,7 +1824,9 @@ them in one round. Checked against #367 head 82cfadb7.
   (i) run-reached modules: the static import closure of `decoy.cli.run`
   inside `src/decoy/`, minus `cli/library/` (library-owned, guarded by
   G-LIB-FS) and the implementation files `_atomic.py` and `_private_file.py`.
-  The closure is computed, not listed, so a new module joins on import.
+  The closure is computed, not listed, so a new module joins on import. It
+  follows imports inside function bodies because run code imports lazily, as
+  `run/_context.py:291-292` does.
   (ii) in those modules every call to a write primitive needs a
   `file_sinks.toml` row with a new `output_kind` field: an `OutputKind`
   value, or `not-run` with its reason. The primitives are the scanner's
@@ -1826,16 +1834,23 @@ them in one round. Checked against #367 head 82cfadb7.
   `create_private_directory` and the rest; `_LEAF`, so `staged_local_target`
   and `write_text`; `_RESOLVED`, so `sqlite3.connect`, `os.open`;
   `tempfile.*`) plus `replace_symlink`, `publish_local_targets`,
-  `lock_exclusive`, `mkdir`, `os.mkdir`, `os.makedirs`, `os.symlink` and
-  `_commit_vault`, added to the scanner's sets for this rule only. Entry-point
-  calls in run-reached modules therefore get rows too, with
-  `disposition = "entry"`, which G-ONE-PRIVATE-FILE accepts and skips. Known
-  rows today include `run/_result.py:334` and `run/_evidence.py:61`
+  `mkdir`, `os.mkdir`, `os.makedirs`, `os.symlink` and `_commit_vault`.
+  The new sentry passes this added primitive set to `collect()` as a
+  parameter. It does not add the primitives to module-level `_LEAF` or
+  `_RESOLVED` in `test_private_files.py`, so P1's `_live` does not start
+  demanding rows for every `mkdir` in the repository. Entry-point calls in
+  run-reached modules therefore get rows too, with `disposition = "entry"`.
+  An entry row is valid only when its sink is in `PRIVATE_ENTRY` or the added
+  primitive set and it has neither `via` nor `exit`. G-ONE-PRIVATE-FILE
+  accepts and skips only such structurally valid entry rows. The new sentry
+  fails an entry row with no live sink or with a live sink outside the
+  computed closure. Known rows today include `run/_result.py:334` and
+  `run/_evidence.py:61`
   (`write_local_target`), `io/_integrity_report.py:149`, `io/_layout.py:249`
   and `:256` (`out/` and its `.gitignore`), `:621` and `:626` (`LATEST`,
-  `current`), `cli/_token_vault.py:143` and `:187`. A call with no row, a row
-  with no `output_kind`, or an `output_kind` that is not an `OutputKind` value
-  fails, through the existing `collect()` row matching.
+  `current`), and `run/_execute.py:393` (`_commit_vault`). A call with no row,
+  a row with no `output_kind`, or an `output_kind` that is not an `OutputKind`
+  value fails, through the existing `collect()` row matching.
   (iii) the body of `resolved_output_collisions` calls no `relative_outputs`,
   `report_file` or `implicit_report_path` and reads no `.typed`; and
   `side_file_name("post_scan"` has exactly one call site in `src/decoy/`
@@ -1870,9 +1885,10 @@ them in one round. Checked against #367 head 82cfadb7.
 *Rule 3: the library root is resolved once, and a fault never fails the run.*
 - `anchor` (`library/_fs.py:169`) is the one resolver. It catches `OSError`,
   `RuntimeError` (a symlink loop: `Path.resolve` raises it on Python 3.10 to
-  3.12, which is what CI runs; V2-LOG: on 3.13 and later it does not raise,
-  and the loop is then met by the `lstat` walk below the root as
-  `library_path_unsafe`)
+  3.12, which is what CI runs; V2-LOG: Python 3.13 behavior is unpinned. When
+  the root itself is the loop, the store may reach its first `mkdir` and
+  report `library_write_failed`. Do not claim `library_path_unsafe` on 3.13
+  without a pinned test)
   and `ValueError` (a NUL byte) and raises `LibraryError(LIBRARY_PATH_UNSAFE)`.
   The code already exists in `library/_errors.py`; the engine registry has no
   root-resolution code, and `library_write_failed` stays the code for a write
@@ -1918,7 +1934,6 @@ label, the engine not called, and neither the output nor the root created.
 | `result` | refused | refused | refused | refused (all three sub-cases) | delivered, no record, warning |
 | `evidence` | refused | refused | refused | refused | delivered, no record, warning |
 | `vault` | refused | refused | refused | refused (link replaced and link followed) | delivered, no record, warning |
-| `vault-lock` | refused | refused | refused | refused | delivered, no record, warning |
 | `layout` | refused (root is `out/<name>/PIPELINE`) | refused (`DECOY_LIBRARY=<project>/out`: `PIPELINE`, `LATEST` and the run folders land in the root) | refused (root under `out/<name>/LATEST`) | n/a | n/a |
 | `decoy library path` | n/a | n/a | n/a | n/a | exit `EXIT_RUNTIME`, `library_path_unsafe`, no traceback |
 
@@ -1968,7 +1983,6 @@ label, the engine not called, and neither the output nor the root created.
 | MO-two-warnings: the evidence store prints its own warning on a root fault | the one-warning count test |
 | MO-raw-first-target: `implicit_report_path` gets the raw text, not the placed path | the `--out-dir` write audit |
 | MO-sink-unlisted: a run-reached module gains a `write_local_target` call with no row | part (ii) of G-ONE-OUTPUT-INVENTORY |
-| MO-vault-lock-drop: `run_outputs` omits the vault lock | `vault-lock` cells; the write audit |
 
 *Placement (Revision 8).*
 
@@ -1988,7 +2002,7 @@ label, the engine not called, and neither the output nor the root created.
 | `_cli.py` | `LibraryCommand.root()` routes `LibraryError` through `fail_library` | `src/decoy/cli/library/` | | about +3 |
 | `__init__.py`, `test_run_output_inventory.py` (new) | G-ONE-OUTPUT-INVENTORY parts (i) to (iv) | `tests/sentry/io_policy/run_outputs/` (new sub-package) | `io_policy/outbound/` | ~240 |
 | `file_sinks.toml` | `output_kind` on rows of run-reached modules; new `entry` rows | `tests/sentry/io_policy/` | | about +25 rows |
-| `test_private_files.py` | accepts `disposition = "entry"` and the `output_kind` field; exposes `collect()` and the primitive sets to the new sentry | same | | about +10 |
+| `test_private_files.py` | accepts structurally valid `disposition = "entry"` rows and the `output_kind` field; `collect()` takes the new sentry's primitive set as a parameter without changing `_LEAF` or `_RESOLVED` | same | | about +10 |
 | `test_library_output_guard.py` | the matrix above, the one-warning count | `tests/e2e/library/` | | 81, to ~300 |
 | `test_library_read_commands.py` | the `decoy library path` loop cell | same | | +15 |
 | `test_paths.py`, `test_placement_typed_files.py` | the two unit tests | `tests/unit/library/`, `tests/unit/project_layout/` | | +30 each |
