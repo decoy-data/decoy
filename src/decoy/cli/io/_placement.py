@@ -63,7 +63,8 @@ class OutputPlacement:
     `--out-dir` (`directory`); `preview` is a `--rows` run that writes nothing. `inputs` holds resolved
     input paths no side file may replace (the `--duckdb-source` databases). `typed` holds
     the `(flag, path)` side files (`--evidence-out`, `--vault`, `--result`) that join the collision rule.
-    `chunked` is the route, which the cloud kind cannot use.
+    `library` is the resolved record-library root when this run stores records: no output or
+    side file may land at or inside it. `chunked` is the route, which the cloud kind cannot use.
     """
 
     kind: str = "project"
@@ -71,6 +72,7 @@ class OutputPlacement:
     typed: tuple[tuple[str, Path], ...] = ()
     chunked: bool = False
     inputs: tuple[Path, ...] = ()
+    library: Path | None = None
 
     @classmethod
     def fixed(
@@ -79,8 +81,9 @@ class OutputPlacement:
         typed: tuple[tuple[str, Path], ...] = (),
         chunked: bool = False,
         inputs: tuple[Path, ...] = (),
+        library: Path | None = None,
     ) -> OutputPlacement:
-        return cls("fixed", Path(os.path.abspath(directory)), typed, chunked, inputs)
+        return cls("fixed", Path(os.path.abspath(directory)), typed, chunked, inputs, library)
 
     @classmethod
     def preview(cls) -> OutputPlacement:
@@ -92,6 +95,9 @@ class OutputPlacement:
 # `write_local_target` REPLACE) or replaces it with a file (`--vault`). Everything not listed follows. The split
 # root, the side-file check and the collision rule all read this, so none decides alone.
 _REPLACES_FINAL = frozenset({"--vault"})
+
+
+LIBRARY_LABEL = "the record library"
 
 
 def replaces_final(label: str) -> bool:
@@ -251,6 +257,7 @@ def resolved_output_collisions(
     base: Path | None,
     typed: tuple[tuple[str, Path], ...] = (),
     protected: tuple[tuple[str, Path], ...] = (),
+    library: Path | None = None,
 ) -> tuple[str, str] | None:
     """The first two outputs that resolve to one destination, as `(first, second)` labels.
 
@@ -272,6 +279,12 @@ def resolved_output_collisions(
                 (location, Path(os.path.normpath(base / raw)), replaces_final(location))
             )
     destinations.extend((flag, Path(path).absolute(), replaces_final(flag)) for flag, path in typed)
+    if library is not None:
+        # The record library is written by the run itself, so an output at or inside it would
+        # lose to the store: the same refusal, with the library as the first party.
+        for label, path, replaces in destinations:
+            if _destination_is_within(path, library, replaces=replaces):
+                return LIBRARY_LABEL, label
     for label, path, replaces in destinations:
         key = _destination_key(path, replaces_final=replaces)
         # A writer that replaces a final link turns it into a file, and a later writer that
@@ -402,6 +415,7 @@ def layout_issues(
             where,
             placement.typed,
             protected_inputs(config, config_dict, placement.inputs),
+            placement.library,
         )
         if clash is not None:
             first_location = next((c for c in clash if not c.startswith("--")), None)

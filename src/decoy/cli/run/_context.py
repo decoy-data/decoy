@@ -275,6 +275,24 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
         except DuckDBSourceError:
             continue
         databases.append(resolve_path(flag.db_path, ctx.config.parent))
+    library = _library_root(ctx)
     if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases))
-    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=tuple(databases))
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases), library)
+    return OutputPlacement(
+        typed=typed, chunked=ctx.chunked, inputs=tuple(databases), library=library
+    )
+
+
+def _library_root(ctx: RunContext) -> Path | None:
+    """The resolved record-library root when this run stores records, else None; the gate keeps
+    outputs off it. A project the finder refuses is reported by the gate itself."""
+    if ctx.no_library or ctx.rows is not None:
+        return None
+    from decoy.cli.io import LayoutError
+    from decoy.cli.library._paths import resolve_root
+
+    try:
+        found = resolve_root(pipeline=Path(ctx.config))
+    except LayoutError:
+        return None
+    return found.path if found.records else None
