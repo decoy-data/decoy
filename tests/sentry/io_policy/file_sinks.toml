@@ -6,6 +6,15 @@
 # G-ONE-PRIVATE-FILE accepts and skips only structurally valid ones.
 
 [[row]]
+file = "_atomic_batch.py"
+function = "_folder_lock"
+sink = "os.open"
+ordinal = 1
+output_kind = "not-run"
+disposition = "read"
+reason = "Opens the folder read-only to take an advisory lock on it; writes nothing."
+
+[[row]]
 file = "_mask_secret.py"
 function = "_open_checked"
 sink = "os.open"
