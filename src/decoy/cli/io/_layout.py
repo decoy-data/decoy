@@ -286,6 +286,20 @@ def project_relative_posix(root: Path, yaml: Path) -> str:
         return resolved.as_posix()
 
 
+def pipeline_label(yaml: Path, project: Project | None = None) -> str:
+    """The `pipeline` label a run puts on its records and `library list --pipeline` matches: the
+    YAML's path relative to its project root (absolute outside one). The one resolver of it.
+
+    `project` is the already-found project (a `PipelineRef` carries one), else the walk from the
+    YAML's folder. Raises `LayoutError`: a library command ends in a usage error with its code,
+    and a run records it as a failed store (a record is lost, the run is not).
+    """
+    from decoy.cli.io._project import find_project
+
+    found = project or find_project(yaml.resolve().parent, None)
+    return project_relative_posix(found.root, yaml)
+
+
 def name_slug(stem: str) -> str:
     """A file stem as a pipeline-name candidate: safe characters only, at most 56. May be empty."""
     slug = _DASH_RUNS.sub("-", _SLUG_BAD.sub("-", stem))
