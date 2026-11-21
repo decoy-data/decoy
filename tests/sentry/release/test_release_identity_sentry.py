@@ -57,7 +57,12 @@ SCANNED = (
     "src/decoy/distribution/version_document.py",
     "packaging_tools/release_inputs.toml",
     ".github/workflows/release.yml",
+    # Existing consumers of the engine repo URL: the dev lock profile and two workflow installs.
+    "scripts/dev/lock_version.sh",
+    ".github/workflows/ci.yml",
+    ".github/workflows/release-smoke.yml",
 )
+CONSUMERS = SCANNED[-3:]
 PENDING = {
     "packaging_tools/release_inputs.toml": "S0a1",
     ".github/workflows/release.yml": "S0a2",
@@ -178,9 +183,12 @@ def test_every_github_repo_in_release_inputs_is_an_identity_repo():
 
 
 def test_the_scanned_set_includes_the_files_that_exist_today():
-    assert {"pyproject.toml [project.urls]", "requirements-dev.lock", *SCANNED[1:5]} <= set(
-        scanned_texts()
-    )
+    assert {
+        "pyproject.toml [project.urls]",
+        "requirements-dev.lock",
+        *SCANNED[1:5],
+        *CONSUMERS,
+    } <= set(scanned_texts())
 
 
 def test_installer_default_equals_the_artifact_base():
@@ -287,3 +295,20 @@ def test_each_url_spelling_of_an_identity_repo_is_green():
             f"git@github.com:{repo}.git",
         ):
             assert repo_findings("seed", text) == [], text
+
+
+@pytest.mark.parametrize("rel", CONSUMERS)
+def test_each_release_consumer_is_scanned_and_names_the_engine_repo(rel):
+    text = scanned_texts()[rel]
+    assert repo_findings(rel, text) == []
+    assert f"github.com/{release_identity.ENGINE_REPO}@" in text
+
+
+@pytest.mark.parametrize("rel", CONSUMERS)
+def test_a_seeded_foreign_repo_in_each_release_consumer_is_red(rel):
+    text = (ROOT / rel).read_text(encoding="utf-8")
+    seeded = text.replace(release_identity.ENGINE_REPO, f"{OLD_ORG}/decoy-engine")
+    assert seeded != text
+    assert repo_findings(rel, seeded) != []
+    forked = text.replace(release_identity.ENGINE_REPO, "someone/decoy-engine")
+    assert repo_findings(rel, forked) != []

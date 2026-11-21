@@ -93,7 +93,7 @@ def _explicit_bundle_base(override: str | None = None) -> str:
 
 
 def _bundle_url(base: str, version: str, target: str) -> str:
-    return f"{base.rstrip('/')}/v{version}/decoy-{version}-{target}.tar.gz"
+    return release_identity.artifact_url(version, f"decoy-{version}-{target}.tar.gz", base)
 
 
 @contextlib.contextmanager

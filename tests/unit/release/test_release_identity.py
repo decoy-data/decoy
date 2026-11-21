@@ -30,16 +30,52 @@ DATED = "owner 2026-11-18: V1 bundles are GitHub Release assets, a dated excepti
 def test_artifact_origin_rule(base):
     with pytest.raises(ri.ReleaseIdentityError, match=r"^release_identity_mismatch$"):
         ri.check_artifact_origin(base, None)
-    ri.check_artifact_origin(base, DATED)
+    with pytest.raises(ri.ReleaseIdentityError):
+        ri.check_artifact_origin(base, DATED)
 
 
 @pytest.mark.parametrize(
     "exception",
-    ["", "ok", "owner approved it", "owner 2026-13-40 bad date here", "2026-11-18 x" * 3],
+    [
+        "",
+        "ok",
+        "owner approved it",
+        "owner 2026-13-40 bad date here",
+        "2026-11-18 x" * 3,
+        "owner 2026-11-18: xxxxxxxxxx",
+        (ri.ARTIFACT_HOST_EXCEPTION or "") + " ",
+    ],
 )
-def test_artifact_origin_rule_rejects_an_undated_exception(exception):
+def test_the_exact_base_needs_the_exact_registered_decision(exception):
     with pytest.raises(ri.ReleaseIdentityError):
-        ri.check_artifact_origin(GITHUB_BASES[0], exception)
+        ri.check_artifact_origin(ri.ARTIFACT_BASE, exception)
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "https://someone.github.io/decoy/releases/download",
+        "https://GitHub.io/decoy/releases/download",
+        "https://x.GITHUB.IO./decoy/releases/download",
+    ],
+)
+def test_github_io_is_github_hosted(base):
+    with pytest.raises(ri.ReleaseIdentityError):
+        ri.check_artifact_origin(base, ri.ARTIFACT_HOST_EXCEPTION)
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "https://user@downloads.example.invalid/cli",
+        "https://user:pw@downloads.example.invalid/cli",
+        "https://:pw@downloads.example.invalid/cli",
+        "https://downloads.example.invalid:badport/cli",
+    ],
+)
+def test_credentials_in_the_url_are_refused(base):
+    with pytest.raises(ri.ReleaseIdentityError):
+        ri.check_artifact_origin(base, None)
 
 
 def test_shipped_values_pass_and_are_the_exact_owner_values():
@@ -93,8 +129,12 @@ def test_the_fixed_facts():
 )
 def test_a_github_base_must_be_this_repos_download_base_even_with_the_exception(base):
     with pytest.raises(ri.ReleaseIdentityError, match=r"^release_identity_mismatch$"):
-        ri.check_artifact_base(base, DATED)
+        ri.check_artifact_origin(base, ri.ARTIFACT_HOST_EXCEPTION)
+
+
+def test_a_trailing_slash_is_not_the_artifact_url_base_but_is_joined_cleanly():
+    assert ri.artifact_url("1", "n", "https://h.invalid/b/") == "https://h.invalid/b/v1/n"
 
 
 def test_the_exact_github_base_passes_with_the_exception():
-    ri.check_artifact_base(ri.ARTIFACT_BASE, ri.ARTIFACT_HOST_EXCEPTION)
+    ri.check_artifact_origin(ri.ARTIFACT_BASE, ri.ARTIFACT_HOST_EXCEPTION)

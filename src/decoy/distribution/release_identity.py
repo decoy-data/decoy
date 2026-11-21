@@ -31,9 +31,13 @@ ARTIFACT_HOST_EXCEPTION: str | None = (
 # The author and committer of a decoy-web commit, as `git log` prints them: %an %ae %cn %ce.
 WEB_COMMIT_IDENTITY = ("ckeep", "decoy@trydecoy.com", "ckeep", "decoy@trydecoy.com")
 
-_GITHUB_APEXES = ("github.com", "githubusercontent.com")
+_GITHUB_APEXES = ("github.com", "githubusercontent.com", "github.io")
+# The one registry of GitHub-hosted artifact bases: exact base -> the exact dated owner decision
+# that allows it. A GitHub-hosted base absent from here, or paired with any other text, is refused.
+APPROVED_GITHUB_BASES: dict[str, str | None] = {ARTIFACT_BASE: ARTIFACT_HOST_EXCEPTION}
 # `owner YYYY-MM-DD <text>`, with an optional colon after the date. The one grammar for a dated
-# owner decision: the sentry ratchet loads `is_dated_owner_decision` from this file.
+# owner decision for ratchet `approved_growth` (the sentry ratchet loads `is_dated_owner_decision`
+# from this file). Artifact bases do not use it: they match the exact registered pair above.
 _DECISION = re.compile(r"owner (\d{4}-\d{2}-\d{2}):? (.{10,})")
 
 
@@ -43,7 +47,7 @@ class ReleaseIdentityError(ValueError):
 
 def artifact_url(version: str, name: str, base: str = ARTIFACT_BASE) -> str:
     """The one place an artifact URL is built: `<base>/v<version>/<name>`."""
-    return f"{base}/v{version}/{name}"
+    return f"{base.rstrip('/')}/v{version}/{name}"
 
 
 def _is_github_host(host: str) -> bool:
@@ -66,22 +70,21 @@ def is_dated_owner_decision(text: object) -> bool:
 
 
 def check_artifact_origin(base: str, exception: str | None) -> None:
-    """Refuse an artifact base that is not https, or is on GitHub with no dated owner exception."""
-    parts = urlsplit(base)
-    if parts.scheme != "https" or not parts.hostname:
+    """Refuse a base that is not plain https, carries credentials, or is GitHub-hosted without
+    being a registered (base, decision) pair."""
+    try:
+        parts = urlsplit(base)
+        host, user, password = parts.hostname, parts.username, parts.password
+    except ValueError:
+        raise ReleaseIdentityError("release_identity_mismatch") from None
+    if parts.scheme != "https" or not host or user is not None or password is not None:
         raise ReleaseIdentityError("release_identity_mismatch")
-    if _is_github_host(parts.hostname) and not is_dated_owner_decision(exception):
-        raise ReleaseIdentityError("release_identity_mismatch")
-
-
-def check_artifact_base(base: str, exception: str | None) -> None:
-    """The origin rule, plus: a GitHub base must be exactly this repo's release download base."""
-    check_artifact_origin(base, exception)
-    host = urlsplit(base).hostname or ""
-    if _is_github_host(host) and base != f"https://github.com/{CLI_REPO}/releases/download":
+    if _is_github_host(host) and not (
+        exception is not None and APPROVED_GITHUB_BASES.get(base) == exception
+    ):
         raise ReleaseIdentityError("release_identity_mismatch")
 
 
 def validate() -> None:
     """Check the shipped values. Signing commands call this before they load a key."""
-    check_artifact_base(ARTIFACT_BASE, ARTIFACT_HOST_EXCEPTION)
+    check_artifact_origin(ARTIFACT_BASE, ARTIFACT_HOST_EXCEPTION)
