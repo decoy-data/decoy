@@ -28,6 +28,8 @@ CLI."
 
 **1.0 scope is cut** (2026-11-18, [record](records/2026-11-18-1.0-scope-triage.md)). 1.0 is the rows in the 1.0 tables of the group files below and nothing else. This replaces the 2026-11-05 rule that every track row ships in 1.0. The additive rows move to 1.x.
 
+**Schedule and QA triage (owner 2026-11-21).** V1 build is done around 2026-12-15 at about 2 rows closed a day. QA follows. Each QA finding is triaged by severity when it comes in: either V1 remediation (it blocks the release) or a 1.x row. Format, code-correctness and architecture findings are fixed first, in V1 or at the start of 1.x, before any new 1.x feature, so the code and the architecture are clean before new work is added. The known architecture findings are row ENGINE-ARCH ([health](roadmap/groups/health.md)).
+
 In the release gates ([roadmap/release-gates.md](roadmap/release-gates.md)), R1 is CLI V1 and R2 is Platform V1.
 
 ## 2. The one pipeline

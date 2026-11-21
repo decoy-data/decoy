@@ -14,6 +14,7 @@ engine section that owns the behaviour is named in the group's notes.
 
 It is not a roadmap and tracks no work. Results go to a dated record (see "Recording a run").
 A check that fails becomes a roadmap row in `docs/ROADMAP.md`, as the 2026-11-08 QA findings did.
+Triage (owner 2026-11-21): each failed check is given a severity and assigned to V1 remediation or a 1.x row. Format, code-correctness and architecture findings are fixed before any new 1.x feature (see `docs/ROADMAP.md` section 1).
 
 Agent testers, the shared test corpus and the invariant oracle that run beside these checks are
 described in [beta-program.md](beta-program.md) (roadmap row QA-BETA).
