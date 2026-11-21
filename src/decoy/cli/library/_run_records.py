@@ -18,7 +18,7 @@ with, and never raises.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,19 +53,23 @@ class StoreOutcome:
         return out
 
 
-def store_evidence(
-    manifest: Mapping[str, Any],
+def _put_record(
+    kind: str,
+    payload: Mapping[str, Any],
     *,
     pipeline: Path,
-    label: str,
     invocation_id: str,
-    enabled: bool = True,
-    environ: Mapping[str, str] | None = None,
+    meta: Callable[[], tuple[Mapping[str, Any], list[dict[str, str]]]],
+    environ: Mapping[str, str] | None,
+    skipped: StoreOutcome | None = None,
+    stored: Callable[[Path, str], StoreOutcome],
+    failed: Callable[[Path | None, str], StoreOutcome],
 ) -> StoreOutcome:
-    """Put the run's manifest as an `evidence` record in the library of the run's YAML,
-    `pipeline`. `label` is the YAML's project-relative POSIX path. Never raises."""
-    if not enabled:
-        return StoreOutcome("skipped")
+    """The one write path of a run's records: root, budget, envelope, put, and the exception map.
+
+    `stored` and `failed` build the outcome (a record kind decides which ids it reports). Never
+    raises: every library, layout and engine fault becomes a coded `failed` outcome (plan 4.17).
+    """
     import decoy_engine
     from decoy_engine import DecoyError, records
 
@@ -79,12 +83,13 @@ def store_evidence(
     try:
         found = resolve_root(pipeline=pipeline, environ=environ)
         if not found.records:
-            return StoreOutcome("skipped")
+            return skipped or StoreOutcome("skipped")
         root = found.path  # already anchored: absolute, links resolved
         check_root_budget(root)
+        labels, links = meta()  # inside the try: a malformed payload is a failed store, not a raise
         envelope = records.build(
-            "evidence",
-            dict(manifest),
+            kind,
+            dict(payload),
             producer={
                 "name": "decoy-cli",
                 "version": __version__,
@@ -92,20 +97,45 @@ def store_evidence(
             },
             invocation_id=invocation_id,
             created_at=datetime.now(timezone.utc),
-            labels={
-                "pipeline": label,
-                "tables": sorted(manifest.get("output_fingerprints") or {}),
-            },
+            labels=dict(labels),
+            links=links,
         )
-        stored = open_library(root).put(envelope)
-        return StoreOutcome("stored", root=root, evidence=stored.id)
+        return stored(root, open_library(root).put(envelope).id)
     except LibraryError as exc:
         code = exc.code
     except (LayoutError, DecoyError) as exc:
         code = str(getattr(exc, "code", None) or LIBRARY_WRITE_FAILED)
     except OSError:
         code = LIBRARY_WRITE_FAILED
-    return StoreOutcome("failed", root=root, code=code)
+    return failed(root, code)
+
+
+def store_evidence(
+    manifest: Mapping[str, Any],
+    *,
+    pipeline: Path,
+    label: str,
+    invocation_id: str,
+    enabled: bool = True,
+    environ: Mapping[str, str] | None = None,
+) -> StoreOutcome:
+    """Put the run's manifest as an `evidence` record in the library of the run's YAML,
+    `pipeline`. `label` is the YAML's project-relative POSIX path. Never raises."""
+    if not enabled:
+        return StoreOutcome("skipped")
+    return _put_record(
+        "evidence",
+        manifest,
+        pipeline=pipeline,
+        invocation_id=invocation_id,
+        meta=lambda: (
+            {"pipeline": label, "tables": sorted(manifest.get("output_fingerprints") or {})},
+            [],
+        ),
+        environ=environ,
+        stored=lambda root, rid: StoreOutcome("stored", root=root, evidence=rid),
+        failed=lambda root, code: StoreOutcome("failed", root=root, code=code),
+    )
 
 
 def store_run_result(
@@ -126,46 +156,22 @@ def store_run_result(
     evidence = None if prior is None else prior.evidence
     if not enabled:
         return prior or StoreOutcome("skipped")
-    import decoy_engine
-    from decoy_engine import DecoyError, records
-
-    from decoy._version import __version__
-    from decoy.cli.io import LayoutError
-    from decoy.cli.library._paths import check_root_budget, resolve_root
-    from decoy.cli.library._store import open_library
-
-    code: str | None = None
-    root: Path | None = None
-    try:
-        found = resolve_root(pipeline=pipeline, environ=environ)
-        if not found.records:
-            return prior or StoreOutcome("skipped")
-        root = found.path
-        check_root_budget(root)
-        envelope = records.build(
-            "run-result",
-            dict(payload),
-            producer={
-                "name": "decoy-cli",
-                "version": __version__,
-                "engine_version": decoy_engine.__version__,
-            },
-            invocation_id=invocation_id,
-            created_at=datetime.now(timezone.utc),
-            labels={
+    return _put_record(
+        "run-result",
+        payload,
+        pipeline=pipeline,
+        invocation_id=invocation_id,
+        meta=lambda: (
+            {
                 "pipeline": label,
                 "tables": sorted(t["name"] for t in payload.get("tables") or ()),
                 "status": payload.get("status"),
                 "exit_code": payload.get("exit_code"),
             },
-            links=[{"rel": "evidence", "id": evidence}] if evidence else [],
-        )
-        stored = open_library(root).put(envelope)
-        return StoreOutcome("stored", root=root, evidence=evidence, result=stored.id)
-    except LibraryError as exc:
-        code = exc.code
-    except (LayoutError, DecoyError) as exc:
-        code = str(getattr(exc, "code", None) or LIBRARY_WRITE_FAILED)
-    except OSError:
-        code = LIBRARY_WRITE_FAILED
-    return StoreOutcome("failed", root=root, evidence=evidence, code=code)
+            [{"rel": "evidence", "id": evidence}] if evidence else [],
+        ),
+        environ=environ,
+        skipped=prior,
+        stored=lambda root, rid: StoreOutcome("stored", root=root, evidence=evidence, result=rid),
+        failed=lambda root, code: StoreOutcome("failed", root=root, evidence=evidence, code=code),
+    )
