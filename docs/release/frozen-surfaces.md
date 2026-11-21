@@ -31,7 +31,7 @@ The engine's own map is `docs/frozen-surfaces.md` in the engine repo.
 | `decoy-project/v1` project marker kind | tag census | `src/decoy/cli/io/_project.py` | `tests/unit/project_layout/test_layout.py` |
 | `scan-set/v1` saved scan tag | tag census | `src/decoy/cli/io/_scan_set.py` | `tests/e2e/test_scan_command.py` |
 | Tag literals built with f-strings or concatenation | tag census | `tests/sentry/release/_tags.py` | accepted-known-limit: S7B-KL-1 |
-| Hidden commands and options | `scan _scan: internal`; `validate _gate: internal`; `upgrade --url: frozen-hidden`; `ci check --unsafe-debug-log: frozen-hidden` | `src/decoy/cli/scan.py`, `src/decoy/cli/validate.py`, `src/decoy/cli/upgrade.py`, `src/decoy/cli/ci.py` | `tests/sentry/release/test_hidden_names.py` |
+| Hidden commands and options | `scan _scan: internal`; `validate _gate: internal`; `upgrade --url: frozen-hidden`; `ci check --unsafe-debug-log: frozen-hidden`; `run --sample: frozen-hidden`; `run --sample-root: frozen-hidden` | `src/decoy/cli/scan.py`, `src/decoy/cli/validate.py`, `src/decoy/cli/upgrade.py`, `src/decoy/cli/ci.py`, `src/decoy/cli/run/__init__.py` | `tests/sentry/release/test_hidden_names.py` |
 | Public renames before 1.0 (pointer to the engine contract) | the engine taxonomy rename | `docs/release/public-renames.md` | `tests/sentry/release/test_retired_name_residual.py` |
 
 ## Limits of the `--json` snapshot
