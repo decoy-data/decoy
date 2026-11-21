@@ -89,6 +89,36 @@ def test_plain_table_stays_lazy_and_never_materializes(
     assert seen.batches >= 3
 
 
+@pytest.mark.parametrize("kind", ["all_null", "no_stats", "empty"])
+def test_null_and_empty_tables_equal_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    data = tmp_path / "data"
+    data.mkdir()
+    n = 0 if kind == "empty" else 200
+    email = pa.array([None] * n, pa.string()) if kind == "all_null" else pa.array(_EMAILS[:n])
+    table = pa.table({"id": pa.array(range(n), pa.int64()), "email": email})
+    # `no_stats` drops the footer null counts the router would otherwise read.
+    pq.write_table(table, data / "people.parquet", write_statistics=kind != "no_stats")
+    source = file_source(data / "people.parquet", "parquet")
+
+    def build(out: Path) -> tuple[Path, list[Path]]:
+        cfg = {
+            "version": 2,
+            "global_settings": {"seed": 5, "mask_secret_ref": TEST_MASK_SECRET_REF},
+            "sources": {"people": source},
+            "tables": [{"name": "people", "columns": _PLAIN}],
+            "targets": {
+                "people": {"type": "file", "format": "csv", "path": str(out / "people.csv")}
+            },
+        }
+        return write_config(out / "p.yaml", cfg), [out / "people.csv"]
+
+    lazy, base, _ = run_both(monkeypatch, tmp_path, build)
+    assert lazy.exit_code == 0, lazy.output
+    _same(lazy, base)
+
+
 def test_transform_table_equals_base(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     build = _single(tmp_path, columns=_PLAIN, transforms=[{"op": "dedupe", "columns": ["id"]}])
     lazy, base, _ = run_both(monkeypatch, tmp_path, build)
