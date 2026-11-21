@@ -29,11 +29,11 @@ from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_tar
 from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
+from decoy.cli.io import declared_format
 from decoy.cli.run._context import RunContext, library_choice, library_label, output_placement
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
-_FORMATS = ("csv", "parquet", "fixed_width")
 _BUILT = {"document": "built", "file": "not_requested", "code": None}
 _FAILED = {"document": "failed", "file": "not_requested", "code": "run_result_build_failed"}
 
@@ -78,8 +78,7 @@ def _entry(ctx: RunContext, name: str, targets: dict) -> Any:
             state="none", format=None, output=None, reason=None, dropped_because=None
         )
     spec = targets.get(name)
-    fmt = spec.get("format") if isinstance(spec, dict) else None
-    fmt = fmt if fmt in _FORMATS else None
+    fmt = declared_format(spec)
     try:
         return TableDelivery(
             state="delivered",
