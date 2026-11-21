@@ -13,11 +13,12 @@ Status: record
 
 ## 2026-11-21: merges of the day
 
-- **Engine #747 (STAMP-IMPORT):** the release stamp no longer deletes the `UNRELEASED` import from a reason module, so a new unreleased code on a stamped module no longer fails at import. A sentry checks every reason module.
-- **Engine #741 (row 79, F09 E1):** vaults are written as v3 with an authenticated, versioned header; v2 vaults open read-only. An older engine cannot open a v3 vault.
-- **CLI #365 (row 63, SAMPLE SC1):** the sample run writes into a staged folder and refuses unsafe output names before it writes.
-- **Engine #745 (COLUMN-SHAPE-RULE E0):** `bucket_perturb` never writes an unparsed date cell through unmasked.
-- **CLI #368:** roadmap rows PRE-SCAN-RUN and HANDLER-ROW-COUNT.
+- **Engine #747 (STAMP-IMPORT, `94ec3cb6`):** the release stamp no longer deletes the `UNRELEASED` import from a reason module, so a new unreleased code on a stamped module no longer fails at import. A sentry checks every reason module.
+- **Engine #741 (row 79, F09 E1, `152de220`):** vaults are written as v3 with an authenticated, versioned header; v2 vaults open read-only. An older engine cannot open a v3 vault.
+- **CLI #365 (row 63, SAMPLE SC1, `1c63fe74`):** the sample run writes into a staged folder and refuses unsafe output names before it writes.
+- **Engine #745 (COLUMN-SHAPE-RULE E0, `5bc0227e`):** `bucket_perturb` never writes an unparsed date cell through unmasked.
+- **CLI #368 (`0da58741`):** roadmap rows PRE-SCAN-RUN and HANDLER-ROW-COUNT.
+- **Engine #684 (row 82, F07 E3b) not merged:** held as a draft until 1.1, because row 82 is a Later row.
 
 ## 2026-11-21: engine 0.28.2 repin (CLI)
 
