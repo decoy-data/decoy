@@ -63,4 +63,4 @@ in the same change.
 
 - Checks run: N. Passed: N. Failed: N. Blocked: N.
 - Group verdict: pass (every check passed) or fail (rows filed above).
-- Marker sweep (`grep -rFf data/markers.txt` over captured output): clean / findings listed above.
+- Marker sweep (`python -m scripts.qa.sweep --needles data/markers.txt <captured files>` over captured output; exit 1 is clean): clean / findings listed above.
