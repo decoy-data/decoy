@@ -413,8 +413,7 @@ def execute(ctx: RunContext) -> None:
         # output is produced (plan P1-2 -- the engine never fails the job).
         if ctx._report_flags:
             ctx._report_quality_metrics = dict(result.quality_metrics)
-        if ctx.evidence_out is not None:
-            ctx._ev_row_counts = {name: len(tbl) for name, tbl in result.outputs.items()}
+        ctx._ev_row_counts = {name: len(tbl) for name, tbl in result.outputs.items()}
         ctx._ev_timings = result.timings
         ctx._ev_engine_warnings = result.warnings
         ctx._notify_row_count = sum(len(tbl) for tbl in result.outputs.values())

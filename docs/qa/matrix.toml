@@ -52,7 +52,7 @@ expect = "exit 1, a reason that names --vault and --chunked"
 id = "mask-chunked-subset"
 kind = "refused"
 when = { chunked = "--chunked", subset = ["config subset on", "--no-subset"] }
-doc = "docs/cli-reference.md:128"
+doc = "docs/cli-reference.md:129"
 cites = ["--no-subset", "--chunked"]
 expect = "exit 1; a subset block is refused under --chunked even with --no-subset"
 
@@ -68,7 +68,7 @@ expect = "exit 1, a reason that names the fixed-width source"
 id = "mask-chunked-post-validate"
 kind = "refused"
 when = { chunked = "--chunked", post_scan = ["--post-validate", "--post-validate-enforce"] }
-doc = "docs/cli-reference.md:125"
+doc = "docs/cli-reference.md:126"
 cites = ["--post-validate", "--chunked"]
 expect = "exit 1, a reason that names --post-validate"
 
@@ -76,7 +76,7 @@ expect = "exit 1, a reason that names --post-validate"
 id = "mask-duckdb-evidence"
 kind = "refused"
 when = { source = "duckdb", evidence = "--evidence-out" }
-doc = "docs/cli-reference.md:127"
+doc = "docs/cli-reference.md:128"
 cites = ["--duckdb-source", "--evidence-out"]
 expect = "exit 1, a reason that names --evidence-out"
 
@@ -84,7 +84,7 @@ expect = "exit 1, a reason that names --evidence-out"
 id = "mask-native-chunked"
 kind = "refused"
 when = { native = "--native", chunked = "--chunked" }
-doc = "docs/cli-reference.md:121"
+doc = "docs/cli-reference.md:122"
 cites = ["--native", "--chunked"]
 expect = "exit 1 before any run"
 
@@ -136,7 +136,7 @@ expect = "refusal before any output is written: a vault: true column never shows
 id = "mask-native-subset"
 kind = "refused_after_run"
 when = { native = "--native", subset = "config subset on" }
-doc = "docs/cli-reference.md:121"
+doc = "docs/cli-reference.md:122"
 cites = ["--native", "FK table"]
 expect = "refusal before any output is written, as for an FK table (unconfirmed for subset)"
 
@@ -162,7 +162,7 @@ expect = "refusal before any output is written; bucketize has no native operator
 id = "mask-native-no-kernel-evidence"
 kind = "refused_after_run"
 when = { native = "--native", strategy_mix = "text_redact on free text" }
-doc = "docs/cli-reference.md:121"
+doc = "docs/cli-reference.md:122"
 cites = ["--native", "AFTER the run"]
 expect = "refusal before any output is written; an empty output folder"
 
@@ -188,7 +188,7 @@ expect = "run succeeds; outputs equal the run without --threads (I3)"
 id = "mask-native-fk-tables"
 kind = "refused_after_run"
 flags = ["--native"]
-doc = "docs/cli-reference.md:121"
+doc = "docs/cli-reference.md:122"
 cites = ["--native", "FK table"]
 expect = "refusal before any output is written; run it on a parent and child corpus item"
 
@@ -208,7 +208,7 @@ json = ["off", "--json"]
 id = "generate-rows-evidence"
 kind = "refused"
 when = { rows = "--rows 100", evidence = "--evidence-out" }
-doc = "docs/cli-reference.md:129"
+doc = "docs/cli-reference.md:130"
 cites = ["--rows", "--evidence-out"]
 expect = "exit 1, a reason that names --evidence-out"
 
@@ -218,6 +218,6 @@ expect = "exit 1, a reason that names --evidence-out"
 id = "generate-native"
 kind = "refused"
 flags = ["--native"]
-doc = "docs/cli-reference.md:121"
+doc = "docs/cli-reference.md:122"
 cites = ["--native", "generate"]
 expect = "exit 1 before any run, on a generate config"

@@ -95,6 +95,11 @@ def _tree(home: Path, seeded: tuple[str, ...] = ()) -> list[str]:
     lines = []
     for path in sorted(home.rglob("*")):
         rel = path.relative_to(home).as_posix()
+        # Record files are named by their hash; fan-out folders depend on it (and may be shared).
+        if "/library/objects/" in rel:
+            if path.is_file():
+                lines.append(rel.split("/library/objects/")[0] + "/library/objects/<RECORD>")
+            continue
         if path.is_symlink():
             rel += f" -> {path.readlink().as_posix()}"
         elif path.is_dir():
@@ -103,12 +108,21 @@ def _tree(home: Path, seeded: tuple[str, ...] = ()) -> list[str]:
     return sorted(lines)
 
 
-def _project_entries(name: str, pipelines: tuple[str, ...]) -> list[str]:
+def _project_entries(name: str, pipelines: tuple[str, ...], records: int) -> list[str]:
+    """A project's entries; `records` is how many evidence records its runs stored (plan 4.16)."""
     base = f"work/{name}"
+    library = f"{base}/.decoy/library"
     lines = [
         f"{base}/",
         f"{base}/.decoy/",
+        f"{base}/.decoy/.gitattributes",
         f"{base}/.decoy/.gitignore",
+        f"{library}/",
+        f"{library}/LAYOUT",
+        f"{library}/index.sqlite",
+        f"{library}/objects/",
+        f"{library}/tmp/",
+        *[f"{library}/objects/<RECORD>"] * records,
         f"{base}/decoy.yaml",
         f"{base}/out/",
         f"{base}/out/.gitignore",
@@ -257,7 +271,7 @@ def test_walkthrough(home: Path, seed: _Seed, monkeypatch: pytest.MonkeyPatch) -
     # The whole home folder, entry for entry: nothing beside a YAML, in `work`, or in `logs/`.
     expected = ["data/", "data/acme/", "data/acme/members.csv", "data/globex/"]
     expected += ["data/globex/claims.csv", "data/globex/providers.csv", "work/"]
-    expected += _project_entries("acme", ("members-generate", "members-mask"))
+    expected += _project_entries("acme", ("members-generate", "members-mask"), records=3)
     expected += _pipeline_out("acme", "members-generate", {second: ("employees.csv",)}, second)
     expected += _pipeline_out(
         "acme",
@@ -268,7 +282,7 @@ def test_walkthrough(home: Path, seed: _Seed, monkeypatch: pytest.MonkeyPatch) -
         },
         third,
     )
-    expected += _project_entries("globex", tuple(stems))
+    expected += _project_entries("globex", tuple(stems), records=len(stems))
     for name, stem in stems.items():
         expected += _pipeline_out("globex", name, {"<RUN>": (f"{stem}.masked.csv",)}, "<RUN>")
     assert _tree(home, (first, second, third)) == sorted(expected)

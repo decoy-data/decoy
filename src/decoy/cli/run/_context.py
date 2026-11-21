@@ -103,6 +103,7 @@ class RunContext:
     vault: Path
     key_label: str
     evidence_out: Path
+    no_library: bool
     result: Path | None
     integrity_out: Path | None
     out_dir: Path | None
@@ -175,6 +176,8 @@ class RunContext:
     _ev_row_counts: dict | None = field(init=False, default=None)
     _ev_timings: tuple = field(init=False, default=())
     _ev_engine_warnings: tuple = field(init=False, default=())
+    # The library's `StoreOutcome` for this run's evidence record; None until stored or skipped.
+    library_outcome: Any = field(init=False, default=None)
     # Row count for the --notify event; unconditional (unlike _ev_row_counts,
     # which only fills for --evidence-out). None for --chunked runs (no
     # ExecutionResult to count).

@@ -434,6 +434,7 @@ SAMPLES: dict[str, list[str]] = {
     "-v": ["-v"],
     "--chunked": ["--chunked"],
     "--no-subset": ["--no-subset"],
+    "--no-library": ["--no-library"],
     "--native": ["--native"],
     "--no-native": ["--no-native"],
     "--explain-plan": ["--explain-plan"],

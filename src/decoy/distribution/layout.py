@@ -28,10 +28,16 @@ from decoy import _atomic
 
 LAUNCHER_NAME = "decoy"
 
+# Default home-relative locations the CLI writes to. The journey test (AT-J7) snapshots exactly
+# these, so a new home-write path is added here and the test follows.
+DECOY_HOME_PARTS = (".decoy",)
+LAUNCHER_BIN_PARTS = (".local", "bin")
+CLI_HOME_PATHS = (DECOY_HOME_PARTS, LAUNCHER_BIN_PARTS)
+
 
 def decoy_home() -> Path:
     override = os.environ.get("DECOY_HOME")
-    return Path(override) if override else Path.home() / ".decoy"
+    return Path(override) if override else Path.home().joinpath(*DECOY_HOME_PARTS)
 
 
 def versions_dir(home: Path | None = None) -> Path:
@@ -98,7 +104,7 @@ def cache_dir(home: Path | None = None) -> Path:
 def launcher_bin_dir() -> Path:
     """Where the ``decoy`` launcher symlink goes on POSIX (`~/.local/bin`, the XDG
     user-local convention the install script adds to PATH)."""
-    return Path(os.environ.get("DECOY_BIN_DIR", str(Path.home() / ".local" / "bin")))
+    return Path(os.environ.get("DECOY_BIN_DIR", str(Path.home().joinpath(*LAUNCHER_BIN_PARTS))))
 
 
 def read_current_slot(home: Path | None = None) -> str | None:
