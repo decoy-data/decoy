@@ -266,15 +266,19 @@ def _sanitized_before(func: ast.AST, name: str, line: int) -> bool:
     """The last assignment to `name` above `line` in `func` is made by a sanitizer call."""
     last: tuple[int, bool] | None = None
     for node in ast.walk(func):
-        targets = ()
+        value: ast.expr | None
         if isinstance(node, ast.Assign):
-            targets = tuple(t for t in node.targets if isinstance(t, ast.Name))
+            targets = [t for t in node.targets if isinstance(t, ast.Name)]
+            value = node.value
         elif isinstance(node, (ast.AnnAssign, ast.AugAssign)) and isinstance(node.target, ast.Name):
-            targets = (node.target,)
-        if node.__dict__.get("value") is None or node.lineno >= line:
+            targets = [node.target]
+            value = node.value
+        else:
+            continue
+        if value is None or node.lineno >= line:
             continue
         if any(t.id == name for t in targets) and (last is None or node.lineno > last[0]):
-            last = (node.lineno, _makes(node.value))  # type: ignore[attr-defined]
+            last = (node.lineno, _makes(value))
     return last is not None and last[1]
 
 
