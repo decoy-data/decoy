@@ -11,8 +11,8 @@ keeps four things true:
    equal it. `version_document.DEFAULT_URL` equals `SITE_ORIGIN + "/cli/version.json"`.
 3. No Python module under `src/`, `scripts/` or `packaging_tools/` other than `release_identity`
    spells an identity string or assigns an identity name (AST).
-4. A file named in (1) that is absent today is skipped, so the check starts to cover it the day
-   it lands.
+4. A file named in (1) that does not exist yet is listed in `PENDING` with its owning slice;
+   any other missing file fails. When a pending file lands, delete its row.
 
 Findings name a path and a rule, never the matched text. The old org name is spelled in two
 pieces so this file does not hold it.
@@ -25,6 +25,8 @@ import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
+
+import pytest
 
 from decoy.distribution import installer, release_identity, version_document
 
@@ -40,8 +42,13 @@ OLD_ORG = "louis" + "keep"
 REPOS = frozenset(
     {release_identity.CLI_REPO, release_identity.ENGINE_REPO, release_identity.WEB_REPO}
 )
-_REPO_URL = re.compile(r"github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)")
-# Release inputs scanned as whole files. Missing files are skipped (see the module docstring).
+# Host case-insensitive, an optional trailing dot, and `/` (URL) or `:` (scp-style git) before the
+# owner. Owner and repo compare exactly against REPOS.
+_REPO_URL = re.compile(
+    r"github\.com\.?[/:]([A-Za-z0-9_.-]+)/([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)", re.IGNORECASE
+)
+# Release inputs scanned as whole files. A file that does not exist yet is named in PENDING with
+# the slice that creates it; any other missing file fails.
 SCANNED = (
     "requirements-dev.lock",
     "packaging_tools/install/install.sh",
@@ -51,6 +58,12 @@ SCANNED = (
     "packaging_tools/release_inputs.toml",
     ".github/workflows/release.yml",
 )
+PENDING = {
+    "packaging_tools/release_inputs.toml": "S0a1",
+    ".github/workflows/release.yml": "S0a2",
+    "generated version.json": "S0a2",
+    "generated candidate.json": "S0a2",
+}
 IDENTITY_NAMES = frozenset(
     {
         "CLI_REPO",
@@ -85,6 +98,8 @@ def scanned_texts(root: Path = ROOT) -> dict[str, str]:
     for rel in SCANNED:
         if (root / rel).is_file():
             out[rel] = (root / rel).read_text(encoding="utf-8")
+        else:
+            assert rel in PENDING, f"{rel} is scanned but missing and not in PENDING"
     return out
 
 
@@ -126,13 +141,35 @@ def code_sources(root: Path = ROOT) -> dict[str, str]:
     }
 
 
+def _shell_text(root: Path) -> dict[str, str]:
+    return {
+        name: (root / "packaging_tools/install" / name).read_text(encoding="utf-8")
+        for name in ("install.sh", "install.ps1")
+    }
+
+
+def _one(pattern: str, text: str) -> str:
+    match = re.search(pattern, text, re.MULTILINE)
+    assert match, "installer assignment line not found"
+    return match.group(1)
+
+
 def shell_literals(root: Path = ROOT) -> dict[str, str]:
-    sh = (root / "packaging_tools/install/install.sh").read_text(encoding="utf-8")
-    ps1 = (root / "packaging_tools/install/install.ps1").read_text(encoding="utf-8")
-    sh_match = re.search(r'^DEFAULT_BUNDLE_BASE="([^"]*)"$', sh, re.MULTILINE)
-    ps1_match = re.search(r'^\$BundleBase = .*else \{ "([^"]*)" \}$', ps1, re.MULTILINE)
-    assert sh_match and ps1_match
-    return {"install.sh": sh_match.group(1), "install.ps1": ps1_match.group(1)}
+    """The bundle base each shell installer assigns, read from its assignment line."""
+    text = _shell_text(root)
+    return {
+        "install.sh": _one(r'^DEFAULT_BUNDLE_BASE="([^"]*)"$', text["install.sh"]),
+        "install.ps1": _one(r'^\$BundleBase = .*else \{ "([^"]*)" \}$', text["install.ps1"]),
+    }
+
+
+def shell_version_urls(root: Path = ROOT) -> dict[str, str]:
+    """The version URL each shell installer assigns, read from its assignment line."""
+    text = _shell_text(root)
+    return {
+        "install.sh": _one(r'^DEFAULT_VERSION_URL="([^"]*)"$', text["install.sh"]),
+        "install.ps1": _one(r'^\$VersionUrl = .*else \{ "([^"]*)" \}$', text["install.ps1"]),
+    }
 
 
 def test_every_github_repo_in_release_inputs_is_an_identity_repo():
@@ -153,9 +190,7 @@ def test_installer_default_equals_the_artifact_base():
 
 def test_default_version_url_is_site_origin_plus_path():
     assert version_document.DEFAULT_URL == release_identity.SITE_ORIGIN + "/cli/version.json"
-    for name in ("install.sh", "install.ps1"):
-        text = (ROOT / "packaging_tools/install" / name).read_text(encoding="utf-8")
-        assert version_document.DEFAULT_URL in text, name
+    assert set(shell_version_urls().values()) == {version_document.DEFAULT_URL}
 
 
 def test_release_identity_is_the_only_definition():
@@ -193,6 +228,62 @@ def test_an_import_of_the_value_is_not_a_second_definition():
     assert definition_findings({"mod.py": src}) == []
 
 
-def test_a_changed_shell_literal_is_caught_by_the_agreement_check():
-    bad = {"install.sh": f"https://github.com/{OLD_ORG}/decoy/releases/download"}
-    assert set(bad.values()) != {release_identity.ARTIFACT_BASE}
+def _seed_installers(root: Path, base: str, version_url: str) -> None:
+    d = root / "packaging_tools/install"
+    d.mkdir(parents=True)
+    (d / "install.sh").write_text(
+        f'DEFAULT_VERSION_URL="{version_url}"\nDEFAULT_BUNDLE_BASE="{base}"\n', encoding="utf-8"
+    )
+    (d / "install.ps1").write_text(
+        f'$VersionUrl = if ($e) {{ $e }} else {{ "{version_url}" }}\n'
+        f'$BundleBase = if ($e) {{ $e }} else {{ "{base}" }}\n',
+        encoding="utf-8",
+    )
+
+
+def test_seeded_installers_with_the_right_values_agree(tmp_path):
+    _seed_installers(tmp_path, release_identity.ARTIFACT_BASE, version_document.DEFAULT_URL)
+    assert set(shell_literals(tmp_path).values()) == {release_identity.ARTIFACT_BASE}
+    assert set(shell_version_urls(tmp_path).values()) == {version_document.DEFAULT_URL}
+
+
+def test_a_changed_shell_literal_is_caught_by_the_agreement_check(tmp_path):
+    bad_base = f"https://github.com/{OLD_ORG}/decoy/releases/download"
+    _seed_installers(tmp_path, bad_base, version_document.DEFAULT_URL + "x")
+    assert set(shell_literals(tmp_path).values()) != {release_identity.ARTIFACT_BASE}
+    assert set(shell_version_urls(tmp_path).values()) != {version_document.DEFAULT_URL}
+    assert repo_findings("install.sh", shell_literals(tmp_path)["install.sh"]) != []
+
+
+def test_pending_files_are_still_missing_and_name_a_slice():
+    for rel, slice_name in PENDING.items():
+        assert re.fullmatch(r"S0a[12]", slice_name), rel
+        if not rel.startswith("generated "):
+            assert not (ROOT / rel).exists(), f"{rel} landed: delete its PENDING row"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"https://{host}{sep}{OLD_ORG}/decoy"
+        for host, sep in (
+            ("GitHub.com", "/"),
+            ("github.com.", "/"),
+            ("GITHUB.COM", "/"),
+            ("git@github.com", ":"),
+            ("git@GitHub.com", ":"),
+        )
+    ],
+)
+def test_each_url_spelling_of_a_foreign_repo_is_seeded_red(text):
+    assert repo_findings("seed", text) != []
+
+
+def test_each_url_spelling_of_an_identity_repo_is_green():
+    for repo in REPOS:
+        for text in (
+            f"https://GitHub.com/{repo}",
+            f"https://github.com./{repo}",
+            f"git@github.com:{repo}.git",
+        ):
+            assert repo_findings("seed", text) == [], text

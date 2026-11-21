@@ -16,6 +16,12 @@ GITHUB_BASES = (
     "https://objects.githubusercontent.com/decoy-data/decoy/releases/download",
     "https://release-assets.githubusercontent.com/decoy-data/decoy/releases/download",
     "https://GitHub.com/decoy-data/decoy/releases/download",
+    "https://github.com./decoy-data/decoy/releases/download",
+    "https://www.github.com/decoy-data/decoy/releases/download",
+    "https://api.github.com/decoy-data/decoy/releases/download",
+    "https://codeload.github.com/decoy-data/decoy/releases/download",
+    "https://uploads.github.com/decoy-data/decoy/releases/download",
+    "https://raw.githubusercontent.com./decoy-data/decoy/releases/download",
 )
 DATED = "owner 2026-11-18: V1 bundles are GitHub Release assets, a dated exception"
 
@@ -73,3 +79,22 @@ def test_the_fixed_facts():
     )
     assert ri.SITE_ORIGIN == "https://trydecoy.com"
     assert ri.WEB_COMMIT_IDENTITY == ("ckeep", "decoy@trydecoy.com", "ckeep", "decoy@trydecoy.com")
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        "https://github.com/someone/decoy/releases/download",
+        "https://github.com/decoy-data/decoy-engine/releases/download",
+        "https://github.com/decoy-data/decoy/releases/download/",
+        "https://github.com/decoy-data/decoy/releases/download/extra",
+        "https://objects.githubusercontent.com/decoy-data/decoy/releases/download",
+    ],
+)
+def test_a_github_base_must_be_this_repos_download_base_even_with_the_exception(base):
+    with pytest.raises(ri.ReleaseIdentityError, match=r"^release_identity_mismatch$"):
+        ri.check_artifact_base(base, DATED)
+
+
+def test_the_exact_github_base_passes_with_the_exception():
+    ri.check_artifact_base(ri.ARTIFACT_BASE, ri.ARTIFACT_HOST_EXCEPTION)

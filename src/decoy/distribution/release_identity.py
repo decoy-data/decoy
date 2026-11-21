@@ -31,8 +31,10 @@ ARTIFACT_HOST_EXCEPTION: str | None = (
 # The author and committer of a decoy-web commit, as `git log` prints them: %an %ae %cn %ce.
 WEB_COMMIT_IDENTITY = ("ckeep", "decoy@trydecoy.com", "ckeep", "decoy@trydecoy.com")
 
-_GITHUB_HOSTS = frozenset({"github.com", "githubusercontent.com"})
-_DECISION = re.compile(r"owner (\d{4}-\d{2}-\d{2})[: ] ?\S.{9,}", re.DOTALL)
+_GITHUB_APEXES = ("github.com", "githubusercontent.com")
+# `owner YYYY-MM-DD <text>`, with an optional colon after the date. The one grammar for a dated
+# owner decision: the sentry ratchet loads `is_dated_owner_decision` from this file.
+_DECISION = re.compile(r"owner (\d{4}-\d{2}-\d{2}):? (.{10,})")
 
 
 class ReleaseIdentityError(ValueError):
@@ -45,11 +47,12 @@ def artifact_url(version: str, name: str, base: str = ARTIFACT_BASE) -> str:
 
 
 def _is_github_host(host: str) -> bool:
-    host = host.lower()
-    return host in _GITHUB_HOSTS or host.endswith(".githubusercontent.com")
+    host = host.lower().rstrip(".")
+    return any(host == apex or host.endswith("." + apex) for apex in _GITHUB_APEXES)
 
 
-def _dated_owner_decision(text: object) -> bool:
+def is_dated_owner_decision(text: object) -> bool:
+    """True for `owner YYYY-MM-DD[:] <text>` with a real calendar date and at least 10 text chars."""
     if not isinstance(text, str):
         return False
     match = _DECISION.fullmatch(text)
@@ -67,10 +70,18 @@ def check_artifact_origin(base: str, exception: str | None) -> None:
     parts = urlsplit(base)
     if parts.scheme != "https" or not parts.hostname:
         raise ReleaseIdentityError("release_identity_mismatch")
-    if _is_github_host(parts.hostname) and not _dated_owner_decision(exception):
+    if _is_github_host(parts.hostname) and not is_dated_owner_decision(exception):
+        raise ReleaseIdentityError("release_identity_mismatch")
+
+
+def check_artifact_base(base: str, exception: str | None) -> None:
+    """The origin rule, plus: a GitHub base must be exactly this repo's release download base."""
+    check_artifact_origin(base, exception)
+    host = urlsplit(base).hostname or ""
+    if _is_github_host(host) and base != f"https://github.com/{CLI_REPO}/releases/download":
         raise ReleaseIdentityError("release_identity_mismatch")
 
 
 def validate() -> None:
     """Check the shipped values. Signing commands call this before they load a key."""
-    check_artifact_origin(ARTIFACT_BASE, ARTIFACT_HOST_EXCEPTION)
+    check_artifact_base(ARTIFACT_BASE, ARTIFACT_HOST_EXCEPTION)
