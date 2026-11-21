@@ -18,10 +18,12 @@ from decoy import _native_gate, _resources
 from decoy.cli.gate import GateFinding
 from decoy.cli.io import (
     DuckDBSourceError,
+    LayoutError,
     OutputPlacement,
     PipelineRef,
     RunLayout,
     parse_flags,
+    pipeline_label,
     resolve_path,
 )
 from decoy.ui.output import OutputState
@@ -79,6 +81,21 @@ class NotifyOn(str, Enum):
     success = "success"
     failure = "failure"
     always = "always"
+
+
+def library_label(config: Path) -> str | Any:
+    """The record label of this run (`decoy.cli.io.pipeline_label`, the resolver `library list`
+    uses), or a failed `StoreOutcome` carrying the layout code: a record is lost, the run is not."""
+    from decoy_engine.reasons import warning
+
+    from decoy.cli.library import StoreOutcome
+
+    try:
+        return pipeline_label(config)
+    except LayoutError as exc:
+        return StoreOutcome(
+            "failed", code=str(getattr(exc, "code", None) or warning.LIBRARY_WRITE_FAILED)
+        )
 
 
 @dataclass(slots=True)
@@ -143,6 +160,9 @@ class RunContext:
     _report_flags: bool = field(init=False)
     _run_started_at: datetime = field(init=False)
     started: float = field(init=False)
+    # True from the moment `_execute.execute` hands the pipeline to the engine. A failure before
+    # it is a refusal (nothing ran); one after it is a run that failed, whatever its category.
+    execution_started: bool = field(init=False, default=False)
     # One id per command: the run folder name, the evidence `run_id` and later records share it.
     invocation_id: str = field(init=False)
     # Where this run writes; opened by `_execute` once the gate has passed.
@@ -255,6 +275,24 @@ def output_placement(ctx: RunContext) -> OutputPlacement:
         except DuckDBSourceError:
             continue
         databases.append(resolve_path(flag.db_path, ctx.config.parent))
+    library = _library_root(ctx)
     if ctx.out_dir is not None:
-        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases))
-    return OutputPlacement(typed=typed, chunked=ctx.chunked, inputs=tuple(databases))
+        return OutputPlacement.fixed(ctx.out_dir, typed, ctx.chunked, tuple(databases), library)
+    return OutputPlacement(
+        typed=typed, chunked=ctx.chunked, inputs=tuple(databases), library=library
+    )
+
+
+def _library_root(ctx: RunContext) -> Path | None:
+    """The resolved record-library root when this run stores records, else None; the gate keeps
+    outputs off it. A project the finder refuses is reported by the gate itself."""
+    if ctx.no_library or ctx.rows is not None:
+        return None
+    from decoy.cli.io import LayoutError
+    from decoy.cli.library import resolve_root
+
+    try:
+        found = resolve_root(pipeline=Path(ctx.config))
+    except LayoutError:
+        return None
+    return found.path if found.records else None
