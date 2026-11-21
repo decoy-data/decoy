@@ -28,7 +28,7 @@ from typing import Any
 import typer
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
-from decoy._config_file import decode_config_bytes, parse_config_mapping, read_config_bytes
+from decoy._config_file import ConfigFileError, load_pipeline, read_config_bytes
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io._layout import RunLayout, shown_path, side_file_name
 from decoy.ui.output import OutputMode, OutputState, emit_error
@@ -242,7 +242,10 @@ def blocked_run(
 def read_report_config(path: Path) -> tuple[dict[str, Any], str]:
     """The config mapping and its `config_sha256`, from one read of its bytes."""
     data = read_config_bytes(path)
-    return parse_config_mapping(decode_config_bytes(data)), config_sha256(data)
+    pipeline = load_pipeline(path, text=data)
+    if pipeline.unreviewed:
+        raise ConfigFileError.from_problems(pipeline.unreviewed)
+    return pipeline.config, config_sha256(data)
 
 
 def bare_report_config() -> dict[str, Any]:

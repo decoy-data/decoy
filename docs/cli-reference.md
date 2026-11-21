@@ -95,7 +95,7 @@ $ decoy run [OPTIONS] [CONFIG]
 
 **Arguments**:
 
-* `[CONFIG]`: Path or name of the YAML pipeline config (a name is looked up in the project). Optional when the project has exactly one pipeline.
+* `[CONFIG]`: Path or name of the pipeline file (.yaml or .decoy; a name is looked up in the project). Optional when the project has exactly one pipeline.
 
 **Options**:
 
@@ -211,7 +211,7 @@ $ decoy unmask [OPTIONS] CONFIG MASKED
 
 **Arguments**:
 
-* `CONFIG`: The pipeline config the mask run used. The mask secret (--mask-secret or its global_settings.mask_secret_ref) must be the one that run used.  [required]
+* `CONFIG`: The pipeline file (.yaml or .decoy) the mask run used. The mask secret (--mask-secret or its global_settings.mask_secret_ref) must be the one that run used.  [required]
 * `MASKED`: The masked file produced by `decoy run` for one table (read by the target&#x27;s declared format, else by extension).  [required]
 
 **Options**:
@@ -273,7 +273,7 @@ $ decoy tokenize [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path or name of the YAML pipeline config (with `strategy: tokenize` columns).  [required]
+* `CONFIG`: Path or name of the pipeline file (.yaml or .decoy) with tokenize columns.  [required]
 
 **Options**:
 
@@ -336,7 +336,7 @@ $ decoy detokenize [OPTIONS] CONFIG TOKENIZED
 
 **Arguments**:
 
-* `CONFIG`: The pipeline config the tokenize run used (carries each column&#x27;s namespace).  [required]
+* `CONFIG`: The pipeline file (.yaml or .decoy) the tokenize run used; it carries each namespace.  [required]
 * `TOKENIZED`: The tokenized file produced by `decoy tokenize` for one table (read by the target&#x27;s declared format, else by extension).  [required]
 
 **Options**:
@@ -858,7 +858,7 @@ $ decoy subset [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path or name of the YAML pipeline config (must declare a subset: block).  [required]
+* `CONFIG`: Path or name of the pipeline file (.yaml or .decoy; must declare a subset).  [required]
 
 **Options**:
 
@@ -994,7 +994,7 @@ $ decoy validate config [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path or name of the YAML pipeline config to validate.  [required]
+* `CONFIG`: Path or name of the pipeline file (.yaml or .decoy) to validate.  [required]
 
 **Options**:
 
@@ -1041,7 +1041,7 @@ $ decoy validate compile [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path or name of the pipeline YAML config to compile.  [required]
+* `CONFIG`: Path or name of the pipeline file (.yaml or .decoy) to compile.  [required]
 
 **Options**:
 
@@ -1111,7 +1111,7 @@ $ decoy validate preflight [OPTIONS] CONFIG
 
 **Arguments**:
 
-* `CONFIG`: Path or name of the YAML pipeline config to check.  [required]
+* `CONFIG`: Pipeline file (.yaml or .decoy), or its name, to check.  [required]
 
 **Options**:
 
@@ -1691,7 +1691,7 @@ $ decoy report fidelity [OPTIONS] SOURCE OUTPUT
 
 * `--joint TEXT`: Column pair &#x27;a,b&#x27; to also score jointly (repeatable).
 * `--generate`: Output is synthetic generation, not masking: row counts may legitimately differ (sets expect_row_parity=False). Default assumes masking (row parity expected).
-* `--config TEXT`: Pipeline YAML naming each column&#x27;s strategy, so intentional loss (hash, bucketize, faker, ...) is not flagged as accidental drift. Without it, per-column policy checks run on defaults only.
+* `--config TEXT`: Pipeline file (.yaml or .decoy) naming each column&#x27;s strategy, so intentional loss (hash, bucketize, faker, ...) is not flagged as accidental drift. Without it, per-column policy checks run on defaults only.
 * `--policy FILE`: A quality-policy config (YAML or JSON: mode / thresholds / strategy_expectations) overriding --mode / --min-grade / --min-score.
 * `--mode TEXT`: report (record only, verdict always pass) | warn (violations promote verdict to warn) | fail (violations promote verdict to fail). Ignored when --policy sets its own mode.  [default: report]
 * `--min-grade TEXT`: Shorthand: minimum letter grade (A/B/C/D) the overall score must reach.
@@ -1761,7 +1761,7 @@ $ decoy report integrity [OPTIONS] MASKED
 **Options**:
 
 * `--source FILE`: Pre-mask source CSV (ground truth for the integrity check).  [required]
-* `--config TEXT`: Optional pipeline.yaml, or a pipeline name. When passed, policy_validation can compare against the configured masks. Without it the runner still produces residual_pii + fk_preservation findings.
+* `--config TEXT`: Optional pipeline file (.yaml or .decoy), or a pipeline name. When passed, policy_validation can compare against the configured masks. Without it the runner still produces residual_pii + fk_preservation findings.
 * `-o, --output PATH`: Write the integrity report JSON to this path. The Rich table still renders to stderr.
 * `--allow-source-mismatch`: Suppress the stderr warning when --source does not match the pipeline&#x27;s declared sources block.
 * `--json`: Emit the full integrity report JSON to stdout. No card.
@@ -1889,7 +1889,7 @@ $ decoy report vault [OPTIONS] VAULT
 
 **Options**:
 
-* `--config TEXT`: The pipeline config the mask run used. The vault opens only under the mask secret that run used (--mask-secret or global_settings.mask_secret_ref).  [required]
+* `--config TEXT`: The pipeline file (.yaml or .decoy) the mask run used. The vault opens only under the mask secret that run used (--mask-secret or global_settings.mask_secret_ref).  [required]
 * `--mask-secret TEXT`: Reference to the mask secret the run used: &#x27;env:NAME&#x27; or &#x27;file:/PATH&#x27; (a &gt;=32-byte secret; an owner-only file, never the raw value). Sets global_settings.mask_secret_ref for this command; an error if the YAML also sets it. See: decoy explain keys.
 * `--json`: Emit a structured JSON result on stdout. Errors still go to stderr.
 * `-q, --quiet`: Suppress stdout. Errors still go to stderr; exit code carries the result.
@@ -2051,7 +2051,7 @@ $ decoy library list [OPTIONS]
 **Options**:
 
 * `--kind KIND`: Only records of this kind (scan-set, evidence, run-result, sample-run, ...).
-* `--pipeline TEXT`: Only this pipeline&#x27;s records: its name in the project, or the path to its YAML.
+* `--pipeline TEXT`: Only this pipeline&#x27;s records: its name in the project, or the path to its file.
 * `--table T`: Only records naming this table.
 * `--since D`: Only records made at or after D (YYYY-MM-DD or ISO time).
 * `--json`: Emit the records as JSON, oldest first.

@@ -23,10 +23,11 @@ pipeline my_pipeline {
 ```
 
 ```
-python -m decoy.lang pipeline.decoy > pipeline.yaml        compile
-python -m decoy.lang --format pipeline.decoy               standard layout
-python -m decoy.lang --to-decoy pipeline.yaml              convert from YAML
+decoy validate pipeline.decoy       check a file
+decoy run pipeline.decoy            run it
 ```
+
+Converting from YAML and formatting are not available from the command line yet.
 
 ## Values and names
 

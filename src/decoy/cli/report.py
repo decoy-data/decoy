@@ -1630,7 +1630,7 @@ def _fidelity(
         None,
         "--config",
         help=(
-            "Pipeline YAML naming each column's strategy, so intentional "
+            "Pipeline file (.yaml or .decoy) naming each column's strategy, so intentional "
             "loss (hash, bucketize, faker, ...) is not flagged as accidental "
             "drift. Without it, per-column policy checks run on defaults only."
         ),
@@ -1912,8 +1912,8 @@ def _integrity(
         None,
         "--config",
         help=(
-            "Optional pipeline.yaml, or a pipeline name. When passed, policy_validation can "
-            "compare against the configured masks. Without it the runner "
+            "Optional pipeline file (.yaml or .decoy), or a pipeline name. When passed, "
+            "policy_validation can compare against the configured masks. Without it the runner "
             "still produces residual_pii + fk_preservation findings."
         ),
     ),
@@ -2159,8 +2159,8 @@ def _vault(
         ...,
         "--config",
         help=(
-            "The pipeline config the mask run used. The vault opens only under the mask "
-            "secret that run used (--mask-secret or global_settings.mask_secret_ref)."
+            "The pipeline file (.yaml or .decoy) the mask run used. The vault opens only under "
+            "the mask secret that run used (--mask-secret or global_settings.mask_secret_ref)."
         ),
     ),
     mask_secret: str | None = typer.Option(None, "--mask-secret", help=_mask_secret.FLAG_HELP),

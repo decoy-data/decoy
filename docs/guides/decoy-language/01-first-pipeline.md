@@ -29,20 +29,30 @@ Reading it top to bottom:
 Layout is free. Spaces and line breaks only separate words, so indentation can never break a file.
 Comments start with `#`.
 
-## Three commands
+## Running a file
+
+Every `decoy` command that takes a pipeline file takes a `.decoy` file:
 
 ```
-python -m decoy.lang pipeline.decoy > pipeline.yaml      # compile
-python -m decoy.lang --format pipeline.decoy             # print in the standard layout
-python -m decoy.lang --to-decoy pipeline.yaml            # convert an existing YAML pipeline
+decoy validate pipeline.decoy
+decoy run pipeline.decoy
 ```
+
+Converting a YAML pipeline and formatting a `.decoy` file are not available from the command
+line yet.
 
 A mistake is reported with its line and column, a code, and usually a hint:
 
 ```
-pipeline.decoy:8:13: error[lang.unknown_strategy]: `redcat` is not a strategy or a `let` name
+error: Invalid config: lang.unknown_strategy: line 10, column 18: `redcat` is not a strategy or a `let` name
   hint: did you mean `redact`?
 ```
+
+`decoy validate --json` carries the same text in each message, with the hint in a `hint` member.
+
+The command decides the kind of a file from the name you type, not from where a symbolic link
+points: `pipeline.decoy` is read as `.decoy` even when it links to a `.yaml` file, and the other
+way round.
 
 An error never shows a value from your file, only names of the language, strategies, tables and
 columns.

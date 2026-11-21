@@ -17,7 +17,7 @@
   "notify.py": {"reason": "Webhook body signed with HMAC; different bytes on the wire by design (ASCII-escaped, platform webhook contract), not a content hash (plan 3.1).", "sites": 1}
  },
  "config-load-allow": {
-  "ci/locations.py::YamlSourceIndex.from_text::1": {"reason": "source index: yaml.compose of text the gate already loaded, for SARIF line marks"},
+  "_source_positions.py::YamlPositionIndex.from_text::1": {"reason": "source index: yaml.compose of text the gate already loaded, for SARIF line marks"},
   "ci/manifest.py::_parse::1": {"reason": "CI manifest: strict loader with its own ci.manifest_invalid code and event check"},
   "cli/demo.py::_run_v2_mask::1": {"reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"},
   "cli/init.py::_build_scaffold_yaml::1": {"reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"},
@@ -129,6 +129,7 @@
   "scan-set": {"reason": "L2-cli writes scan records and adds the scan-set canary fixture."}
  },
  "library-writer-allow": {
+  "_config_file.py": {"reason": "Pipeline file suffix, not the project folder (owner decision 2026-11-20, W3 exception).", "sites": 1},
   "cli/io/_project.py": {"reason": "DECOY_DIR, the one home of the project folder name; the library imports it from decoy.cli.io (re-FRAME placement map).", "sites": 1},
   "distribution/layout.py": {"reason": "The managed runtime home ~/.decoy (versions, current, cache); swapped on upgrade and never a record library (plan 4.1).", "sites": 1}
  },

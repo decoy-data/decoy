@@ -69,7 +69,7 @@ See also: decoy run, decoy explain transforms.
 def unmask(
     config: str = pipeline_argument(
         help=(
-            "The pipeline config the mask run used. The mask secret (--mask-secret or "
+            "The pipeline file (.yaml or .decoy) the mask run used. The mask secret (--mask-secret or "
             "its global_settings.mask_secret_ref) must be the one that run used."
         ),
     ),

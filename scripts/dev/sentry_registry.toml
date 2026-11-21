@@ -125,6 +125,9 @@ consumer = "tests/sentry/io_policy/test_canonical_json.py"
 [[sentry]]
 id = "library-writer-allow"
 baseline = "tests/sentry/baselines/library-writer-allow.json"
+approved_growth = [
+  { key = "_config_file.py", decision = "owner 2026-11-20 W3 pipeline file suffix allow entry" },
+]
 kind = "json"
 consumer = "tests/sentry/io_policy/test_library_writer.py"
 

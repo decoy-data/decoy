@@ -268,10 +268,12 @@ def validation_codes() -> frozenset[str]:
     # Imported here, not at module load: the layout registry sits in a package that reaches the
     # engine, and `decoy ci` imports this module with the engine's logging still silenced.
     from decoy.cli.io import GATE_CODES as layout_gate_codes
+    from decoy.lang import CODES as lang_codes
 
     return (
         _CLI_GATE_CODES
         | layout_gate_codes
+        | frozenset(lang_codes)
         | _PYDANTIC_ERROR_TYPES
         | _engine_registry_codes()
         | _ENGINE_LITERAL_CODES
