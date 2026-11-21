@@ -41,7 +41,7 @@ Two more facts make it worse:
 - A pre-scan side file on disk (`<stem>.pre-scan.json`). Section 13 Q3.
 - A separate library record for the run-start scan (a LIB L2 `scan` record). Section 13 Q6.
 - Scanning the subset output. The pre-scan reads the declared sources. Findings are about columns; a subset changes rows, not columns.
-- Partial coverage inside one column (a strategy with a `when` condition). A column with any non-passthrough rule counts as covered. Recorded as a known limit.
+- Proving that a `when:` condition selects every row. A rule with `when:` set is treated as partial coverage, so the column is a finding (4.2). A finer check that reads the condition is later.
 - Platform pre-scans (`release_gates.py`, parked).
 
 ## 3. Established solutions
@@ -69,7 +69,7 @@ pre_scan:                 # writing the block turns the pre-scan on
 - **The switch is presence.** `PipelineConfig` keeps `pre_scan` in its dump when the input wrote it (`"pre_scan" in self.model_fields_set`), even when every field is the default. It drops the block only when it was not written. The dump of a config that never wrote `pre_scan` is byte-identical to today.
 - One engine helper, `pre_scan_requested(config: Mapping) -> bool`, in `config/_pre_scan.py` (the pattern of `post_scan_integrity_requested`). It is the only reader of the switch, so the CLI and later the platform agree.
 - `on_findings: Literal["warn", "fail"] = "warn"`. Dropped from the dump while `warn`, like `ner_findings`.
-- Plan hash: `pre_scan` stays in `_UNHASHED_BLOCKS`. `pre_scan.on_findings` is hashed only when it is `fail`, because only `fail` can refuse a run (the `scan_baseline.on_drift` rule). Detectors, `ner_model` and `warn` stay out: they change no output. The two "hashed control" rules move out of `plan/_compile.py` (670 lines, ceiling 700) into a new `plan/_hashed_controls.py`.
+- Plan hash: `pre_scan` stays in `_UNHASHED_BLOCKS`. When `on_findings` is `fail`, the hash takes `{on_findings, detectors, ner_model}` with their effective values (detectors sorted and with the `regex` default filled in, `ner_model` only when `ner` is listed), because under `fail` those three decide whether the run blocks. This is the same reason `post_scan` stays hashed (engine `plan/_compile.py:640-646`) and the `scan_baseline.on_drift` rule (`:654-662`). Under `warn` nothing from `pre_scan` is hashed: it changes no output. The rule stays in `_hash_config` in `plan/_compile.py` (670 lines, about 682 after, ceiling 700). No new `plan/` module: `plan/` is frozen at 30 direct modules (engine `tests/sentry/layout/test_package_fanout.py:38`) and the pin is not raised.
 - `ner_model` keeps its rule (needs `ner` in `detectors`). The existing checks do not change.
 
 Why presence and not a new `enabled` key: the owner's baseline is "yes/no on prescan", and in both writers the user already says yes by writing the block or the statement. No new syntax, and `scan before` keeps the meaning its guide already gives it. The alternative is in section 13 Q1.
@@ -83,8 +83,9 @@ Inputs: the validated config dict and a `scan-set/v1` core dict (value-free).
 Rule, per mask table in the config that the core holds:
 
 - A field is **flagged** when `pii_candidate` is true, or it has a model hit with band `high` from a detector in `pre_scan.detectors`. Model hits with band `review` are counted, not flagged.
-- A flagged field is **covered** when the column rule for it has a strategy other than `passthrough`. `from_parent` counts as covered.
-- A flagged field is **uncovered** when it has no column rule (an unconfigured column) or its rule is `passthrough` (`keep` in `.decoy`).
+- A flagged field is **covered** when the column rule for it has a strategy other than `passthrough` and no `when:` (engine `config/_tables.py:140`, `ColumnConfig.when`). `from_parent` counts as covered.
+- A flagged field is **uncovered** when it has no column rule (an unconfigured column), its rule is `passthrough` (`keep` in `.decoy`), or its rule has a `when:` condition. Rows where `when` is false pass through unchanged (engine `execution/_when_gate.py:1-6`), so a conditional rule is partial coverage. The finding carries `partial: true` and the line says `is masked only where its when: condition holds`.
+- A mask table in the config that is absent from the core is a finding too (`not_scanned`, fail closed), not a skip.
 - Generate tables have no source and are not scanned.
 
 Output: `PreScanVerdict(status, findings, counts, code)`.
@@ -95,7 +96,9 @@ Output: `PreScanVerdict(status, findings, counts, code)`.
 | `warned` | uncovered fields, `on_findings: warn` | `pre_scan.uncovered_pii` | no |
 | `failed` | uncovered fields, `on_findings: fail` | `pre_scan.uncovered_pii_blocked` | yes |
 
-`findings` is a sorted tuple of `(table, column, sources)`, where `sources` names the detectors that flagged the field. Names only. `counts` maps to the run result `CheckCounts`: `pass` = covered flagged fields, `warning` or `fail` = uncovered fields, `error` = 0. `to_check()` returns the run result `Check` with id `pre_scan`.
+`findings` is a sorted tuple of `(table, column, sources, partial)`, where `sources` names the detectors that flagged the field (or `not_scanned` for a table absent from the core). Names only. `counts` maps to the run result `CheckCounts`: `pass` = covered flagged fields, `warning` or `fail` = uncovered fields, `error` = 0. `to_check()` returns the run result `Check` with id `pre_scan`.
+
+The two run errors also live in the engine, in `profiling/pre_scan_check.py`: `PreScanBlockedError(verdict)` (code `pre_scan.uncovered_pii_blocked`) and `PreScanFailedError` (code `pre_scan.profile_failed`). Both are registered in the engine reason adapter's coded families with namespace `pre_scan` (`reason_adapter.py`, the list where `BaselineBindingError` sits at `:118` and `PostScanBlockedError` at `:104`). That is the only way the code reaches the run result: the adapter trusts a `.code` only on a registered family (`reason_adapter.py:8-15`, `_classify` at `:291-307`), and a CLI class would become `decoy.unexpected_error`. `PreScanWarning(UserWarning)` sits beside them.
 
 ### 4.3 Run result (engine)
 
@@ -118,13 +121,22 @@ New module `src/decoy/cli/run/_pre_scan.py` with two public functions:
 - `check_pre_scan(config_dict, base_dir) -> PreScanVerdict | None`: the shared core. It holds no `RunContext` and prints nothing, so `decoy run` and `decoy.mask` (4.5a) both call it. `None` means the config asks for no pre-scan.
 - `run_pre_scan(ctx) -> None`: the `decoy run` wrapper. It calls the core, prints the lines, stores the check and raises on `failed`.
 
-One call in `_prepare.prepare`, placed just before `if ctx.chunked: _check_chunked_tables(...)` (`src/decoy/cli/run/_prepare.py:531`), that is:
+**Rule: every refusal that reads no rows comes before the scan, on every route.** Today some config-only checks run late, inside the source loader or the chunked check. C1 moves them, without changing what they check, into one function that both routes call first:
 
-- after `check_before_run` (`:380`), so a config error wins without a source read, and `--duckdb-source` tables are already staged to Parquet and are scanned as `decoy scan` would see them;
-- after every usage refusal in `prepare` (`:398` to `:529`: mask secret flag, chunked combinations, `--vault` checks, the native gate, local endpoints, resources), so a usage error always beats the scan and costs no source read;
-- before `_load_sources_from_config` (`:535`) and before key admission (`:538`), so `fail` stops before the full source load and before the secret is read, and before the run folder opens, so `fail` writes nothing.
+- New `check_before_read(config_dict, base_dir, *, chunked)` in `src/decoy/cli/run/_execute.py` (it owns these checks today). It holds, in today's order: `_require_local_io_endpoints` (`_execute.py:242`); for chunked, `_check_chunked_tables` (`:203`: integrity `:210`, quarantine `:211-215`, target formats `:216`, per-table strategy compatibility `:221-223`); for plain, `check_target_formats(chunked=False)` (`:280`) and `prepared_sources` (`:281`, the declared-source checks).
+- `_load_sources_from_config` (`:265`) keeps calling `check_before_read` first, so a caller that skips it still refuses (the existing "each helper calls this itself" rule, `:253-254`). Calling it twice is cheap and has no side effects; C1-T14 pins that.
 
-This is also where D-2 must add its drift check (the scan-checks plan places D-2 right after `check_before_run`; that plan should move to this point too, after the usage refusals). D-2 reuses the same step and the same scan result. It must not add a second rescan.
+Placement in `_prepare.prepare` (`src/decoy/cli/run/_prepare.py`):
+
+- after `check_before_run` (`:380`), so a gate error wins without a source read, and `--duckdb-source` tables are already staged to Parquet;
+- after every usage refusal in `prepare` (`:398` to `:530`: mask secret flag, chunked combinations, `--vault` checks, the native gate, local endpoints, resources);
+- after `check_before_read` (new, at `:531`, replacing the bare `_check_chunked_tables` call there for chunked);
+- before the row read (`_load_sources_from_config`, `:535`), so `fail` reads only the head sample and opens no run folder;
+- before key admission (`:538`). Admission is not a config-only check: it reads the secret. Today it already runs after the source read (`:535` then `:538`; in `api.mask`, `:600` then `:618`), so a missing source beats a missing secret today. The scan keeps that relative order, and `fail` never reads the secret.
+
+In `api.mask` (4.5a) the same order: native gate (`api.py:575`) and output collisions (`:594`), then `check_before_read`, then `check_pre_scan`, then `_load_sources_from_config` (`:600`), then admission (`:618`).
+
+This is also where D-2 must add its drift check (the scan-checks plan places D-2 right after `check_before_run`; that plan should move to this point). D-2 reuses the same step and the same scan result. It must not add a second rescan.
 
 What the core does:
 
@@ -134,24 +146,28 @@ What the core does:
 4. Call `scan_descriptors(descriptors, rows=DEFAULT_SCAN_ROWS, strategy="head", pre_scan=<the PreScanConfig>)`.
 5. Return `evaluate_pre_scan(config_dict, run.core)`.
 
-Errors in steps 3 and 4: `ModelUnavailableError`, `MemoryError` and the engine capacity refusals (`ExecutionError` with a capacity code) pass through unchanged, so they keep their own exits (1 and 5). Every other exception from the scan is re-raised as `PreScanFailedError` with `pre_scan.profile_failed` and fixed text, `from None`. Never `str(exc)`: an engine read error can quote a cell (the rule `decoy scan` follows in `_multi.py`). The pass-through set is one tuple in `_pre_scan.py`, tested.
+Errors in steps 3 and 4: `ModelUnavailableError`, `MemoryError` and the engine capacity refusals (`ExecutionError` with a capacity code) pass through unchanged, so they keep their own exits (1 and 5). Every other exception from the scan becomes the engine's `PreScanFailedError` (`pre_scan.profile_failed`, fixed text). The `except` block only records that the scan failed; the new error is raised after the block ends, with `from None`, so neither `__cause__` nor `__context__` holds the original (an engine read error can quote a cell; the rule `decoy scan` follows in `_multi.py`). Never `str(exc)`. The pass-through set is one tuple in `_pre_scan.py`, tested.
 
 What the `decoy run` wrapper adds: it keeps `verdict.to_check()` on `ctx._pre_checks`; on `warned` it prints one stderr line per finding, `warning: pre-scan: <table>.<column> looks like PII (<sources>) and is not masked`; on `failed` it raises `PreScanBlockedError`, which carries the verdict.
 
 Wiring in the existing modules:
 
 - `_result.py`: `_build` passes `ctx._pre_checks` to `build_run_result(pre_checks=...)`. One line.
-- `_errors.py`: one predicate, `_blocking_verdict(exc)` (true for `PostScanBlockedError` and `PreScanBlockedError`), replaces the three `isinstance(exc, PostScanBlockedError)` tests that mean "a verdict about the data": the category arm (`:192`), `blocking_failed=` (`:211`) and the no-traceback test (`:335`). So pre-scan `fail` gets category `None`, status `findings`, exit 4 and no traceback hint. The arm at `:226` writes the post-scan report and stays post-scan only; the pre-scan blocked text is its own fixed summary. `PreScanFailedError` is a runtime failure (exit 3) with its code.
-- `_render.py`: the `--json` envelope gains `pre_scan: {status, detectors, tables_scanned, findings: [{table, column, sources}]}` when the pre-scan ran, and no member otherwise. The card gains one `Pre-scan` line (`passed`, or `2 unmasked PII columns (warn)`).
+- `exit_codes.py`: one predicate, `is_blocking_verdict(exc)`, at the exit-code choke point, true for `PostScanBlockedError` and `PreScanBlockedError`. It replaces the check in `exit_code_for` (`src/decoy/cli/exit_codes.py:224-226`), so `exit_code_for(PreScanBlockedError(...))` is 4.
+- `_errors.py`: the same predicate replaces the three `isinstance(exc, PostScanBlockedError)` tests that mean "a verdict about the data": the category arm (`:192`), `blocking_failed=` (`:211`) and the no-traceback test (`:335`). So pre-scan `fail` gets category `None`, status `findings`, exit 4 and no traceback hint. The arm at `:226` writes the post-scan report and stays post-scan only; the pre-scan blocked text is its own fixed summary. `PreScanFailedError` is a runtime failure (exit 3). Because both errors are engine-registered, `_failure_reason` (`:86`) gets the trusted `pre_scan` reason from `reason_adapter.reason_from_exception` with no CLI special case.
+- One serializer for the `--json` member: `pre_scan_member(verdict) -> dict` in `run/_pre_scan.py`, giving `{status, detectors, tables_scanned, findings: [{table, column, sources, partial}]}`. Both envelope builders call it when `ctx._pre_scan` is set: the success envelope in `_render.finish` (`_render.py:96`, json branch `:107`) and the error envelope in `_errors.fail` (`_errors.py:265-305`, next to `payload.update(blocked)`). No member when the pre-scan did not run. C1-T5 asserts the top-level member on the exit 4 envelope.
+- `_render.py`: the card gains one `Pre-scan` line (`passed`, or `2 unmasked PII columns (warn)`).
 - `RunContext` gains `_pre_checks` and `_pre_scan` (the verdict). Two fields.
 
 ### 4.5a The Python API route (`decoy.mask`)
 
-`decoy.mask(config=...)` (`src/decoy/api.py:411`) says it "Mirrors `decoy run`'s semantics exactly" and calls `run_pipeline` itself (`api.py:620`). Without a change it would skip a declared pre-scan, which is the same bug. So `mask` calls the same core, `check_pre_scan(config_dict, base_dir)`, after its native gate and output-collision checks and before `_load_sources_from_config` (`api.py:599`). When `data` is a DataFrame, Arrow table or path, `mask` has already staged it to a temporary file named by `sources:`, so the scan reads what the run will read.
+`decoy.mask(config=...)` (`src/decoy/api.py:411`) says it "Mirrors `decoy run`'s semantics exactly" and calls `run_pipeline` itself (`api.py:620`). Without a change it would skip a declared pre-scan, which is the same bug. So `mask` calls `check_before_read` and then the same core, `check_pre_scan(config_dict, base_dir)`, after its native gate and output-collision checks and before `_load_sources_from_config` (`api.py:600`). When `data` is a DataFrame, Arrow table or path, `mask` has already staged it to a temporary file named by `sources:`, so the scan reads what the run will read.
 
 - `passed`: nothing.
 - `warned`: one `warnings.warn` per call, category `decoy.PreScanWarning` (a new public `UserWarning` subclass), text naming the tables and columns, never a value.
-- `failed`: raise `decoy.PreScanBlockedError` (the same class the CLI raises, exported), with the findings as a names-only attribute. Nothing is masked or returned.
+- `failed`: raise `decoy.PreScanBlockedError` (the engine class the CLI also raises), with the findings as a names-only attribute. Nothing is masked or returned.
+
+Public names: `PreScanWarning`, `PreScanBlockedError` and `PreScanFailedError` are imported into `src/decoy/api.py` from the engine, added to `api.__all__` (`api.py:62`) and to `_LAZY_API` in `src/decoy/__init__.py:20-28`, so `decoy.PreScanBlockedError` resolves through the root `__getattr__` without importing the engine at `import decoy`. The compatibility inventory of public `decoy` names gains the three. Tested by C1-T19.
 - scan failure: `PreScanFailedError` with `pre_scan.profile_failed`; model and capacity errors pass through as in 4.5.
 
 `decoy.scan()` is a scan, not a run, so it is unchanged.
@@ -160,11 +176,11 @@ Wiring in the existing modules:
 
 `src/decoy/cli/gate/_models.py` also checks the `pre_scan` models when `pre_scan_requested(config)` is true. Today it checks only `post_scan` models, and its docstring says "a `pre_scan` model is the scan's to refuse". That was true while only `decoy scan` read the block. Now `decoy validate`, `decoy ci check` and `decoy run` refuse an unavailable pre-scan model before any row is read, with exit 1 and the same install hint, at location `pre_scan.detectors`.
 
-`model_finding` (`_models.py:36`) and `_LOCATION` are hard-coded to `post_scan` today (the message starts "post_scan asks for the ..."). C1b gives `model_finding` a `block` parameter (`"pre_scan"` or `"post_scan"`) that sets both the message start and the location, so each finding names the block that asked for the model. `decoy validate` and `decoy ci check` only probe the models (`classifier_status`, `ner_status`); they never scan.
+`model_finding` (`_models.py:35`) and `_LOCATION` are hard-coded to `post_scan` today (the message starts "post_scan asks for the ..."). C1b gives `model_finding` a `block` parameter (`"pre_scan"` or `"post_scan"`) that sets both the message start and the location, so each finding names the block that asked for the model. `decoy validate` and `decoy ci check` only probe the models (`classifier_status`, `ner_status`); they never scan.
 
 ### 4.6a `scan_baseline.on_drift` until DRIFT lands
 
-`scan_baseline.on_drift` is accepted, hashed and described as a run-start check, but no run reads it (row 32 DRIFT, 1.x). This row does not build the check. It stops the silence: the gate adds a warning finding when `scan_baseline.on_drift` is set, `scan_baseline.on_drift is not checked by decoy run yet; the run continues without a drift check`, code `warning.drift_not_checked` (new, engine registry, the `warning` namespace), location `scan_baseline.on_drift`. `decoy validate`, `decoy ci check` and `decoy run` show it; `--fail-on-warning` turns it into exit 2 on `validate` as for any warning. The engine comment in `reasons/pre_scan/_part1.py` ("rescans the sources at run start") and the matching compatibility-contract text are corrected to say the run-start check is planned (DRIFT), not shipped. Registered reason descriptions stay as they are if the registry treats description text as frozen; the slice checks the registry rule first. When D-2 lands it removes the warning and the sentry's `unread` row together.
+`scan_baseline.on_drift` is accepted, hashed and described as a run-start check, but no run reads it (row 32 DRIFT, 1.x). This row does not build the check. It stops the silence: the gate adds a warning finding when `scan_baseline.on_drift` is set, `scan_baseline.on_drift is not checked by decoy run yet; the run continues without a drift check`, code `warning.drift_not_checked` (new, engine registry, the `warning` namespace), location `scan_baseline.on_drift`. How the text reaches the user: `decoy validate` and `decoy ci check` list gate findings verbatim. `decoy run` does not: `check_before_run` prints only a warning count and a `decoy validate` hint (`src/decoy/cli/gate/_run.py:161-168`). So `run_pre_scan`'s neighbour in `prepare` also calls `ctx.add_cli_warning("drift_not_checked", <the same text>)` (`run/_context.py:208`, the route used for `chunked_key_check_not_run`), which puts the sentence on the card and in the `--json` `warnings` list. The text is one constant in `gate/`, used by both. `--fail-on-warning` turns it into exit 2 on `validate` as for any warning. The engine comment in `reasons/pre_scan/_part1.py` ("rescans the sources at run start") and the matching compatibility-contract text are corrected to say the run-start check is planned (DRIFT), not shipped. Registered reason descriptions stay as they are if the registry treats description text as frozen; the slice checks the registry rule first. When D-2 lands it removes the warning and the sentry's `unread` row together.
 
 ### 4.7 Run variants
 
@@ -206,7 +222,7 @@ YAML stays fully supported and is the same contract: a `.decoy` file compiles to
 - `passed` or `warned`: the run continues to the source load (`src/decoy/cli/run/_prepare.py:535`) and ends through `_render.finish`.
 - `failed`: `PreScanBlockedError` goes to the one error handler, the `PostScanBlockedError` arm (`src/decoy/cli/run/_errors.py:192`), exit 4.
 - Scan error: `PreScanFailedError`, runtime arm, exit 3. Model, `MemoryError` and capacity errors pass through to their own arms (exit 1 or 5).
-- `decoy.mask`: `PreScanBlockedError` or `PreScanFailedError` raised to the caller; `PreScanWarning` on warn (`src/decoy/api.py:599` is the source load it precedes).
+- `decoy.mask`: `PreScanBlockedError` or `PreScanFailedError` raised to the caller; `PreScanWarning` on warn (`src/decoy/api.py:600` is the source load it precedes).
 - Model cannot run: gate refusal before the run starts (`src/decoy/cli/gate/_models.py:20`), exit 1.
 
 ### Routes
@@ -294,7 +310,10 @@ Nothing new is built where one of these fits.
 | F5e | `on_drift` set and silently ignored | gate warning until DRIFT lands | 0 or 2 | C1b-T5 |
 | F6 | A second scan implementation appears | G-ONE-SCAN-CALL (`scan-call-allow` must not grow) | n/a | existing sentry, C1-T3 |
 | F7 | A missing model is found only mid-run | the gate preflight refuses first | 1 | C1b-T1 |
-| F8 | `on_findings: fail` added without moving the hash | plan hash test fails | n/a | E1-T3 |
+| F8 | Under `fail`, a changed detector set or model does not move the hash, so two runs that block differently look equal | plan hash test fails | n/a | E1-T3 |
+| F8b | A conditional rule (`when:`) hides PII on the rows it skips | the rule counts as partial coverage, a finding | 0 or 4 | E2-T2b |
+| F8c | A mask table the scan did not cover passes silently | `not_scanned` finding, fail closed | 0 or 4 | E2-T6 |
+| F8d | The scan failure becomes `decoy.unexpected_error` in the run result | both errors are engine-registered families | 3 | E2-T9, C1-T6 |
 | F9 | Unknown `on_findings` value | engine literal-error code at the field location, no value echoed | 1 | E1-T4, C2-T3 |
 | F10 | An older reader meets check id `pre_scan` | the tolerant read keeps it as a token | n/a | E1-T6 |
 | F11 | Pre-scan on a very large source | head sample of 10,000 rows per table; model detectors cost more; stated in the docs | n/a | docs |
@@ -307,12 +326,15 @@ New exit code: none. All cases reuse 0, 1, 2, 3, 4 and 5. No owner call is neede
 
 Where: CLI `tests/sentry/config/test_config_field_readers.py`, with the manifest `tests/sentry/baselines/config-field-readers.json`. The CLI composes the run, so only the CLI can see whether a field the engine accepts is used on the run path. The drift case shows why an engine-side check is not enough: `evaluate_drift` exists in the engine and nothing calls it.
 
-What it walks: the pinned engine's `PipelineConfig.model_fields`, every top-level field, plus the fields of the control blocks `pre_scan`, `post_scan`, `scan_baseline`, `delivery`, `quarantine` and `subset` (one level down, through `Optional`). The list comes from the live model, not from the manifest. It does not walk `tables`, `columns` or per-column strategy fields: those are list items read by the compiler and covered by the engine's own plan tests, and walking them would turn the manifest into a copy of the schema. Stated in the sentry docstring so nobody assumes it.
+What it walks: the pinned engine's `PipelineConfig.model_fields`, every top-level field, plus the fields of every top-level field whose annotation is a pydantic model (through `Optional` and unions), found from the live schema, not from a hand-kept block list. One level down. The list comes from the live model, not from the manifest. It does not walk `tables`, `columns` or per-column strategy fields: those are list items read by the compiler and covered by the engine's own plan tests, and walking them would turn the manifest into a copy of the schema. Stated in the sentry docstring so nobody assumes it.
 
 Each walked path must have exactly one manifest entry, of one kind:
 
 - `{"engine": "decoy_engine.<module>:<name>"}`: consumed inside `run_pipeline` or `compile_plan`. The name must be a public engine symbol: no `_`-prefixed module part or name, and listed in that module's `__all__`. So a private refactor in the engine cannot break the CLI sentry, and the entry points at a stable surface. The sentry imports the name and checks that its source (`inspect.getsource`, parsed with `ast`) holds the key as a string constant or an attribute name.
-- `{"cli": "src/decoy/cli/<path>.py::<function>", "via": "<engine helper>"}`: read on the CLI run path. The sentry checks that the function exists, that its body references the key or calls the helper named in `via` (for `pre_scan`: `pre_scan_requested`), and that a module in `src/decoy/cli/run/` calls the function (one hop, by AST). For a field that changes what a run does, the entry also lists `routes: ["run", "api.mask"]`, and the sentry checks that `src/decoy/api.py::mask` calls the function too (for `pre_scan`: `check_pre_scan`). That is the check that would have caught the `decoy.mask` gap.
+- `{"cli": "src/decoy/cli/<path>.py::<function>", "via": "<engine helper>"}`: read on the CLI run path. The sentry checks that the function exists, that its body references the key or calls the helper named in `via` (for `pre_scan`: `pre_scan_requested`), and that every route chain in the entry holds. A `cli` entry for a run-path field lists its chains as exact function paths, each link a direct call found by AST in that function's own body:
+  - `run`: `src/decoy/cli/run/_prepare.py::prepare -> src/decoy/cli/run/_pre_scan.py::run_pre_scan -> src/decoy/cli/run/_pre_scan.py::check_pre_scan`;
+  - `api.mask`: `src/decoy/api.py::mask -> src/decoy/cli/run/_pre_scan.py::check_pre_scan`.
+  "Some module in `run/` calls it" is not enough: `run_pre_scan` itself calls `check_pre_scan`, so deleting the call in `prepare` would stay green. With exact chains, deleting `prepare -> run_pre_scan` breaks the first link and the sentry fails. That is also the check that would have caught the `decoy.mask` gap.
 - Matching rule for all kinds: a key shorter than 6 characters (`path`, `rows`, `mode`) or on a short common-word list (`enabled`, `output`, `format`, `detectors`, `strategy`) proves nothing by appearing in a source, so its entry must name a `via` helper and the sentry checks the call to that helper instead. The list lives in the sentry module.
 - `{"other_command": "<command>", "row": "<row id>"}`: read only by another command (for example `scan_baseline.path` by `decoy scan --compare`).
 - `{"unread": "<row id>"}`: accepted and read by no run. A ratchet: the list may shrink and never grows without a reviewed change (`tests/sentry/_ratchet.py`, the X0a pattern). At C0 merge it holds `pre_scan` (PRE-SCAN-RUN) and `scan_baseline.on_drift` (row 32 DRIFT). C1 removes `pre_scan`.
@@ -327,19 +349,23 @@ Mutations that must turn it red, each seen before merge (the cross-cutting rule 
 |---|---|---|---|---|
 | `src/decoy_engine/config/_pre_scan.py` | engine | `on_findings` field; `pre_scan_requested` helper | owns `PreScanConfig` | 98 to ~125 |
 | `src/decoy_engine/config/_pipeline.py` | engine | the dump keeps a written `pre_scan` (presence rule) | owns the dump | 539 to ~542 |
-| `src/decoy_engine/plan/_hashed_controls.py` | engine | new: the `scan_baseline.on_drift` hash rule moved here, plus `pre_scan.on_findings: fail` | `_compile.py` is at 670 of 700; plan package | ~50 |
-| `src/decoy_engine/plan/_compile.py` | engine | calls the helper; shrinks | | 670 to ~660 |
-| `src/decoy_engine/profiling/pre_scan_check.py` | engine | new: `evaluate_pre_scan`, `PreScanVerdict` | engine CODEMAP row 73 (`bound_baseline.py`, `evaluate_drift -> DriftVerdict`); sits beside it | ~150 |
-| `src/decoy_engine/profiling/__init__.py` | engine | export the two names | public profiling API | 178 to ~182 |
+| `src/decoy_engine/plan/_compile.py` | engine | `_hash_config` hashes `{on_findings, detectors, ner_model}` (effective values) when `on_findings: fail` | owns the hash; no new `plan/` module (frozen at 30, `test_package_fanout.py:38`) | 670 to ~682 (cap 700) |
+| `src/decoy_engine/reason_adapter.py` | engine | register `PreScanBlockedError` and `PreScanFailedError` as coded families, namespace `pre_scan` | the one adapter that decides which codes are trusted | +2 rows |
+| `src/decoy_engine/profiling/pre_scan_check.py` | engine | new: `evaluate_pre_scan`, `PreScanVerdict`, `PreScanBlockedError`, `PreScanFailedError`, `PreScanWarning` | engine CODEMAP row 73 (`bound_baseline.py`, `evaluate_drift -> DriftVerdict`); sits beside it | ~150 |
+| `src/decoy_engine/profiling/__init__.py` | engine | export the five names | public profiling API; `profiling/` gets its 25th direct module, at the limit of 25 | 178 to ~185 |
 | `src/decoy_engine/reasons/pre_scan/_part1.py` | engine | two codes; registry minor | the `pre_scan` namespace | 108 to ~130 |
 | `src/decoy_engine/run_result/_model.py`, `_build.py` | engine | `CheckId` gains `pre_scan`; `pre_checks` accepts it | the one run result constructor | 411 and 274, +~8 |
 | `docs/compatibility-contract.md`, `CHANGELOG.md`, `CODEMAP.md` row 73 | engine | additive entries | | |
-| `src/decoy/cli/run/_pre_scan.py` | CLI | new: `check_pre_scan` (the shared core), `run_pre_scan`, `PreScanBlockedError`, `PreScanFailedError`, `PreScanWarning`, the pass-through tuple | CLI CODEMAP row "`decoy run` internals", `run/_<noun>.py`; the package goes from 12 to 13 modules | ~140 |
-| `src/decoy/cli/run/_prepare.py` | CLI | one call, before `_check_chunked_tables` (`:531`) | owns the phase order | 546 to ~550 (run package cap 600, `test_run_package_shape.py`) |
+| `src/decoy/cli/run/_pre_scan.py` | CLI | new: `check_pre_scan` (the shared core), `run_pre_scan`, `pre_scan_member` (the one `--json` serializer), the pass-through tuple | CLI CODEMAP row "`decoy run` internals", `run/_<noun>.py`; the package goes from 12 to 13 modules | ~140 |
+| `tests/sentry/layout/test_run_package_shape.py` | CLI | add `_pre_scan` to `ORDER` (`:35`) after `_execute` and before `_prepare` (it imports `_execute`'s `check_before_read`; `_prepare` imports it) | the run package DAG guard | +1 |
+| `src/decoy/cli/run/_execute.py` | CLI | new `check_before_read`; `_load_sources_from_config` calls it | owns the no-row I/O checks today | 433 to ~450 |
+| `src/decoy/cli/exit_codes.py` | CLI | `is_blocking_verdict`; `exit_code_for` uses it | the exit-code choke point | +~8 |
+| `src/decoy/__init__.py` | CLI | three names in `_LAZY_API` | the root lazy exports | +3 |
+| `src/decoy/cli/run/_prepare.py` | CLI | `check_before_read` call replacing the bare `_check_chunked_tables` call (`:531-532`), then `run_pre_scan`, then the drift warning | owns the phase order | 546 to ~550 (run package cap 600, `test_run_package_shape.py`) |
 | `src/decoy/cli/run/_errors.py`, `_result.py`, `_render.py`, `_context.py` | CLI | error arms, `pre_checks`, the `--json` member and card line, two fields | existing owners | each +3 to +25, all under 600 |
 | `src/decoy/cli/gate/_models.py` | CLI | pre-scan models when requested; `model_finding` and the location take a `block` parameter | the gate's model preflight | 54 to ~75 |
 | `src/decoy/cli/gate/` drift warning (in the existing gate module that reads `scan_baseline`, or `_models.py` if none) | CLI | the `warning.drift_not_checked` finding | the gate owns run-start warnings | +~20 |
-| `src/decoy/api.py` | CLI | `mask` calls `check_pre_scan`; `PreScanWarning`, `PreScanBlockedError`, `PreScanFailedError` exported from `decoy` | the API route that mirrors `decoy run` | +~25 (file is large; no new logic in it, the core stays in `run/_pre_scan.py`) |
+| `src/decoy/api.py` | CLI | `mask` calls `check_before_read` and `check_pre_scan`; the three engine names imported and added to `__all__` (`:62`) | the API route that mirrors `decoy run` | +~25 (file is large; no new logic in it, the core stays in `run/_pre_scan.py`) |
 | `src/decoy_engine/reasons/warning/` | engine | `warning.drift_not_checked` | the `warning` namespace | +~10 |
 | `tests/sentry/config/test_config_field_readers.py`, `tests/sentry/baselines/config-field-readers.json` | CLI | new sentry and manifest | sentries live in per-concern packages under `tests/sentry/` | ~180; manifest ~60 entries |
 | `tests/e2e/pre_scan_run/` | CLI | new e2e package | CLI CODEMAP: new e2e tests go in a package, not the flat folder | ~350 |
@@ -350,19 +376,19 @@ Mutations that must turn it red, each seen before merge (the cross-cutting rule 
 
 ## 9. Slices and acceptance tests (red first, with a hostile corpus)
 
-The hostile corpus is the canary source of C1-T7 and E2-T7: cells that hold canary strings, an email-shaped value in a `keep` column, and a CSV row that the reader rejects. Each slice is independently mergeable. Acceptance tests are written first and seen red before the code, each under the named mutation.
+The hostile corpus is the canary source of C1-T7 and E2-T7: cells that hold canary strings, an email-shaped value in a `keep` column, and a CSV row that the reader rejects. Each slice is mergeable on its own once its After slices are on main. Acceptance tests are written first and seen red before the code, each under the named mutation. Mutations are rerun on the final head of each slice before merge, and the gate ledger records, per mutation, the head SHA it ran on and the red test id. A mutation result from an earlier head does not count.
 
 ### C0. Sentry G-CONFIG-READER (CLI, R1, ~300 lines)
 
-After: none. Lands on the current engine pin with `pre_scan` and `scan_baseline.on_drift` in the `unread` ratchet.
+After: R. Lands on the repinned engine with `pre_scan` and `scan_baseline.on_drift` in the `unread` ratchet.
 
 | Test | Asserts | Mutation that turns it red |
 |---|---|---|
 | C0-T1 | every walked `PipelineConfig` path has exactly one manifest entry | remove one entry |
 | C0-T2 | an `engine` entry's source references its key | point an entry at a function that does not |
-| C0-T3 | a `cli` entry is called from every route its manifest row names: `src/decoy/cli/run/` and, for run-path fields, `src/decoy/api.py::mask` | move the call out of the run package, or drop it from `mask` |
+| C0-T3 | every link of every route chain in a `cli` entry is a direct call in that function's body (`prepare -> run_pre_scan -> check_pre_scan`; `api.mask -> check_pre_scan`) | delete the `prepare -> run_pre_scan` call (it must go red even though `run_pre_scan` still calls `check_pre_scan`); drop the call from `mask` |
 | C0-T4 | `unread` can only shrink | add a row to `unread` |
-| C0-T5 | a fixture subclass with one extra nested field fails the walk | make the walker skip nested blocks |
+| C0-T5 | a fixture subclass with one extra nested field, in a new nested model field the walker was never told about, fails the walk | make the walker skip nested blocks, or walk a hand-kept block list |
 | C0-T6 | an `engine` entry naming a private symbol (a `_`-prefixed module part or name, or a name not in the module's `__all__`) fails | accept any importable name |
 | C0-T7 | a key shorter than 6 characters or on the common-word list, with no `via`, fails | match the bare key in the source |
 
@@ -374,7 +400,7 @@ After: none. Reason registry minor; rebase the bump if another registry slice me
 |---|---|---|
 | E1-T1 | a written default `pre_scan` survives `model_dump` and re-validation; an unwritten one is dropped; the dump of a config without it is byte-identical to the frozen corpus | restore the by-value drop |
 | E1-T2 | `pre_scan_requested` is true for `pre_scan: {}` and false for no block | return `bool(config.get("pre_scan"))` (an empty dict is false) |
-| E1-T3 | the plan hash moves for `on_findings: fail`, not for `warn`, `detectors` or `ner_model` | hash the whole block, or never hash it |
+| E1-T3 | under `on_findings: fail` the plan hash moves when `on_findings`, `detectors` or `ner_model` changes; `{on_findings: fail}` and `{detectors: [regex], on_findings: fail}` hash the same (effective values); under `warn` (or unset) no `pre_scan` change moves the hash | hash only `on_findings`; hash raw rather than effective values; hash under `warn` |
 | E1-T4 | `on_findings: maybe` is refused at `pre_scan.on_findings` with the literal-error code and no value in the message | widen the literal |
 | E1-T5 | `build_run_result(pre_checks=(pre_scan failed blocking,))` gives status `findings`, exit 4 | drop `pre_scan` from the accepted set |
 | E1-T6 | `RunResultRead` reads a document with check `pre_scan`; an older-shape reader fixture keeps it as a token | make the read model strict on `CheckId` |
@@ -383,22 +409,24 @@ After: none. Reason registry minor; rebase the bump if another registry slice me
 
 ### E2. Coverage verdict (engine, R2, ~330 lines)
 
-After: E1 (codes, check id). Mergeable alone: no caller yet.
+After: E1 (codes, check id). Mergeable alone: no caller yet. E2 also adds the two error classes and their reason-adapter rows.
 
 | Test | Asserts | Mutation |
 |---|---|---|
 | E2-T1 | a regex `pii_candidate` on an unconfigured column is uncovered | treat unconfigured as covered |
 | E2-T2 | `passthrough` is uncovered; `hash`, `redact`, `faker` and `from_parent` are covered | treat `passthrough` as covered |
+| E2-T2b | `hash` with `when: "country == 'US'"` on a flagged column is uncovered with `partial: true`; under `fail` it blocks; a blank `when` counts as no gate (covered) | treat any non-passthrough strategy as covered, ignoring `when` |
 | E2-T3 | a model hit with band `high` flags; band `review` does not | flag `review` |
 | E2-T4 | a model hit from a detector not in `pre_scan.detectors` does not flag | ignore the detector list |
 | E2-T5 | `warn` gives `warned`, not blocking; `fail` gives `failed`, blocking; nothing uncovered gives `passed` | swap the policy branch |
-| E2-T6 | generate tables are skipped; a mask table missing from the core is skipped, not an error | raise on a missing table |
+| E2-T6 | generate tables are skipped; a mask table missing from the core is a `not_scanned` finding (fail closed): `warned` under warn, `failed` under fail | skip the missing table |
 | E2-T7 | the verdict, its `Check` and its `repr` hold no value from a canary core (names only) | copy a field sample into the findings |
 | E2-T8 | findings are sorted by table, then column | drop the sort |
+| E2-T9 | `reason_from_exception(PreScanBlockedError(...))` and `reason_from_exception(PreScanFailedError())` give records with namespace `pre_scan` and codes `uncovered_pii_blocked` and `profile_failed`, not `decoy.unexpected_error` | drop the adapter rows |
 
 ### R. Engine release and CLI repin (R1)
 
-After: E1 and E2. Daily engine release train (owner 2026-11-09). The CLI repin follows the vault `engine-repin-checklist`. C0's walker sees `on_findings`, so its manifest entry goes in the repin commit.
+After: E1 and E2. Daily engine release train (owner 2026-11-09). The CLI repin follows the vault `engine-repin-checklist`. C0 comes after R, so the `on_findings` entry is written in C0.
 
 ### C1. Run-start pre-scan (CLI, R2, ~850 lines with tests)
 
@@ -410,8 +438,8 @@ After: R. Touches the exit path and the frozen `--json` shapes, so the full suit
 | C1-T2 | B2 and B3: exit 0, check `passed` | drop `pre_checks` from `_result._build` |
 | C1-T3 | the run calls `scan_descriptors` and no other engine scan function; `scan-call-allow` unchanged | call `decoy_engine.scan_sources` directly |
 | C1-T4 | B4: an unmasked email column under `warn`: exit 0, one stderr line naming `table.column`, check `warned`, output written | drop the stderr line, or block |
-| C1-T5 | B5: the same under `fail`: exit 4, status `findings`, no run folder, no target file, no vault file, and `_load_sources_from_config` never runs (spy) | move the step after the source load or into `execute` |
-| C1-T6 | B7: an unreadable source: exit 3, reason `pre_scan.profile_failed` | pass `str(exc)` through |
+| C1-T5 | B5: the same under `fail`: exit 4, status `findings`, no run folder, no target file, no vault file, `_load_sources_from_config` and `admitted_key_provider` never run (spy), and the `--json` error envelope has a top-level `pre_scan` member equal to `pre_scan_member(verdict)` | move the step after the source load; build the member only in `_render.finish` |
+| C1-T6 | B7: an unreadable source: exit 3; the run result failure reason payload (from `reason_adapter`) is `{namespace: pre_scan, code: profile_failed}`, not `decoy.unexpected_error`; the raised error has `__cause__` and `__context__` both `None` | pass `str(exc)` through; define the error in the CLI; raise inside the `except` block |
 | C1-T7 | canary sweep: source cells hold canary strings; under warn, under fail and with a forced scan error, no canary reaches stdout, stderr, `--json`, `--result` or the run result | echo a sample value in the finding line |
 | C1-T8 | variants: `--duckdb-source` scans the staged Parquet; `--chunked` scans; `--rows` does not | place the step before `check_before_run` |
 | C1-T9 | B10: the same pipeline as YAML and as `.decoy` gives the same verdict, check and exit | a lowering that drops the block |
@@ -419,15 +447,17 @@ After: R. Touches the exit path and the frozen `--json` shapes, so the full suit
 | C1-T11 | G-CONFIG-READER: `pre_scan` leaves `unread`; entry `cli: run/_pre_scan.py::check_pre_scan`, via `pre_scan_requested`, routes `run` and `api.mask` | keep the `unread` row |
 | C1-T12 | with LIB L3a merged, the stored run-result record holds the `pre_scan` check. Marked `xfail(strict=True, reason="needs #367 (LIB L3a run-result half)")` until #367 merges, so it turns into an unexpected pass the day #367 lands and must be un-marked | strip checks before the store |
 | C1-T13 | B13: `decoy.mask(config=...)` with an unmasked email column: `warn` gives one `PreScanWarning` and the masked frame; `fail` raises `PreScanBlockedError` and `run_pipeline` is never called (spy); a scan error raises `PreScanFailedError` with no cell text; no `pre_scan` gives no scan (spy) | remove the core call from `mask` |
-| C1-T14 | B12: a usage refusal plus `pre_scan: {}` exits 1 with the usage message and `scan_descriptors` is never called (spy); one case each for a chunked combination, `--vault` usage and the native gate | place the step right after `check_before_run` |
-| C1-T15 | B17: with the gate stubbed out and the model absent, the model error passes through: exit 1 and the model hint, not `pre_scan.profile_failed` | wrap every exception |
+| C1-T14 | B12: each no-row refusal plus `pre_scan: {}` and an unreadable source exits 1 with its usage message and `scan_descriptors` is never called (spy). One case per refusal, on `decoy run` and (where it applies) `decoy.mask`: mask secret flag; chunked with generate, report flags, vault, fixed_width; `--vault` usage; native gate; cloud endpoint; resources; chunked integrity, quarantine, target format and strategy compatibility (`_execute.py:210-223`); plain target format (`:280`); declared-source check (`:281`). `check_before_read` called twice is idempotent | place the step before `check_before_read`, or right after `check_before_run` |
+| C1-T15 | B17: with the gate stubbed out (C1b not merged yet, or bypassed) and the model absent, the model error passes through: exit 1 and the model hint, not `pre_scan.profile_failed` | wrap every exception |
 | C1-T16 | B18: a `MemoryError` and an engine capacity refusal raised inside the scan give exit 5 and the capacity kind | wrap every exception |
-| C1-T17 | `_blocking_verdict` is the one predicate: pre-scan `fail` has category `None`, `blocking_failed` true, no traceback hint; the post-scan report writer (`_errors.py:226`) is not called for a pre-scan block | test `PostScanBlockedError` only at one of the three sites |
+| C1-T17 | `is_blocking_verdict` is the one predicate: `exit_code_for(PreScanBlockedError(...))` is 4; in the run handler pre-scan `fail` has category `None`, `blocking_failed` true, no traceback hint; the post-scan report writer (`_errors.py:226`) is not called for a pre-scan block; a grep test finds no other `isinstance(..., PostScanBlockedError)` in `exit_codes.py` or `run/_errors.py` outside `:226` | keep the `PostScanBlockedError` check in `exit_code_for` or at one `_errors.py` site |
 | C1-T18 | B16: `decoy run --all` with one child blocked by `fail` and one clean: the child exits 4 and the parent exit follows the existing precedence | exit 0 when one child is clean |
+| C1-T19 | `import decoy` does not import the engine; `decoy.PreScanWarning`, `decoy.PreScanBlockedError`, `decoy.PreScanFailedError` resolve and are the engine classes; they are in `dir(decoy)`, `decoy.api.__all__` and the compatibility inventory | leave a name out of `_LAZY_API` |
+| C1-T20 | the drift warning text appears on the `decoy run` card and in `--json` `warnings` when `on_drift` is set | rely on the gate count line |
 
 ### C1b. Gate model preflight for pre-scan, and the drift warning (CLI, R1, ~200 lines)
 
-After: R. Independent of C1, either order. If C1 merges first, a missing pre-scan model is caught by C1's `load_detector_set` step at run start (exit 1, the model error passes through unwrapped, C1-T15). If C1b merges first, the gate refuses the model in `decoy validate`, `decoy ci check` and `decoy run`, although no run reads `pre_scan` yet. With both merged, the gate refuses first and C1's step is the second line. C1b also adds the `scan_baseline.on_drift` warning (4.6a), which needs `warning.drift_not_checked` from R.
+After: C1. Not before it: on a head without C1, no run executes the pre-scan, so a gate refusal of a missing pre-scan model would fail a job that today succeeds. With C1 merged first, a missing model is caught by C1's `load_detector_set` step (exit 1, unwrapped, C1-T15); C1b then moves the refusal earlier, into the gate, so `decoy validate` and `decoy ci check` report it too. C1b also adds the `scan_baseline.on_drift` gate finding (4.6a), which needs `warning.drift_not_checked` from R; the run-card warning (C1-T20) is in C1.
 
 | Test | Asserts | Mutation |
 |---|---|---|
@@ -470,7 +500,10 @@ After: R (it needs the presence rule). Merge with or after C1, because the doc t
 Additive, under the existing versions:
 
 - Config: `pre_scan.on_findings` (new key, default dropped from the dump). A reader from before this change refuses the new key (the `on_drift` precedent).
-- Dump: a written default `pre_scan` block now stays in the dump. `pipeline_config_hash` and the plan hash do not change for it (`pre_scan` is unhashed). Only `on_findings: fail` moves the hash.
+- Dump: a written default `pre_scan` block now stays in the dump. `pipeline_config_hash` and the plan hash do not change for it (`pre_scan` is unhashed). Under `on_findings: fail`, the effective `on_findings`, `detectors` and `ner_model` are hashed.
+- Reason adapter: two new coded families (`PreScanBlockedError`, `PreScanFailedError`, namespace `pre_scan`).
+- Exit-code map: `exit_code_for` returns 4 for `PreScanBlockedError`, through the one predicate.
+- Check order: config-only refusals that today run inside the source loader now run, unchanged, before the pre-scan. For a config without `pre_scan` the order and the outcome are the same as today.
 - `decoy-run-result/v1`: check id `pre_scan`; tolerant readers keep it as a token.
 - Registry: three codes (`pre_scan.uncovered_pii`, `pre_scan.uncovered_pii_blocked`, `warning.drift_not_checked`), one minor.
 - `--json` run envelope: a `pre_scan` member, present only when the pre-scan ran. C1 regenerates the frozen shapes snapshot.
@@ -491,7 +524,7 @@ Exposure check (2026-11-21): no shipped example, `decoy init` scaffold or CLI wr
 | C1b | R1 | a gate model finding and one gate warning, existing patterns | Codex |
 | C2 | R1 | tests and docs | Codex |
 
-Order: C0 and E1 in parallel; E2; R; then C1, C1b and C2 in parallel (C2 merges with or after C1).
+Order, strict: E1, E2, R (engine release and CLI repin), C0, C1, C1b, C2. C0 lands on the repinned engine so its walk sees `on_findings` from the start. C1b and C2 each need C1 on main.
 
 ## 12a. Class table
 
@@ -501,7 +534,7 @@ Order: C0 and E1 in parallel; E2; R; then C1, C1b and C2 in parallel (C2 merges 
 | 2 | Cleanup missing on an exit path | `fail` stop; scan error | the step runs before the run folder opens, before the source load and before key admission, so nothing exists to clean | C1-T5, C1-T6 | move the step into `execute` |
 | 3 | State and concurrency | `ctx._pre_checks` across `--all` children | each child is its own process with its own `RunContext`; no shared cache beyond the existing per-process model cache | C1-T18 | store the verdict in a module global |
 | 4 | Route parity and silent fallback | plain, `--chunked`, `--duckdb-source`, `--rows`, `decoy.mask`, YAML and `.decoy` | one core (`check_pre_scan`) on every source-reading route, placed after the usage refusals; one scan call; one switch helper; the sentry checks both routes | C1-T8, C1-T9, C1-T3, C1-T13, C0-T3 | skip the step on `--chunked`; drop it from `mask` |
-| 5 | Referential integrity | config tables against scanned tables; column names against field names | exact table and column name match; a table missing from the core is skipped and counted, not guessed | E2-T6 | raise or match by prefix |
+| 5 | Referential integrity | config tables against scanned tables; column names against field names | exact table and column name match; a table missing from the core is a `not_scanned` finding (fail closed), not guessed | E2-T6 | skip it, or match by prefix |
 | 6 | Untrusted producer | config values; source files | strict `Literal` for `on_findings`; sources read only through `scan_descriptors` and the engine's validated descriptors | E1-T4, C2-T3 | widen the literal |
 | 7 | Check then use (TOCTOU) | the scan reads a head sample, then the run reads the source again | stated limit: a source that changes between the two reads is not detected (the same limit as `decoy scan` then `decoy run`); the coverage rule is about columns, which a mid-run edit to rows does not change | doc note, F11 | n/a (recorded known limit) |
 | 8 | Weak tests | coverage and policy tests | every verdict test has a passing and a failing case; e2e tests assert exit, check status and the absence of output under `fail` | E2-T5, C1-T4, C1-T5 | swap the policy branch |
@@ -517,7 +550,7 @@ It is three months after 1.0 and this row went wrong. The likely reasons, and th
 - **The pre-scan is slow on wide tables with NER on.** Guard: the head sample is bounded; the docs state the cost; the card shows the pre-scan as its own line so the time is visible.
 - **D-2 adds a second rescan anyway.** Guard: this plan and a note on the scan-checks plan name one step; G-ONE-SCAN-CALL keeps one call; review of D-2 checks it.
 - **A producer turns pre-scans on for everyone.** Guard: F13 check; the presence rule is pinned by E1-T1 and documented in the compatibility contract.
-- **The sentry is muted by a broad manifest entry.** Guard: each `engine` and `cli` entry must name a function whose AST references the key; `unread` is a ratchet.
+- **The sentry is muted by a broad manifest entry.** Guard: each `engine` entry names a public function whose AST references the key; each `cli` entry gives exact call chains per route, checked link by link; `unread` is a ratchet.
 
 ## 13. Open questions (each with a recommended answer)
 
@@ -539,6 +572,6 @@ It is three months after 1.0 and this row went wrong. The likely reasons, and th
 
 ## 15. Expected size
 
-Engine: 2 new modules (`plan/_hashed_controls.py`, `profiling/pre_scan_check.py`), 7 changed. Public names added: `pre_scan_requested`, `evaluate_pre_scan`, `PreScanVerdict`, the codes `pre_scan.uncovered_pii`, `pre_scan.uncovered_pii_blocked` and `warning.drift_not_checked`, the check id `pre_scan`, the config key `pre_scan.on_findings`. About 710 lines with tests over E1 and E2.
+Engine: 1 new module (`profiling/pre_scan_check.py`), 8 changed (with `reason_adapter.py`). Public names added: `pre_scan_requested`, `evaluate_pre_scan`, `PreScanVerdict`, `PreScanBlockedError`, `PreScanFailedError`, `PreScanWarning`, the codes `pre_scan.uncovered_pii`, `pre_scan.uncovered_pii_blocked` and `warning.drift_not_checked`, the check id `pre_scan`, the config key `pre_scan.on_findings`. About 760 lines with tests over E1 and E2.
 
 CLI: 2 new modules (`run/_pre_scan.py` and the sentry), one manifest, one e2e package, 9 changed (with `api.py` and the gate). Public names added: the `--json` member `pre_scan`, the card line, `decoy.PreScanWarning`, `decoy.PreScanBlockedError`, `decoy.PreScanFailedError`, the sentry id G-CONFIG-READER. About 1,550 lines with tests and docs over C0, C1, C1b and C2.
