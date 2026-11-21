@@ -60,7 +60,8 @@ class GateFinding:
     # The optional extra an absent dependency needs ("ner"), so `decoy run --json` can keep
     # `error_kind: "missing_extra"`.
     extra: str | None = None
-    # A value-free suggestion from the `.decoy` compiler ("did you mean `redact`?"), else None.
+    # A value-free next step: a `.decoy` compiler suggestion ("did you mean `redact`?") or a
+    # plan-refusal fix from `_plan_error_hint`, else None.
     hint: str | None = None
 
 
