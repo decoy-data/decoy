@@ -30,6 +30,7 @@ CODES: dict[str, str] = {
     "lang.connector_arguments": "A source or target was given the wrong number of plain values",
     "lang.connector_option_required": "A `csv` source does not say `header: true` or `header: false`; the language has no default",
     "lang.convert": "A YAML pipeline cannot be written as a `.decoy` program; the message names the block or gives the compiler's reason",
+    "lang.empty": "The pipeline file has no text",
     "lang.expect_argument": "A check was given a plain value",
     "lang.expression": "An expression cannot be held by the language",
     "lang.format": "Formatting would have changed the program; the file is left alone",
@@ -47,6 +48,7 @@ CODES: dict[str, str] = {
     "lang.link_unknown_table": "The parent table is not in the pipeline",
     "lang.name_empty": "A quoted name is empty",
     "lang.nesting": "Lists, maps or brackets are nested too deeply",
+    "lang.not_utf8": "The pipeline file is not UTF-8 text",
     "lang.number": "A number is too large to hold",
     "lang.option_not_allowed": "The option has its own syntax, or is set by the statement itself",
     "lang.option_repeated": "An option or map key is given twice",
@@ -69,6 +71,11 @@ CODES: dict[str, str] = {
     "lang.unreviewed": "A rule still ends with `?`",
     "lang.version": "The first line is not `decoy 1`",
 }
+
+# Codes of the pipeline-file loader (`decoy._config_file`), which reads the bytes before any
+# language code can apply and so writes these two itself. It cannot import this module without
+# loading the compiler for every YAML file.
+LOADER_CODES = frozenset({"lang.empty", "lang.not_utf8"})
 
 NUMBER_TOO_LARGE = Code("lang.number", "this number is too large to hold")
 STRING_ESCAPE = Code("lang.string_escape", "this backslash sequence is not one the language reads")

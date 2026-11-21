@@ -6,12 +6,9 @@ Everything needed to write a `.decoy` pipeline, sized to paste into a prompt. Ea
 program on this page is compiled by `tests/unit/lang/test_docs.py`, so the page cannot drift
 from the compiler.
 
-Compile a file to the pipeline YAML, or convert a YAML back:
-
-```
-python -m decoy.lang pipeline.decoy > pipeline.yaml
-python -m decoy.lang --to-decoy pipeline.yaml > pipeline.decoy
-```
+Any `decoy` command that takes a pipeline file takes a `.decoy` file, for example
+`decoy validate pipeline.decoy`. Converting from YAML and formatting are not available from the
+command line yet.
 
 ## Shape of a file
 

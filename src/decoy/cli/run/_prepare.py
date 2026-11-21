@@ -61,9 +61,9 @@ class _MaskSecretUsageError(Exception):
 def _load_raw_config(
     config_path: Path,
 ) -> tuple[object, list[GateFinding], Exception | None, str | None]:
-    """The run path's single YAML read and parse, through the gate's parser.
+    """The run path's single read and parse of the pipeline file, through the gate's parser.
 
-    Returns `(raw, findings, read_error, sha256)`: `findings` holds a YAML syntax error (the run
+    Returns `(raw, findings, read_error, sha256)`: `findings` holds a syntax error in the file (the run
     refuses it before any work), as do a non-UTF-8, empty or non-mapping file; `read_error` an
     unreadable file (an `OSError`, a runtime error); `sha256` hashes the bytes parsed.
     """

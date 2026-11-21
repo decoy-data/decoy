@@ -586,7 +586,7 @@ def _check_native(raw: dict[str, Any], acc: _PreflightAccumulator) -> None:
 
 
 def preflight(
-    config: str = pipeline_argument(help="Path or name of the YAML pipeline config to check."),
+    config: str = pipeline_argument(help="Pipeline file (.yaml or .decoy), or its name, to check."),
     local: bool = typer.Option(
         False,
         "--local",
@@ -660,7 +660,7 @@ def preflight(
         _emit_preflight_result(state, acc, config_str, fail_on_warning)
         raise typer.Exit(code=exit_code_for(exc))
 
-    acc.add_pass(name="yaml.syntax", message="YAML syntax is valid.")
+    acc.add_pass(name="yaml.syntax", message="Pipeline syntax is valid.")
 
     # -- Step 2: Schema validation --------------------------------------------
     try:

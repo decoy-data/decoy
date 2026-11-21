@@ -252,8 +252,13 @@ def test_the_library_package_exists_and_is_scanned() -> None:
     assert any(_encode_calls(ast.parse(files[rel])) for rel in inside)  # the one producer
 
 
-def test_allowlist_is_two_with_reasons() -> None:
-    assert {e.file for e in LITERAL_ALLOWLIST} == {"distribution/layout.py", "cli/io/_project.py"}
+def test_allowlist_is_three_with_reasons() -> None:
+    # `_config_file.py` is the pipeline file suffix, added by owner decision 2026-11-20.
+    assert {e.file for e in LITERAL_ALLOWLIST} == {
+        "distribution/layout.py",
+        "cli/io/_project.py",
+        "_config_file.py",
+    }
     assert all(len(e.reason.strip()) >= 15 and e.sites > 0 for e in LITERAL_ALLOWLIST)
 
 
