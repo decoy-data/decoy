@@ -24,30 +24,25 @@ from pathlib import Path
 from decoy.cli.io import (
     OUTPUT_PATH_ESCAPES,
     PROJECT_NOT_FOUND,
+    TARGET_SUFFIX,
     LayoutError,
     OutputPlacement,
     RunLayout,
     explicit_project,
     find_project,
+    is_portable_component,
     quarantine_enabled,
+    sample_target_format,
 )
 from decoy.cli.run._context import RunContext, UsageRefusal
+from decoy.ui.output import OutputMode
+from decoy.ui.theme import warn
 
 SCRATCH_OWNER = "sample"  # the library scratch owner; the folder is `sample-<invocation id>`
 SCRATCH_TTL = timedelta(hours=24)
 QUARANTINE_FILE = "quarantine.jsonl"
-_SUFFIX = {"csv": ".csv", "parquet": ".parquet", "fixed_width": ".txt"}
 _SAMPLE_BASE = "the sample folder"
 _NOT_READY = "--sample is not available yet. Run the pipeline without --sample."
-
-
-def _one_component(name: object) -> bool:
-    """True when `name` can be one file name: not empty, not `.` or `..`, no separator or NUL."""
-    return (
-        isinstance(name, str)
-        and name not in ("", ".", "..")
-        and not any(char in name for char in ("/", "\\", "\x00"))
-    )
 
 
 def sample_config(config_dict: dict) -> dict:
@@ -56,7 +51,8 @@ def sample_config(config_dict: dict) -> dict:
     A table with a target gets `<table>.csv` for a csv file target, `<table>.parquet` for a
     parquet one, `<table>.txt` (and its layout) for fixed width, and `<table>.parquet` for every
     database and cloud target. An enabled quarantine block gets `quarantine.jsonl`. Declared
-    paths are never read back. Raises `LayoutError` (`layout.output_path_escapes`) for a table
+    paths are never read back. A file target with an unsupported format raises `TargetFormatError`
+    (`target_format_unknown`), as the gate does. Raises `LayoutError` (`layout.output_path_escapes`) for a table
     name that is not one path component, judged before the suffix is added, since `..` plus a
     suffix would pass. Case-folded twins are the gate's collision rule, not repeated here.
     """
@@ -64,7 +60,7 @@ def sample_config(config_dict: dict) -> dict:
     targets = config.get("targets")
     if isinstance(targets, dict):
         for table in targets:
-            if not _one_component(table):
+            if not is_portable_component(table):
                 raise OUTPUT_PATH_ESCAPES.error(path=f"the table name {table!r}", base=_SAMPLE_BASE)
         config["targets"] = {table: _sample_target(table, spec) for table, spec in targets.items()}
     if quarantine_enabled(config):
@@ -75,14 +71,9 @@ def sample_config(config_dict: dict) -> dict:
 def _sample_target(table: str, spec: object) -> dict:
     """The file target that stands in for one declared target."""
     declared = spec if isinstance(spec, dict) else {}
-    kind = declared.get("format") if declared.get("type", "file") == "file" else None
-    suffix = _SUFFIX.get(kind, ".parquet") if isinstance(kind, str) else ".parquet"
-    target: dict = {
-        "type": "file",
-        "format": "fixed_width" if suffix == ".txt" else suffix.lstrip("."),
-        "path": f"{table}{suffix}",
-    }
-    if suffix == ".txt":
+    fmt = sample_target_format(table, declared)
+    target: dict = {"type": "file", "format": fmt, "path": f"{table}{TARGET_SUFFIX[fmt]}"}
+    if fmt == "fixed_width":
         target["layout"] = copy.deepcopy(declared.get("layout"))
     return target
 
@@ -122,9 +113,9 @@ def open_scratch(ctx: RunContext, scopes: contextlib.ExitStack) -> None:
     The folder is kept 24 hours (`decoy library clean` is the reaper until the sample record
     lands) and `discard_scratch` removes it on any failure. Raises `LibraryError`.
     """
-    from decoy.cli.library import open_library, resolve_root
+    from decoy.cli.library import open_library, resolve_project_root
 
-    root = resolve_root(project=ctx._sample_project.root).path
+    root = resolve_project_root(ctx._sample_project.root).path
     library = open_library(root)
     allocation = scopes.enter_context(
         library.scratch(SCRATCH_OWNER, ctx.invocation_id, ttl=SCRATCH_TTL)
@@ -136,8 +127,16 @@ def open_scratch(ctx: RunContext, scopes: contextlib.ExitStack) -> None:
 def discard_scratch(ctx: RunContext) -> None:
     """Delete this run's scratch folder, best effort; a no-op when none was taken."""
     if ctx._library is not None and ctx._scratch is not None:
-        ctx._library.delete_scratch(ctx._scratch)
+        report = ctx._library.delete_scratch(ctx._scratch)
         ctx._scratch = None
+        if report.skipped:
+            if ctx.state.mode is not OutputMode.quiet:
+                ctx.state.err_console.print(
+                    warn("warning:"),
+                    f"{len(report.skipped)} file(s) of the sample folder could not be removed "
+                    "and stay until `decoy library clean` ({code})".format(code=report.code),
+                    markup=False,
+                )
 
 
 def begin(ctx: RunContext, scopes: contextlib.ExitStack) -> None:

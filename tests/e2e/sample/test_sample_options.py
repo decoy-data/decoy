@@ -224,3 +224,40 @@ def test_inside_a_project_the_scratch_comes_from_the_project_library_and_is_remo
     scratch = root / ".decoy" / "scratch"
     assert not scratch.exists() or not any(scratch.iterdir())
     assert not (root / "people_out.csv").exists() and not (root / "out").exists()
+
+
+def _snapshot(folder: Path) -> dict[str, bytes | None]:
+    return {
+        str(p.relative_to(folder)): (p.read_bytes() if p.is_file() else None)
+        for p in sorted(folder.rglob("*"))
+    }
+
+
+def test_an_external_decoy_library_never_receives_the_sample_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _project(tmp_path)
+    cfg = _mask_pipeline(root)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_bytes(b"untouched")
+    before = _snapshot(outside)
+    monkeypatch.setenv("DECOY_LIBRARY", str(outside))
+    from decoy.cli.library import _store
+
+    real = _store.open_library
+    roots: list[Path] = []
+
+    def spy(path: Path, **kw):
+        roots.append(path)
+        return real(path, **kw)
+
+    monkeypatch.setattr(_store, "open_library", spy)
+    monkeypatch.setattr("decoy.cli.library.open_library", spy, raising=False)
+
+    res = runner.invoke(app, ["run", str(cfg), "--sample", "5"])
+
+    assert res.exit_code == 1, res.output
+    assert "--sample is not available yet" in _flat(res.output)
+    assert roots == [root.resolve() / ".decoy"]
+    assert _snapshot(outside) == before

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Literal, TypeGuard
 from decoy._atomic import (
     AtomicWriteError,
     WriteMode,
+    is_device_name,
     replace_symlink,
     write_atomic,
     write_local_target,
@@ -71,6 +72,22 @@ def is_valid_name(name: str) -> bool:
     from decoy_engine import is_valid_pipeline_name
 
     return bool(is_valid_pipeline_name(name))
+
+
+def is_portable_component(name: object) -> bool:
+    """True when a user-chosen `name` is one file name that is safe on every OS.
+
+    Not empty, not `.` or `..`, no separator (`/` or `\\`), no NUL, no `:` (a Windows drive or
+    stream), and not a Windows device name. This is the one rule for a name a user picks (a
+    table name that becomes a file name). Internal names with a stricter alphabet keep their own
+    entry points (`decoy._atomic` writes, `is_valid_name` for pipelines).
+    """
+    return (
+        isinstance(name, str)
+        and name not in ("", ".", "..")
+        and not any(char in name for char in ("/", "\\", "\x00", ":"))
+        and not is_device_name(name)
+    )
 
 
 def is_run_id(value: str) -> bool:

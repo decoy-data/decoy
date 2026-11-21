@@ -90,6 +90,7 @@ __all__ = [
     "describe",
     "destination_entry",
     "fsync_directory",
+    "is_device_name",
     "publish_local_targets",
     "replace_symlink",
     "staged_local_target",
@@ -473,25 +474,29 @@ def staged_private_target(path: Path) -> AbstractContextManager[Path]:
     return _staged_target(path, True)
 
 
+def is_device_name(name: str) -> bool:
+    """True when Windows would treat `name` as a device (CON, NUL, COM1...), with or without an
+    extension. The one device-name rule; layout's portable-component check calls it."""
+    return name.split(".", 1)[0].rstrip(" ").upper() in _DEVICE_STEMS
+
+
 def _require_component(name: str) -> None:
     seps = {"/", os.sep, os.altsep or "/"}
-    stem = name.split(".", 1)[0].rstrip(" ").upper()
     if (
         not name
         or name in {".", ".."}
         or "\0" in name
         or any(sep in name for sep in seps)
-        or (_private_file._WINDOWS and (stem in _DEVICE_STEMS or "\\" in name or ":" in name))
+        or (_private_file._WINDOWS and (is_device_name(name) or "\\" in name or ":" in name))
     ):
         raise AtomicWriteError(ATOMIC_BAD_NAME)
 
 
 def _require_name(name: str) -> None:
-    stem = name.split(".", 1)[0].rstrip(" ").upper()
     ok = (
         _NAME_PATTERN.fullmatch(name) is not None
         and not name.endswith(".")
-        and stem not in _DEVICE_STEMS
+        and not is_device_name(name)
         and PureWindowsPath(name).name == PurePosixPath(name).name == name
     )
     if not ok:
