@@ -291,7 +291,6 @@ def _store_record(ctx: RunContext, document: Document) -> None:
         label=pipeline_label(ctx.config),
         invocation_id=ctx.invocation_id,
         prior=prior,
-        enabled=not ctx.no_library,
     )
     ctx.library_outcome = outcome
     if outcome.status == "failed" and ctx.state.mode is not OutputMode.quiet:
