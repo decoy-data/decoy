@@ -158,7 +158,8 @@ built, once. Its one caller is `_result._store_record`, called from `_write_file
   query over `links`.
 - **Labels.** `pipeline`, `tables`, `status` and `exit_code`.
 - **Which runs.** Success, findings and a run that failed after it started (runtime, capacity,
-  cancelled) store a record. A refusal before the run starts (usage or parameter category) stores
+  cancelled, and a config-caused engine fault that exits 1) store a record. A refusal before the run
+  starts (the engine was never called: `ctx.execution_started` is false) stores
   nothing, as before, so the "refusal writes no file" sentries stay true. A preview, `--no-library`,
   `DECOY_LIBRARY=off` and a failed document build store nothing.
 - **Failure (4.17).** A failed store warns once and keeps the exit code. When the evidence store
@@ -171,3 +172,30 @@ built, once. Its one caller is `_result._store_record`, called from `_write_file
   `tests/sentry/io_policy/test_run_result_store_caller.py` (one caller).
 - **Not covered.** L3-payload-from-finish on a `findings` run (exit 4) has no cell: it needs a
   post-validate fixture and uses the same `_write_file` path as the cells that exist.
+
+## Mutations at the final head (`7817121c`, Codex round 1 fixes)
+
+Each mutation applied once by exact string replace, its tests run, the file restored.
+Cells are `tests/e2e/library/test_run_evidence_records.py`, `test_run_result_records.py` and the
+two `tests/sentry/io_policy/test_*_store_caller.py` files.
+
+| Mutation | Result |
+|---|---|
+| ML3-label: label is the file name | red |
+| ML3-drift: the store gets a different manifest than the file | red |
+| ML3-cwd-root: root resolved without the YAML | red |
+| ML3-ignore: off switch ignored (`store = True`; `enabled=True` with `--evidence-out`) | red, red |
+| ML3-fail: a failed store raises | red |
+| ML3-silent-fail: no warning on a failed store | red |
+| ML3-second-caller: `store_run_result` called under an alias in `_render.py` | red |
+| RR-category-proxy: persistence decided by failure category again | red |
+| RR-start-unset: `execution_started` never set | red |
+| RR-pre-start-stores: a pre-start refusal stores a result | red |
+| RR-quiet-silent: no warning under `--quiet` (result and evidence) | red, red |
+| RR-link-dropped: run-result does not link its evidence | red |
+| RR-double-warn: result store not skipped after a failed evidence store | red |
+| RR-label-resolver-copy: result label not from the shared resolver | red |
+
+The first run of ML3-ignore on `enabled=True` survived: with no `--evidence-out` the run returns
+before the store call, so the cell did not reach it. `test_no_library_with_evidence_out_still_writes_only_the_file`
+now covers it.
