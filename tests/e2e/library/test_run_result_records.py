@@ -118,3 +118,70 @@ def test_the_result_file_and_the_record_hold_the_same_document(project: Path) ->
     (row,) = _rows(project, "run-result")
     written = json.loads((project / "r.json").read_text(encoding="utf-8"))
     assert _stored(project, row.id)["payload"] == written
+
+
+def test_a_failure_after_the_run_starts_stores_a_result_even_when_it_is_a_usage_failure(
+    project: Path,  # noqa: F811
+) -> None:
+    """V1-1: persistence follows `execution_started`, not the failure category. The engine's
+    config-caused `GenerationError` exits 1 (`usage`) but only after the run began."""
+    from decoy_engine import GenerationError
+
+    err = GenerationError(code="uniqueness_impossible", message="no")
+    with mock.patch("decoy_engine.run_pipeline", side_effect=err):
+        result = _run("--json")
+    assert result.exit_code == 1, result.output
+    (row,) = _rows(project, "run-result")
+    payload = _stored(project, row.id)["payload"]
+    assert payload["failure"]["category"] == "usage" and payload["exit_code"] == 1
+
+
+def test_a_usage_refusal_before_the_run_starts_stores_nothing(project: Path) -> None:  # noqa: F811
+    (project / "pipelines" / "customers.yaml").write_text("version: 2\ntables: [", encoding="utf-8")
+    result = _run("--json")
+    assert result.exit_code != EXIT_OK
+    assert not (project / DECOY_DIR / "library").exists()
+
+
+def test_an_unwritable_library_warns_under_quiet_for_the_evidence_record(
+    project: Path,  # noqa: F811
+) -> None:
+    """V1-2: a warning about a lost record is not chatter; --quiet keeps it on stderr."""
+    (project / DECOY_DIR).write_text("not a folder", encoding="utf-8")
+    result = _run("--quiet")
+    assert result.exit_code == EXIT_OK, result.output
+    assert len([line for line in result.stderr.splitlines() if "warning" in line]) == 1
+    assert "evidence record was not stored" in result.stderr
+
+
+def test_an_unwritable_library_warns_under_quiet_for_the_result_record(
+    project: Path,  # noqa: F811
+) -> None:
+    """V1-2, result path: a failed run stores no evidence, so the result store is the one to warn."""
+    (project / DECOY_DIR).write_text("not a folder", encoding="utf-8")
+    with mock.patch("decoy_engine.run_pipeline", side_effect=RuntimeError("boom")):
+        result = _run("--quiet")
+    assert result.exit_code == EXIT_RUNTIME, result.output
+    assert len([line for line in result.stderr.splitlines() if "warning" in line]) == 1
+    assert "result record was not stored" in result.stderr
+
+
+def test_one_resolver_names_the_label_for_a_run_and_for_list(project: Path) -> None:  # noqa: F811
+    """DESIGN-2: `library list --pipeline` finds what the run stored, and a layout fault is the
+    resolver's `LayoutError` on both sides (a usage error for list, a failed store for the run)."""
+    from typer.testing import CliRunner
+
+    from decoy.__main__ import app
+    from decoy.cli.io import LayoutError, pipeline_label
+
+    assert _run().exit_code == EXIT_OK
+    listed = CliRunner().invoke(app, ["library", "list", "--pipeline", PIPELINE, "--json"])
+    assert listed.exit_code == EXIT_OK, listed.output
+    assert {row["kind"] for row in json.loads(listed.stdout)["records"]} == {
+        "evidence",
+        "run-result",
+    }
+
+    (project / "decoy.yaml").write_text("kind: not-a-project\n", encoding="utf-8")
+    with pytest.raises(LayoutError):
+        pipeline_label(project / PIPELINE)
