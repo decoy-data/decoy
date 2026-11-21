@@ -75,7 +75,8 @@ def fit_exact_snapshot(
 ) -> ExactFit:
     """Fit the exact (non-DP) snapshot of `source`. Raises `FitSourceError`.
 
-    `numeric_bins` is the least bin count of a number column; `None` keeps the engine default.
+    `numeric_bins` sets the finest bin width a plain fit may use (the range divided by N), so a
+    fit can write fewer bins; `None` keeps the engine default.
     """
     if numeric_bins is not None and not 2 <= numeric_bins <= 1000:
         raise FitSourceError(
