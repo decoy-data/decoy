@@ -424,6 +424,14 @@
       "/pipeline/given_as": "string",
       "/pipeline/name": "string",
       "/pipeline/yaml": "string",
+      "/post_scan/counts/error": "integer",
+      "/post_scan/counts/fail": "integer",
+      "/post_scan/counts/pass": "integer",
+      "/post_scan/counts/warning": "integer",
+      "/post_scan/detectors[]/model_id": "null",
+      "/post_scan/detectors[]/model_version": "null",
+      "/post_scan/detectors[]/source": "string",
+      "/post_scan/report": "string",
       "/project/implicit": "boolean",
       "/project/root": "string",
       "/project/skipped": "[]",
@@ -534,6 +542,7 @@
   },
   "scan show": {
     "paths": {
+      "/basis": "string",
       "/command": "string",
       "/field/detector_hits": "[]",
       "/field/distinct_count": "integer",
@@ -548,6 +557,7 @@
       "/pii_bucket": "string",
       "/quasi_identifier_groups": "[]",
       "/scan": "string",
+      "/scanned_rows": "integer",
       "/status": "string"
     }
   },

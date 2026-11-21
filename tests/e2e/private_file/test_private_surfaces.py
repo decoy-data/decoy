@@ -198,6 +198,25 @@ def test_run_vault_and_evidence_are_private(tmp_path: Path) -> None:
     assert _mode(evidence) == 0o600
 
 
+def test_run_result_file_is_private(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, _HASH)
+    result = tmp_path / "result.json"
+    _decoy(tmp_path, "run", str(cfg), "--result", str(result))
+    assert _mode(result) == 0o600
+
+
+def test_run_post_scan_report_is_private(tmp_path: Path) -> None:
+    cfg = _config(tmp_path, _HASH)
+    doc = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    doc["post_scan"] = {"integrity": True}
+    cfg.write_text(yaml.safe_dump(doc), encoding="utf-8")
+    report = tmp_path / "integrity.json"
+    _decoy(tmp_path, "run", str(cfg), "--integrity-out", str(report))
+    assert _mode(report) == 0o600
+    _decoy(tmp_path, "run", str(cfg))
+    assert _mode(tmp_path / "pipeline.post-scan.json") == 0o600
+
+
 def test_setup_settings_file_is_private(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "decoy-home"
     monkeypatch.setenv("DECOY_HOME", str(home))

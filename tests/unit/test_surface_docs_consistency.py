@@ -298,6 +298,8 @@ _DEFAULT_COMMAND_FLAGS = {
         "--layout",
         "--has-header/--no-header",
         "--column-names",
+        "--detectors",
+        "--ner-model",
         "--json",
         "--quiet/-q",
         "--verbose/-v",

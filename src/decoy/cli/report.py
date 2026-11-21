@@ -1630,7 +1630,7 @@ def _fidelity(
         None,
         "--config",
         help=(
-            "Pipeline YAML naming each column's strategy, so intentional "
+            "Pipeline file (.yaml or .decoy) naming each column's strategy, so intentional "
             "loss (hash, bucketize, faker, ...) is not flagged as accidental "
             "drift. Without it, per-column policy checks run on defaults only."
         ),
@@ -1912,8 +1912,8 @@ def _integrity(
         None,
         "--config",
         help=(
-            "Optional pipeline.yaml, or a pipeline name. When passed, policy_validation can "
-            "compare against the configured masks. Without it the runner "
+            "Optional pipeline file (.yaml or .decoy), or a pipeline name. When passed, "
+            "policy_validation can compare against the configured masks. Without it the runner "
             "still produces residual_pii + fk_preservation findings."
         ),
     ),
@@ -1965,19 +1965,21 @@ def _integrity(
     config_path = ref.yaml if ref else None
     masked_str = str(masked)
     source_str = str(source)
+    members = {"masked": masked_str, "source": source_str}
 
     try:
         from decoy_engine.verification.postmask import run_post_mask
 
-        config_dict: dict
+        from decoy.cli.io import bare_report_config, read_report_config, report_detectors
+
         table_name: str
+        config_sha: str | None = None
         if config_path is not None:
             from decoy_engine import parse_pipeline_config
 
             try:
-                raw = load_config_mapping(config_path)
+                raw, config_sha = read_report_config(config_path)
             except (ConfigFileError, OSError) as exc:
-                members = {"masked": masked_str, "source": source_str}
                 emit_error(state, "report integrity", context=members, **config_refusal(exc))
                 raise typer.Exit(code=exit_code_for(exc))
             config_dict = parse_pipeline_config(raw).model_dump()
@@ -2001,23 +2003,15 @@ def _integrity(
                 )
         else:
             # No config: a minimal dict; the runner's branches degrade when it is bare.
-            table_name = masked.stem
-            config_dict = {
-                "version": 2,
-                "global_settings": {"seed": 0},
-                "sources": {},
-                "tables": [],
-                "targets": {},
-                "relationships": [],
-            }
+            table_name, config_dict = masked.stem, bare_report_config()
 
         source_dir = config_path.parent if config_path else Path.cwd()
         try:
             gated = gate_report_source(config_dict, source_dir, source, table_name)
         except ReportSourceError as exc:
-            context = {"masked": masked_str, "source": source_str}
-            emit_error(state, "report integrity", exc.message, code=exc.code, context=context)
+            emit_error(state, "report integrity", exc.message, code=exc.code, context=members)
             raise typer.Exit(code=EXIT_USAGE)
+        detectors = report_detectors(state, config_dict, members)  # before either CSV is read
         source_df = read_report_source(source, config_dict, source_dir, gated)
         masked_df = read_report_source(masked, {}, Path.cwd())
 
@@ -2025,7 +2019,9 @@ def _integrity(
             source_frames={table_name: source_df},
             output_frames={table_name: masked_df},
             config=config_dict,
+            detectors=detectors,
         )
+        report["config_sha256"] = config_sha
 
         target = report_dest("integrity", masked, ref, out)
         written = _write_out(state, target, _json.dumps(report, indent=2))
@@ -2163,8 +2159,8 @@ def _vault(
         ...,
         "--config",
         help=(
-            "The pipeline config the mask run used. The vault opens only under the mask "
-            "secret that run used (--mask-secret or global_settings.mask_secret_ref)."
+            "The pipeline file (.yaml or .decoy) the mask run used. The vault opens only under "
+            "the mask secret that run used (--mask-secret or global_settings.mask_secret_ref)."
         ),
     ),
     mask_secret: str | None = typer.Option(None, "--mask-secret", help=_mask_secret.FLAG_HELP),

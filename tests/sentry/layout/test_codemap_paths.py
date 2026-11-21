@@ -23,6 +23,7 @@ HEADER = ("Kind", "Goes in", "File naming", "Tests", "Sentries and registries")
 KINDS = frozenset(
     {
         "Command module",
+        "Decoy language compiler (one module per compile stage; statement kinds lower in their own module)",
         "Command-private helpers",
         "Local record library (LIB): root rule, store, and later refs, index, scratch and logs; commands import the facade, never its `_` modules",
         "Generation CLI helpers (the exact fit shared by `fit` and `init`, the `run --rows` preview, the CSV generate scaffold; the flat `cli/` is frozen)",
@@ -49,6 +50,7 @@ KINDS = frozenset(
         "Shared cross-suite test helpers (constants and lookups used by more than one test folder)",
         "Developer environment scripts",
         "Release scripts",
+        "QA tooling (not shipped)",
         "Release runbooks, logs and maps",
         "CI install, vendor and lane policy",
         "Composite CI actions",
@@ -58,9 +60,14 @@ KINDS = frozenset(
         "QA checklists and run templates",
     }
 )
-# Paths the map marks `(target)`. A new or misspelled target is red. None is open since C3
-# created the layer files.
-TARGETS: frozenset[str] = frozenset()
+# Paths the map marks `(target)`. A new or misspelled target is red. The QA-BETA slices S1b and S2
+# (docs/plans/2026-11-20-qa-beta-program.md) create these and drop them from this set; S1a
+# dropped the corpus, matrix, tooling and test folders.
+TARGETS: frozenset[str] = frozenset(
+    {
+        "docs/qa/briefs/",
+    }
+)
 _TARGET = re.compile(r"`([^`]+)` \(target\)")
 
 

@@ -9,8 +9,7 @@ from __future__ import annotations
 import pytest
 from tests.ci_support import CLEAN_PIPELINE
 
-from decoy.ci.contracts import SourceLocation
-from decoy.ci.locations import YamlSourceIndex
+from decoy._source_positions import Position, YamlPositionIndex, segments
 
 
 def _pos(text: str, needle: str, occurrence: int = 1) -> tuple[int, int]:
@@ -24,14 +23,14 @@ def _pos(text: str, needle: str, occurrence: int = 1) -> tuple[int, int]:
     return line, col
 
 
-def _index(text: str, uri: str = "pipeline.yaml") -> YamlSourceIndex:
-    return YamlSourceIndex.from_bytes(uri, text.encode("utf-8"))
+def _index(text: str) -> YamlPositionIndex:
+    return YamlPositionIndex.from_bytes(text.encode("utf-8"))
 
 
-def _assert_key(loc: SourceLocation | None, text: str, key: str, occurrence: int = 1) -> None:
+def _assert_key(loc: Position | None, text: str, key: str, occurrence: int = 1) -> None:
     line, col = _pos(text, key, occurrence)
     assert loc is not None
-    assert (loc.start_line, loc.start_column) == (line, col)
+    assert (loc.line, loc.column) == (line, col)
     # single-line key: the end is one-based and exclusive
     assert (loc.end_line, loc.end_column) == (line, col + len(key))
 
@@ -42,7 +41,6 @@ def test_block_style_exact_leaf_numeric_and_semantic_agree() -> None:
     numeric = idx.locate("tables.0.columns.0.provider")
     _assert_key(semantic, CLEAN_PIPELINE, "provider")
     assert semantic == numeric
-    assert semantic.uri == "pipeline.yaml"
 
 
 def test_mapping_key_paths_resolve_directly() -> None:
@@ -56,7 +54,7 @@ def test_list_entry_alias_marks_the_entry_start_only() -> None:
     idx = _index(CLEAN_PIPELINE)
     loc = idx.locate("tables.customers.columns.email")
     line, col = _pos(CLEAN_PIPELINE, "name: email")
-    assert (loc.start_line, loc.start_column) == (line, col)
+    assert (loc.line, loc.column) == (line, col)
     assert loc.end_line is None and loc.end_column is None
     assert idx.locate("tables.0.columns.0") == loc
 
@@ -65,7 +63,7 @@ def test_moving_the_key_moves_the_region() -> None:
     moved = "# a\n# b\n" + CLEAN_PIPELINE
     a = _index(CLEAN_PIPELINE).locate("tables.customers.columns.email.provider")
     b = _index(moved).locate("tables.customers.columns.email.provider")
-    assert b.start_line == a.start_line + 2 and b.start_column == a.start_column
+    assert b.line == a.line + 2 and b.column == a.column
 
 
 def test_flow_style_and_quoted_keys() -> None:
@@ -74,7 +72,7 @@ def test_flow_style_and_quoted_keys() -> None:
     _assert_key(idx.locate("root.alpha"), text, "alpha")
     loc = idx.locate("root.alpha.beta key")
     line, col = _pos(text, '"beta key"')
-    assert (loc.start_line, loc.start_column) == (line, col)
+    assert (loc.line, loc.column) == (line, col)
     _assert_key(idx.locate("root.alpha.gamma.1.delta"), text, "delta")
 
 
@@ -89,14 +87,14 @@ def test_crlf_line_endings_keep_one_based_lines() -> None:
     text = CLEAN_PIPELINE.replace("\n", "\r\n")
     loc = _index(text).locate("tables.customers.columns.email.provider")
     line, col = _pos(CLEAN_PIPELINE, "provider")
-    assert (loc.start_line, loc.start_column) == (line, col)
+    assert (loc.line, loc.column) == (line, col)
 
 
 def test_nearest_proved_parent_is_file_level_without_a_region() -> None:
     idx = _index(CLEAN_PIPELINE)
     loc = idx.locate("tables.customers.columns.email.cardinality_mode")
-    assert loc == SourceLocation(uri="pipeline.yaml")
-    assert loc.start_line is None
+    assert loc == Position()
+    assert loc.line is None
 
 
 def test_bracket_notation_from_engine_paths_is_normalized() -> None:
@@ -157,16 +155,16 @@ def test_yaml_aliases_never_yield_the_anchor_site_for_the_alias_path() -> None:
     _assert_key(idx.locate("base.provider"), text, "provider")
     loc = idx.locate("use.provider")
     # either no region or file-level; never the anchor's line
-    assert loc is None or loc.start_line is None
+    assert loc is None or loc.line is None
     use = idx.locate("use")
     line, _ = _pos(text, "use")
-    assert use is not None and use.start_line == line
+    assert use is not None and use.line == line
 
 
 def test_merge_key_children_have_no_guessed_region() -> None:
     text = "base: &b {provider: p}\nchild:\n  <<: *b\n  other: 1\n"
     loc = _index(text).locate("child.provider")
-    assert loc is None or loc.start_line is None
+    assert loc is None or loc.line is None
 
 
 def test_malformed_yaml_has_an_empty_index() -> None:
@@ -175,11 +173,30 @@ def test_malformed_yaml_has_an_empty_index() -> None:
 
 
 def test_non_utf8_bytes_have_an_empty_index() -> None:
-    assert YamlSourceIndex.from_bytes("p.yaml", b"\xff\xfe\x00bad").locate("a") is None
+    assert YamlPositionIndex.from_bytes(b"\xff\xfe\x00bad").locate("a") is None
 
 
-def test_uri_is_taken_from_the_caller_not_derived() -> None:
-    assert _index("a: 1\n", "sub/dir/p.yaml").locate("a").uri == "sub/dir/p.yaml"
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("tables.0.columns.2", ("tables", "0", "columns", "2")),
+        ("tables[0].columns[2].provider", ("tables", "0", "columns", "2", "provider")),
+        ("tables.customers.columns.email", ("tables", "customers", "columns", "email")),
+        ("a", ("a",)),
+        (".a.b.", ("a", "b")),
+        (None, None),
+        ("", None),
+        ("tables.*.x", None),
+        ("tables.<unknown>.x", None),
+        ("a..b", None),
+    ],
+)
+def test_segments_is_the_one_path_parser(path, expected) -> None:
+    assert segments(path) == expected
+
+
+def test_a_position_with_every_field_none_names_no_region() -> None:
+    assert Position().line is None and Position() == Position(None, None, None, None)
 
 
 def test_index_holds_marks_and_path_tokens_only() -> None:

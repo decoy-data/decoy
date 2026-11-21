@@ -1,0 +1,14 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  generate employees rows 1000 to csv("./employees.csv") {
+    employee_id = sequence(1000, step: 1)
+    first_name  = faker(first_name)
+    last_name   = faker(last_name)
+    email       = faker(email)
+    department  = categorical({Engineering: 0.3, Marketing: 0.2, Sales: 0.3, HR: 0.1, Finance: 0.1})
+    job_title   = faker(job)
+  }
+}

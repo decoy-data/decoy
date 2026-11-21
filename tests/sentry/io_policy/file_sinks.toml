@@ -94,30 +94,6 @@ disposition = "public"
 reason = "Synthetic demo config and data, shareable by design."
 
 [[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 1
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 2
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
-file = "cli/demo.py"
-function = "_generate_ref_datasets"
-sink = "open"
-ordinal = 3
-disposition = "public"
-reason = "Synthetic demo reference data, shareable by design."
-
-[[row]]
 file = "cli/init.py"
 function = "_init"
 sink = "write_text"

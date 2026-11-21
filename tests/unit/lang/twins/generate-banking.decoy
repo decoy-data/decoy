@@ -1,0 +1,30 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  generate customers rows 1000 to csv("./customers.csv") {
+    customer_id = sequence(100000, step: 1)
+    first_name  = faker(first_name)
+    last_name   = faker(last_name)
+    email       = faker(email)
+    city        = faker(city)
+    segment     = categorical({Retail: 0.75, Premier: 0.2, Private: 0.05})
+  }
+
+  generate accounts rows 1800 to csv("./accounts.csv") {
+    account_id   = sequence(5000000, step: 1)
+    customer_id  <- customers.customer_id
+    account_type = categorical({Checking: 0.45, Savings: 0.3, "Credit card": 0.15, Loan: 0.1})
+    opened_on    = faker(date_this_decade)
+    currency     = constant(USD)
+  }
+
+  generate transactions rows 10000 to csv("./transactions.csv") {
+    transaction_id = sequence(1, step: 1)
+    account_id     <- accounts.account_id
+    posted_on      = faker(date_this_year)
+    amount         = faker(random_int, faker_kwargs: {min: 1, max: 4000})
+    channel        = categorical({Card: 0.5, Transfer: 0.2, ATM: 0.1, "Direct debit": 0.15, Cheque: 0.05})
+  }
+}

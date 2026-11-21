@@ -173,6 +173,9 @@ dependencies = [
     # (and `decoy validate` already imports pydantic), so it must not ride in only as an
     # engine transitive. Floor matches the engine's own.
     "pydantic>=2,<3",
+    # Declared directly: `decoy.lang` parses `.decoy` programs with Lark, the parser the engine
+    # uses for its expression grammar. Floor matches the engine's own.
+    "lark>=1.1",
 ]
 
 [project.optional-dependencies]
@@ -188,6 +191,12 @@ dev = [
     # The import-layer contract in .importlinter (BSD-2-Clause). The layers gate step runs it in
     # its own .venv-layers; same version as the engine.
     "import-linter==2.15",
+    # QA-BETA pairwise matrix generator (MIT), `scripts/qa/matrix.py`. Test tooling only, never a
+    # runtime dependency.
+    "allpairspy>=2.5.1,<3",
+    # Property tests for the Decoy language round trip (MPL-2.0, test-only). Same floor as the
+    # engine.
+    "hypothesis>=6.0",
 ]
 # CLI install DX (2026-09-25): pass-through extras so `pip install
 # decoy-cli[...]` actually reaches the engine's matching extra instead of

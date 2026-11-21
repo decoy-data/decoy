@@ -28,8 +28,10 @@ def test_scan_signature_is_frozen() -> None:
     assert _signature(decoy.scan) == [
         ("data", "POSITIONAL_OR_KEYWORD", empty),
         ("source_label", "KEYWORD_ONLY", None),
-        ("rows", "KEYWORD_ONLY", None),
+        ("rows", "KEYWORD_ONLY", 10_000),
         ("strategy", "KEYWORD_ONLY", "head"),
         ("format", "KEYWORD_ONLY", None),
         ("layout", "KEYWORD_ONLY", None),
+        ("has_header", "KEYWORD_ONLY", None),
+        ("column_names", "KEYWORD_ONLY", None),
     ]

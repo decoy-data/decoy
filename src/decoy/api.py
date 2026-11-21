@@ -10,8 +10,9 @@ wrapper around decoy-engine; all data logic lives in the engine."
 
     decoy.mask(...)  wraps decoy_engine.run_pipeline  (the call `decoy run`
                       makes for non-chunked runs).
-    decoy.scan(...)  wraps decoy_engine.profile_columns (the call
-                      `decoy scan` makes).
+    decoy.scan(...)  calls `decoy.cli.scanning.scan_descriptors`, the one engine
+                      call behind `decoy scan`, and returns the document
+                      `decoy scan --output` writes.
 
 Both accept a config/source shaped exactly like the pipeline YAML `decoy
 run` consumes (a dict with `version`, `global_settings`, `tables`,
@@ -24,15 +25,14 @@ plus returning the masked DataFrame(s) in memory.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import pandas as pd
 import pyarrow as pa
 
 from decoy import _mask_secret, _mask_secret_guidance, _native_gate
-from decoy._row_sample import sample_frame
 from decoy.cli._sources import (
     CSV_DIALECT_KEYS,
     csv_file_source,
@@ -50,12 +50,13 @@ from decoy.cli.run import (
     _load_sources_from_config,
     _write_mask_outputs,
 )
-from decoy.cli.scan import (
-    InputFormat,
-    SampleStrategy,
-    _infer_format,
-    _load_data,
-    _parse_layout,
+from decoy.cli.scanning import (
+    API_SPELLING,
+    DEFAULT_SCAN_ROWS,
+    ScanUsageError,
+    check_scan_options,
+    resolve_sources,
+    scan_descriptors,
 )
 
 __all__ = [
@@ -200,11 +201,28 @@ def _single_table_name(config_dict: dict, *, require_columns: bool, context: str
     return candidates[0]["name"]
 
 
+_T = TypeVar("_T")
+
+
+def _class_only(convert: Callable[[], _T]) -> _T:
+    """Run an Arrow conversion of caller data; a failure is reported by class only.
+
+    Arrow messages quote the offending cell. The `TypeError` is raised after the handler has
+    closed, so it carries neither the message nor a `__cause__` or `__context__` that does.
+    """
+    failed: str | None = None
+    try:
+        return convert()
+    except (pa.ArrowException, ValueError, TypeError) as exc:
+        failed = type(exc).__name__
+    raise TypeError(f"data could not be converted to Arrow: {failed}")
+
+
 def _to_pa_table(value: "pd.DataFrame | pa.Table") -> pa.Table:
     if isinstance(value, pa.Table):
         return value
     if isinstance(value, pd.DataFrame):
-        return pa.Table.from_pandas(value, preserve_index=False)
+        return _class_only(lambda: pa.Table.from_pandas(value, preserve_index=False))
     raise TypeError(
         f"data values must be a pandas DataFrame or pyarrow Table, got {type(value).__name__}."
     )
@@ -273,7 +291,7 @@ def _arrow_schema(value: pd.DataFrame | pa.Table) -> pa.Schema:
     """The Arrow schema of in-memory data, taken without converting the rows."""
     if isinstance(value, pa.Table):
         return value.schema
-    return pa.Schema.from_pandas(value, preserve_index=False)
+    return _class_only(lambda: pa.Schema.from_pandas(value, preserve_index=False))
 
 
 def _gate_in_memory_data(raw: dict, items: list[tuple[str, Any]]) -> None:
@@ -654,76 +672,77 @@ def scan(
     data: Any,
     *,
     source_label: str | None = None,
-    rows: int | None = None,
+    rows: int | None = DEFAULT_SCAN_ROWS,
     strategy: str = "head",
     format: str | None = None,
-    layout: Any = None,
-):
-    """Profile a dataset for PII / re-identification risk, through the same
-    engine path `decoy scan` uses.
+    layout: str | Path | list[dict] | None = None,
+    has_header: bool | None = None,
+    column_names: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Scan a dataset for PII and re-identification risk, as `decoy scan --output` does.
 
-    Wraps `decoy_engine.profile_columns` -- exactly what `decoy scan`
-    calls after loading the source into a DataFrame.
+    It calls the same function `decoy scan` calls and returns the same value-free `scan-set/v1`
+    document as a dict: counts, types, PII candidates and risk scores, never a cell value. It
+    runs the regex detectors only; use `decoy scan --detectors` for model detectors. For the
+    value-bearing profile (top values, modes, ranges), call `decoy_engine.profile_columns`.
 
     Args:
-        data: A `pandas.DataFrame`, or a path (str/Path) to a CSV, Parquet,
-            or fixed-width file.
-        source_label: Label recorded on the returned profile. Defaults to
-            `"<dataframe>"` for in-memory data, or the file name for a path.
-        rows: Sample row cap. `None` (default) scans everything.
-        strategy: Sampling strategy when `rows` is set: `"full"`, `"head"`
-            (default), or `"random"`.
-        format: Input format for a path: `"delimited"` (CSV/TSV, default),
-            `"parquet"`, or `"fixed-width"`. Inferred from the file
-            extension when omitted. Ignored for DataFrame input.
-        layout: Column layout for `format="fixed-width"`: a path (str/Path)
-            to a YAML/JSON layout spec, or the already-parsed `columns`
-            list (`[{"name": ..., "start": ..., "width": ...}, ...]`).
+        data: A path (str or Path) to a CSV, TSV, Parquet or fixed-width file, or a pandas
+            DataFrame. A DataFrame is written to an owner-only temp Parquet file for the scan
+            and removed afterwards, so pass a path for large data.
+        source_label: The table name in the result. Defaults to the file stem (`orders.csv`
+            becomes `orders`), or `dataframe` for a DataFrame.
+        rows: Rows to read. Defaults to the first 10,000; `None` or `0` reads every row.
+        strategy: `"head"` (default), `"random"` or `"full"`.
+        format: `"delimited"`, `"parquet"` or `"fixed-width"`. Chosen from the file suffix when
+            omitted; a suffix that is not Parquet or fixed width is read as CSV.
+        layout: For fixed-width files: a layout file path, or the parsed `columns` list
+            (`[{"name": ..., "start": ..., "width": ...}, ...]`).
+        has_header: A CSV needs this: `True` when row 1 holds the column names, `False` when
+            row 1 is data (then give `column_names`). A `.tsv` file is read tab-delimited.
+        column_names: The names of a headerless CSV, in column order.
 
     Returns:
-        The in-memory `decoy_engine.ColumnProfile`, which holds cell values
-        (top values, modes, ranges). To save a scan that `decoy scan fields`,
-        `show` and `diff` can read, run `decoy scan --output scan.json`: it
-        writes the value-free `scan-set/v1` core. A profile saved with
-        `decoy_engine.profile_document(profile)` is not that format and
-        those commands refuse it.
+        The `scan-set/v1` document. For a DataFrame, `tables[0]["descriptor"]["path"]` is
+        `"<dataframe>"`.
+
+    Raises:
+        ValueError: A usage error, found before any file is read.
+        TypeError: `data` is neither a path nor a DataFrame, or Arrow cannot convert it.
     """
-    from decoy_engine import profile_columns
-
-    try:
-        strategy_enum = SampleStrategy(strategy)
-    except ValueError as exc:
-        valid = [s.value for s in SampleStrategy]
-        raise ValueError(f"strategy must be one of {valid!r}, got {strategy!r}.") from exc
-
-    if isinstance(data, pd.DataFrame):
-        df = data
-        if rows is not None and strategy_enum is not SampleStrategy.full:
-            if strategy_enum is SampleStrategy.head:
-                df = df.head(rows)
-            elif strategy_enum is SampleStrategy.random and len(df) > rows:
-                df = sample_frame(df, rows, 42)
-        label = source_label or "<dataframe>"
-    elif isinstance(data, (str, Path)):
-        path = Path(data)
-        fmt = InputFormat(format) if format is not None else _infer_format(path)
-        layout_columns: list[dict] | None
-        if isinstance(layout, list):
-            layout_columns = layout
-        elif layout is not None:
-            layout_columns = _parse_layout(Path(layout))
-        else:
-            layout_columns = None
-        df = _load_data(path, fmt, layout_columns, rows, strategy_enum)
-        label = source_label or path.name
-    else:
+    is_frame = isinstance(data, pd.DataFrame)
+    if not is_frame and not isinstance(data, (str, Path)):
         raise TypeError(
             f"data must be a pandas DataFrame or a path (str/Path), got {type(data).__name__}."
         )
-
-    return profile_columns(
-        df,
-        source_label=label,
-        sample_strategy=strategy_enum.value,
-        sample_row_cap=rows,
-    )
+    tmp_paths: list[Path] = []
+    try:
+        if is_frame:
+            if any(v is not None for v in (format, layout, has_header, column_names)):
+                raise ScanUsageError(
+                    "format, layout, has_header and column_names apply to a file path, "
+                    "not to a DataFrame."
+                )
+            check_scan_options(rows, strategy)
+            # A fixed name: the caller's label never reaches the temp folder.
+            descriptors = {
+                source_label or "dataframe": _stage_source_entry("scan", data, tmp_paths)
+            }
+        else:
+            descriptors, _ = resolve_sources(
+                [Path(data)],
+                fmt=format,
+                layout=Path(layout) if isinstance(layout, str) else layout,
+                has_header=has_header,
+                column_names=column_names,
+                spelling=API_SPELLING,
+            )
+            if source_label:
+                descriptors = {source_label: next(iter(descriptors.values()))}
+        core = scan_descriptors(descriptors, rows=rows, strategy=strategy).core
+    finally:
+        for tmp_path in tmp_paths:
+            tmp_path.unlink(missing_ok=True)
+    if is_frame:
+        core["tables"][0]["descriptor"]["path"] = "<dataframe>"
+    return core

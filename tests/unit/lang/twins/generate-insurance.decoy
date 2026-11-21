@@ -1,0 +1,29 @@
+decoy 1
+
+pipeline {
+  seed 42
+
+  generate policyholders rows 1000 to csv("./policyholders.csv") {
+    policyholder_id = sequence(100000, step: 1)
+    first_name      = faker(first_name)
+    last_name       = faker(last_name)
+    email           = faker(email)
+    state           = faker(state_abbr)
+  }
+
+  generate policies rows 1500 to csv("./policies.csv") {
+    policy_id       = sequence(700000, step: 1)
+    policyholder_id <- policyholders.policyholder_id
+    product         = categorical({Auto: 0.35, Home: 0.3, Life: 0.15, Renters: 0.15, Travel: 0.05})
+    start_date      = faker(date_this_decade)
+    annual_premium  = faker(random_int, faker_kwargs: {min: 150, max: 4000})
+  }
+
+  generate claims rows 600 to csv("./claims.csv") {
+    claim_id     = sequence(1, step: 1)
+    policy_id    <- policies.policy_id
+    filed_on     = faker(date_this_year)
+    claim_amount = faker(random_int, faker_kwargs: {min: 100, max: 25000})
+    claim_status = categorical({Open: 0.25, Paid: 0.55, Denied: 0.15, Withdrawn: 0.05})
+  }
+}

@@ -162,3 +162,62 @@ def test_g5_an_undeclared_source_column_exits_1_with_its_own_code(tmp_path: Path
     result = _validate(config)
     assert result.exit_code == EXIT_USAGE, result.output
     assert ("preflight", "source_file.undeclared_column") in _codes(result)
+
+
+DEGENERATE = "statistical_stats_degenerate"
+_DEGENERATE_LABELS = {
+    "zero labels": [],
+    "all-zero counts": [{"value": "CA", "count": 0}, {"value": "NY", "count": 0}],
+}
+
+
+def _degenerate_project(tmp_path: Path, top_values: list[dict[str, Any]]) -> Path:
+    """A generate-only config whose `state` snapshot carries the given label counts."""
+    src = tmp_path / "source.csv"
+    src.write_text("state\n" + "CA\nNY\nTX\nWA\n" * 25, encoding="utf-8")
+    snap = tmp_path / "snap.json"
+    fit = runner.invoke(app, ["fit", str(src), "--output", str(snap)])
+    assert fit.exit_code == EXIT_OK, fit.output
+    doc = json.loads(snap.read_text(encoding="utf-8"))
+    doc["columns"]["state"]["stats"].update({"top_values": top_values, "other_count": 0})
+    snap.write_text(json.dumps(doc), encoding="utf-8")
+    cfg = {
+        "version": 2,
+        "global_settings": {"seed": 3},
+        "tables": [
+            {
+                "name": "synthetic",
+                "row_count": 20,
+                "generate_columns": [
+                    {
+                        "name": "state",
+                        "type": "statistical",
+                        "snapshot_file": "snap.json",
+                        "allow_real_categories": True,
+                    }
+                ],
+            }
+        ],
+        "targets": {"synthetic": {"type": "file", "format": "csv", "path": "synthetic.csv"}},
+    }
+    path = tmp_path / "gen.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("shape", sorted(_DEGENERATE_LABELS))
+def test_a_statistical_column_with_no_usable_labels_exits_1_at_validate_and_run(
+    tmp_path: Path, shape: str
+) -> None:
+    """Engine #619: validate gives the code run gives, and run writes nothing."""
+    config = _degenerate_project(tmp_path, _DEGENERATE_LABELS[shape])
+
+    checked = _validate(config)
+    assert checked.exit_code == EXIT_USAGE, checked.output
+    assert DEGENERATE in [c for _, c in _codes(checked)]
+
+    ran = runner.invoke(app, ["run", str(config), "--json"])
+    assert ran.exit_code == EXIT_USAGE, ran.output
+    assert DEGENERATE in [m["code"] for m in json.loads(ran.stdout)["messages"]]
+    assert not list(tmp_path.rglob("synthetic.csv")), "run wrote output for a refused config"
+    assert not (tmp_path / "out").exists()

@@ -2,12 +2,11 @@
 
 CLI.3 commit 3 (2026-06-02): rewritten against the V2 demo body.
 Pre-rewrite the file exercised the V1 demo flow (scan -> FORECAST ->
-hash-based mask via the deleted Masker class) + the --ref multi-table
+hash-based mask via the deleted Masker class) + the multi-table
 FK-via-hash flow. Both are dead since the V1 scan rework and the
 V1 graph runner removal. The new cells verify (a) help text renders, (b) the
 single-table demo runs end-to-end and produces customers_masked.csv,
-(c) the --ref flow exits 1 with the deferral message pointing at the
-single-table demo as the workaround.
+(c) the retired --ref and --rows flags are unknown options (exit 2).
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ import json as _json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -35,14 +35,8 @@ def test_demo_help_includes_examples():
     assert "See also:" in result.stdout
 
 
-def test_demo_help_hides_undeliverable_ref_flag():
-    """--ref (and its --rows coupling) is NOT advertised in --help: the
-    3-table FK body is unimplemented and unconditionally errors, so
-    advertising it as a real option is a doc-truth bug (it previously
-    errored on every call). The flag stays wired (hidden=True) so an
-    operator who already knows about it -- or finds it in the source --
-    still gets the typed deferral message instead of 'unknown flag'; see
-    test_demo_ref_exits_with_deferral_message below."""
+def test_demo_help_lists_no_ref_or_rows_flag():
+    """--ref and --rows are removed, so --help never names them."""
     result = runner.invoke(app, ["demo", "--help"])
     assert result.exit_code == 0
     assert "--ref" not in result.stdout
@@ -177,8 +171,7 @@ def test_demo_with_relative_out_dir_does_not_double_resolve(tmp_path: Path):
         # actual file is at demo_out/demo_out/customers_masked.csv.
         masked = tmp_path / "demo_out" / "customers_masked.csv"
         assert masked.exists() and masked.stat().st_size > 0, (
-            f"masked output missing at {masked}; the double-resolve "
-            f"regression may have returned"
+            f"masked output missing at {masked}; the double-resolve regression may have returned"
         )
         # And the WRONG path must NOT exist.
         wrong = tmp_path / "demo_out" / "demo_out" / "customers_masked.csv"
@@ -191,47 +184,25 @@ def test_demo_with_relative_out_dir_does_not_double_resolve(tmp_path: Path):
 
 
 # --------------------------------------------------------------------------
-# --ref deferral (Q-CLI3-1 Dennis resolution: drop > 0.5d effort)
+# AT-S2a: the retired --ref and --rows flags are gone (FREEZE-SURFACE S2)
 # --------------------------------------------------------------------------
 
 
-def test_demo_ref_exits_with_deferral_message(tmp_path: Path):
-    """CLI.3 commit 2 (2026-06-02): --ref is deferred to a follow-up
-    sprint. Pre-rewrite the flow built three V1-shape YAMLs and ran
-    `Masker(...).mask()` to test FK preservation via a shared truncated
-    hash. The V2 equivalent needs a single multi-table PipelineConfig
-    with a relationships: block; out of CLI.3 scope per Q-CLI3-1."""
+@pytest.mark.parametrize("flag_args", [["--ref"], ["--rows", "50"], ["--ref", "--rows", "50"]])
+def test_demo_ref_and_rows_are_unknown_options(tmp_path: Path, flag_args: list[str]):
+    """AT-S2a: `demo --ref` and `demo --rows` exit 2 as unknown options and
+    write nothing; the deferral exit 1 is gone."""
     out_dir = tmp_path / "demo_ref"
-    result = runner.invoke(
-        app, ["demo", "--ref", "--dir", str(out_dir), "--rows", "50"]
-    )
-    assert result.exit_code == 1
-    assert "deferred" in result.output.lower()
+    result = runner.invoke(app, ["demo", *flag_args, "--dir", str(out_dir)])
+    assert result.exit_code == 2
+    assert "no such option" in result.output.lower()
+    assert not out_dir.exists()
 
 
-def test_demo_ref_json_envelope_carries_typed_error(tmp_path: Path):
-    out_dir = tmp_path / "demo_ref"
-    result = runner.invoke(
-        app, ["demo", "--ref", "--dir", str(out_dir), "--rows", "50", "--json"]
-    )
-    assert result.exit_code == 1
-    payload = _json.loads(result.stdout)
-    assert payload["command"] == "demo"
-    assert payload["variant"] == "ref"
-    assert payload["status"] == "error"
-    assert "deferred" in payload["error"].lower()
-    assert "decoy demo" in payload["error"]
+def test_demo_ref_helpers_are_gone():
+    """AT-S2a: the never-called FK dataset builder and the deferral runner
+    are deleted, not just unreachable."""
+    import decoy.cli.demo as demo_module
 
-
-def test_demo_ref_does_not_create_output_files(tmp_path: Path):
-    """The deferral message is the only side effect; no V1-shape YAML
-    or masked CSV is written."""
-    out_dir = tmp_path / "demo_ref"
-    runner.invoke(app, ["demo", "--ref", "--dir", str(out_dir), "--rows", "50"])
-    # The directory may exist (created by the entrypoint) but should be
-    # empty of demo artifacts.
-    if out_dir.exists():
-        contents = list(out_dir.iterdir())
-        # Allow empty directory; reject if it carries demo CSVs.
-        bad = [p for p in contents if p.suffix == ".csv" or p.suffix == ".yaml"]
-        assert not bad, f"--ref deferral should not write demo artifacts; got {bad}"
+    assert not hasattr(demo_module, "_generate_ref_datasets")
+    assert not hasattr(demo_module, "_run_ref_demo")

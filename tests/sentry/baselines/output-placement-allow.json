@@ -10,13 +10,16 @@
    "reason": "Compares a file with the declared target path; reads, writes nothing.",
    "sites": 1
   },
+  "cli/run/_context.py::output_placement": {
+   "reason": "Resolves the --duckdb-source database path; an input.",
+   "sites": 1
+  },
   "cli/run/_execute.py::_run_chunked_mask": {
    "reason": "Resolves the chunked source path for the empty-parquet schema; an input.",
    "sites": 1
-  },
-  "cli/run/_prepare.py::prepare": {
-   "reason": "Resolves the --duckdb-source database path; an input.",
-   "sites": 1
   }
+ },
+ "moved_from": {
+  "cli/run/_context.py::output_placement": "cli/run/_prepare.py::prepare"
  }
 }

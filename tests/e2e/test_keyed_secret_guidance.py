@@ -30,12 +30,21 @@ CODE = "keyed_strategy_requires_secret"
 _ENGINE_API_SPEAK = ("key_provider", "run(", "Traceback", "job_seed")
 
 
+# Source dates the date_shift pipeline carries; no output may repeat one.
+_SOURCE_DATES = ("2021-03-04", "2020-11-30", "2019-07-15")
+
+
 def _keyed_pipeline(tmp_path: Path, *, strategy: str = "fpe", secret: bool = False) -> Path:
     src = tmp_path / "accounts.csv"
-    pd.DataFrame({"ssn": ["123456789", "987654321", "111223333"]}).to_csv(src, index=False)
+    values = (
+        list(_SOURCE_DATES) if strategy == "date_shift" else ["123456789", "987654321", "111223333"]
+    )
+    pd.DataFrame({"ssn": values}).to_csv(src, index=False)
     column: dict = {"name": "ssn", "strategy": strategy, "namespace": "ssn_ns"}
     if strategy == "fpe":
         column["provider_config"] = {"charset": "digits"}
+    if strategy == "date_shift":
+        column["provider_config"] = {"min_days": -30, "max_days": 30, "date_format": "%Y-%m-%d"}
     cfg: dict = {
         "version": 2,
         "global_settings": {"seed": 42},
@@ -65,21 +74,23 @@ def _assert_actionable(text: str, *, flag: bool) -> None:
 # ---- decoy run --------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("strategy", ["fpe", "hash"])
+@pytest.mark.parametrize("strategy", ["fpe", "hash", "date_shift"])
 def test_run_refusal_is_usage_and_names_the_cli_remedy(tmp_path: Path, strategy: str) -> None:
     cfg = _keyed_pipeline(tmp_path, strategy=strategy)
     result = runner.invoke(app, ["run", str(cfg)])
     assert result.exit_code == EXIT_USAGE, result.output
     _assert_actionable(result.output, flag=True)
     assert str(tmp_path) not in result.output
+    assert not any(date in result.output for date in _SOURCE_DATES)
     assert not (tmp_path / "out.csv").exists()
 
 
 def test_run_refusal_json_error_is_the_same_fixed_text(tmp_path: Path) -> None:
     (tmp_path / "a").mkdir()
     (tmp_path / "b").mkdir()
+    (tmp_path / "c").mkdir()
     errors = []
-    for sub, strategy in (("a", "fpe"), ("b", "hash")):
+    for sub, strategy in (("a", "fpe"), ("b", "hash"), ("c", "date_shift")):
         result = runner.invoke(
             app, ["run", str(_keyed_pipeline(tmp_path / sub, strategy=strategy)), "--json"]
         )
@@ -89,18 +100,28 @@ def test_run_refusal_json_error_is_the_same_fixed_text(tmp_path: Path) -> None:
         errors.append(payload["error"])
     _assert_actionable(errors[0], flag=True)
     assert str(tmp_path) not in errors[0]
-    assert errors[0] == errors[1], "the refusal must be one closed-set text, not per-pipeline prose"
+    assert errors[0] == errors[1] == errors[2], (
+        "the refusal must be one closed-set text, not per-pipeline prose"
+    )
+    assert not any(date in errors[2] for date in _SOURCE_DATES)
 
 
-def test_run_refusal_chunked_matches_plain(tmp_path: Path) -> None:
+@pytest.mark.parametrize("strategy", ["fpe", "date_shift"])
+def test_run_refusal_chunked_matches_plain(tmp_path: Path, strategy: str) -> None:
     (tmp_path / "p").mkdir()
     (tmp_path / "c").mkdir()
-    plain = runner.invoke(app, ["run", str(_keyed_pipeline(tmp_path / "p")), "--json"])
+    plain = runner.invoke(
+        app, ["run", str(_keyed_pipeline(tmp_path / "p", strategy=strategy)), "--json"]
+    )
     chunked = runner.invoke(
-        app, ["run", str(_keyed_pipeline(tmp_path / "c")), "--chunked", "--json"]
+        app,
+        ["run", str(_keyed_pipeline(tmp_path / "c", strategy=strategy)), "--chunked", "--json"],
     )
     assert plain.exit_code == chunked.exit_code == EXIT_USAGE, (plain.output, chunked.output)
     assert json.loads(plain.stdout)["error"] == json.loads(chunked.stdout)["error"]
+    assert CODE in json.loads(chunked.stdout)["error"]
+    assert not (tmp_path / "p" / "out.csv").exists()
+    assert not (tmp_path / "c" / "out.csv").exists()
 
 
 # ---- decoy unmask -----------------------------------------------------------------------
@@ -120,12 +141,17 @@ def test_unmask_refusal_is_usage_and_names_the_config_key(tmp_path: Path, mask_s
 # ---- the mask() library API -------------------------------------------------------------
 
 
-def test_mask_api_raises_its_documented_error_with_the_api_remedy(tmp_path: Path) -> None:
+@pytest.mark.parametrize("strategy", ["fpe", "date_shift"])
+def test_mask_api_raises_its_documented_error_with_the_api_remedy(
+    tmp_path: Path, strategy: str
+) -> None:
     from decoy.api import MaskSecretConfigError, mask
 
     with pytest.raises(MaskSecretConfigError) as info:
-        mask(config=_keyed_pipeline(tmp_path))
+        mask(config=_keyed_pipeline(tmp_path, strategy=strategy))
     text = str(info.value)
+    assert not (tmp_path / "out.csv").exists()
+    assert not any(date in text for date in _SOURCE_DATES)
     assert CODE in text and "mask_secret=" in text and "global_settings.mask_secret_ref" in text
     assert "env:" in text and "file:" in text
     for word in _ENGINE_API_SPEAK:
@@ -284,3 +310,22 @@ def test_every_route_prints_its_fixed_refusal_text(
     result = runner.invoke(app, [*argv, "--json"])
     assert result.exit_code == EXIT_USAGE, result.output
     assert json.loads(result.stdout)["error"] == expected
+
+
+@pytest.mark.parametrize("route", ["run", "run --chunked"])
+def test_unkeyed_date_shift_is_refused_on_every_run_route(tmp_path: Path, route: str) -> None:
+    """An unkeyed `date_shift` is refused with the route's own fixed text, writes nothing
+    and echoes no source date. Without the refusal the engine would shift each date with an
+    offset derived from the value alone, which a reader of the output can invert."""
+    from decoy import _mask_secret_guidance as guidance
+
+    cfg = _keyed_pipeline(tmp_path, strategy="date_shift")
+    argv = {
+        "run": ["run", str(cfg)],
+        "run --chunked": ["run", str(cfg), "--chunked"],
+    }[route]
+    result = runner.invoke(app, [*argv, "--json"])
+    assert result.exit_code == EXIT_USAGE, result.output
+    assert json.loads(result.stdout)["error"] == guidance.RUN
+    assert not any(date in result.output for date in _SOURCE_DATES)
+    assert not (tmp_path / "out.csv").exists()

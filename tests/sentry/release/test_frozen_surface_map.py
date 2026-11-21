@@ -16,6 +16,7 @@ from pathlib import Path
 from tests.command_tree import json_leaf_commands
 from tests.e2e.release_freeze.write_shapes import SNAPSHOT
 from tests.sentry.layout import map_paths, section
+from tests.sentry.release import _tags
 
 ROOT = Path(__file__).resolve().parents[3]
 MAP = ROOT / "docs" / "release" / "frozen-surfaces.md"
@@ -84,7 +85,11 @@ def findings(text: str) -> list[str]:
         if schema.name not in text:
             found.append(f"no row for docs/schemas/{schema.name}")
     snapshot = SNAPSHOT.relative_to(ROOT).as_posix()
-    for needle in ("src/decoy/distribution/", "cli-local-1", "src/decoy/_version.py", snapshot):
+    tagged = _tags.map_tags(text)
+    found += [f"no row for tag {tag}" for tag in sorted(_tags.source_tags()) if tag not in tagged]
+    needles = ("src/decoy/distribution/", "cli-local-1", "src/decoy/_version.py", snapshot)
+    needles += ("S7B-KL-1", "docs/release/public-renames.md")
+    for needle in needles:
         if needle not in text:
             found.append(f"no row for {needle}")
     return found
