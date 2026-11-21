@@ -208,9 +208,39 @@ def test_at_c1_plain_fit_floors_unflagged_columns_and_takes_numeric_bins(tmp_pat
     ranges = doc["columns"]["visit_date"]["stats"]["year_bins"]
     assert ranges
     assert all(set(r) == {"start_year", "end_year", "count"} for r in ranges)
-    assert len(doc["columns"]["salary"]["stats"]["bin_counts"]) >= 17
+    # Engine contract (engine plan docs/plans/2026-11-20-24f-interior-bin-floor.md, G9): "If
+    # `add_numeric_shape` attached an `exact_values` or `quantile_grid` block and that block can be
+    # released, the accompanying histogram is one bin `[lo, hi]` holding the finite count." The
+    # same plan withdraws the old promise: "The parent plan's promise 'at least `numeric_bins`
+    # bins' (parent 4.2, AT-1, AT-C1) is withdrawn." So `--numeric-bins 17` here gives one bin.
+    salary = doc["columns"]["salary"]["stats"]
+    assert "quantile_grid" in salary or "exact_values" in salary
+    assert salary["bin_counts"] == [1000]
+    assert len(salary["bin_edges"]) == 2
     assert doc["columns"]["note"]["kind"] == "freetext"
     assert json.loads(result.stdout)["value_policy"] == "flagged-redacted/v2"
+
+
+def test_at_c1b_numeric_bins_without_a_shape_block_follows_the_finest_step_rule(
+    tmp_path: Path,
+) -> None:
+    """Engine plan G9 and its withdrawal line: with no shape block (under 100 rows, no value held
+    by 10 rows) the plain fit uses the finest 1, 2, 5 step, from the requested width up, at which
+    every bin holds 0 or at least 10 rows. Ninety rows, 18 per decade, each value twice, 17 bins
+    asked: steps 2 and 5 leave bins under 10 rows, so the step is 10 and the result is five bins
+    of 18."""
+    values = [d * 10 + 0.5 + i % 9 for d in range(5) for i in range(18)]
+    src = tmp_path / "decades.csv"
+    pd.DataFrame({"x": values}).to_csv(src, index=False)
+    out = tmp_path / "snap.json"
+    result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "17", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["x"]["stats"]
+    assert "quantile_grid" not in stats and "exact_values" not in stats
+    assert stats["bin_edges"] == [0, 10, 20, 30, 40, 50]
+    assert stats["bin_counts"] == [18, 18, 18, 18, 18]
+    assert 1 < len(stats["bin_counts"]) <= 17
+    assert [c for c in stats["bin_counts"] if 0 < c < 10] == []
 
 
 def test_at_c2_validate_refuses_a_column_too_small_to_floor(tmp_path: Path) -> None:
