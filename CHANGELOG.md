@@ -9,7 +9,17 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ## [Unreleased]
 
+### Added
+
+- **`decoy list codesets` (GEN-CATALOG GC3, row 24s).** It lists every shipped code set with its description, read from the engine, for `type: lookup` with `codeset:` and the mask `code_set` strategy. `decoy list generate-types` and `decoy explain generation` now show the `one_of` group (`lookup` takes exactly one of `file` and `codeset`), and `decoy explain generation` points at `decoy list faker-types` and `decoy list codesets`. The kind names in `decoy list --help` come from one table. `decoy list providers` now says it lists the providers used by mask `provider:` columns and generate `type: provider` columns. The healthcare and banking starter templates add code set columns (ICD-10, HCPCS, MCC), and the money columns in the healthcare, banking, insurance, retail and HR templates use `distribution` with two-decimal output.
+
+- **`decoy run --sample N` and `--sample-root TABLE`, hidden until the sample run lands (SAMPLE SC1).** The options check their input and refuse unsafe combinations (eight flags, a bad root table, a generated parent above a masked child) before anything is read. A sample run writes only into a staged scratch folder that is deleted on failure, and refuses unsafe output names before it writes. A request that passes every check stops with `--sample is not available yet` until SC2.
+
 ### Changed
+
+- **A `date_shift` refusal tells you which key to set (DATE-SHIFT-FORMAT).** `decoy validate` and `decoy run` already stop on `date_shift_requires_date_format` since the engine 0.28.2 repin. The finding now carries a hint to set `provider_config.date_format` to the strptime format of the dates. Tests hold every shipped template and example with `date_shift` to a passing validate.
+
+- **Engine repin to `decoy-engine==0.28.2` (`v0.28.2`).** The pin moves from 0.28.1; `requirements-certified.txt` keeps its 70 pins and records fingerprint `44aaa90f...`, which engine 0.28.2 lists as a certified row (only the hashed engine version moved). Engine changes you see through the CLI: a `date_shift` column without `provider_config.date_format` is refused at plan compile (`date_shift_requires_date_format`), and `jitter_days: N` now sets the window `[-N, N]`; a plain `decoy fit` snapshot floors interior numeric bins at 10 rows, so it can have fewer bins than `numeric_bins`, and `numeric_bins` outside 1 to 1000 is refused; a `text_mask` config naming an unknown detector or an unrunnable detector and strategy pair is refused at validate; a table that lists the same column name twice is refused; a `when:` filter refuses the reserved column names `null`, `true`, `false`, `between`, `like`, `ilike`, `matches`, `startswith` and `endswith`. No CLI flag or verb changes. The `decoy report fidelity --json` document gains `policy.intended_columns` and `policy.intended_joints` (empty lists unless a run marks value-replacing columns as intended).
 
 - **`decoy scan` refuses a negative `--rows` as a usage error (FREEZE-SURFACE item 3, C1).** It exits 1 with `rows must be 0 or more`; the engine used to refuse it with exit 3. `decoy scan` and `decoy demo` now make their engine call through one shared function, so their output bytes do not change.
 
@@ -154,7 +164,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Changed
 
-- **The update check and installers use `trydecoy.com`; pinned bundles are GitHub release assets (REL-WEB RW-C2a).** The default version endpoint is now `https://trydecoy.com/cli/version.json` in the update notice, `decoy upgrade`, `install.sh` and `install.ps1`. `decoy upgrade` now reads `DECOY_VERSION_URL` too (`--url` still wins). A pinned install (`decoy upgrade --version X`, `install.sh --version X`, `install.ps1 -Version X`) now fetches `<base>/vX/decoy-X-<target>.tar.gz` from `https://github.com/louiskeep/decoy/releases/download`, not from beside the version document. `DECOY_BUNDLE_BASE` overrides that base, for the latest version too. The signature check against the pinned key is unchanged.
+- **The update check and installers use `trydecoy.com`; pinned bundles are GitHub release assets (REL-WEB RW-C2a).** The default version endpoint is now `https://trydecoy.com/cli/version.json` in the update notice, `decoy upgrade`, `install.sh` and `install.ps1`. `decoy upgrade` now reads `DECOY_VERSION_URL` too (`--url` still wins). A pinned install (`decoy upgrade --version X`, `install.sh --version X`, `install.ps1 -Version X`) now fetches `<base>/vX/decoy-X-<target>.tar.gz` from the release download base (`ARTIFACT_BASE` in `decoy.distribution.release_identity`, today `https://github.com/decoy-data/decoy/releases/download`), not from beside the version document. `DECOY_BUNDLE_BASE` overrides that base, for the latest version too. The signature check against the pinned key is unchanged.
 
 - **The startup update check sends a fixed User-Agent and follows no redirect (REL-WEB RW-C1, roadmap row 91).** The request now carries only `Host`, `User-Agent: decoy-update-check`, `Accept-Encoding: identity` and `Connection: close`; before, urllib's default User-Agent named the Python version. A 3xx response ends the check with no notice instead of being followed to another host. The response is read up to 64 KiB, and the notice shows the latest version only in its canonical PEP 440 form; any other answer is cached as unknown for 24 hours. The opt-outs are unchanged (`--no-update-check`, `DECOY_NO_UPDATE_CHECK`); the module text no longer mentions a config setting, which never existed.
 
@@ -834,4 +844,4 @@ index; first publish lands with OSS.7.
 Tracked in `decoy/PLAN.md` so they do not rot.
 
 [Unreleased]: https://github.com/decoy-data/decoy/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/louiskeep/decoy/releases/tag/v0.1.0
+[0.1.0]: https://github.com/decoy-data/decoy/releases/tag/v0.1.0
