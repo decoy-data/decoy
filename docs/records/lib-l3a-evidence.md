@@ -213,3 +213,42 @@ gate with the usual collision refusal before any write. The root is not checked 
 Cells: `tests/e2e/library/test_library_output_guard.py` (unset env, relative `DECOY_LIBRARY`,
 absolute `DECOY_LIBRARY`; at the root and inside it; the relative `r.json` case; `--no-library`
 leaves the root free).
+
+## Revision 8 (Codex round 3): one output inventory, one containment rule
+
+Code head `95f390b3`. The mutations below ran on that tree (the record commit changes only this
+file). Each was applied once by exact string replace, the test set run, the file restored. The set is
+the guard matrix (`test_library_output_guard.py`), `tests/sentry/io_policy/run_outputs/`,
+`test_paths.py`, `test_placement_typed_files.py`, `test_library_read_commands.py`, the two run record
+files and `test_private_files.py` (201 tests with the full set green). "Red" gives the failing count.
+
+| Mutation | Result |
+|---|---|
+| MO-implicit-drop: `run_outputs` omits the implicit report | red (5) |
+| MO-report-fork: `report_file` derives its own name | red (1) |
+| MO-second-walk: the collision rule calls `relative_outputs` | red (1) |
+| MO-unlisted-writer: a run writes one more file beside a target | red (13) |
+| MO-one-direction: drop branch (b) of `overlaps_root` | red (11) |
+| MO-entry-only: check the entry, not the followed landing | red (9) |
+| MO-lexical: compare text paths, not `_destination_key` | red (17) |
+| MO-prefix: compare string prefixes | red (1) |
+| MO-narrow-catch: `anchor` catches `OSError` only | red (13) |
+| MO-fault-raises: `_library_root` lets `LibraryError` through | red (10) |
+| MO-re-resolve: a store function calls `resolve_root` again | red (1, the static check) |
+| MO-fault-fallback: on a fault, store under the project `.decoy` | red (9) |
+| MO-cli-root: `LibraryCommand.root()` catches `LayoutError` only | red (1) |
+| MO-two-warnings: the evidence store prints its own warning | red (9) |
+| MO-raw-first-target: `implicit_report_path` gets the raw text | red (2) |
+| MO-sink-unlisted: a run-reached module gains a write call with no row | red (9) |
+| Registration removed (`library = None`) | red (55) |
+
+MO-lexical survived once (201 passed): the first form compared text paths of the landing, and
+`_landing` already resolves links. The mutation that compares the declared output text, with no
+landing and no key, is red. The write audit and the sentry rows are in
+`tests/sentry/io_policy/run_outputs/test_run_output_inventory.py`.
+
+Where the test matrix differs from the plan text: for `integrity-implicit` and `quarantine` the
+report and the quarantine file share their folder with the first target, so when they sit inside the
+root the target does too, and the refusal names the target first. The cells accept either label
+there. The `layout` row's "above" cell has the same property. Also, `--chunked` lists the implicit
+report like any other run (the gate does not know whether a chunked run writes one).
