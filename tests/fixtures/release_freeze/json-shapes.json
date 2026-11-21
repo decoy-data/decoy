@@ -350,6 +350,9 @@
       "/manifest/output_fingerprints",
       "/manifest/row_counts"
     ],
+    "optional_keys": [
+      "/manifest/warnings/detail/resident_source"
+    ],
     "paths": {
       "/command": "string",
       "/evidence_file": "string",
