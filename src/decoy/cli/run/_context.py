@@ -86,13 +86,15 @@ class NotifyOn(str, Enum):
 def library_label(config: Path) -> str | Any:
     """The record label of this run (`decoy.cli.io.pipeline_label`, the resolver `library list`
     uses), or a failed `StoreOutcome` carrying the layout code: a record is lost, the run is not."""
+    from decoy_engine.reasons import warning
+
     from decoy.cli.library import StoreOutcome
 
     try:
         return pipeline_label(config)
     except LayoutError as exc:
         return StoreOutcome(
-            "failed", code=str(getattr(exc, "code", None) or "library_write_failed")
+            "failed", code=str(getattr(exc, "code", None) or warning.LIBRARY_WRITE_FAILED)
         )
 
 
