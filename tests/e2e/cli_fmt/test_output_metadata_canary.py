@@ -183,3 +183,17 @@ def test_cc5_csv_target_has_no_canary(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     text = (tmp_path / "out.csv").read_text(encoding="utf-8")
     assert [c for c in mc.ALL_CANARIES if c in text] == []
+
+
+def test_cc2_dataframe_attrs_are_not_written(tmp_path: Path) -> None:
+    """`DataFrame.to_parquet` writes `attrs` into the footer; the writer must not use it."""
+    import pandas as pd
+
+    from decoy.cli.io import write_table
+
+    frame = pd.DataFrame({"id": ["a", "b"]})
+    frame.attrs["note"] = mc.ATTRS
+    frame.columns.name = mc.COLIDX
+    out = tmp_path / "frame.parquet"
+    write_table(frame, "parquet", out)
+    assert mc.canaries_in(out) == set()
