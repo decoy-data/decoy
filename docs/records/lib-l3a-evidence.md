@@ -173,29 +173,43 @@ built, once. Its one caller is `_result._store_record`, called from `_write_file
 - **Not covered.** L3-payload-from-finish on a `findings` run (exit 4) has no cell: it needs a
   post-validate fixture and uses the same `_write_file` path as the cells that exist.
 
-## Mutations at the final head (`7817121c`, Codex round 1 fixes)
+## Mutations at the final head (`057cc05d`, Codex round 2 fix)
 
-Each mutation applied once by exact string replace, its tests run, the file restored.
-Cells are `tests/e2e/library/test_run_evidence_records.py`, `test_run_result_records.py` and the
-two `tests/sentry/io_policy/test_*_store_caller.py` files.
+Each mutation applied once by exact string replace, the 5 test files below run
+(55 tests with the guard file), the file restored. Cells are
+`tests/e2e/library/test_run_evidence_records.py`, `test_run_result_records.py`,
+`test_library_output_guard.py` and the two `tests/sentry/io_policy/test_*_store_caller.py` files.
+"Red" gives the failing test count.
 
 | Mutation | Result |
 |---|---|
-| ML3-label: label is the file name | red |
-| ML3-drift: the store gets a different manifest than the file | red |
-| ML3-cwd-root: root resolved without the YAML | red |
-| ML3-ignore: off switch ignored (`store = True`; `enabled=True` with `--evidence-out`) | red, red |
-| ML3-fail: a failed store raises | red |
-| ML3-silent-fail: no warning on a failed store | red |
-| ML3-second-caller: `store_run_result` called under an alias in `_render.py` | red |
-| RR-category-proxy: persistence decided by failure category again | red |
-| RR-start-unset: `execution_started` never set | red |
-| RR-pre-start-stores: a pre-start refusal stores a result | red |
-| RR-quiet-silent: no warning under `--quiet` (result and evidence) | red, red |
-| RR-link-dropped: run-result does not link its evidence | red |
-| RR-double-warn: result store not skipped after a failed evidence store | red |
-| RR-label-resolver-copy: result label not from the shared resolver | red |
+| ML3-label: label is the file name | red (3) |
+| ML3-drift: the store gets a different manifest than the file | red (10) |
+| ML3-cwd-root: root resolved without the YAML | red (1) |
+| ML3-ignore: off switch ignored (`store = True`) | red (3) |
+| ML3-ignore: `enabled=True` with `--evidence-out` | red (1) |
+| ML3-fail: a failed store raises | red (4) |
+| ML3-silent-fail: no warning on a failed store (evidence, result) | red (3), red (1) |
+| ML3-second-caller: `store_run_result` called under an alias in `_render.py` | red (1) |
+| RR-category-proxy: persistence decided by an outcome proxy, not `execution_started` | red (1) |
+| RR-start-unset: `execution_started` never set | red (8) |
+| RR-pre-start-stores: a pre-start refusal stores a result | red (27) |
+| RR-quiet-silent: no warning under `--quiet` (result, evidence) | red (1), red (1) |
+| RR-link-dropped: run-result does not link its evidence | red (2) |
+| RR-double-warn: result store not skipped after a failed evidence store | red (3) |
+| RR-label-resolver-copy: result label not from the shared resolver | red (3) |
+| LG-registration-removed: the library root is not given to the collision rule | red (25 of 26 guard cells; the `--no-library` control stays green) |
 
-The first run of ML3-ignore on `enabled=True` survived: with no `--evidence-out` the run returns
-before the store call, so the cell did not reach it. `test_no_library_with_evidence_out_still_writes_only_the_file`
-now covers it.
+The `ML3-fail` first try (`raise` in the `OSError` handler only) survived, because the
+unwritable-library cells fail through the layout and library errors, not `OSError`. The mutation
+that makes the whole failure return raise is red.
+
+## Output guard (Codex round 2)
+
+The resolved library root is one more destination in `resolved_output_collisions`
+(`OutputPlacement.library`, set once by `output_placement` in `cli/run/_context.py`). A `--result`,
+`--evidence-out`, `--integrity-out` or a configured target at or inside the root is refused by the
+gate with the usual collision refusal before any write. The root is not checked anywhere else.
+Cells: `tests/e2e/library/test_library_output_guard.py` (unset env, relative `DECOY_LIBRARY`,
+absolute `DECOY_LIBRARY`; at the root and inside it; the relative `r.json` case; `--no-library`
+leaves the root free).
