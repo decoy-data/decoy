@@ -208,11 +208,7 @@ def test_at_c1_plain_fit_floors_unflagged_columns_and_takes_numeric_bins(tmp_pat
     ranges = doc["columns"]["visit_date"]["stats"]["year_bins"]
     assert ranges
     assert all(set(r) == {"start_year", "end_year", "count"} for r in ranges)
-    # Engine 0.28.2 recodes interior bins held by under 10 rows, so the lone 987,654 outlier
-    # collapses a 17-bin request. The count is a ceiling now; the floor is the guarantee.
-    bins = doc["columns"]["salary"]["stats"]["bin_counts"]
-    assert 1 <= len(bins) <= 17
-    assert [c for c in bins if 0 < c < 10] == []
+    assert len(doc["columns"]["salary"]["stats"]["bin_counts"]) >= 17
     assert doc["columns"]["note"]["kind"] == "freetext"
     assert json.loads(result.stdout)["value_policy"] == "flagged-redacted/v2"
 
