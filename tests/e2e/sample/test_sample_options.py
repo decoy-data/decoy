@@ -178,8 +178,13 @@ def test_a_generated_parent_of_a_masked_child_is_refused_naming_only_tables_and_
 
 
 def test_outside_a_project_exits_1_before_a_scratch_folder_or_engine_call(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from decoy.cli.library import _paths
+
+    reached: list[str] = []
+    real = _paths.resolve_root
+    monkeypatch.setattr(_paths, "resolve_root", lambda **kw: (reached.append("x"), real(**kw))[1])
     work = tmp_path / "loose"
     work.mkdir()
     cfg = _mask_pipeline(work)
@@ -190,6 +195,7 @@ def test_outside_a_project_exits_1_before_a_scratch_folder_or_engine_call(
     assert res.exit_code == 1, res.output
     assert "layout.project_not_found" in res.output
     assert "not available yet" not in res.output
+    assert reached == []  # the library was never resolved: the refusal came first
     assert _files(work) == before  # no .decoy library, no scratch folder
 
 
