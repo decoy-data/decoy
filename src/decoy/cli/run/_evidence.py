@@ -34,24 +34,6 @@ def _pipeline_label(config: Path) -> str:
         return config.resolve().as_posix()
 
 
-def _write_file(ctx: RunContext, manifest: dict) -> None:
-    """Write `--evidence-out`; a failed write raises EvidenceWriteRefusal."""
-    failed = None
-    try:
-        write_local_target(
-            ctx.evidence_out, _json.dumps(manifest, indent=2).encode("utf-8"), WriteMode.REPLACE
-        )
-    except AtomicWriteError as exc:
-        failed = describe(exc)
-    if failed is not None:
-        # Outside the block: the refusal has no context. `_errors.refused` prints and exits.
-        raise EvidenceWriteRefusal(failed)
-    if ctx.state.mode is not OutputMode.json and ctx.state.mode is not OutputMode.quiet:
-        from decoy.ui.theme import success as _success
-
-        ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
-
-
 def write_evidence(ctx: RunContext) -> None:
     """Build the manifest once; write it to `--evidence-out` and store it in the record library.
 
@@ -82,7 +64,20 @@ def write_evidence(ctx: RunContext) -> None:
         engine_warnings=ctx._ev_engine_warnings,
     )
     if ctx.evidence_out is not None:
-        _write_file(ctx, manifest)
+        failed = None
+        try:
+            write_local_target(
+                ctx.evidence_out, _json.dumps(manifest, indent=2).encode("utf-8"), WriteMode.REPLACE
+            )
+        except AtomicWriteError as exc:
+            failed = describe(exc)
+        if failed is not None:
+            # Outside the block: the refusal has no context. `_errors.refused` prints and exits.
+            raise EvidenceWriteRefusal(failed)
+        if ctx.state.mode is not OutputMode.json and ctx.state.mode is not OutputMode.quiet:
+            from decoy.ui.theme import success as _success
+
+            ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
     from decoy.cli.library import store_evidence
 
     ctx.library_outcome = store_evidence(
