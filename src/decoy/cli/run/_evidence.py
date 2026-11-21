@@ -8,7 +8,7 @@ from rich.text import Text
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
 from decoy.cli.io import LayoutError, find_project
-from decoy.cli.run._context import EvidenceWriteRefusal, RunContext, pipeline_label
+from decoy.cli.run._context import EvidenceWriteRefusal, RunContext, library_label
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
 
@@ -72,14 +72,20 @@ def write_evidence(ctx: RunContext) -> None:
             ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
     from decoy.cli.library import store_evidence
 
-    ctx.library_outcome = store_evidence(
-        manifest,
-        pipeline=ctx.config,
-        label=pipeline_label(ctx.config),
-        invocation_id=ctx.invocation_id,
-        enabled=store,
+    label = library_label(ctx.config)
+    ctx.library_outcome = (
+        store_evidence(
+            manifest,
+            pipeline=ctx.config,
+            label=label,
+            invocation_id=ctx.invocation_id,
+            enabled=store,
+        )
+        if isinstance(label, str)
+        else label
     )
-    if ctx.library_outcome.status == "failed" and ctx.state.mode is not OutputMode.quiet:
+    # Not gated on --quiet: a warning about a lost record is not chatter.
+    if ctx.library_outcome.status == "failed":
         ctx.state.err_console.print(
             warn("warning:"),
             Text(
