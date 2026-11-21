@@ -28,7 +28,9 @@ _NOTE = (
 
 
 def _flat(text: str) -> str:
-    return " ".join(text.split())
+    # Help text wraps inside Rich's box on narrow CI terminals; drop the border so a phrase
+    # split across two box lines still reads as one.
+    return " ".join(text.replace("│", " ").split())
 
 
 def _masked_pair(tmp_path: Path) -> tuple[Path, Path, Path]:
