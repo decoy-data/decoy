@@ -18,14 +18,13 @@ ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 BANNED = frozenset({"select_subset", "run_subset", "plan_subset", "SubsetSelection"})
 BUILDER = "cli/run/_sample.py"
-# `decoy subset` is the engine's whole-table subsetter; it never builds a sample.
-ALLOWED = {"cli/subset.py": frozenset({"plan_subset", "run_subset"})}
 CUTS = frozenset({"slice", "take", "head"})
 
 
 def findings(source: str, rel: str) -> list[str]:
     out: list[str] = []
-    banned = BANNED - ALLOWED.get(rel, frozenset())
+    # `decoy subset` is the engine's whole-table subsetter; it never builds a sample.
+    banned = BANNED - {"plan_subset", "run_subset"} if rel == "cli/subset.py" else BANNED
     for node in ast.walk(ast.parse(source)):
         line = getattr(node, "lineno", 0)
         if isinstance(node, ast.ImportFrom):

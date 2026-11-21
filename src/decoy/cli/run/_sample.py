@@ -29,6 +29,7 @@ from decoy.cli.io import (
     RunLayout,
     explicit_project,
     find_project,
+    quarantine_enabled,
 )
 from decoy.cli.run._context import RunContext, UsageRefusal
 
@@ -66,9 +67,8 @@ def sample_config(config_dict: dict) -> dict:
             if not _one_component(table):
                 raise OUTPUT_PATH_ESCAPES.error(path=f"the table name {table!r}", base=_SAMPLE_BASE)
         config["targets"] = {table: _sample_target(table, spec) for table, spec in targets.items()}
-    quarantine = config.get("quarantine")
-    if isinstance(quarantine, dict) and quarantine.get("enabled"):
-        quarantine["output_path"] = QUARANTINE_FILE
+    if quarantine_enabled(config):
+        config["quarantine"]["output_path"] = QUARANTINE_FILE
     return config
 
 
