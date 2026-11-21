@@ -203,8 +203,8 @@ def test_at_c1_plain_fit_floors_unflagged_columns_and_takes_numeric_bins(tmp_pat
     assert result.exit_code == 0, result.output
     text = out.read_text(encoding="utf-8")
     doc = json.loads(text)
-    assert [c for c in _QA_CANARIES if c in text] == []
-    assert [c for c in _QA_CANARIES if c in result.stdout] == []
+    assert not any(c in text for c in _QA_CANARIES), "a canary is in the snapshot file"
+    assert not any(c in result.stdout for c in _QA_CANARIES), "a canary is in stdout"
     ranges = doc["columns"]["visit_date"]["stats"]["year_bins"]
     assert ranges
     assert all(set(r) == {"start_year", "end_year", "count"} for r in ranges)
@@ -215,8 +215,8 @@ def test_at_c1_plain_fit_floors_unflagged_columns_and_takes_numeric_bins(tmp_pat
     # bins' (parent 4.2, AT-1, AT-C1) is withdrawn." So `--numeric-bins 17` here gives one bin.
     salary = doc["columns"]["salary"]["stats"]
     assert "quantile_grid" in salary or "exact_values" in salary
-    assert salary["bin_counts"] == [1000]
-    assert len(salary["bin_edges"]) == 2
+    one_bin = salary["bin_counts"] == [1000] and len(salary["bin_edges"]) == 2
+    assert one_bin, "the salary column is not one bin of 1000 rows"
     assert doc["columns"]["note"]["kind"] == "freetext"
     assert json.loads(result.stdout)["value_policy"] == "flagged-redacted/v2"
 
@@ -237,10 +237,11 @@ def test_at_c1b_numeric_bins_without_a_shape_block_follows_the_finest_step_rule(
     assert result.exit_code == 0, result.output
     stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["x"]["stats"]
     assert "quantile_grid" not in stats and "exact_values" not in stats
-    assert stats["bin_edges"] == [0, 10, 20, 30, 40, 50]
-    assert stats["bin_counts"] == [18, 18, 18, 18, 18]
+    edges_ok = stats["bin_edges"] == [0, 10, 20, 30, 40, 50]
+    counts_ok = stats["bin_counts"] == [18, 18, 18, 18, 18]
+    assert edges_ok and counts_ok, "the bins are not five steps of 10 holding 18 rows each"
     assert 1 < len(stats["bin_counts"]) <= 17
-    assert [c for c in stats["bin_counts"] if 0 < c < 10] == []
+    assert not any(0 < c < 10 for c in stats["bin_counts"]), "a bin holds under 10 rows"
 
 
 def test_at_c2_validate_refuses_a_column_too_small_to_floor(tmp_path: Path) -> None:
@@ -396,3 +397,130 @@ def test_c4_explain_security_says_saved_scans_hold_no_values() -> None:
     assert "never cell values" in body
     assert "A plain run withholds the values of sensitive columns" in body
     assert "--include-values" in body
+
+
+def _bins_source_csv(tmp_path: Path) -> Path:
+    """Forty rows, an `amount` column and a `state` column, for the `--numeric-bins` wiring cells."""
+    src = tmp_path / "bins_source.csv"
+    pd.DataFrame(
+        {
+            "amount": [10.5, 22.1, 9.9, 100.0, 55.2, 31.4, 18.8, 42.0] * 5,
+            "state": (["CA"] * 5 + ["NY"] * 2 + ["TX"]) * 5,
+        }
+    ).to_csv(src, index=False)
+    return src
+
+
+def _spy_snapshot_document(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    import decoy_engine
+
+    real = decoy_engine.distribution_snapshot_document
+    seen: list[dict[str, Any]] = []
+
+    def _spy(df: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs)
+        return real(df, **kwargs)
+
+    monkeypatch.setattr("decoy_engine.distribution_snapshot_document", _spy)
+    return seen
+
+
+def test_plain_numeric_bins_reaches_the_snapshot_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _spy_snapshot_document(monkeypatch)
+    out = tmp_path / "snap.json"
+    result = runner.invoke(
+        app, ["fit", str(_bins_source_csv(tmp_path)), "--numeric-bins", "17", "-o", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    assert [kw["numeric_bins"] for kw in seen] == [17]
+    assert out.exists()
+
+
+def test_plain_fit_without_numeric_bins_leaves_the_engine_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _spy_snapshot_document(monkeypatch)
+    result = runner.invoke(
+        app, ["fit", str(_bins_source_csv(tmp_path)), "-o", str(tmp_path / "snap.json")]
+    )
+    assert result.exit_code == 0, result.output
+    assert len(seen) == 1
+    assert "numeric_bins" not in seen[0]
+
+
+def test_dp_numeric_bins_still_reaches_fit_dp_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from decoy_engine.quality.dp import DpError
+
+    seen: list[dict[str, Any]] = []
+
+    def _capture(df: Any, column_schema: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs)
+        raise DpError(code="capture_stop", message="captured for the test")
+
+    monkeypatch.setattr("decoy_engine.quality.check_dp_fit_request", lambda *a, **k: None)
+    monkeypatch.setattr("decoy_engine.quality.dp.fit_dp_snapshot", _capture)
+    runner.invoke(
+        app,
+        [
+            "fit",
+            str(_bins_source_csv(tmp_path)),
+            "--epsilon",
+            "1.0",
+            "--delta",
+            "1e-6",
+            "--dp-number",
+            "amount:0:200",
+            "--dp-allow-omit",
+            "--numeric-bins",
+            "17",
+        ],
+    )
+    assert [kw["numeric_bins"] for kw in seen] == [17]
+
+
+@pytest.mark.parametrize("bins", ["0", "1", "-3", "1001", "100000"])
+def test_plain_numeric_bins_outside_two_to_1000_is_a_usage_error(tmp_path: Path, bins: str) -> None:
+    out = tmp_path / "snap.json"
+    result = runner.invoke(
+        app,
+        ["fit", str(_bins_source_csv(tmp_path)), "--numeric-bins", bins, "-o", str(out), "--json"],
+    )
+    assert result.exit_code == EXIT_USAGE
+    assert json.loads(result.stdout)["code"] == "fit_numeric_bins_invalid"
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("bins", ["2", "1000"])
+def test_plain_numeric_bins_edges_of_the_range_are_accepted(tmp_path: Path, bins: str) -> None:
+    out = tmp_path / "snap.json"
+    result = runner.invoke(
+        app, ["fit", str(_bins_source_csv(tmp_path)), "--numeric-bins", bins, "-o", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+
+
+def test_plain_fit_keeps_both_values_of_a_true_false_column(tmp_path: Path) -> None:
+    src = tmp_path / "flags.csv"
+    pd.DataFrame({"active": [True] + [False] * 30, "n": range(31)}).to_csv(src, index=False)
+    out = tmp_path / "snap.json"
+    result = runner.invoke(app, ["fit", str(src), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["active"]["stats"]
+    counts = {str(t["value"]): t["count"] for t in stats["top_values"]}
+    assert counts == {"False": 30, "True": 1}
+
+
+def test_plain_large_numeric_bins_release_no_bin_under_ten_rows(tmp_path: Path) -> None:
+    src = tmp_path / "small.csv"
+    # Round thousands, the shape the profiler leaves unflagged.
+    values = np.random.default_rng(5).integers(40, 150, 200) * 1000.0
+    pd.DataFrame({"salary": values}).to_csv(src, index=False)
+    out = tmp_path / "snap.json"
+    result = runner.invoke(app, ["fit", str(src), "--numeric-bins", "1000", "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    stats = json.loads(out.read_text(encoding="utf-8"))["columns"]["salary"]["stats"]
+    assert not any(0 < c < 10 for c in stats["bin_counts"]), "a bin holds under 10 rows"
