@@ -4,6 +4,7 @@ Status: record
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
 
+- **2026-11-21 (engine data-flow gaps).** Go with recommended on the twelve gaps in vault `30_Resources/Decoy-Engine-Data-Flow-Gaps.md`. Gap 2 (no row-count check after a mask handler on the pandas paths) becomes 1.0 row HANDLER-ROW-COUNT. Gap 1 (config read after compile) and gaps 4, 5, 6 and 8 (mutation and golden-test depth) are v1+ candidates in the run group. Gap 9 (the `Plan` docstring seed history) and the gap 7 contract sentence on `vault-key` are doc fixes carried by the HANDLER-ROW-COUNT slice. Gaps 3, 7, 10, 11 and 12 are not gaps.
 - **2026-11-19 (init wizard stops).** The `decoy init` guided wizard (row 32b) is not developed further. Finish
   what is open (engine #653 E1 and #654 E2) and stop; that is the 1.0 scope for this surface. If the surface
   is incomplete as it stands, 1.0 reduces it to simple table structures only. The owner is building a different
