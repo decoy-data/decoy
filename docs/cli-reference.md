@@ -696,7 +696,7 @@ Examples:
     Every registered mask strategy with its class.
 
   decoy list providers --json
-    Every domain provider used by masking (`provider:` on a mask column), as JSON.
+    Every registered provider (mask `provider:` and generate `type: provider` columns), as JSON.
 
   decoy list disguises
     The regulatory Disguise bundles (hipaa, gdpr, ...) with rule counts.

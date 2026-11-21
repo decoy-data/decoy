@@ -394,3 +394,8 @@ def test_providers_wording_does_not_say_generation_provider():
     assert "generation provider" not in " ".join(helped.stdout.split())
     listed = runner.invoke(app, ["list", "providers"])
     assert "generation provider" not in " ".join(listed.stdout.split())
+    # The registry serves mask `provider:` columns and generate `type: provider` columns.
+    for text in (" ".join(helped.stdout.split()), " ".join(listed.stdout.split())):
+        assert "provider:" in text and "type: provider" in text
+    tip = " ".join(listed.stdout.split())
+    assert "faker-types" in tip and "type: faker" in tip

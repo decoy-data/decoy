@@ -6,16 +6,17 @@ verbs over the engine registries:
 
   decoy list KIND         KIND in {strategies, providers, checksums,
                           validators, templates, disguises,
-                          generate-types, faker-types}
+                          generate-types, faker-types, codesets}
   decoy show KIND [NAME]  KIND in {strategy, provider, template} (NAME required)
                           plus `show schema` (no NAME, `--output` accepted)
 
 Both verbs are thin dispatch tables onto the existing per-registry readers
 (cockpit's `_strategies_list`/`_providers_list`/`_checksums_list`/
-`_validators_list`/`_strategies_inspect`/`_providers_inspect`, templates'
-`_list`/`_show`, and the `schema` body). The only new reader is `list
-disguises`, which enumerates the engine's regulatory Disguise bundles via the
-public `decoy_engine.disguises.load_disguises` export.
+`_validators_list`/`_generate_types_list`/`_faker_types_list`/`_codesets_list`/
+`_strategies_inspect`/`_providers_inspect`, templates' `_list`/`_show`, and the
+`schema` body). `list disguises` is defined here: it enumerates the engine's
+regulatory Disguise bundles via the public `decoy_engine.disguises.load_disguises`
+export.
 
 The dispatched readers' option defaults are `typer.OptionInfo`, not bools, so
 the dispatcher always calls them with CONCRETE `json_`/`quiet`/`verbose` values.
@@ -127,7 +128,7 @@ Examples:
     Every registered mask strategy with its class.
 
   decoy list providers --json
-    Every domain provider used by masking (`provider:` on a mask column), as JSON.
+    Every registered provider (mask `provider:` and generate `type: provider` columns), as JSON.
 
   decoy list disguises
     The regulatory Disguise bundles (hipaa, gdpr, ...) with rule counts.

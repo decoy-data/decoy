@@ -191,7 +191,7 @@ def _providers_list(
         False, "--verbose", "-v", help="Enable debug-level CLI logs on stderr."
     ),
 ) -> None:
-    """List every domain provider used by masking (`provider:` on a mask column)."""
+    """List every registered provider, used by mask `provider:` columns and generate `type: provider` columns."""
     state = setup_output(json_, quiet, verbose)
 
     # Read the REAL engine registry at runtime.
@@ -243,9 +243,14 @@ def _providers_list(
         hint("Tip:"),
         "inspect one with",
         code("decoy show provider <name>") + ".",
-        "Generate columns use",
-        code("decoy list faker-types"),
-        "values.",
+        "Providers serve mask",
+        code("provider:"),
+        "columns and generate",
+        code("type: provider"),
+        "columns. For",
+        code("type: faker"),
+        "use",
+        code("decoy list faker-types") + ".",
     )
 
 
