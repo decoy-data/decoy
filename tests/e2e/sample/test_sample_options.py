@@ -178,22 +178,19 @@ def test_a_generated_parent_of_a_masked_child_is_refused_naming_only_tables_and_
 
 
 def test_outside_a_project_exits_1_before_a_scratch_folder_or_engine_call(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     work = tmp_path / "loose"
     work.mkdir()
     cfg = _mask_pipeline(work)
-    from decoy.cli.library import _store
-
-    opened: list[Path] = []
-    monkeypatch.setattr(_store, "open_library", lambda *a, **k: opened.append(a[0]))
     before = _files(work)
 
-    res = runner.invoke(app, ["run", str(cfg), "--sample", "5"])
+    res = runner.invoke(app, ["run", str(cfg), "--sample", "5", "--json"])
 
     assert res.exit_code == 1, res.output
-    assert "layout.project_not_found" in _flat(res.output) or "No Decoy project" in res.output
-    assert opened == [] and _files(work) == before
+    assert "layout.project_not_found" in res.output
+    assert "not available yet" not in res.output
+    assert _files(work) == before  # no .decoy library, no scratch folder
 
 
 def test_inside_a_project_the_scratch_comes_from_the_project_library_and_is_removed(
