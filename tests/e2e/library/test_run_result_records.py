@@ -185,3 +185,10 @@ def test_one_resolver_names_the_label_for_a_run_and_for_list(project: Path) -> N
     (project / "decoy.yaml").write_text("kind: not-a-project\n", encoding="utf-8")
     with pytest.raises(LayoutError):
         pipeline_label(project / PIPELINE)
+
+
+def test_no_library_with_evidence_out_still_writes_only_the_file(project: Path) -> None:  # noqa: F811
+    """The `--evidence-out` path reaches the store call, so the off switch must hold there too."""
+    assert _run("--no-library", "--evidence-out", "ev.json").exit_code == EXIT_OK
+    assert (project / "ev.json").exists()
+    assert not (project / DECOY_DIR / "library").exists()
