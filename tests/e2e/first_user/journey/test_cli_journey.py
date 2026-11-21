@@ -43,6 +43,7 @@ import pytest
 import yaml
 from scripts.qa import sweep as qa_sweep
 
+from decoy.distribution.layout import CLI_HOME_PATHS
 from tests.cli_journey import allowed_exit_codes, journey_step, step_by_id
 
 REPO = Path(__file__).resolve().parents[4]
@@ -249,24 +250,14 @@ def _tree(path: Path, depth: int = 2) -> frozenset[str]:
     return frozenset(names)
 
 
-# The home paths the CLI itself can write to if it ignored the redirected HOME. They come from
-# the CLI's own path helpers: decoy_home() is ~/.decoy (src/decoy/distribution/layout.py:34) and
-# launcher_bin_dir() is ~/.local/bin (layout.py:101). The whole home is not snapshotted because a
-# shared test node has other jobs writing there while the suite runs, which made AT-J7 flaky.
-_CLI_HOME_PATHS: tuple[tuple[str, ...], ...] = ((".decoy",), (".local", "bin"))
-
-
+# Snapshot only the CLI's own home paths (CLI_HOME_PATHS, layout.py), not the whole home: other
+# jobs on a shared test node write there during the suite, which made AT-J7 flaky.
 def _cli_home_tree(home: Path) -> frozenset[str]:
     names: set[str] = set()
-    for parts in _CLI_HOME_PATHS:
-        for i in range(1, len(parts)):
-            parent = home.joinpath(*parts[:i])
-            names.add(str(parent) if parent.exists() else "")
-        target = home.joinpath(*parts)
-        if target.exists():
-            names.add(str(target))
-            names |= _tree(target)
-    return frozenset(names)
+    for parts in CLI_HOME_PATHS:
+        names |= {str(home.joinpath(*parts[:i])) for i in range(1, len(parts) + 1)}
+        names |= _tree(home.joinpath(*parts))
+    return frozenset(n for n in names if os.path.lexists(n))
 
 
 def _data_frames() -> tuple[pl.DataFrame, pl.DataFrame]:
@@ -743,7 +734,7 @@ def test_nothing_is_written_outside_the_temp_root(journey: Journey) -> None:
     assert journey.shop.resolve() != REPO.resolve() and not inside(journey.shop, REPO)
 
 
-@pytest.mark.parametrize("parts", _CLI_HOME_PATHS)
+@pytest.mark.parametrize("parts", CLI_HOME_PATHS)
 def test_home_snapshot_catches_a_write_to_a_cli_home_path(
     parts: tuple[str, ...], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -755,10 +746,17 @@ def test_home_snapshot_catches_a_write_to_a_cli_home_path(
     assert _cli_home_tree(Path.home()) == before
     leaf = tmp_path.joinpath(*parts)
     leaf.mkdir(parents=True)
-    assert _cli_home_tree(Path.home()) != before
-    mid = _cli_home_tree(Path.home())
+    assert (mid := _cli_home_tree(Path.home())) != before
     (leaf / "stray").write_text("x")
     assert _cli_home_tree(Path.home()) != mid
+
+
+def test_snapshot_catches_parent_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Seeded mutation: creating only ~/.local (no bin) already changes the snapshot."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    before = _cli_home_tree(Path.home())
+    (tmp_path / ".local").mkdir()
+    assert _cli_home_tree(Path.home()) != before
 
 
 def test_missing_journey_variables_name_the_variable(tmp_path: Path) -> None:
