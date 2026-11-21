@@ -2,9 +2,9 @@
 
 Decoy keeps small, value-free records about your pipelines (scan snapshots, run results,
 evidence manifests, sample-run metadata) in one library per project. This page describes what
-exists so far. No command writes records yet (the scan and run commands start using the library
-in later releases); `decoy library path`, `fsck`, `list`, `show`, `diff` and `ref` read, check and
-name what is there.
+exists so far. `decoy run` stores its evidence record (below); scan, run-result and sample
+records arrive in later releases. `decoy library path`, `fsck`, `list`, `show`, `diff` and `ref`
+read, check and name what is there.
 
 Code: `src/decoy/cli/library/`. Plan: `plan/local-record-library:docs/plans/2026-11-05-local-record-library.md`.
 
@@ -67,6 +67,26 @@ indentation is still the same record. Any unique prefix of 8 or more hex digits 
 - Two Decoy processes may write records to one library at once; record writes take no lock.
 - A library whose `LAYOUT` names a version this Decoy does not write refuses writes with
   `library_layout_newer`.
+
+## What `decoy run` stores
+
+A successful `decoy run` stores one `evidence` record: the same manifest `--evidence-out` writes,
+built once and stored as built, so the record's payload equals that file. It is stored whether or
+not `--evidence-out` is given. The record carries the run's invocation id (the manifest's
+`run_id`), the pipeline (the YAML's path from the project root, what `library list --pipeline`
+matches) and the target table names. A failed run, a `--rows` preview and a `--duckdb-source` run
+store none.
+
+- `--no-library`, or `DECOY_LIBRARY=off`, stores nothing for that run.
+- The run card names the record and the library root; `--json` has a `library` object:
+  `{"status": "stored", "root": ..., "evidence": <id>}`, `{"status": "skipped"}`, or
+  `{"status": "failed", "root": ..., "code": ...}`.
+- A library that cannot be written does not fail the run: stderr gets one warning with the code,
+  `--json` says `failed`, and the exit code is the run's own (a delivered run is never reported
+  as failed, so an orchestrator does not deliver twice).
+
+Paths in the record are what the manifest holds: project-relative inside a `decoy.yaml` project,
+absolute otherwise. `export` reduces them to file names unless `--keep-paths` is given.
 
 ## How records are read
 

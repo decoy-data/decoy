@@ -1,13 +1,16 @@
-"""The `--evidence-out` manifest of `decoy run`."""
+"""The evidence manifest of `decoy run`: the `--evidence-out` file and the library record."""
 
 import json as _json
 from pathlib import Path
 
+from rich.text import Text
+
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
-from decoy.cli.io import LayoutError, find_project
+from decoy.cli.io import LayoutError, find_project, project_relative_posix
 from decoy.cli.run._context import EvidenceWriteRefusal, RunContext
 from decoy.ui.output import OutputMode
+from decoy.ui.theme import warn
 
 
 def _marked_project_root(config: Path) -> Path | None:
@@ -23,27 +26,44 @@ def _marked_project_root(config: Path) -> Path | None:
     return None if found.implicit else found.root
 
 
-def write_evidence(ctx: RunContext) -> None:
-    """Write the manifest when `--evidence-out` is set; a failed write raises EvidenceWriteRefusal."""
-    # Evidence manifest (--evidence-out), for plain and chunked runs; chunked runs have
-    # no row_counts/timings/warnings (see the flag help).
-    if ctx.evidence_out is not None and ctx._ev_config_dict is not None:
-        from decoy.cli.evidence import build_manifest
+def _pipeline_label(config: Path) -> str:
+    """The `pipeline` label on the run's records: what `decoy library list --pipeline` matches."""
+    try:
+        return project_relative_posix(find_project(config.resolve().parent, None).root, config)
+    except LayoutError:
+        return config.resolve().as_posix()
 
-        manifest = build_manifest(
-            pipeline_path=ctx.config,
-            config_dict=ctx._ev_config_dict,
-            run_result={"row_counts": ctx._ev_row_counts or {}},
-            cli_version=_cli_version,
-            engine_version=ctx._ev_engine_version or "unknown",
-            key_label=ctx.key_label,
-            run_id=ctx.invocation_id,
-            place_target=ctx.layout.place_target if ctx.layout is not None else None,
-            project_root=_marked_project_root(ctx.config),
-            evidence_path=ctx.evidence_out,
-            timings=ctx._ev_timings,
-            engine_warnings=ctx._ev_engine_warnings,
-        )
+
+def write_evidence(ctx: RunContext) -> None:
+    """Build the manifest once; write it to `--evidence-out` and store it in the record library.
+
+    A failed `--evidence-out` write raises EvidenceWriteRefusal. The library store (on by default,
+    plan 4.16) never changes the exit code: a failure is one stderr warning with its code (4.17).
+    """
+    # Chunked runs have no row_counts/timings/warnings (see the --evidence-out help).
+    # A --duckdb-source input is a transient snapshot with no defined fingerprint, so such a run
+    # stores no evidence record (and refuses --evidence-out before it starts).
+    store = not ctx.no_library and not ctx.duckdb_source
+    if ctx._ev_config_dict is None or (ctx.evidence_out is None and not store):
+        _record_skipped(ctx)
+        return
+    from decoy.cli.evidence import build_manifest
+
+    manifest = build_manifest(
+        pipeline_path=ctx.config,
+        config_dict=ctx._ev_config_dict,
+        run_result={"row_counts": ctx._ev_row_counts or {}},
+        cli_version=_cli_version,
+        engine_version=ctx._ev_engine_version or "unknown",
+        key_label=ctx.key_label,
+        run_id=ctx.invocation_id,
+        place_target=ctx.layout.place_target if ctx.layout is not None else None,
+        project_root=_marked_project_root(ctx.config),
+        evidence_path=ctx.evidence_out,
+        timings=ctx._ev_timings,
+        engine_warnings=ctx._ev_engine_warnings,
+    )
+    if ctx.evidence_out is not None:
         failed = None
         try:
             write_local_target(
@@ -58,3 +78,26 @@ def write_evidence(ctx: RunContext) -> None:
             from decoy.ui.theme import success as _success
 
             ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
+    from decoy.cli.library import store_evidence
+
+    ctx.library_outcome = store_evidence(
+        manifest,
+        pipeline=ctx.config,
+        label=_pipeline_label(ctx.config),
+        invocation_id=ctx.invocation_id,
+        enabled=store,
+    )
+    if ctx.library_outcome.status == "failed" and ctx.state.mode is not OutputMode.quiet:
+        ctx.state.err_console.print(
+            warn("warning:"),
+            Text(
+                f"{ctx.library_outcome.code}: the run's evidence record was not stored in the "
+                "library; the run's result is unchanged."
+            ),
+        )
+
+
+def _record_skipped(ctx: RunContext) -> None:
+    from decoy.cli.library import StoreOutcome
+
+    ctx.library_outcome = StoreOutcome("skipped")

@@ -111,6 +111,7 @@ def test_success_document(tmp_path: Path) -> None:
         "outputs",
         "output_dir",
         "native_route",
+        "library",
     }
 
 
