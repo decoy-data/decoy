@@ -7,8 +7,8 @@ from rich.text import Text
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._version import __version__ as _cli_version
-from decoy.cli.io import LayoutError, find_project, project_relative_posix
-from decoy.cli.run._context import EvidenceWriteRefusal, RunContext
+from decoy.cli.io import LayoutError, find_project
+from decoy.cli.run._context import EvidenceWriteRefusal, RunContext, pipeline_label
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
 
@@ -24,14 +24,6 @@ def _marked_project_root(config: Path) -> Path | None:
     except LayoutError:
         return None
     return None if found.implicit else found.root
-
-
-def pipeline_label(config: Path) -> str:
-    """The `pipeline` label on the run's records: what `decoy library list --pipeline` matches."""
-    try:
-        return project_relative_posix(find_project(config.resolve().parent, None).root, config)
-    except LayoutError:
-        return config.resolve().as_posix()
 
 
 def write_evidence(ctx: RunContext) -> None:

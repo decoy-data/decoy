@@ -52,7 +52,7 @@ def test_a_run_stores_a_result_record_that_links_to_its_evidence(project: Path) 
     assert raw["links"] == [{"rel": "evidence", "id": evidence.id}]
     assert _stored(project, evidence.id)["links"] == []  # one way: evidence links to nothing
     assert row.pipeline == PIPELINE and list(row.tables) == ["customers"]
-    assert row.status == "success" and row.exit_code == 0
+    assert row.status == "succeeded" and row.exit_code == 0
 
 
 def test_the_index_finds_the_result_from_the_evidence(project: Path) -> None:  # noqa: F811

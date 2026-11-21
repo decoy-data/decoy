@@ -18,10 +18,13 @@ from decoy import _native_gate, _resources
 from decoy.cli.gate import GateFinding
 from decoy.cli.io import (
     DuckDBSourceError,
+    LayoutError,
     OutputPlacement,
     PipelineRef,
     RunLayout,
+    find_project,
     parse_flags,
+    project_relative_posix,
     resolve_path,
 )
 from decoy.ui.output import OutputState
@@ -79,6 +82,14 @@ class NotifyOn(str, Enum):
     success = "success"
     failure = "failure"
     always = "always"
+
+
+def pipeline_label(config: Path) -> str:
+    """The `pipeline` label on the run's records: what `decoy library list --pipeline` matches."""
+    try:
+        return project_relative_posix(find_project(config.resolve().parent, None).root, config)
+    except LayoutError:
+        return config.resolve().as_posix()
 
 
 @dataclass(slots=True)

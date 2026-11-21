@@ -29,7 +29,7 @@ from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_tar
 from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
-from decoy.cli.run._context import RunContext, output_placement
+from decoy.cli.run._context import RunContext, output_placement, pipeline_label
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
@@ -270,18 +270,20 @@ def _store_record(ctx: RunContext, document: Document) -> None:
     """Store the document as a `run-result` record: the one store call, so every exit path that
     writes the envelope stores it, built once by `build`. Never changes the exit code (plan 4.17).
 
-    A preview, `--no-library`, a failed build and a second call for the same run store nothing, and
+    A preview, `--no-library`, a refusal before the run starts, a failed build and a second call for the same run store nothing, and
     neither does a run whose evidence store already failed (it warned once; the root is the cause).
     """
-    prior = ctx.library_outcome
-    if ctx.rows is not None or document.payload is None:
+    if ctx.no_library or ctx.rows is not None or document.payload is None:
         return
+    # A refusal before the run starts (a usage or parameter fault) writes nothing, as it never has.
+    if (document.payload.get("failure") or {}).get("category") in ("usage", "parameter"):
+        return
+    prior = ctx.library_outcome
     if prior is not None and (prior.result or prior.status == "failed"):
         return
     from pathlib import Path as _Path
 
     from decoy.cli.library import store_run_result
-    from decoy.cli.run._evidence import pipeline_label
 
     outcome = store_run_result(
         document.payload,
