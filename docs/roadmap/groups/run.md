@@ -25,6 +25,7 @@ Blocks the 1.0 release.
 | NATIVE-MISSING-WARN | A run that executed no compiled kernel because the companion is missing prints a one-line warning on stderr. Today a pip install runs about 3 times slower with no message. The warning is kept out of the result document, so the output contract does not change. In V1 this warning is all a pip install gets (owner Q6); a `native` extra is PIP-NATIVE-EXTRA ([release](release.md), 1.x). Owner 2026-11-19, record item M3 | CLI, engine | NOT STARTED | record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) section 5.1 M3; plan not written | none |
 | ENGINE-THREADS-DEFAULT | `run_pipeline` defaults `native_threads` to the usable cores, as the CLI already does, so library and SDK callers get the fast path. Output bytes do not change (proven). A public default changes, so it is a freeze item. Owner 2026-11-19, record item F3 | engine | NOT STARTED | record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) section 5.2 F3; plan not written | none |
 | DOC-DRIFT-ROUTES | Engine route docs that disagree with the code (record section 7, items 1 to 5 and 7): SEQ `group_key` and OOC `text_mask` are native, the 2026-09-30 Rust coverage audit is stale, `docs/relationships.md` still calls the cycle decision pending, and the `lib.rs` and `threads.rs` module docs are out of date. Item 7 (the row 63a thread wording) is fixed in this roadmap. Docs only, no behaviour change. Owner 2026-11-19 | engine | NOT STARTED | record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) section 7; plan not written | none |
+| HANDLER-ROW-COUNT | A mask handler that returns a different number of rows than it was given is not caught on the pandas paths: under `when:` the index-aligned stitch writes nulls for the missing rows with no error, and chunked concat is silent (native and out-of-core already raise). Only a handler bug can cause it, but the result is wrong data reported as success, so it is a safety item. Add one coded length and index check in `_pandas_adapter._dispatch_mask_node` and `run_with_when_gate`, a stub-handler test per path and one mutation. Owner 2026-11-21, vault `30_Resources/Decoy-Engine-Data-Flow-Gaps.md` gap 2 | engine | NOT STARTED | gap note gap 2 | none |
 
 ## Later (1.x)
 
@@ -45,6 +46,9 @@ Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above
 
 | Item | Source | Why it does not break |
 |---|---|---|
+| Plan-only reads after compile: deep-freeze `ctx.config`, check the second-plan `seed_envelope` in `_chunked_oracle.py` and `native/_plan.py` against `ctx.plan`, shrink-only sentry on config reads | Data-flow gaps note, gap 1 (2026-11-21) | Hardening; no output, name or default changes. |
+| Mutation runs for plan compile (`plan/_compile.py`, `plan/checks/`), the seed envelope, the out-of-core vault slice, signed evidence and row integrity | Data-flow gaps note, gaps 4 to 6 | Test depth only. |
+| Readers for the four unread `tests/snapshots/golden/` folders (document `validator` beside `RGF1-KL-2`) | Data-flow gaps note, gap 8 | Test depth only. |
 | F28 local execution node | Council features | New daemon beside the CLI and platform workers. |
 | Route-coverage phase 2: out-of-core address faker | Post-V1 on demand (old list) | Turns a refusal into a success. |
 | Route-coverage phase 2: FPE foreign-key key on the out-of-core route | Post-V1 on demand (old list) | Same. |
