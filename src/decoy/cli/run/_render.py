@@ -2,6 +2,7 @@
 `--post-validate-enforce` exit."""
 
 from pathlib import Path
+from typing import Any
 
 from rich.text import Text
 
@@ -93,6 +94,15 @@ def _where_written(ctx: RunContext) -> dict:
     return {**ctx.published_members(), **described}
 
 
+def _library_facts(outcome: Any) -> list[tuple[str, str]]:
+    """The run card's `Library` line (plan 4.16: a default write is always named)."""
+    if outcome is None or outcome.status == "skipped":
+        return []
+    if outcome.status == "failed":
+        return [("Library", f"not stored ({outcome.code})")]
+    return [("Library", f"evidence {outcome.evidence[7:19]} in {shown_path(outcome.root)}")]
+
+
 def finish(ctx: RunContext) -> None:
     """Render the success result and apply the `--post-validate-enforce` exit mapping."""
     # The exit integer is the document's (`_blocking_failed` decides findings, 4); it applies
@@ -117,6 +127,8 @@ def finish(ctx: RunContext) -> None:
         }
         payload["resources"] = ctx._resources_record
         payload.update(post_scan_members(ctx._post_scan, ctx._post_scan_file))
+        if ctx.library_outcome is not None:
+            payload["library"] = ctx.library_outcome.to_json()
         if ctx._subset_metrics is not None:
             payload["subset"] = ctx._subset_metrics
         if ctx.notify_channels:
@@ -160,6 +172,7 @@ def finish(ctx: RunContext) -> None:
         facts.extend(ctx.layout.summary_facts())
     if _warnings:
         facts.append(("Warnings", str(len(_warnings))))
+    facts.extend(_library_facts(ctx.library_outcome))
     if ctx._native_route is not None:
         facts.append(("Route", ctx._native_route.label))
     if ctx.notify_channels:

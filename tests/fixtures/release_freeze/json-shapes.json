@@ -405,6 +405,7 @@
   },
   "run": {
     "opaque_values": {
+      "/library": "object",
       "/warnings": "array"
     },
     "optional_keys": [
@@ -417,6 +418,7 @@
       "/command": "string",
       "/config": "string",
       "/elapsed_s": "number",
+      "/library": "object",
       "/mode": "string",
       "/output_dir": "string",
       "/outputs[]/path": "string",

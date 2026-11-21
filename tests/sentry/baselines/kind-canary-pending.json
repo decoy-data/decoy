@@ -2,9 +2,6 @@
  "sentry_id": "kind-canary-pending",
  "created_in": "L1c.2",
  "entries": {
-  "evidence": {
-   "reason": "L3a-cli writes evidence records and adds the evidence canary."
-  },
   "run-result": {
    "reason": "L3a-cli writes run-result records and adds the canary fixture."
   },

@@ -20,6 +20,8 @@ import pandas as pd
 import pytest
 import yaml
 
+from decoy.cli.io import DECOY_DIR
+
 CANARY_EMAIL = "zq9canary@canary-host.test"
 CANARY_SSN = "731-55-9042"
 SECRET = "cd" * 32
@@ -139,6 +141,18 @@ def _assert_exact(step: str, new: set[Path], expected: set[Path]) -> None:
     )
 
 
+def _split_library(step: str, new: set[Path], project: Path, records: int) -> set[Path]:
+    """The paths `new` holds outside the project's record library, after checking the library
+    part: a run stores its evidence record by default (LIB plan 4.16), `records` record files
+    under `.decoy/library/objects/`, and nothing else of the library writes rows or logs."""
+    root = project / DECOY_DIR
+    library = {p for p in new if _under(p, root)}
+    objects = [p for p in library if p.suffix == ".json" and "objects" in p.parts]
+    assert len(objects) == records, f"{step}: {len(objects)} record files, expected {records}"
+    assert not [p for p in library if {"scratch", "logs"} & set(p.relative_to(root).parts)]
+    return new - library
+
+
 def _out_first(project: Path) -> set[Path]:
     """`out/` and its `.gitignore`, made by the first run in a project."""
     return {project / "out", project / "out" / ".gitignore"}
@@ -181,6 +195,7 @@ def test_each_command_writes_only_where_the_guarantee_allows(world: World) -> No
     assert done.returncode == 0, done.stdout + done.stderr
     _assert_quiet(done)
     run = w.run_dir("mask")
+    new = _split_library("run", new, w.project, records=1)
     _assert_exact("run", new, _out_first(w.project) | _run_paths(w.project, "mask", run, "out.csv"))
     assert json.loads(done.stdout)["output_dir"] == str(run)
     masked = run / "out.csv"
@@ -239,7 +254,7 @@ def test_run_all_writes_only_each_pipelines_run_folder(world: World) -> None:
     expected = _out_first(w.project)
     for name in ("alpha", "beta"):
         expected |= _run_paths(w.project, name, w.run_dir(name), "out.csv")
-    _assert_exact("run --all", new, expected)
+    _assert_exact("run --all", _split_library("run --all", new, w.project, records=2), expected)
     assert not list(w.home.rglob("*")), "a command wrote into the home folder"
 
 

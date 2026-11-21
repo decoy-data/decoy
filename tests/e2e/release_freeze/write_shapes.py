@@ -65,7 +65,8 @@ OPAQUE: dict[str, dict[str, str]] = {
         "/models/cause": "null|string",
         "/models/hint": "null|string",
     },
-    "run": {"/warnings": "array"},
+    # `library` is always present; its members depend on the store outcome (plan 4.16, 4.17).
+    "run": {"/library": "object", "/warnings": "array"},
 }
 OPTIONAL: dict[str, list[str]] = {
     # `_render.py` adds each of these only when the run used the feature.
