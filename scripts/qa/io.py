@@ -17,6 +17,7 @@ widen the frozen surface, so QA keeps its own copy of the few primitives it need
 from __future__ import annotations
 
 import contextlib
+import fcntl
 import os
 import stat
 import tempfile
@@ -25,6 +26,8 @@ from pathlib import Path
 
 PRIVATE_FILE = 0o600
 PRIVATE_DIR = 0o700
+PRIVATE_EXEC = 0o700  # a launcher-owned script, runnable by this user only
+MAX_TREE_BYTES = 64 * 1024 * 1024  # the most `copy_private_tree` will copy
 
 
 class AlreadyPublished(FileExistsError):
@@ -110,12 +113,12 @@ def _ensure_parents(directory: Path) -> None:
 
 
 @contextlib.contextmanager
-def staged_private(target: Path) -> Iterator[StagedFile]:
+def staged_private(target: Path, mode: int = PRIVATE_FILE) -> Iterator[StagedFile]:
     """Yield a `StagedFile` for `target`; remove the temporary file unless it was published."""
     target = Path(target)
     _ensure_parents(target.parent)
     fd, name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".part", dir=target.parent)
-    os.fchmod(fd, PRIVATE_FILE)
+    os.fchmod(fd, mode)
     staged = StagedFile(target, fd, Path(name))
     try:
         yield staged
@@ -123,11 +126,128 @@ def staged_private(target: Path) -> Iterator[StagedFile]:
         staged.discard()
 
 
-def publish_private_once(target: Path, data: bytes) -> None:
-    """Write `data` to `target` as a 0600 file that did not exist before, atomically."""
-    with staged_private(target) as staged:
+def publish_private_once(target: Path, data: bytes, mode: int = PRIVATE_FILE) -> None:
+    """Write `data` to `target` as a private file that did not exist before, atomically."""
+    with staged_private(target, mode) as staged:
         staged.write(data)
         staged.publish()
+
+
+def publish_or_same(target: Path, data: bytes) -> bool:
+    """Publish once, or accept an existing target that already holds exactly `data`.
+
+    True when this call wrote the file, False when an identical file was already there. That makes
+    a retry after an interruption safe, while a different file at the target is still refused. The
+    existing file is read without following a symlink.
+    """
+    lost = False
+    try:
+        publish_private_once(target, data)
+    except AlreadyPublished:
+        lost = True
+    if not lost:
+        return True
+    if not _holds(target, data):
+        raise AlreadyPublished(f"already exists with other content: {target}")
+    return False
+
+
+def _holds(target: Path, data: bytes) -> bool:
+    """True when `target` is our own private regular file holding exactly `data`.
+
+    `O_NONBLOCK` keeps a FIFO from hanging the open, and the fstat then refuses it, a directory, a
+    file owned by someone else and a file others can read or write.
+    """
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+    try:
+        fd = os.open(target, flags)
+    except OSError:
+        return False
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        os.close(fd)
+        return False
+    with os.fdopen(fd, "rb") as handle:
+        return handle.read() == data
+
+
+@contextlib.contextmanager
+def exclusive_claim(key: Path) -> Iterator[None]:
+    """Hold an exclusive claim on `key` (usually a target path) while the body runs.
+
+    It is an advisory `flock` on a private `.<name>.lock` file next to `key`. The kernel drops the
+    claim when the process dies, so a killed writer leaves no stale reservation to clean up. A
+    second claimer waits, then runs after the first finishes and can see what it published. The lock
+    file is removed on release, and the claimer re-checks that the file it locked is still the one
+    on disk, so removal cannot let two holders in.
+    """
+    key = Path(key)
+    _ensure_parents(key.parent)
+    lock = key.parent / f".{key.name}.lock"
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    while True:
+        fd = os.open(lock, flags, PRIVATE_FILE)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise PermissionError(f"refused: {lock} is not our private lock file")
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                current = os.stat(lock).st_ino
+            except FileNotFoundError:
+                current = None  # the last holder removed it while we waited: take the new one
+            if current == info.st_ino:
+                break
+        except BaseException:
+            os.close(fd)
+            raise
+        os.close(fd)
+    try:
+        yield
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(lock)
+        os.close(fd)
+
+
+def append_private_line(path: Path, line: str) -> None:
+    """Append one line to a private file, creating it 0600; a symlink is refused.
+
+    The generated repro shim calls this to record its witness, so the shim has no file writer of
+    its own. `O_APPEND` keeps concurrent lines whole.
+    """
+    flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(path, flags, PRIVATE_FILE)
+    try:
+        view = memoryview((line + "\n").encode("utf-8"))
+        while view:
+            view = view[os.write(fd, view) :]
+    finally:
+        os.close(fd)
+
+
+def copy_private_tree(source: Path, dest: Path) -> None:
+    """Copy the regular files under `source` into a new private tree at `dest`.
+
+    A symlink or special file is refused (it could point outside the folder), the owner exec bit
+    is kept so a repro script still runs, and the total size is capped at `MAX_TREE_BYTES`.
+    """
+    source, dest = Path(source), Path(dest)
+    _ensure_parents(dest)
+    total = 0
+    for path in sorted(source.rglob("*")):
+        relative = path.relative_to(source)
+        if path.is_symlink() or not (path.is_dir() or path.is_file()):
+            raise ValueError(f"refused: {relative} is a symlink or special file")
+        if path.is_dir():
+            _ensure_parents(dest / relative)
+            continue
+        info = path.stat()
+        total += info.st_size
+        if total > MAX_TREE_BYTES:
+            raise ValueError("refused: the folder is over the size cap")
+        mode = PRIVATE_EXEC if info.st_mode & stat.S_IXUSR else PRIVATE_FILE
+        publish_private_once(dest / relative, path.read_bytes(), mode=mode)
 
 
 @contextlib.contextmanager

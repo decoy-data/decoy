@@ -310,3 +310,21 @@ def test_malformed_files_do_not_parse(tmp_path: Path) -> None:
         duckdb.connect(str(bad), read_only=True)
     fixed = one("single-fixed-width-malformed-s")["people.fwf"].decode().splitlines()
     assert len({len(ln) for ln in fixed}) > 1
+
+
+def test_regeneration_uses_the_one_identical_content_helper(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.qa import io as qio
+
+    seen: list[str] = []
+    real = qio.publish_or_same
+    monkeypatch.setattr(
+        generate, "publish_or_same", lambda p, d: (seen.append(p.name), real(p, d))[1]
+    )
+    generate._publish(tmp_path / "a.bin", b"x")
+    generate._publish(tmp_path / "a.bin", b"x")
+    assert seen == ["a.bin", "a.bin"]
+    with pytest.raises(generate.RegenerationDiffers) as err:
+        generate._publish(tmp_path / "a.bin", b"y")
+    assert err.value.__context__ is None

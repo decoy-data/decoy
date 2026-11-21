@@ -6,6 +6,10 @@
 # check: "cells" means the per-column strategy rules of I1 apply (exact cell and same-row check);
 # "needles" means the needles sweep over the text; "needles-encrypted" is the same sweep, where
 # encrypted values in the file are expected and a needle is still a finding.
+#
+# numeric_matches = false (optional, default true): a refusal-set match made only of numbers is
+# not a finding on that surface. The run summary on stdout prints its own row counts, which
+# collide with sequential key values (plan 5.2).
 
 schema_version = 1
 
@@ -18,6 +22,7 @@ check = "cells"
 id = "stdout"
 name = "stdout, including --json documents"
 check = "needles"
+numeric_matches = false
 
 [[surface]]
 id = "stderr"
