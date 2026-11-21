@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
-from decoy.cli.exit_codes import EXIT_OK
+from decoy.cli.exit_codes import EXIT_OK, EXIT_RUNTIME
 from decoy.cli.io import DECOY_DIR
 from decoy.cli.library import open_library
 from tests.e2e.library.test_run_evidence_records import (
@@ -52,7 +53,8 @@ def test_a_run_stores_a_result_record_that_links_to_its_evidence(project: Path) 
     assert raw["links"] == [{"rel": "evidence", "id": evidence.id}]
     assert _stored(project, evidence.id)["links"] == []  # one way: evidence links to nothing
     assert row.pipeline == PIPELINE and list(row.tables) == ["customers"]
-    assert row.status == "succeeded" and row.exit_code == 0
+    assert row.status == "succeeded"
+    assert _stored(project, row.id)["payload"]["exit_code"] == 0
 
 
 def test_the_index_finds_the_result_from_the_evidence(project: Path) -> None:  # noqa: F811
@@ -74,18 +76,25 @@ def test_the_stored_payload_is_the_result_member_of_json(project: Path) -> None:
 
 
 def test_a_failed_run_stores_a_failed_result_and_no_evidence(project: Path) -> None:  # noqa: F811
-    """L3-failed-run, and L3-payload-from-finish on a runtime failure."""
-    (project / "pipelines" / "input.csv").unlink()
-    result = _run("--json")
-    assert result.exit_code != EXIT_OK
+    """L3-failed-run, and L3-payload-from-finish on a runtime failure (exit 3)."""
+    with mock.patch("decoy_engine.run_pipeline", side_effect=RuntimeError("boom")):
+        result = _run("--json")
+    assert result.exit_code == EXIT_RUNTIME, result.output
     assert _rows(project, "evidence") == []
     (row,) = _rows(project, "run-result")
-    payload = _stored(project, row.id)["payload"]
-    assert payload["status"] == "failed" and payload["exit_code"] == result.exit_code
-    assert _stored(project, row.id)["links"] == []
-    shown = json.loads(result.stdout)
-    document = shown.get("result") or shown["context"]["result"]
+    stored = _stored(project, row.id)
+    payload = stored["payload"]
+    assert payload["status"] == "failed" and payload["exit_code"] == EXIT_RUNTIME
+    assert payload["failure"]["category"] == "runtime"
+    assert stored["links"] == []
+    document = json.loads(result.stdout)["result"]
     assert json.dumps(payload, **CANONICAL) == json.dumps(document, **CANONICAL)
+
+
+def test_a_refusal_before_the_run_starts_stores_nothing(project: Path) -> None:  # noqa: F811
+    result = _run("--json", "--notify", "bogus")
+    assert result.exit_code == 1
+    assert not (project / DECOY_DIR / "library").exists()
 
 
 @pytest.mark.parametrize("how", ["flag", "env"])
