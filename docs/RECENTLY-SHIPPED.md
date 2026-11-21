@@ -11,6 +11,14 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-21: merges of the day
+
+- **Engine #747 (STAMP-IMPORT):** the release stamp no longer deletes the `UNRELEASED` import from a reason module, so a new unreleased code on a stamped module no longer fails at import. A sentry checks every reason module.
+- **Engine #741 (row 79, F09 E1):** vaults are written as v3 with an authenticated, versioned header; v2 vaults open read-only. An older engine cannot open a v3 vault.
+- **CLI #365 (row 63, SAMPLE SC1):** the sample run writes into a staged folder and refuses unsafe output names before it writes.
+- **Engine #745 (COLUMN-SHAPE-RULE E0):** `bucket_perturb` never writes an unparsed date cell through unmasked.
+- **CLI #368:** roadmap rows PRE-SCAN-RUN and HANDLER-ROW-COUNT.
+
 ## 2026-11-21: engine 0.28.2 repin (CLI)
 
 - **CLI**: the engine repin to 0.28.2 (tag `v0.28.2`, engine #740, `2bee0c523`). `requirements-certified.txt` keeps its 70 pins; fingerprint is now `44aaa90f...`, a certified row in the engine.
