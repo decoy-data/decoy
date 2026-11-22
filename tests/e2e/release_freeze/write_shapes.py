@@ -373,6 +373,7 @@ def _steps() -> list[tuple[str, list[Any]]]:
     """Each `--json` leaf command once, in an order where earlier steps feed later ones."""
     mask = ["--mask-secret", f"env:{SECRET_ENV}"]
     return [
+        ("scan", ["scan", "patients.csv", "--has-header"]),
         ("scan fields", ["scan", "fields", "scan.json"]),
         ("scan show", ["scan", "show", "scan.json", "ssn"]),
         ("scan diff", ["scan", "diff", "scan.json", "scan2.json"]),
@@ -391,6 +392,7 @@ def _steps() -> list[tuple[str, list[Any]]]:
             ["report", "integrity", Found("patients.csv"), "--source", "patients.csv"],
         ),
         ("subset", ["subset", "subset.yaml", "--dry-run"]),
+        ("validate", ["validate", "pipeline.yaml"]),
         ("validate config", ["validate", "config", "pipeline.yaml"]),
         ("validate compile", ["validate", "compile", "pipeline.yaml"]),
         ("validate preflight", ["validate", "preflight", "pipeline.yaml"]),

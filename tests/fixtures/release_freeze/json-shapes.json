@@ -511,6 +511,27 @@
       "/warnings": "array"
     }
   },
+  "scan": {
+    "paths": {
+      "/basis": "string",
+      "/command": "string",
+      "/detectors[]/model_id": "null",
+      "/detectors[]/model_version": "null",
+      "/detectors[]/source": "string",
+      "/field_count": "integer",
+      "/pii_candidate_count": "integer",
+      "/pii_note": "string",
+      "/quasi_identifier_groups": "[]",
+      "/reid_risk_score": "number",
+      "/row_count": "integer",
+      "/row_count_exact": "boolean",
+      "/sample_strategy": "string",
+      "/saved": "null",
+      "/scanned_rows": "integer",
+      "/source": "string",
+      "/status": "string"
+    }
+  },
   "scan diff": {
     "paths": {
       "/changes/added": "[]",
@@ -639,6 +660,14 @@
   },
   "upgrade": {
     "exempt": "manages a bundled install and refuses a pip or dev install"
+  },
+  "validate": {
+    "paths": {
+      "/command": "string",
+      "/config": "string",
+      "/messages": "[]",
+      "/status": "string"
+    }
   },
   "validate compile": {
     "paths": {
