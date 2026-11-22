@@ -16,11 +16,11 @@ from decoy import _mask_secret
 from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
 from decoy.cli.exit_codes import EXIT_USAGE, exit_code_for
 from decoy.cli.io import pipeline_option, resolve_pipeline
+from decoy.cli.reports._refusal import vault_hint
 from decoy.ui.output import OutputMode, OutputState, emit_error, emit_json, setup_output
 from decoy.ui.theme import code, hint, success
 
 if TYPE_CHECKING:
-    from decoy_engine import VaultError
     from decoy_engine.vault import OpenedVault
 
 # Hex characters of the vault id shown. The key check value is never shown.
@@ -43,7 +43,7 @@ The vault opens only under the mask secret that the `decoy run --vault`
 call used. Pass the same secret with --mask-secret, or name it in the
 config's global_settings.mask_secret_ref. The seed is not key material.
 A missing or wrong secret exits 1. A vault that fails its own
-authentication (edited, truncated, reordered or spliced) exits 3 with
+authentication (edited, reordered or spliced) exits 3 with
 `vault_tampered`. The report never prints values or the key check value.
 
 See also: decoy run --vault, decoy unmask --vault.
@@ -132,8 +132,7 @@ def vault_command(
         )
         raise typer.Exit(code=EXIT_USAGE)
     except VaultError as refusal:
-        message, hint_text = _vault_refusal(refusal)
-        _emit_error(message, hint_text=hint_text, code=_refusal_code(refusal))
+        _emit_error(refusal.message, hint_text=vault_hint(refusal.code), code=refusal.code)
         raise typer.Exit(code=exit_code_for(refusal))
     _show(state, vault, opened)
 
@@ -155,35 +154,6 @@ def _open(raw: dict[str, object], vault: Path) -> OpenedVault:
         return open_vault(str(vault), prepared)
 
 
-def _refusal_code(refusal: VaultError) -> str | None:
-    """The code shown apart from the message: only the one the message does not carry."""
-    from decoy_engine import reasons
-
-    return refusal.code if refusal.code == reasons.runtime.VAULT_TAMPERED else None
-
-
-def _vault_refusal(refusal: VaultError) -> tuple[str, str]:
-    """The message and hint for an engine vault refusal. None names a path, key or value."""
-    from decoy_engine import reasons
-
-    if refusal.code == reasons.runtime.VAULT_TAMPERED:
-        return (
-            refusal.message,
-            "the vault was changed or damaged after it was written; do not use it.",
-        )
-    if refusal.code == reasons.runtime.VAULT_PROTOCOL_VERSION_MISMATCH:
-        return (
-            f"{refusal.code}: {refusal.message}",
-            "the vault was written under a different engine protocol version; "
-            "re-mask under the current engine, or use the engine version that wrote the vault.",
-        )
-    return (
-        f"{refusal.code}: {refusal.message}",
-        "use the mask secret (--mask-secret or global_settings.mask_secret_ref) "
-        "of the `decoy run --vault` call that wrote this vault.",
-    )
-
-
 def _show(state: OutputState, vault: Path, opened: OpenedVault) -> None:
     """Print the header fields and counts; never an entry or the key check value."""
     from decoy_engine.vault import VAULT_FORMAT_VERSION
@@ -201,6 +171,7 @@ def _show(state: OutputState, vault: Path, opened: OpenedVault) -> None:
                 "format": header.format,
                 "key_version": header.key_version,
                 "vault_id": vault_id,
+                "authenticated": header.format == VAULT_FORMAT_VERSION,
                 "entries": header.entry_count,
                 "namespaces": namespaces,
                 "ambiguous_dropped": opened.ambiguous_dropped,
@@ -221,6 +192,6 @@ def _show(state: OutputState, vault: Path, opened: OpenedVault) -> None:
         state.console.print(
             " ",
             hint("hint:"),
-            f"this vault is {header.format}, which the engine only reads; re-mask with "
-            "`decoy run --vault` to get an authenticated vault.",
+            f"this vault is {header.format}, which the engine only reads, and its header is not "
+            "authenticated; re-mask with `decoy run --vault` to get an authenticated vault.",
         )

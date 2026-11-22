@@ -201,3 +201,66 @@ def test_run_refuses_an_existing_vault_and_leaves_it_alone(
     assert result.exit_code == EXIT_USAGE, result.output
     assert "vault_exists" in result.output
     assert vault.read_bytes() == before
+
+
+def _v2_vault(path: Path) -> None:
+    """An empty `decoy-vault/v2` file: the magic and one header frame, no chunks."""
+    from decoy_engine.determinism import SEED_PROTOCOL_VERSION
+
+    header = json.dumps(
+        {
+            "format": "decoy-vault/v2",
+            "seed_protocol_version": SEED_PROTOCOL_VERSION,
+            "ambiguous_dropped": 0,
+            "chunk_rows": 1,
+        }
+    ).encode()
+    path.write_bytes(b"DCYVAULT2\n" + len(header).to_bytes(4, "big") + header)
+
+
+def test_report_opens_a_v2_vault_and_says_it_is_not_authenticated(
+    written: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """L1: a v2 vault opens read-only, shows its format, has no vault id, and carries the hint."""
+    pytest.importorskip("cryptography")
+    cfg, _ = written
+    old = tmp_path / "old.vault"
+    _v2_vault(old)
+    text = _report(cfg, old)
+    assert text.exit_code == 0, text.output
+    flat = " ".join(text.output.split())
+    assert "format: decoy-vault/v2" in flat
+    assert "its header is not authenticated" in flat
+    as_json = _report(cfg, old, "--json")
+    assert as_json.exit_code == 0, as_json.output
+    payload = json.loads(as_json.output.strip())
+    assert payload["format"] == "decoy-vault/v2"
+    assert payload["vault_id"] == ""
+    assert payload["authenticated"] is False
+    assert json.loads(_report(cfg, written[1], "--json").output.strip())["authenticated"] is True
+
+
+def test_unmask_gives_the_protocol_mismatch_hint_for_the_engines_real_error_shape(
+    tmp_path: Path, mask_secret: str
+) -> None:
+    """M1: the engine re-raises a vault failure as an ExecutionError; the hint must still show."""
+    from unittest.mock import patch
+
+    from decoy_engine.execution import ExecutionError
+
+    def _raise(*_a: object, **_k: object) -> None:
+        raise ExecutionError(code="vault_protocol_version_mismatch", message="other protocol")
+
+    cfg = _pipeline(tmp_path)
+    masked = tmp_path / "out.csv"
+    masked.write_text("email\nx\n", encoding="utf-8")
+    vault = tmp_path / "v.bin"
+    vault.write_bytes(b"x")
+    with patch("decoy_engine.unmask_pipeline", side_effect=_raise):
+        result = runner.invoke(
+            app, ["unmask", str(cfg), str(masked), "--vault", str(vault), "--json"]
+        )
+    assert result.exit_code == EXIT_USAGE, result.output
+    payload = json.loads(result.output.strip())
+    assert payload.get("code") == "vault_protocol_version_mismatch", payload
+    assert "re-mask under the current engine" in payload["hint"]

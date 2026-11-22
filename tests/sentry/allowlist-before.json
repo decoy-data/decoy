@@ -71,7 +71,6 @@
   "cli/scanning/_multi.py::scan_header_suspect": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/scanning/_multi.py::scan_key_type_mismatch": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/subset.py::subset_config_missing": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
-  "cli/unmask.py::vault_protocol_version_mismatch": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "notify.py::row_count": {"count": 3, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "ui/summary.py::kind_drift": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "ui/summary.py::null_drift": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."}

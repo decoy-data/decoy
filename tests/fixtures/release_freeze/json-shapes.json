@@ -391,6 +391,7 @@
   "report vault": {
     "paths": {
       "/ambiguous_dropped": "integer",
+      "/authenticated": "boolean",
       "/command": "string",
       "/entries": "integer",
       "/format": "string",

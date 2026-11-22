@@ -168,7 +168,8 @@ class TestVaultInfoErrors:
         payload = json.loads(result.output.strip())
         assert payload["command"] == "report vault"
         assert payload["status"] == "error"
-        assert payload["error"].startswith("vault_key_mismatch:")
+        assert payload["code"] == "vault_key_mismatch"
+        assert "vault_key_mismatch" not in payload["error"]
         _assert_no_secret_bytes(result.output)
 
     def test_the_seed_no_longer_keys_the_vault(self, vault_setup, tmp_path: Path) -> None:

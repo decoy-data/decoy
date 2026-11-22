@@ -168,6 +168,7 @@ def _vault_input_codes() -> frozenset[str]:
         {
             reasons_runtime.VAULT_CRYPTO_NOT_INSTALLED,
             reasons_runtime.VAULT_KEY_MISMATCH,
+            reasons_runtime.WEAK_MASK_SECRET,
             reasons_runtime.VAULT_UNREADABLE,
             reasons_runtime.VAULT_FORMAT_UNSUPPORTED,
             reasons_runtime.VAULT_PROTOCOL_VERSION_MISMATCH,

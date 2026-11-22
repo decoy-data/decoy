@@ -1940,7 +1940,7 @@ The vault opens only under the mask secret that the `decoy run --vault`
 call used. Pass the same secret with --mask-secret, or name it in the
 config's global_settings.mask_secret_ref. The seed is not key material.
 A missing or wrong secret exits 1. A vault that fails its own
-authentication (edited, truncated, reordered or spliced) exits 3 with
+authentication (edited, reordered or spliced) exits 3 with
 `vault_tampered`. The report never prints values or the key check value.
 
 See also: decoy run --vault, decoy unmask --vault.

@@ -86,10 +86,6 @@
    "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",
    "count": 1
   },
-  "cli/unmask.py::vault_protocol_version_mismatch": {
-   "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",
-   "count": 1
-  },
   "notify.py::row_count": {
    "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart.",
    "count": 3
