@@ -432,3 +432,44 @@ def test_a_target_held_open_is_reported_as_busy(
 
     assert caught.value.code == _atomic.ATOMIC_TARGET_BUSY
     assert _names(tmp_path) == []
+
+
+@posix
+def test_an_interrupt_right_after_the_backup_link_leaves_no_bak_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, _second = _old_pair(tmp_path)
+    real_link = os.link
+
+    def interrupted_after(src: str | Path, dst: str | Path) -> None:
+        real_link(src, dst)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_atomic.os, "link", interrupted_after)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a")])
+
+    assert _names(tmp_path) == ["a.json", "b.yaml"]
+    assert first.read_bytes() == b"old-a"
+
+
+@posix
+def test_a_second_interrupt_does_not_chain_the_first_faults_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 2)
+    real_replace = os.replace
+
+    def interrupted(src: str | Path, dst: str | Path) -> None:
+        if str(src).endswith(".bak"):
+            raise KeyboardInterrupt
+        real_replace(src, dst)
+
+    monkeypatch.setattr(_atomic.os, "replace", interrupted)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert caught.value.__context__ is None

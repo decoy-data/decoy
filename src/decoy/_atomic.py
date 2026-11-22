@@ -657,8 +657,11 @@ def _rollback(
     return stuck, left
 
 
-def _backup(real: Path) -> str:
-    """A same-folder hard link to the file about to be replaced."""
-    name = real.parent / f".{real.name}.decoy-{secrets.token_hex(6)}.bak"
+def _backup_name(real: Path) -> str:
+    """A fresh hidden name beside `real` for its backup. The caller records it before `_backup`."""
+    return str(real.parent / f".{real.name}.decoy-{secrets.token_hex(6)}.bak")
+
+
+def _backup(real: Path, name: str) -> None:
+    """Hard-link `name` to the file about to be replaced."""
     os.link(real, name)
-    return str(name)

@@ -142,7 +142,14 @@ def publish_local_targets(
                 for target, real in zip(targets, reals, strict=True):
                     staged.append(_atomic._stage_bytes(real, target.data, target.private))
                 for real, old in zip(reals, existing, strict=True):
-                    backups.append(None if old is None else _atomic._backup(real))
+                    if old is None:
+                        backups.append(None)
+                        continue
+                    # The name is recorded before the link, so an interrupt between the two
+                    # still leaves the cleanup knowing the name.
+                    name = _atomic._backup_name(real)
+                    backups.append(name)
+                    _atomic._backup(real, name)
                 if check is not None:
                     check([Path(tmp) for tmp, _created in staged])
                 for target, real, old, (tmp, created) in zip(
@@ -157,7 +164,13 @@ def publish_local_targets(
                         raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
                 settled = True
             except BaseException as exc:
-                stuck, left = _atomic._rollback(done, restored)
+                try:
+                    stuck, left = _atomic._rollback(done, restored)
+                except BaseException as second:
+                    # A second interrupt: the first fault's text can name a path, so it is
+                    # not chained onto the one that propagates.
+                    second.__context__ = None
+                    raise
                 settled = True
                 if stuck or left:
                     pass  # reported below, after the backups are left in place
