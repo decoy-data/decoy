@@ -36,6 +36,7 @@ Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above
 | F49 clone-system handoff | Council features | New handoff after a valid published output. |
 | X-01 Avro and ORC files | Expansion candidates X-01 to X-25 | New formats. |
 | X-02 JSON and JSONL with nested path masking | Expansion candidates X-01 to X-25 | New format and path syntax. |
+| Masking fields inside native nested columns (Parquet and Arrow struct, list and map), e.g. `address.street` or `tags[*]` | Owner 2026-11-22, after CHUNKED-STRUCT (engine #754 made these columns pass through with their types kept) | New path syntax on a column rule. Today such a column can only pass through or be dropped; the `nested` strategy reads JSON text cells only. Same selector as X-02 and F07 (flatten mode). First step: confirm and test that a `nested` rule on a native struct fails closed, and say the limit in the docs. |
 | X-03 Excel workbooks | Expansion candidates X-01 to X-25 | New format. |
 | X-04 XML with path masking | Expansion candidates X-01 to X-25 | New format. |
 | X-05 Delta Lake and Apache Iceberg tables | Expansion candidates X-01 to X-25 | New formats. |
