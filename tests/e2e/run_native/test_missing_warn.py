@@ -82,25 +82,18 @@ def _lines(stderr: str) -> list[str]:
     return [ln for ln in stderr.splitlines() if SUMMARY in ln]
 
 
-def _project(doc: object) -> object:
-    """Drop the fields that differ between two runs: timings, ids and run paths."""
-    volatile = {
-        "elapsed_s",
-        "invocation_id",
-        "started_at",
-        "finished_at",
-        "output_dir",
-        "output",
-        "outputs",
-        "path",
-        "paths",
-        "run_dir",
-        "run_id",
-    }
+VOLATILE_KEYS = {"elapsed_s", "invocation_id", "started_at", "finished_at", "run_id"}
+
+
+def _project(doc: object, tmp: Path) -> object:
+    """Keep every key. Replace only values that differ between two runs: timings, ids,
+    and the temp directory prefix inside path strings."""
     if isinstance(doc, dict):
-        return {k: _project(v) for k, v in doc.items() if k not in volatile}
+        return {k: "<volatile>" if k in VOLATILE_KEYS else _project(v, tmp) for k, v in doc.items()}
     if isinstance(doc, list):
-        return [_project(v) for v in doc]
+        return [_project(v, tmp) for v in doc]
+    if isinstance(doc, str):
+        return doc.replace(str(tmp), "<tmp>")
     return doc
 
 
@@ -122,7 +115,9 @@ def test_notice_is_one_line_and_stdout_json_is_unchanged(
     without = runner.invoke(app, ["run", str(cfg), "--json", "--no-library"])
     assert without.exit_code == 0, without.output
     assert _lines(without.stderr) == []
-    assert _project(json.loads(with_code.stdout)) == _project(json.loads(without.stdout))
+    assert _project(json.loads(with_code.stdout), tmp_path) == _project(
+        json.loads(without.stdout), tmp_path
+    )
 
 
 def test_absent_companion_prints_no_pre_run_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -172,3 +167,6 @@ def test_unregistered_or_non_string_code_prints_nothing(
     result = runner.invoke(app, ["run", str(_config(tmp_path))])
     assert result.exit_code == 0, result.output
     assert SUMMARY not in result.stderr
+    assert "warning:" not in result.stderr
+    if isinstance(code, str):
+        assert code not in result.stderr
