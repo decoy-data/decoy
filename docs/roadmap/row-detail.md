@@ -163,8 +163,10 @@ in reframe-C; `DetectorMatch` carries the detector version. F16's 5-level preced
 expansion fingerprint. F07 has depth, array-expansion and cell-size bounds with declared failure
 behavior; complex nested formats and XML defer.
 
-**F24 (row 84).** Advisory per section CAP; enforced admission is a 1.x item. The deployment contract states
-that admission is measure-only in V1 and names the operator mitigation.
+**F24 (row 84).** Advisory per section CAP. Enforced admission is 1.x if it is opt-in or only warns,
+else 2.0 ([2.0-holding.md](2.0-holding.md)). It is a candidate for V1 under the owner rule of
+2026-11-22, pending the evaluation in vault `V2-TO-V1-EVALUATION-2026-11-22.md`. The deployment contract
+states that admission is measure-only in V1 and names the operator mitigation.
 
 **F23 (row 85).** Table-level resume skips tables already staged; about 8 to 12 slices (UNVERIFIED
 until FRAME). Chunk-level resume (continuation tokens, sink state, chunk digests) is post-V1. FRAME:
