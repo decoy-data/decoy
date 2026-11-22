@@ -129,23 +129,25 @@ their feat branches lack ([Cleanup](#cleanup-for-the-orchestrator)).
 | Category | 1.x ids | Group file | Release | Expansion candidate |
 |---|---|---|---|---|
 | Identifiers and generators | INTL-IDS.1 to .3, EDGE-CASES.1 | [mask](groups/mask.md), [generate](groups/generate.md) | 1.0 (INTL-IDS.3, with FAKER-MIGRATE), 1.1 (INTL-IDS.1), 1.2 (INTL-IDS.2, EDGE-CASES.1) | X-08, X-17 |
-| Masking options | MASK-KEEP.1 to .3, DATE-ENTITY.1 | [mask](groups/mask.md) | 1.5 | X-10, X-13 |
+| Masking options | MASK-KEEP.1 to .3, DATE-ENTITY.1 | [mask](groups/mask.md) | 1.7 | X-10, X-13 |
 | Formats and sources | AVRO-ORC.1, .2 | [connect](groups/connect.md) | 1.4 | X-01 |
-| Anonymity and privacy | ANON.1 to .9 | [trust](groups/trust.md) | 1.7 | X-12, F37 |
-| Nested data | 82-E3b, NESTED-NATIVE | [connect](groups/connect.md) | 1.1 (82-E3b), 1.9 (NESTED-NATIVE) | X-02, F07 |
-| Joint-distribution generation | COPULA.1 to .6 | [generate](groups/generate.md) | 1.10 | X-14, F48 |
-| Connectors and warehouse | 86-E0, WAREHOUSE.1 to .3 | [connect](groups/connect.md), [platform-parked](platform-parked.md) | 1.9 (86-E0), 1.11 (WAREHOUSE) | X-06, DuckDB 11 to 13 |
+| Anonymity and privacy | ANON.1 to .9 | [trust](groups/trust.md) | 1.9 | X-12, F37 |
+| Nested data | 82-E3b, NESTED-NATIVE | [connect](groups/connect.md) | 1.0 (NESTED-FREEZE, the refusal half), 1.1 (82-E3b), 1.11 (NESTED-NATIVE) | X-02, F07 |
+| Joint-distribution generation | COPULA.1 to .6 | [generate](groups/generate.md) | 1.6 | X-14, F48 |
+| Connectors and warehouse | 86-E0, WAREHOUSE.1 to .3 | [connect](groups/connect.md), [platform-parked](platform-parked.md) | 1.5 (WAREHOUSE.1, .3, with DB-NEXT and SNOWFLAKE), 1.11 (86-E0) | X-06, DuckDB 11 to 13 |
 
 Why these slots:
 
 - Each category joins the #321 release whose theme it fits: identifiers with generate completeness
-  (1.2), Avro and ORC with sources (1.4), masking options with policy (1.5), anonymity with quality
-  contracts (1.7, where #321 already had F37 and X-12 as fill).
+  (1.2), Avro and ORC with file sources (1.4), masking options with policy (1.7), anonymity with quality
+  contracts (1.9, where #321 already had F37 and X-12 as fill). The numbers are after the reorder of
+  2026-11-22 ([Release schedule](#release-schedule)).
 - INTL-IDS.1 needs only a clean merge of main and is small, so it is fill in 1.1. 82-E3b is held "until 1.1" by the
   owner decision of 2026-11-21 ([decisions.md](decisions.md)), so it is fill in 1.1 too.
-- The copula and warehouse work has no #321 release that fits. They get two new minors after 1.9.
-  Copula comes first because it is built; the warehouse work needs new plans.
-- INTL-IDS.3 is in 1.0, with FAKER-MIGRATE (decision 3). It is the only item of this program in 1.0.
+- The copula and warehouse work has no #321 release that fits. Each gets a new minor. The owner moved
+  both early on 2026-11-22: the databases and warehouse release is 1.5 and the copula is 1.6.
+- INTL-IDS.3 is in 1.0, with FAKER-MIGRATE (decision 3). It is the only built item of this program in
+  1.0. The refusal half of NESTED-NATIVE is in 1.0 too, as row NESTED-FREEZE (b) (decision 7).
 - The library-only parts of anonymity and copula can land dark after 1.0.0 and before their release
   (decision 6).
 
@@ -285,7 +287,7 @@ Landing steps:
 5. ANON.4: re-capture the dark golden literals against current main.
 6. ANON.5, then ANON.6. The ANON.6 port drops its edits to `docs/frozen-surfaces.md`, the compatibility
    contract and the compat corpus, so ANON.6 lands dark and `risk-utility-report/v1` is not frozen yet.
-7. Plan and build ANON.7, ANON.8 and ANON.9 for release 1.7. The release that ships ANON.9 (the first use
+7. Plan and build ANON.7, ANON.8 and ANON.9 for release 1.9. The release that ships ANON.9 (the first use
    a user can reach) freezes `risk-utility-report/v1`: it adds the tag to `docs/frozen-surfaces.md` and
    the compatibility contract (contract 3.1), and captures the compat corpus for it (decision 1).
 
@@ -299,12 +301,14 @@ Landing steps:
 82-E3b lets a `nested` column carry `provider_config.rules`, a list of `{target, strategy,
 strategy_config, namespace?}`. The single-rule form does not change. NESTED-NATIVE is masking fields
 inside native Parquet and Arrow struct, list and map columns (`address.street`, `tags[*]`). Today such a
-column can only pass through or be dropped. Its first step, from #385, is to confirm and test that a
-`nested` rule on a native struct fails closed and to state the limit in the docs.
+column can only pass through or be dropped. Its first step, from #385, was to confirm and test that a
+native struct, list or map column fails closed. That refusal half is now 1.0 row NESTED-FREEZE (b) in
+[connect](groups/connect.md) (decision 7). NESTED-NATIVE keeps the masking half, in 1.x.
 
 Landing steps: merge main into #684, fix the 5 conflicts, re-run CI (read the aarch64 failure), merge in
-1.1. NESTED-NATIVE needs a plan; it uses the same path selector as X-02 and F07, so plan it with the rest
-of row 82 for 1.9.
+1.1. Before the merge, check that every `target` in the branch fits the closed path subset of 1.0 row
+NESTED-FREEZE (a). NESTED-NATIVE needs a plan; it uses the same path selector as X-02 and F07, so plan it with the rest
+of row 82 for 1.11.
 
 ### Joint-distribution generation
 
@@ -340,7 +344,7 @@ Landing steps:
    `tests/unit/generation/copula/quality/_dark_golden.json`, fix the plan's stack line, open the PR,
    review.
 6. Plan COPULA.5 (survey of established tools first; the DP route is chosen in that plan) and COPULA.6
-   for release 1.10. COPULA.4 is not needed (decision 5).
+   for release 1.6. COPULA.4 is not needed (decision 5).
 
 ### Connectors and warehouse
 
@@ -367,10 +371,10 @@ vault work, which main has as B-6. None of the DuckDB or warehouse parts exist o
 Landing steps:
 
 1. 86-E0: mark cell e expected-fail (it records that DuckDB `interrupt()` does not cancel the server
-   statement), then merge #667 as a record (decision 4). F01 (row 86) is 1.x, planned for 1.9 with the
+   statement), then merge #667 as a record (decision 4). F01 (row 86) is 1.x, planned for 1.11 (1.9 before the reorder) with the
    watchdog design.
 2. WAREHOUSE.3: merge as docs whenever a platform docs merge is allowed. It is the input to the plans.
-3. WAREHOUSE.1: write a fresh plan for the DuckDB attach and the multi-part Parquet reader on the current
+3. WAREHOUSE.1 (release 1.5, with DB-NEXT and SNOWFLAKE): write a fresh plan for the DuckDB attach and the multi-part Parquet reader on the current
    connectors and `fileaccess`, using the branch as reference. Leave out every tokenize and vault commit.
 4. WAREHOUSE.2: the same for the platform half, when the platform restarts ([platform-parked.md](platform-parked.md)).
 
@@ -411,6 +415,23 @@ The owner said "go with recommended on all of it" on 2026-11-22. These are now d
    after 1.0.0 and before their release slot. Their new names are marked private or experimental (row
    EXPERIMENTAL-TIER) until the release that wires them.
 
+The owner then decided on the V2-to-V1 evaluation (vault `V2-TO-V1-EVALUATION-2026-11-22.md`) on the
+same day. The rule behind it: a common use case does not wait for 2.0 when it could ship in V1.
+
+7. **New 1.0 rows (evaluation ranks 2 to 4).** NESTED-FREEZE in [connect](groups/connect.md), 2 slices:
+   (a) the nested `target` path is limited to a closed RFC 9535 subset, checked at compile; (b) a native
+   struct, list or map column with no rule fails with a coded reason. FIT-CODES-TEXT in
+   [generate](groups/generate.md), 1 slice: `decoy fit` keeps zero-padded codes such as ZIPs as text.
+   NESTED-NATIVE stays 1.x for masking inside native nested columns.
+8. **The 3 standby items are 1.x, not 1.0.** FIT-DATE-SHAPE (backlog M3) and FIDELITY-ONE-INFERENCE
+   (backlog M5) go to 1.2, opt-in through BEHAVIOR-VERSION. TARGET-DUP-REFUSE goes to 1.1 as a warning,
+   pending a check: if main (engine #589) still loses data when two tables write to one target, it moves
+   to 1.0.
+9. **1.x reorder.** 64b moves to 1.1. One more database (DB-NEXT: MySQL or SQL Server) and Snowflake
+   come in 1.5, before the copula and anonymity releases. The copula moves from 1.10 to 1.6. One
+   behavior-version key (BEHAVIOR-VERSION) for generation, detection and profiling goes in 1.1. The
+   other themes keep their order ([Release schedule](#release-schedule)).
+
 ## Cleanup for the orchestrator
 
 Done on 2026-11-22:
@@ -445,8 +466,8 @@ group. It is the last 1.x item and merges on its own.
 
 Carried from #321 and updated to 2026-11-22. Changes from #321: rows 24p, 24q and 24s left 1.2 (24p and
 24q became 1.0 rows on 2026-11-19, and 24s closed); row 84 closed; the named speed slots of 2026-11-19
-([post-1.0-plan.md](post-1.0-plan.md)) are placed; the seven categories above are slotted; 1.10 and 1.11
-are new.
+([post-1.0-plan.md](post-1.0-plan.md)) are placed; the seven categories above are slotted; two new
+minors (databases and copula) are added; the order changed on 2026-11-22 (see below the table).
 
 How to read it:
 
@@ -465,24 +486,41 @@ How to read it:
 
 | Release | Theme | Headline rows and 1.x items | Size (slices) | Engine release |
 |---|---|---|---|---|
-| 1.0 | (not 1.x) | INTL-IDS.3 lands with FAKER-MIGRATE, before the freeze | 1 | yes, the launch engine |
+| 1.0 | (not 1.x) | INTL-IDS.3 lands with FAKER-MIGRATE, before the freeze. The V2-to-V1 cut adds 1.0 rows NESTED-FREEZE and FIT-CODES-TEXT | 4 | yes, the launch engine |
 | 1.0.x | Fixes and byte-identical speed | Maintenance rows, patch entries of the corrective backlog; GEN-VECTOR-STREAMS, TEXT-REDACT-RUST-SPLICE, FPE-CHECKSUM-NATIVE | 1 to 4 each | only if a fix is in the engine |
-| 1.1 | Run in production pipelines | 64, 85, 41, PER-COLUMN-ROUTING with SEAM-REASONS; fill 82-E3b, INTL-IDS.1 | about 20 | yes |
-| 1.2 | Generate completeness and identifiers | 24r, the Later part of 24n, RUST-DATE-TEXT; INTL-IDS.2, EDGE-CASES.1 | about 13 | yes |
+| 1.1 | Run in production pipelines | 64, 64b, 85, 41, BEHAVIOR-VERSION, PER-COLUMN-ROUTING with SEAM-REASONS; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 27 | yes |
+| 1.2 | Generate completeness and identifiers | 24r, the Later part of 24n, RUST-DATE-TEXT, FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE; INTL-IDS.2, EDGE-CASES.1 | about 16 | yes |
 | 1.3 | More ways to install | 90a, 38, 42, PIP-NATIVE-EXTRA; candidates PYPI, PY-VERSIONS; CHUNK-PARALLEL | about 13 | yes (CHUNK-PARALLEL only) |
-| 1.4 | More sources and formats | 64b, 87; AVRO-ORC.1, AVRO-ORC.2 | about 19 | yes |
-| 1.5 | Policy, secrets and masking options | 81 with 24zt, 83, the Later part of 79; MASK-KEEP.1 to .3, DATE-ENTITY.1 | about 20 | yes |
-| 1.6 | Scan baselines and drift | 30, 31, 32, 80 | about 12 | yes |
-| 1.7 | Quality contracts and privacy risk | 69, 68; ANON.1 to ANON.9 | about 18 | yes |
-| 1.8 | Evidence you can hand to an auditor | 72, 78, 70 | about 11 | yes |
-| 1.9 | Nested data and application-ready databases | 82, 86 (with 86-E0); NESTED-NATIVE | about 16 | yes |
-| 1.10 | Joint-distribution synthesis | COPULA.1 to COPULA.3, COPULA.5, COPULA.6 (COPULA.4 not needed); candidate F48 | about 10 (COPULA.5 and .6 not sized) | yes |
-| 1.11 | Warehouses and more databases | WAREHOUSE.1 to .3; candidates X-06, DuckDB 11 to 13 | not sized; needs plans | yes |
+| 1.4 | More file sources and formats | 87; AVRO-ORC.1, AVRO-ORC.2 | about 13 | yes |
+| 1.5 | More databases and a warehouse | DB-NEXT (MySQL or SQL Server), SNOWFLAKE; WAREHOUSE.1, WAREHOUSE.3 | not sized; needs plans | yes |
+| 1.6 | Joint-distribution synthesis | COPULA.1 to COPULA.3, COPULA.5, COPULA.6 (COPULA.4 not needed); candidate F48 | about 10 (COPULA.5 and .6 not sized) | yes |
+| 1.7 | Policy, secrets and masking options | 81 with 24zt, 83, the Later part of 79; MASK-KEEP.1 to .3, DATE-ENTITY.1 | about 20 | yes |
+| 1.8 | Scan baselines and drift | 30, 31, 32, 80 | about 12 | yes |
+| 1.9 | Quality contracts and privacy risk | 69, 68; ANON.1 to ANON.9 | about 18 | yes |
+| 1.10 | Evidence you can hand to an auditor | 72, 78, 70 | about 11 | yes |
+| 1.11 | Nested data and application-ready databases | 82, 86 (with 86-E0); NESTED-NATIVE | about 16 | yes |
 | later | Chosen from the pool on evidence | see [The pool](#the-pool-after-111) | | |
 | 2.0 | Only contract breaks | see [2.0](#20) | | |
 
-Windows (rows 6 and 89) is 1.0, so it is not on this page. The 1.0 line lists only the one item of this
-program that lands before the freeze.
+Windows (rows 6 and 89) is 1.0, so it is not on this page. The 1.0 line lists only the 1.0 work that
+comes from this program or from the V2-to-V1 cut.
+
+The order changed on 2026-11-22 (owner, after the V2-to-V1 evaluation, vault
+`V2-TO-V1-EVALUATION-2026-11-22.md`). Database to database is the most common test-data use, so 64b
+moves to 1.1, and one more database and Snowflake come before the copula and anonymity releases. The
+copula is mostly built, so it moves from 1.10 to 1.6. The other themes keep their order and move down
+by the two inserted releases: policy 1.5 to 1.7, scan 1.6 to 1.8, quality and privacy 1.7 to 1.9,
+evidence 1.8 to 1.10, nested data and row 86 F01 1.9 to 1.11.
+
+Dependencies after the move:
+
+- 1.1 holds 64b and its Postgres CI lane, which 1.5 (more databases) and 1.11 (86 F01) need.
+- 1.1 holds BEHAVIOR-VERSION, which 1.2 (FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE) needs.
+- 1.4 (87 F02) needs 64 CLI-CLOUD from 1.1.
+- 1.9 holds F35, which comes before F32 in 1.10 (owner Q5, 2026-11-08).
+- 1.11 (82 F07, NESTED-NATIVE) uses the path grammar that 1.0 row NESTED-FREEZE fixes.
+- The copula (1.6) depends on no other 1.x release. The anonymity stack (1.9) needs only F35, which is
+  in the same release.
 
 ### 1.0.x patch releases
 
@@ -503,19 +541,28 @@ In order:
 ### 1.1: run in production pipelines
 
 Theme: the owner's 1.0 goal is "use in production pipelines". Most pipelines read and write cloud
-storage and need a failed run to restart without redoing finished tables.
+storage or a database, and need a failed run to restart without redoing finished tables.
 
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
 | 64 CLI-CLOUD | [connect](groups/connect.md) | EC2b to EC5, REL-C, CC1 to CC5 | about 9 |
+| 64b CLI-DB-SRC | [connect](groups/connect.md) | not started; includes a Postgres CI lane (moved from 1.4, owner 2026-11-22) | about 5 |
 | 85 F23 resume, CLI half | [run](groups/run.md) | engine release, then C0, C1, C2a, C2b, C3 | 5 |
 | 41 L5a-cli progress | [library](groups/library.md) | one slice, plan passed | 1 |
 | PER-COLUMN-ROUTING, SEAM-REASONS | [run](groups/run.md) | not planned | about 3 |
+| BEHAVIOR-VERSION | this page | one behavior-version key for generation, detection and profiling (not three keys). No key means 1.0 behavior; `decoy init` writes the newest version. Additive, so not a 1.0 row. Not planned | about 2 |
 | 82-E3b (fill) | [connect](groups/connect.md) | port #684 | 1 |
 | INTL-IDS.1 (fill) | [mask](groups/mask.md) | merge #671 | 1 |
+| TARGET-DUP-REFUSE (fill) | this page | two tables written to one target: warn at compile (a new refusal would break configs valid today). Pending check, see below | 1 |
 
 Other fill: job-outcome notifications ([run](groups/run.md)); the corrective-backlog minors on chunked
 progress events and the subset signal in `decoy.mask()` and `decoy tokenize`.
+
+This minor is the largest. If it does not fit, PER-COLUMN-ROUTING with SEAM-REASONS moves to 1.2 as fill.
+
+TARGET-DUP-REFUSE is pending a check. Data loss is a V1 blocker under the V1 bar, so the orchestrator
+first checks whether main already refuses two tables written to one target (engine #589 added
+`target_identity`). If main loses data, the item moves to 1.0 as a refusal.
 
 Depends on: 1.0 rows 61 (CLI delivery) and 59 (F22).
 
@@ -528,6 +575,8 @@ Theme: synthetic and masked data that looks like the business, in more countries
 | 24r GEN-INHERIT | [generate](groups/generate.md) | plan passed; build | about 3 |
 | 24n GEN-REL, Later part | [generate](groups/generate.md) | parent-anchored date windows, per-parent aggregates, self-reference as a hierarchy | about 3 |
 | RUST-DATE-TEXT | [mask](groups/mask.md) | not planned | about 3 |
+| FIT-DATE-SHAPE (backlog M3) | this page | fitted dates keep the month and weekday mix, not only the year mix (66.5% January became 8.4%). Opt-in through BEHAVIOR-VERSION | about 2 |
+| FIDELITY-ONE-INFERENCE (backlog M5) | this page | one column-kind inference for `run --fidelity` and `report fidelity`. Opt-in through BEHAVIOR-VERSION | about 2 |
 | INTL-IDS.2 | [mask](groups/mask.md) | port (INTL-IDS.3 is in 1.0) | 1 |
 | EDGE-CASES.1 | [generate](groups/generate.md) | port | 1 |
 
@@ -535,7 +584,9 @@ Fill: the generate candidates for per-provider options and `unique`, and HC5-FIT
 corrective-backlog minors on `condition_on` with a renamed parent, number-type inference for computed
 columns, and `unique_together` on a subset of a composite key.
 
-Depends on: the 1.0 part of row 24n; INTL-IDS.1 (1.1).
+Depends on: the 1.0 part of row 24n; INTL-IDS.1 and BEHAVIOR-VERSION (1.1). FIT-DATE-SHAPE and
+FIDELITY-ONE-INFERENCE change output, so a config without the new behavior version keeps the 1.0 output.
+They were standby items of the V2-to-V1 cut; the owner put them in 1.x on 2026-11-22.
 
 ### 1.3: more ways to install
 
@@ -553,23 +604,52 @@ signed download. L3b and L5b ride here because their plans ask for three OS lane
 L3b and L5b depend on how the release gate settles the `decoy library` commands (row EXPERIMENTAL-TIER).
 CHUNK-PARALLEL is the only engine work in this minor. #321 had none; the owner tagged it 1.3 a day later.
 
-### 1.4: more sources and formats
+### 1.4: more file sources and formats
 
-Theme: read from where the data is, in the format it is in.
+Theme: read files from where they are, in the format they are in.
 
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
-| 64b CLI-DB-SRC | [connect](groups/connect.md) | not started; includes a Postgres CI lane | about 5 |
 | 87 F02 | [connect](groups/connect.md) | E2 to E5, release, C1 to C4 | about 9 |
 | AVRO-ORC.1 | [connect](groups/connect.md) | port, code review, compatibility check | 2 |
 | AVRO-ORC.2 | [connect](groups/connect.md) | plan and build the CLI half | about 2 |
 
-Fill: SQL filters on sources, SFTP host-key pinning, subset from non-Parquet sources; the
+Fill: SFTP host-key pinning, subset from non-Parquet sources; the
 corrective-backlog minor on one engine retry choke point (F02's retry executor is the same work).
 
 Depends on: 1.1 (CLI-CLOUD, for F02).
 
-### 1.5: policy, secrets and masking options
+### 1.5: more databases and a warehouse
+
+Theme: database to database is the most common test-data use. Competitors list MySQL, SQL Server and
+Snowflake among their standard connectors (evaluation section 3).
+
+| Item | Group | What is left | Slices |
+|---|---|---|---|
+| DB-NEXT | [connect](groups/connect.md) (candidate X-06) | one more database as a source, MySQL or SQL Server; the choice is made at the plan | not sized |
+| SNOWFLAKE | [connect](groups/connect.md) (candidate X-06) | Snowflake as a source | not sized |
+| WAREHOUSE.1 | [connect](groups/connect.md) | fresh plan for DuckDB attach and multi-part Parquet; it may be the route for DB-NEXT | not sized |
+| WAREHOUSE.3 | platform docs | merge the DuckDB plans as docs (input to WAREHOUSE.1) | 0 (docs) |
+
+WAREHOUSE.2 (the platform half) waits for the platform restart ([platform-parked.md](platform-parked.md)).
+
+Fill: DuckDB 12 (write-back) and 13 (SQL filters on sources), the rest of X-06.
+
+Depends on: 1.1 (64b, the CLI database source pattern and the Postgres CI lane).
+
+### 1.6: joint-distribution synthesis
+
+Theme: synthetic tables that keep the correlations between columns.
+
+| Item | Group | What is left | Slices |
+|---|---|---|---|
+| COPULA.1 to COPULA.3 | [generate](groups/generate.md) | review, port and merge (or land dark earlier) | about 3 |
+| COPULA.6 | [generate](groups/generate.md) | plan and build config and CLI wiring | not sized |
+| COPULA.5 | [generate](groups/generate.md) | plan after a survey; the DP route is chosen in the plan (decision 2) | not sized |
+
+Fill: F48 statistical synthesis; the certified DP stack candidate if COPULA.5 is built.
+
+### 1.7: policy, secrets and masking options
 
 Theme: governance. A security team states rules once, keeps secrets in its own vault, rotates token
 domains, and picks masks that keep the parts of a value a test needs (an email domain, a card BIN, a
@@ -583,13 +663,13 @@ subnet, the intervals between one patient's dates).
 | MASK-KEEP.1 to .3 | [mask](groups/mask.md) | port as one lane | about 4 |
 | DATE-ENTITY.1 | [mask](groups/mask.md) | port and re-review | about 3 |
 
-This minor is the largest. If it does not fit the budget, DATE-ENTITY.1 moves to 1.6 as fill.
+This minor is the largest. If it does not fit the budget, DATE-ENTITY.1 moves to 1.8 as fill.
 
 Fill: F17 portable disguise bundles.
 
 Depends on: the 1.0 part of row 79 (the vault header). The vault format is fixed for the life of 1.x.
 
-### 1.6: scan baselines and drift
+### 1.8: scan baselines and drift
 
 | Row | Group | What is left | Slices |
 |---|---|---|---|
@@ -602,7 +682,7 @@ Fill: DETECT-PROFILES, X-09, trend and drift analytics, the detector set version
 
 Depends on: 1.0 rows 29 and 36.
 
-### 1.7: quality contracts and privacy risk
+### 1.9: quality contracts and privacy risk
 
 Theme: say what "good output" and "safe enough to share" mean, and have the run check both.
 
@@ -613,12 +693,12 @@ Theme: say what "good output" and "safe enough to share" mean, and have the run 
 | ANON.1 to ANON.6 | [trust](groups/trust.md) | review and port (or land dark earlier) | about 6 |
 | ANON.7 to ANON.9 | [trust](groups/trust.md) | plan and build the config, planner, evidence and CLI wiring; the ANON.9 release freezes `risk-utility-report/v1` and captures its compat corpus | about 3 to 5 |
 
-F35 goes first, and before F32 in 1.8 (owner Q5, 2026-11-08). The anonymity stack is the delivery of F37
+F35 goes first, and before F32 in 1.10 (owner Q5, 2026-11-08). The anonymity stack is the delivery of F37
 (post-mask privacy risk) and X-12.
 
 Fill: F12 customer regression suites; the generate candidate F46.
 
-### 1.8: evidence you can hand to an auditor
+### 1.10: evidence you can hand to an auditor
 
 | Row | Group | What is left | Slices |
 |---|---|---|---|
@@ -626,39 +706,17 @@ Fill: F12 customer regression suites; the generate candidate F46.
 | 78 F10 | [trust](groups/trust.md) | release and repin, then 78-C1 | 2 |
 | 70 F32 remainder | [trust](groups/trust.md) | E1b to E3, C0, C1, C1b | 6 |
 
-Fill: a Parquet support bundle; F39 OpenLineage export. Depends on: F32 E1b on F35 E1a (1.7).
+Fill: a Parquet support bundle; F39 OpenLineage export. Depends on: F32 E1b on F35 E1a (1.9).
 
-### 1.9: nested data and application-ready databases
+### 1.11: nested data and application-ready databases
 
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
 | 82 F07 | [connect](groups/connect.md) | E2b, E4a, E4b, E5 (E3b lands in 1.1) | 4 |
-| NESTED-NATIVE | [connect](groups/connect.md) | plan with row 82; first the fail-closed check | about 3 |
+| NESTED-NATIVE | [connect](groups/connect.md) | plan with row 82; the fail-closed refusal is 1.0 row NESTED-FREEZE (b) | about 3 |
 | 86 F01 | [connect](groups/connect.md) | E1 onward, with the watchdog design (decision 4) | about 7 |
 
-Fill: X-02 if F07 lands early. Depends on: 1.4 (64b, the Postgres CI lane).
-
-### 1.10: joint-distribution synthesis
-
-Theme: synthetic tables that keep the correlations between columns.
-
-| Item | Group | What is left | Slices |
-|---|---|---|---|
-| COPULA.1 to COPULA.3 | [generate](groups/generate.md) | review, port and merge (or land dark earlier) | about 3 |
-| COPULA.6 | [generate](groups/generate.md) | plan and build config and CLI wiring | not sized |
-| COPULA.5 | [generate](groups/generate.md) | plan after a survey; the DP route is chosen in the plan (decision 2) | not sized |
-
-Fill: F48 statistical synthesis; the certified DP stack candidate if COPULA.5 is built.
-
-### 1.11: warehouses and more databases
-
-| Item | Group | What is left | Slices |
-|---|---|---|---|
-| WAREHOUSE.1 | [connect](groups/connect.md) | fresh plan for DuckDB attach and multi-part Parquet | not sized |
-| WAREHOUSE.3 | platform docs | merge the DuckDB plans as docs (input to WAREHOUSE.1) | 0 (docs) |
-| WAREHOUSE.2 | [platform-parked](platform-parked.md) | with the platform restart | not sized |
-
-Fill: X-06 connectors, DuckDB 12 (write-back) and 13 (SQL source filters).
+Fill: X-02 if F07 lands early. Depends on: 1.1 (64b, the Postgres CI lane); 1.0 row NESTED-FREEZE (the path grammar).
 
 ### The pool (after 1.11)
 
@@ -726,7 +784,7 @@ when it is triaged.
 | 1.x minor (17) | generate options (renamed parent with `condition_on`, number-type inference, `unique_together`) | 1.2 fill |
 | | run and observability (chunked progress events, `RouteSummary` and cap contract exports, a public subset guard, the subset signal in `decoy.mask()` and `tokenize`) | 1.1 fill |
 | | connectors (one retry choke point, a readable-sink protocol for wrapper sinks) | 1.4 fill |
-| | scan and post-scan (multi-table drift baseline, all-null key columns, gate memory pressure read as out of memory) | 1.6 fill |
+| | scan and post-scan (multi-table drift baseline, all-null key columns, gate memory pressure read as out of memory) | 1.8 fill |
 | | library and layout (writer sentry edge cases, fsck repair of special files, hard-link-aware layout identity) | 1.3 fill (L3b, L5b) |
 | | web client `default_by` | [platform-parked.md](platform-parked.md) |
 | either | new refusals and changed reason strings | 1.x if they only warn or add a reason beside the old one, in the minor that touches the code; listed as a class in [2.0-holding.md](2.0-holding.md) |
@@ -748,5 +806,9 @@ when it is triaged.
 - The cause of the #684 aarch64 wheel failure.
 - #333 against main line by line (it was closed on 2026-11-22 as superseded), and the review state of
   each of the 17 DuckDB plans.
-- Slice counts for unbuilt items (AVRO-ORC.2, ANON.7 to ANON.9, COPULA.5, COPULA.6, WAREHOUSE) are
+- From the V2-to-V1 evaluation, not checked here: whether a native nested column with no rule already
+  fails closed (NESTED-FREEZE (b)), and whether main refuses two tables written to one target
+  (TARGET-DUP-REFUSE).
+- Slice counts for unbuilt items (AVRO-ORC.2, ANON.7 to ANON.9, COPULA.5, COPULA.6, WAREHOUSE, DB-NEXT, SNOWFLAKE, BEHAVIOR-VERSION and the
+  standby items) are
   estimates or not given.

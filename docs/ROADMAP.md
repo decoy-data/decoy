@@ -88,7 +88,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-47 rows block 1.0, 41 are Later and 13 are Maintenance (2026-11-22). Each cell lists the row
+49 rows block 1.0, 41 are Later and 13 are Maintenance (2026-11-22). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its 1.x
 candidates that have no plan yet (90 in all), and the health file lists 31 maintenance candidates. The named 1.x speed slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md). The 1.x program (the old V1+ and V2 branch work) and the order of the 1.x releases are in [roadmap/releases-1x.md](roadmap/releases-1x.md).
 
@@ -96,12 +96,12 @@ candidates that have no plan yet (90 in all), and the health file lists 31 maint
 |---|---|---|---|
 | [Scan and detection](roadmap/groups/scan.md) | 16 NAME-REMOVAL E1, 27 SCAN-MULTI S1c-cli, 29 SCAN-MULTI S3-cli, 32c SCAN-ML-MD, 56 NAME-REMOVAL, CLI half, PRE-SCAN-RUN | 30 SCAN-LIB, 31 DIST-INTEGRITY, 32 DRIFT, 80 F15 | none |
 | [Config, validation and the init wizard](roadmap/groups/config.md) | DECOY-LANG | none | none |
-| [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 79 F09, FAKER-MIGRATE (with INTL-IDS.3), FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN, COLUMN-SHAPE-RULE | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters, TEXT-REDACT-RUST-SPLICE (1.0.x), FPE-CHECKSUM-NATIVE (1.0.x), RUST-DATE-TEXT (1.2), INTL-IDS (1.1, 1.2), MASK-KEEP (1.5), DATE-ENTITY (1.5) | none |
-| [Fit and generate](roadmap/groups/generate.md) | 24n GEN-REL, 24p GEN-PROVIDERS, 24q GEN-TYPES, GEN-WINDOWED-BATCH | 24r GEN-INHERIT, GEN-VECTOR-STREAMS (1.0.x), EDGE-CASES (1.2), COPULA (1.10) | none |
+| [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 79 F09, FAKER-MIGRATE (with INTL-IDS.3), FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN, COLUMN-SHAPE-RULE | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters, TEXT-REDACT-RUST-SPLICE (1.0.x), FPE-CHECKSUM-NATIVE (1.0.x), RUST-DATE-TEXT (1.2), INTL-IDS (1.1, 1.2), MASK-KEEP (1.7), DATE-ENTITY (1.7) | none |
+| [Fit and generate](roadmap/groups/generate.md) | 24n GEN-REL, 24p GEN-PROVIDERS, 24q GEN-TYPES, FIT-CODES-TEXT, GEN-WINDOWED-BATCH | 24r GEN-INHERIT, GEN-VECTOR-STREAMS (1.0.x), EDGE-CASES (1.2), COPULA (1.6) | none |
 | [Run, publication and results](roadmap/groups/run.md) | 58 F25, 59 F22, 61 CLI delivery, 63 SAMPLE CLI half, 63a RUN-STREAM, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT, NONFK-OOM, NATIVE-MISSING-WARN, CHUNKED-STRUCT, FIXED-LIST-NULL | 85 F23 resume, CLI half, PER-COLUMN-ROUTING (1.1), CHUNK-PARALLEL (1.3), OOC-QUARANTINE (1.x), OOC-DATE-BUCKET (1.x), FK-CHUNKED-HASH-CHILD (1.x) | none |
 | [Local record library](roadmap/groups/library.md) | 36 L2-cli | 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
-| [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02, AVRO-ORC (1.4), WAREHOUSE (1.11) | none |
-| [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10, ANON (1.7) | none |
+| [Sources and targets](roadmap/groups/connect.md) | NESTED-FREEZE | 64 CLI-CLOUD, 64b CLI-DB-SRC (1.1), 82 F07, 86 F01, 87 F02, AVRO-ORC (1.4), WAREHOUSE (1.5) | none |
+| [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10, ANON (1.9) | none |
 | [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, UPGRADE-KEY, 89 WIN-FEAS, 6 WIN-RUNNER, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER, QA-BETA | 90a REL-IMAGE, PIP-NATIVE-EXTRA (1.x) | 24zr SETUP-NER-JSON |
 | [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, SIGNATURE-SENTRY | none | ENGINE-ARCH, 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
 

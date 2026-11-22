@@ -58,19 +58,19 @@ column-level strategy set.
 | ID | Feature | Area | Difficulty | Placement | Related | 1.x program |
 |---|---|---|---|---|---|---|
 | X-01 | Avro and ORC files | I/O | S | Near | none | AVRO-ORC (1.4) |
-| X-02 | JSON and JSONL with nested path masking | I/O | L | Mid | F07, F03 | 82-E3b (1.1), NESTED-NATIVE (1.9) |
+| X-02 | JSON and JSONL with nested path masking | I/O | L | Mid | F07, F03 | 82-E3b (1.1), NESTED-FREEZE (1.0), NESTED-NATIVE (1.11) |
 | X-03 | Excel workbooks | I/O | M | Mid | none | none |
 | X-04 | XML with path masking | I/O | M | Mid | X-02 | none |
 | X-05 | Delta Lake and Apache Iceberg tables | I/O | M | Mid | F22 | none |
-| X-06 | More databases (MySQL, SQL Server, Snowflake, BigQuery; MongoDB later) | I/O | L each | Mid (MongoDB Far) | F01, row 64b | WAREHOUSE (1.11), 86-E0 (1.9) |
+| X-06 | More databases (MySQL, SQL Server, Snowflake, BigQuery; MongoDB later) | I/O | L each | Mid (MongoDB Far) | F01, row 64b | WAREHOUSE (1.5), 86-E0 (1.11) |
 | X-07 | Streaming and change-data-capture masking | I/O | XL | Far | F42 | none |
 | X-08 | International identifiers, generators and region disguises | Mask | M | Near (detectors), Mid (disguises) | F47, DETECT-PROFILES | INTL-IDS (1.1, 1.2) |
 | X-09 | Secrets detection | Mask | S | Near | none | none |
-| X-10 | Meaning-preserving masks | Mask | S each | Near | none | MASK-KEEP (1.5) |
+| X-10 | Meaning-preserving masks | Mask | S each | Near | none | MASK-KEEP (1.7) |
 | X-11 | Better free-text detection | Mask | L | Mid | F08, DETECT-PROFILES | none |
-| X-12 | Formal anonymity enforcement | Privacy | L | Mid | F37 | ANON (1.7) |
-| X-13 | Time-series and event masking | Mask | M | Mid | none | DATE-ENTITY (1.5) |
-| X-14 | Joint-distribution synthesis (Gaussian copula) | Generate | L | Mid | F48, DPS | COPULA (1.10) |
+| X-12 | Formal anonymity enforcement | Privacy | L | Mid | F37 | ANON (1.9) |
+| X-13 | Time-series and event masking | Mask | M | Mid | none | DATE-ENTITY (1.7) |
+| X-14 | Joint-distribution synthesis (Gaussian copula) | Generate | L | Mid | F48, DPS | COPULA (1.6) |
 | X-15 | Multi-table synthesis | Generate | XL | late Mid | F48, X-14 | none |
 | X-16 | Generate from a schema | Generate | M | Mid | none | none |
 | X-17 | Edge-case test data | Generate | M | Mid | F46 | EDGE-CASES (1.2) |
@@ -114,7 +114,7 @@ that lands.
 
 ### X-02 JSON and JSONL with nested path masking
 
-**1.x program.** Several rules per nested column is built (82-E3b, engine #684, release 1.1). Native struct, list and map columns are candidate NESTED-NATIVE (1.9). See [releases-1x.md](releases-1x.md).
+**1.x program.** Several rules per nested column is built (82-E3b, engine #684, release 1.1). Native struct, list and map columns are candidate NESTED-NATIVE (1.11); its refusal half is 1.0 row NESTED-FREEZE. See [releases-1x.md](releases-1x.md).
 
 **What.** JSON documents and JSON Lines files as sources and targets, with masking addressed by
 path: `$.customer.email`, `$.items[*].card_number`. The same path selector applies to a JSON column
@@ -198,7 +198,7 @@ production analytical data now lives.
 
 ### X-06 More databases
 
-**1.x program.** A DuckDB attach and catalog source is built on an old branch (WAREHOUSE, release 1.11, needs a fresh plan). The F01 Postgres write spike is 86-E0. See [releases-1x.md](releases-1x.md).
+**1.x program.** A DuckDB attach and catalog source is built on an old branch (WAREHOUSE, release 1.5 with one more database and Snowflake, needs a fresh plan). The F01 Postgres write spike is 86-E0. See [releases-1x.md](releases-1x.md).
 
 **What.** Database sources and application-ready targets beyond Postgres: MySQL and MariaDB, SQL
 Server, Snowflake and BigQuery; MongoDB later.
@@ -290,7 +290,7 @@ against false positives.
 
 ### X-10 Meaning-preserving masks
 
-**1.x program.** Email domain, card BIN and IP prefix are built (MASK-KEEP.1 to .3, release 1.5). See [releases-1x.md](releases-1x.md).
+**1.x program.** Email domain, card BIN and IP prefix are built (MASK-KEEP.1 to .3, release 1.7). See [releases-1x.md](releases-1x.md).
 
 **What.** Small strategies or options that keep the property a test or analysis depends on:
 
@@ -337,7 +337,7 @@ labelled corpus, and keeping it deterministic, is the bulk.
 
 ### X-12 Formal anonymity enforcement
 
-**1.x program.** Hierarchies, metrics, models, search, microaggregation and the risk report are built as a library (ANON.1 to .6, release 1.7); config and CLI wiring is not. See [releases-1x.md](releases-1x.md).
+**1.x program.** Hierarchies, metrics, models, search, microaggregation and the risk report are built as a library (ANON.1 to .6, release 1.9); config and CLI wiring is not. See [releases-1x.md](releases-1x.md).
 
 **What.** Go from measuring k-anonymity (which `decoy scan` does today) to enforcing it, and add
 the stronger models: l-diversity and t-closeness. The user states a target ("k at least 5,
@@ -370,7 +370,7 @@ honest about what it proves (`E:docs/what-we-cannot-prove.md`).
 
 ### X-13 Time-series and event masking
 
-**1.x program.** The per-entity date offset is built (DATE-ENTITY.1, release 1.5). Series noise is not. See [releases-1x.md](releases-1x.md).
+**1.x program.** The per-entity date offset is built (DATE-ENTITY.1, release 1.7). Series noise is not. See [releases-1x.md](releases-1x.md).
 
 **What.** Masks that keep the shape of time data for one entity: shift all of a patient's or
 customer's dates by the same per-entity offset (keeping intervals and order), keep day of week or
@@ -395,7 +395,7 @@ analysis.
 
 ### X-14 Joint-distribution synthesis (Gaussian copula)
 
-**1.x program.** Model, fit, sample and the quality report are built as a library (COPULA.1 to .3, release 1.10). The snapshot extension, DP and wiring are not. See [releases-1x.md](releases-1x.md).
+**1.x program.** Model, fit, sample and the quality report are built as a library (COPULA.1 to .3, release 1.6). DP and wiring are not; the snapshot extension is not needed (owner 2026-11-22: standalone model kept). See [releases-1x.md](releases-1x.md).
 
 **What.** Synthetic tables that keep correlations between columns, not only each column's own
 distribution. Today `statistical` samples each column on its own, apart from the fixed composite
