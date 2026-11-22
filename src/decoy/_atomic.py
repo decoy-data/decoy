@@ -33,15 +33,8 @@ allowlist):
 * `replace_symlink` is the one link swap: a temp link beside the target, then `os.replace`.
   It replaces only a symlink (or nothing), never a regular file or directory.
 
-* `publish_local_targets` publishes a few files of one folder as one unit (a snapshot and the
-  config that names it). It stages and fsyncs every file first, keeps a hard-link backup of
-  each file it replaces, and restores or removes every file if any replace fails. A
-  non-blocking `flock` on the folder keeps a second publisher out until the first is done.
-  The lock is POSIX only (Windows has no `fcntl`, so no lock there). A rollback covers every
-  exception, an interrupt included; a rollback step that fails keeps its backup and raises
-  `ATOMIC_ROLLBACK_INCOMPLETE` with the backup names, or with the names of new files it could
-  not remove. A SIGKILL between two replaces cannot
-  be rolled back and can leave a half pair plus a hidden `.<name>.decoy-*.bak`.
+* `publish_local_targets` (several files of one folder as one unit) lives in `_atomic_batch`;
+  it uses the staging, backup, publish and rollback steps of this module.
 
 Not covered: the vault commit in `cli/run/_vault.py`, which needs a hard-link backup and rollback,
 and the install-directory moves in `distribution/`. Both are allowlisted with reasons.
@@ -101,12 +94,12 @@ ATOMIC_BAD_NAME = "atomic_name_invalid"
 ATOMIC_TARGET_BUSY = "atomic_target_busy"
 # CREATE_ONCE on a mount with no atomic no-clobber move (no hard links).
 ATOMIC_NOCLOBBER_UNSUPPORTED = "atomic_noclobber_unsupported"
-# `publish_local_targets`: another publisher holds the folder; a create-only target exists;
+# `_atomic_batch.publish_local_targets`: another publisher holds the folder; a create-only target exists;
 # the batch is malformed (empty, two folders, a repeated name).
 ATOMIC_BATCH_BUSY = "atomic_batch_busy"
 ATOMIC_TARGET_EXISTS = "atomic_target_exists"
 ATOMIC_BATCH_INVALID = "atomic_batch_invalid"
-# `publish_local_targets` failed and could not undo every target; the error's `kept` holds
+# `_atomic_batch.publish_local_targets` failed and could not undo every target; the error's `kept` holds
 # the hidden backup names (each one the old bytes of a file that was not put back) and its
 # `left` the names of new files that could not be removed.
 ATOMIC_ROLLBACK_INCOMPLETE = "atomic_rollback_incomplete"
@@ -626,20 +619,28 @@ def _stage_bytes(real: Path, data: bytes, private: bool) -> tuple[str, int]:
     return tmp, created
 
 
-def _rollback(done: list[tuple[Path, str | None]]) -> tuple[list[str], list[str]]:
+def _rollback(
+    done: list[tuple[Path, str | None]], restored: list[str] | None = None
+) -> tuple[list[str], list[str]]:
     """Undo published targets, newest first: put the old file back, or remove a new one.
 
     Returns the backups it could not restore (the caller keeps those on disk) and the file
-    names of new targets it could not remove.
+    names of new targets it could not remove. A target whose replace never ran is fine: its
+    new file is absent, or its backup is the file itself. Each backup that is back in place is
+    added to `restored` as it happens, so a caller whose rollback is interrupted knows which
+    backups are safe to delete.
     """
     stuck: list[str] = []
     left: list[str] = []
     for real, backup in reversed(done):
         try:
             if backup is None:
-                os.unlink(real)
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(real)
             else:
                 os.replace(backup, real)
+                if restored is not None:
+                    restored.append(backup)
         except OSError:
             if backup is None:
                 left.append(real.name)

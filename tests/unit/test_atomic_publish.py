@@ -341,3 +341,94 @@ def test_the_batch_module_imports_first_in_a_fresh_interpreter() -> None:
         [sys.executable, "-I", "-c", "import decoy._atomic_batch"], capture_output=True
     )
     assert done.returncode == 0, done.stderr.decode()
+
+
+def _old_pair(folder: Path) -> tuple[Path, Path]:
+    first, second = folder / "a.json", folder / "b.yaml"
+    first.write_bytes(b"old-a")
+    second.write_bytes(b"old-b")
+    return first, second
+
+
+@posix
+def test_an_interrupt_right_after_a_replace_still_restores_that_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real = _atomic._publish
+
+    def interrupted_after(*args: object, **kwargs: object) -> bool:
+        real(*args, **kwargs)  # type: ignore[arg-type]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_atomic, "_publish", interrupted_after)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert _names(tmp_path) == ["a.json", "b.yaml"]
+
+
+@posix
+def test_an_interrupt_inside_the_rollback_deletes_no_backup_it_did_not_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 2)
+    real_replace = os.replace
+
+    def interrupted(src: str | Path, dst: str | Path) -> None:
+        if str(src).endswith(".bak"):
+            raise KeyboardInterrupt
+        real_replace(src, dst)
+
+    monkeypatch.setattr(_atomic.os, "replace", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    monkeypatch.undo()
+    backups = [p for p in tmp_path.iterdir() if p.name.endswith(".bak")]
+    assert any(p.read_bytes() == b"old-a" for p in backups)
+
+
+@posix
+def test_a_create_once_target_that_exists_refuses_before_anything_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    before = (_names(tmp_path), first.stat().st_ctime_ns)
+    calls: list[object] = []
+    real = _atomic._publish
+
+    def spy(*args: object, **kwargs: object) -> bool:
+        calls.append(args)
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(_atomic, "_publish", spy)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets(
+            [LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b", WriteMode.CREATE_ONCE)]
+        )
+
+    assert caught.value.code == _atomic.ATOMIC_TARGET_EXISTS
+    assert calls == []
+    assert (_names(tmp_path), first.stat().st_ctime_ns) == before
+    assert first.read_bytes() == b"old-a"
+
+
+def test_a_target_held_open_is_reported_as_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def held(*args: object, **kwargs: object) -> bool:
+        raise _atomic._TargetHeld(errno.EACCES, "held")
+
+    monkeypatch.setattr(_atomic, "_publish", held)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets([LocalTarget(tmp_path / "a.json", b"a")])
+
+    assert caught.value.code == _atomic.ATOMIC_TARGET_BUSY
+    assert _names(tmp_path) == []

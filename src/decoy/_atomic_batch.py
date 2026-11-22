@@ -2,10 +2,10 @@
 
 `publish_local_targets` publishes a few files of one folder as one rollback unit; the rules
 are in `_atomic`'s docstring. This module depends on `_atomic` and `_atomic` never imports it.
-Every step that moves or links a file (`_stage_bytes`, `_backup`, `_publish`, `_rollback`)
-stays in `_atomic`, the one choke point for them, and is read off that module at call time,
-so a test that patches `_atomic._publish` still reaches the batch. This module holds the
-folder lock and the order of the steps.
+Four steps that move or link a file (`_stage_bytes`, `_backup`, `_publish`, `_rollback`) stay
+in `_atomic`, the one choke point for them, and are read off that module at call time, so a
+test that patches `_atomic._publish` still reaches the batch. This module holds the folder
+lock and the order of the steps.
 """
 
 from __future__ import annotations
@@ -21,6 +21,7 @@ from decoy._atomic import (
     ATOMIC_BATCH_BUSY,
     ATOMIC_BATCH_INVALID,
     ATOMIC_ROLLBACK_INCOMPLETE,
+    ATOMIC_TARGET_BUSY,
     ATOMIC_TARGET_EXISTS,
     ATOMIC_WRITE_FAILED,
     AtomicWriteError,
@@ -28,6 +29,7 @@ from decoy._atomic import (
     _final_bits,
     _require_component,
     _sync_directories,
+    _TargetHeld,
     destination_entry,
 )
 from decoy._private_file import (
@@ -125,7 +127,10 @@ def publish_local_targets(
     done: list[tuple[Path, str | None]] = []
     stuck: list[str] = []
     left: list[str] = []
+    restored: list[str] = []
+    settled = False  # the batch finished, or its rollback ran to the end
     failed = False
+    failed_code = ATOMIC_WRITE_FAILED
     failed_errno: int | None = None
     try:
         with _folder_lock(directory):
@@ -144,22 +149,32 @@ def publish_local_targets(
                     targets, reals, existing, staged, strict=True
                 ):
                     bits = _final_bits(tmp, old, target.private, created)
-                    if not _atomic._publish(tmp, real, bits, target.mode):
-                        raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
+                    # Recorded before the replace: an interrupt that lands just after it must
+                    # still find this target in the rollback.
                     done.append((real, backups[len(done)]))
+                    if not _atomic._publish(tmp, real, bits, target.mode):
+                        done.pop()  # refused with nothing replaced
+                        raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
+                settled = True
             except BaseException as exc:
-                stuck, left = _atomic._rollback(done)
+                stuck, left = _atomic._rollback(done, restored)
+                settled = True
                 if stuck or left:
                     pass  # reported below, after the backups are left in place
                 elif isinstance(exc, OSError):
                     failed, failed_errno = True, exc.errno
+                    if isinstance(exc, _TargetHeld):
+                        failed_code = ATOMIC_TARGET_BUSY
                 else:
                     raise
     finally:
         for tmp, _created in staged:
             _unlink_quietly(tmp)
+        # An interrupt can end the rollback early: then only a backup that is back in place
+        # (or never used) may go, because the rest still hold the old bytes.
+        unsafe = set() if settled else {b for _real, b in done if b is not None} - set(restored)
         for backup in backups:
-            if backup is not None and backup not in stuck:
+            if backup is not None and backup not in stuck and backup not in unsafe:
                 _unlink_quietly(backup)
     if stuck or left:
         raise AtomicWriteError(
@@ -168,7 +183,7 @@ def publish_local_targets(
             left=tuple(left),
         )
     if failed:
-        raise AtomicWriteError(ATOMIC_WRITE_FAILED, failed_errno)
+        raise AtomicWriteError(failed_code, failed_errno)
     _sync_directories(directory, None)
 
 
