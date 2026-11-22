@@ -24,9 +24,6 @@ Three untriaged lines in [inbox.md](../roadmap/inbox.md) route it to triage.
 
 ## Not done
 
-- **Not pushed.** The work is committed on local branch `docs/code-quality-handoff`. The session
-  could not get write access to `decoy-data/decoy`, so the branch must be pushed from a session or
-  checkout that has it.
 - **Dev-loop edit.** The tier B and C steps belong in `~/dev-rules/development-loop.md` (dev-rules
   repo), which was not available.
 - **`lintdebt` step.** Not built. Plan it as a slice of row 24ze or 24zl (same baseline machinery).
@@ -37,7 +34,7 @@ Three untriaged lines in [inbox.md](../roadmap/inbox.md) route it to triage.
 
 ## Next steps
 
-1. Push the branch and open a PR.
+1. Review and merge the PR from branch `docs/code-quality-handoff`.
 2. Owner answers the five questions in section 6 of the main handoff.
 3. Triage the three inbox lines.
 4. Edit the dev loop and build `lintdebt`.
