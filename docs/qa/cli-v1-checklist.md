@@ -255,7 +255,7 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 | SCAN-10 | Opt-in distribution capture, then a run whose output drifts past the set percentage, in strict mode | tbd | **Not built.** The breach blocks publication; outside strict mode it warns | 31 | |
 | SCAN-11 | `on_drift: fail` with a source that drifted from the baseline; then `on_drift: warn` | tbd | **Not built.** The run refuses at start; with `warn` it warns and runs | 32 | |
 | SCAN-12 | Scan with defaults; enable the classifier, then NER, per pipeline; remove spaCy and scan with NER on | tbd | **Not built.** Default is regex only and says so; the scan report and run result name each detector, model and version; without spaCy, an install line for the `ner` extra and a non-zero exit | 32a | |
-| SCAN-13 | Read every scan, report and help text for STORM wording | tbd | **Not built.** V1 names only, as row 56 sets them | 56 | |
+| SCAN-13 | Read every scan, report and help text for the retired product name | none | Pinned by the residual sentry, the banned-text registry and the runtime-output test (row 56) | 56 | |
 | SCAN-14 | A run with strict-drift publication blocking configured and a drifted source | tbd | **Not built.** No output is published; the reason is named | 80 | |
 | SCAN-15 | `decoy list disguises`; then every id `decoy list templates` prints, given to `decoy init --preset ... --json` | 0, 0, 0 | The disguise tip points at `decoy list templates`, not at disguise ids; every template id is accepted | 24e | |
 | SCAN-16 | A pipeline that applies a disguise from `decoy list disguises` | tbd | **Not built.** The engine applies it, with the selector precedence row 81 sets | 81 | |
@@ -580,7 +580,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 46 | H-1 C0 | BLD-03 |
 | 47 | H-1 C1 | INST-17 |
 | 53 | H-1 C3 | BLD-03 |
-| 56 | STORM rename, CLI half | SCAN-13, DOC-08 |
+| 56 | Retired product name, CLI half | SCAN-13, DOC-08 |
 | 57 | SUB-RUN | RUN-10, RUN-11 |
 | 61 | CLI delivery | DLV-01 to DLV-04, EXIT-02 |
 | 61a | ATOMIC-CHUNKED | RUN-04 |

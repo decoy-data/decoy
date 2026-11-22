@@ -92,7 +92,7 @@ bucket tag. The tags are a first pass. These are the counts:
    fallback into an error only on a broken install or an internal bug and are kept as 1.x patch. Confirm the split.
 3. F17 and F27: the companion scope marks them V1 and the old list kept them as V2. Which is right? This page treats them
    as 1.x minor.
-4. Which public renames belong in "Before 1.0 freeze" for the STORM taxonomy split and the F22 names?
+4. Which public renames belong in "Before 1.0 freeze" for the detection taxonomy split and the F22 names?
 5. Does the platform API count as contract? The rule above lists the CLI and the engine. The backlog's platform entries are
    tagged for that reading (patch unless named otherwise).
 6. The ten `check` entries in the vault file (`grep '\[check:'`) each name the owner question or the missing fact.
