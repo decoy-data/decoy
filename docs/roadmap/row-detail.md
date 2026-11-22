@@ -163,7 +163,7 @@ in reframe-C; `DetectorMatch` carries the detector version. F16's 5-level preced
 expansion fingerprint. F07 has depth, array-expansion and cell-size bounds with declared failure
 behavior; complex nested formats and XML defer.
 
-**F24 (row 84).** Advisory per section CAP; enforced admission is V2. The deployment contract states
+**F24 (row 84).** Advisory per section CAP; enforced admission is a 1.x item. The deployment contract states
 that admission is measure-only in V1 and names the operator mitigation.
 
 **F23 (row 85).** Table-level resume skips tables already staged; about 8 to 12 slices (UNVERIFIED

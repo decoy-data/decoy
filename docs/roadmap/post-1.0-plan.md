@@ -3,7 +3,8 @@ Status: plan
 # After 1.0: what ships in 1.x and what waits for 2.0
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
-In short (owner, 2026-11-18): anything that does not break the contract is v1+; anything that breaks it is v2.
+In short (owner, 2026-11-18): anything that does not break the contract is 1.x; anything that breaks it is 2.0.
+Owner, 2026-11-22: the labels v1+ and V2 are retired. Work built or planned on a branch under them is 1.x, scheduled in [releases-1x.md](releases-1x.md).
 This page holds the rule. The items it used to list moved on 2026-11-18: see "Where the items are" below.
 This page replaces `out-of-scope.md`. Owner direction, 2026-11-16.
 
@@ -34,7 +35,7 @@ it can be done now. (2) Can it be done by adding something next to the old behav
 "1.x if <design>, else 2.0" and name the design that keeps it 1.x. A new refusal of something that works
 today is a contract change. A new warning on stderr is not.
 
-Where the source says "V2", "V2-LOG", "post-V1" or "V1+", read the bucket on this page instead.
+Where the source says "V2", "V2-LOG", "post-V1" or "V1+", read the bucket on this page instead. The 1.x ids of the old V1+ and V2 branches are in the alias table of [releases-1x.md](releases-1x.md).
 
 ## Where the items are
 

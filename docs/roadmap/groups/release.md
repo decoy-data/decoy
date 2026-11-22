@@ -34,6 +34,16 @@ Additive. Not scheduled until a 1.x release picks it up.
 | 90a | REL-IMAGE: official container image for pipelines (owner 2026-11-07: ship the download plus an official image; a GitHub Action, Helm chart and Terraform wait until after V1). Built on each release from the same signed Linux bundle (x86_64 and aarch64), signed and version-pinned by digest; a slim default tag plus a `-ner` tag with the NER model included; runs as a non-root user; recipes for GitHub Actions, GitLab CI and a Kubernetes job in the public docs. Registry and pull access (owner 2026-11-08): a public image that refuses to run without a valid license | CLI | NOT STARTED; needs a plan | none | REL-PKG (row 90); SCAN-ML model install (row 32a) for the `-ner` tag |
 | PIP-NATIVE-EXTRA | 1.x. A `native` extra for pip installs, with companion wheels on PyPI. In V1 a pip install gets only the NATIVE-MISSING-WARN warning ([run](run.md)). Owner 2026-11-19, Q6 | engine, CLI | NOT STARTED | record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) section 8 Q6; plan not written | row 90 |
 
+
+### Candidates with no plan yet
+
+Non-breaking ideas, so 1.x by rule. A candidate becomes a row in the table above when a release picks it up.
+
+| Item | Source | Why it does not break |
+|---|---|---|
+| PYPI: publish the engine and the CLI on PyPI, beside the signed bundle (overlaps PIP-NATIVE-EXTRA) | outside review, 2026-11-18 (docs PR #319), carried from CLI #321 | A new way to install. The signed bundle and `decoy upgrade` stay as they are. |
+| PY-VERSIONS: support Python 3.13; today the CLI declares 3.10 to 3.12 | outside review, 2026-11-18 (docs PR #319), carried from CLI #321 | Adds interpreter versions. Dropping 3.10 is a separate freeze question in the [inbox](../inbox.md). |
+
 ## Maintenance
 
 No user-visible change. Merges at any time and never gates a release.

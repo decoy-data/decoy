@@ -86,7 +86,7 @@ known failures live in the stored baseline `baselines/decoy-platform-main.json` 
 
 ## Later candidates (platform only)
 
-Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+Non-breaking ideas, so 1.x by rule. A candidate becomes a row in the table above when a release picks it up.
 
 | Item | Source | Why it does not break |
 |---|---|---|

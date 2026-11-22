@@ -28,24 +28,27 @@ Additive. Not scheduled until a 1.x release picks it up.
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 24r | GEN-INHERIT (owner 2026-11-08): a child column takes a parent row's attribute (`claims.state` = the member's state); conditional categoricals declared in YAML, not only from a fitted snapshot | engine | NOT STARTED. Plan passed 2026-11-10 (`E:plan/gen-inherit`); build not started | [GEN completeness audit](../../records/2026-11-08-generation-completeness-audit.md) B | row 24n |
+| EDGE-CASES | 1.x (1.2). Edge-case test-data providers (boundary strings, injection strings, odd values) in the default provider registry, opt-in by name; the built part of X-17. Was V2-5.4. Detail in [releases-1x.md](../releases-1x.md) | engine | IN REVIEW, held until after 1.0. Built; code review round 2 PASS WITH CONCERNS. Left: port to current main (6 conflict files, one shared with INTL-IDS.2), PR, full suite | `E:feat/v2-5.4-edge-case-providers` | INTL-IDS.2 (same catalog file) |
+| COPULA | 1.x (1.10). Gaussian copula synthesis, the built part of X-14: model and disclosure floors (COPULA.1, engine draft #703), fit and sample (COPULA.2, #705), a value-free quality report (COPULA.3, no PR). Library only. Was V2-4.2, 4.3, 4.4. Detail in [releases-1x.md](../releases-1x.md) | engine | IN REVIEW, held until after 1.0. No plan GO recorded. Left: plan review; COPULA.3 rebase onto #705; not built: COPULA.4 snapshot extension (V2-4.1), COPULA.5 DP route (owner decision 2), COPULA.6 config and CLI wiring | `E:feat/v2-4.2-copula-foundations`, `E:feat/v2-4.2-4.3-gaussian-copula`, `E:feat/v2-4.4-copula-quality-report` | none |
 | GEN-VECTOR-STREAMS | 1.0.x. Vectorize the generation `sequence`, `reference` and null-mask streams: numpy indices, one RNG call per batch. 2x to 5x on those columns (estimate). Output bytes must not change; if they do, the row goes back to the owner. Owner 2026-11-19, record item C2 | engine | NOT STARTED | record `E:docs/records/2026-11-19-engine-speed-and-route-completeness.md` (engine #715) section 5.3 C2; plan not written | none |
 
 ### Candidates with no plan yet
 
-Non-breaking ideas, so v1+ by rule. A candidate becomes a row in the table above when a release picks it up.
+Non-breaking ideas, so 1.x by rule. A candidate becomes a row in the table above when a release picks it up.
 
 | Item | Source | Why it does not break |
 |---|---|---|
 | F46 reusable QA scenarios | Council features | New scenario compiler and case library. |
 | F48 statistical synthesis | Council features | New opt-in backend and evaluation; existing generation unchanged. |
-| X-14 Joint-distribution synthesis (Gaussian copula) | Expansion candidates X-01 to X-25 | New generation method; existing configs unchanged. |
+| X-14 Joint-distribution synthesis (Gaussian copula) | Expansion candidates X-01 to X-25 | New generation method; existing configs unchanged. The library is built: row COPULA. |
 | X-15 Multi-table synthesis | Expansion candidates X-01 to X-25 | New generation method. |
 | X-16 Generate from a schema | Expansion candidates X-01 to X-25 | New source of generation specs. |
-| X-17 Edge-case test data | Expansion candidates X-01 to X-25 | New generators. |
+| X-17 Edge-case test data | Expansion candidates X-01 to X-25 | New generators. The providers are built: row EDGE-CASES. |
 | X-18 Sequential and event data synthesis | Expansion candidates X-01 to X-25 | New generation method. |
 | A certified DP stack for normal users (a DP fit on a default install works) | ROADMAP row 24g | Turns the `dp_stack_uncertified` message into a success. Exit code 3 stays for the cases still refused. |
 | GEN-PROVIDERS per-provider options and `unique` | ROADMAP row 24p | New optional keys on `type: provider`. |
 | F2 follow-up: dirty generated output (nullable, NaN, nested) on the mixed route | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Lifts a decline. |
+| HC5-FIT-CLI: `decoy fit` wiring for `high_cardinality_columns`; the engine half is merged (carried from CLI #321) | `E:docs/backlog/hc-5-cli-fit-wiring.md` | A new option on `fit`. |
 | Generate columns on a masked table: a masked table declares generate columns that add new columns beside its masked ones (today a table is either masked through `columns` or generated through `generate_columns`, never both) | Owner, 2026-11-19 | New optional config on a masked table; existing configs unchanged. |
 
 ## Maintenance
