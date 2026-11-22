@@ -97,6 +97,11 @@ def pinned_backup_pem() -> str:
     backup key to a build that pins a real main key. A placeholder backup pin with no usable
     override raises NoPinnedKeyError; that matters only when a rotation needs the backup key."""
     return _load_pin(
-        _Pin(_BACKUP_KEY_FILE, BACKUP_PLACEHOLDER_MARKER, "DECOY_RELEASE_BACKUP_PUBKEY_FILE", "backup"),
+        _Pin(
+            _BACKUP_KEY_FILE,
+            BACKUP_PLACEHOLDER_MARKER,
+            "DECOY_RELEASE_BACKUP_PUBKEY_FILE",
+            "backup",
+        ),
         dev_override_ok=_is_placeholder(_KEY_FILE, PLACEHOLDER_MARKER),
     )

@@ -132,9 +132,7 @@ def parse_notify_spec(spec: str) -> NotifyChannel:
     Raises NotifySpecError on an unknown kind or empty target.
     """
     if ":" not in spec:
-        raise NotifySpecError(
-            "--notify expects 'kind:target' (kind in webhook, slack, email)."
-        )
+        raise NotifySpecError("--notify expects 'kind:target' (kind in webhook, slack, email).")
     kind, target = spec.split(":", 1)
     kind = kind.strip().lower()
     target = target.strip()
@@ -428,7 +426,9 @@ def dispatch(
     """
     results: list[NotifyResult] = []
     for ch in channels:
-        host = _host_only(ch.target) if ch.kind in ("webhook", "slack") else _redact_email(ch.target)
+        host = (
+            _host_only(ch.target) if ch.kind in ("webhook", "slack") else _redact_email(ch.target)
+        )
         try:
             if ch.kind == "webhook":
                 delivered, detail = send_webhook(ch.target, event, secret_key=webhook_secret)
@@ -439,7 +439,9 @@ def dispatch(
         except Exception as exc:
             logger.warning("notify channel %s failed: %s", ch.kind, exc)
             delivered, detail = False, "unexpected error"
-        results.append(NotifyResult(kind=ch.kind, target_host=host, delivered=delivered, detail=detail))
+        results.append(
+            NotifyResult(kind=ch.kind, target_host=host, delivered=delivered, detail=detail)
+        )
     return results
 
 

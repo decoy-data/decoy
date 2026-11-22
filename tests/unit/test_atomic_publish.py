@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from decoy import _atomic, _private_file
-from decoy._atomic import AtomicWriteError, LocalTarget, WriteMode, publish_local_targets
+from decoy._atomic import AtomicWriteError, WriteMode
+from decoy._atomic_batch import LocalTarget, publish_local_targets
 
 posix = pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits and directory locks")
 
@@ -330,3 +331,304 @@ def test_a_failed_removal_of_a_new_target_is_reported_not_ignored(
     assert err.left == ("a.json",) and err.kept == ()
     assert "/secret" not in str(err)
     assert first.read_bytes() == b"new-a" and not second.exists()
+
+
+def test_the_batch_module_imports_first_in_a_fresh_interpreter() -> None:
+    import subprocess
+    import sys
+
+    done = subprocess.run(
+        [sys.executable, "-I", "-c", "import decoy._atomic_batch"], capture_output=True
+    )
+    assert done.returncode == 0, done.stderr.decode()
+
+
+def _old_pair(folder: Path) -> tuple[Path, Path]:
+    first, second = folder / "a.json", folder / "b.yaml"
+    first.write_bytes(b"old-a")
+    second.write_bytes(b"old-b")
+    return first, second
+
+
+@posix
+def test_an_interrupt_right_after_a_replace_still_restores_that_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real = _atomic._publish
+
+    def interrupted_after(*args: object, **kwargs: object) -> bool:
+        real(*args, **kwargs)  # type: ignore[arg-type]
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_atomic, "_publish", interrupted_after)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert _names(tmp_path) == ["a.json", "b.yaml"]
+
+
+@posix
+def test_an_interrupt_inside_the_rollback_deletes_no_backup_it_did_not_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 2)
+    real_replace = os.replace
+
+    def interrupted(src: str | Path, dst: str | Path) -> None:
+        if str(src).endswith(".bak"):
+            raise KeyboardInterrupt
+        real_replace(src, dst)
+
+    monkeypatch.setattr(_atomic.os, "replace", interrupted)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    monkeypatch.undo()
+    backups = [p for p in tmp_path.iterdir() if p.name.endswith(".bak")]
+    assert any(p.read_bytes() == b"old-a" for p in backups)
+
+
+@posix
+def test_a_create_once_target_that_exists_refuses_before_anything_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    before = (_names(tmp_path), first.stat().st_ctime_ns)
+    calls: list[object] = []
+    real = _atomic._publish
+
+    def spy(*args: object, **kwargs: object) -> bool:
+        calls.append(args)
+        return real(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(_atomic, "_publish", spy)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets(
+            [LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b", WriteMode.CREATE_ONCE)]
+        )
+
+    assert caught.value.code == _atomic.ATOMIC_TARGET_EXISTS
+    assert calls == []
+    assert (_names(tmp_path), first.stat().st_ctime_ns) == before
+    assert first.read_bytes() == b"old-a"
+
+
+def test_a_target_held_open_is_reported_as_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def held(*args: object, **kwargs: object) -> bool:
+        raise _atomic._TargetHeld(errno.EACCES, "held")
+
+    monkeypatch.setattr(_atomic, "_publish", held)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets([LocalTarget(tmp_path / "a.json", b"a")])
+
+    assert caught.value.code == _atomic.ATOMIC_TARGET_BUSY
+    assert _names(tmp_path) == []
+
+
+@posix
+def test_an_interrupt_right_after_the_backup_link_leaves_no_bak_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, _second = _old_pair(tmp_path)
+    real_link = os.link
+
+    def interrupted_after(src: str | Path, dst: str | Path) -> None:
+        real_link(src, dst)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(_atomic.os, "link", interrupted_after)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a")])
+
+    assert _names(tmp_path) == ["a.json", "b.yaml"]
+    assert first.read_bytes() == b"old-a"
+
+
+@posix
+def test_a_second_interrupt_does_not_chain_the_first_faults_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 2)
+    real_replace = os.replace
+
+    def interrupted(src: str | Path, dst: str | Path) -> None:
+        if str(src).endswith(".bak"):
+            raise KeyboardInterrupt
+        real_replace(src, dst)
+
+    monkeypatch.setattr(_atomic.os, "replace", interrupted)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert caught.value.__context__ is None
+
+
+def _hook(monkeypatch: pytest.MonkeyPatch, point: str, action: object) -> None:
+    def fault(name: str, target: Path, backup: str | None) -> None:
+        if name == point:
+            action(target, backup)  # type: ignore[operator]
+
+    monkeypatch.setattr(_atomic, "_fault", fault)
+
+
+def _baks(folder: Path) -> list[Path]:
+    return [p for p in folder.iterdir() if p.name.endswith(".bak")]
+
+
+@posix
+def test_at63_a_link_that_hits_an_existing_name_deletes_nothing_it_does_not_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    sentinel: list[Path] = []
+
+    def plant(_target: Path, backup: str | None) -> None:
+        assert backup is not None
+        Path(backup).write_bytes(b"sentinel")
+        sentinel.append(Path(backup))
+
+    _hook(monkeypatch, "backup_link_before", plant)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert caught.value.code == _atomic.ATOMIC_WRITE_FAILED
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert [p.read_bytes() for p in sentinel] == [b"sentinel"]
+    assert _names(tmp_path) == sorted(["a.json", "b.yaml", sentinel[0].name])
+
+
+@posix
+def test_at64_an_interrupt_after_the_samefile_check_leaves_no_bak_beside_an_unchanged_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 1)
+
+    def interrupt(_target: Path, _backup: str | None) -> None:
+        raise KeyboardInterrupt
+
+    _hook(monkeypatch, "rollback_samefile_checked", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert _baks(tmp_path) == []
+
+
+@posix
+def test_at65_an_interrupt_before_a_restore_keeps_the_value_bearing_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 2)
+
+    def interrupt(_target: Path, _backup: str | None) -> None:
+        raise KeyboardInterrupt
+
+    _hook(monkeypatch, "rollback_before_restore", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert first.read_bytes() == b"new-a"
+    assert [p.read_bytes() for p in _baks(tmp_path)] == [b"old-a"]
+
+
+@posix
+def test_an_interrupt_while_deleting_one_backup_still_settles_the_others(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real_unlink = os.unlink
+    hit: list[str] = []
+
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+        if str(path).endswith(".bak") and not hit:
+            hit.append(str(path))
+            raise KeyboardInterrupt
+
+    def refuse(_staged: list[Path]) -> None:
+        raise RuntimeError("stop before any replace")
+
+    monkeypatch.setattr(os, "unlink", unlink)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        publish_local_targets(
+            [LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")], check=refuse
+        )
+
+    assert caught.value.__context__ is None
+    monkeypatch.undo()
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert _baks(tmp_path) == []
+
+
+@posix
+def test_an_interrupt_while_deleting_a_staged_temp_still_settles_backups_and_temps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real_unlink = os.unlink
+    hit: list[str] = []
+
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+        if not str(path).endswith(".bak") and not hit:
+            hit.append(str(path))
+            raise KeyboardInterrupt
+
+    def refuse(_staged: list[Path]) -> None:
+        raise RuntimeError("stop before any replace")
+
+    monkeypatch.setattr(os, "unlink", unlink)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        publish_local_targets(
+            [LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")], check=refuse
+        )
+
+    assert hit
+    assert caught.value.__context__ is None
+    monkeypatch.undo()
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.json", "b.yaml"]
+
+
+@posix
+def test_a_backup_that_cannot_be_deleted_after_a_commit_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real_unlink = os.unlink
+
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        if str(path).endswith(".bak"):
+            raise OSError(errno.EIO, "cannot remove /secret/path")
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "unlink", unlink)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    monkeypatch.undo()
+    err = caught.value
+    assert err.code == _atomic.ATOMIC_ROLLBACK_INCOMPLETE
+    assert "/secret" not in str(err)
+    assert sorted(err.kept) == sorted(p.name for p in _baks(tmp_path)) and len(err.kept) == 2
+    assert (first.read_bytes(), second.read_bytes()) == (b"new-a", b"new-b")

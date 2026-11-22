@@ -33,15 +33,8 @@ allowlist):
 * `replace_symlink` is the one link swap: a temp link beside the target, then `os.replace`.
   It replaces only a symlink (or nothing), never a regular file or directory.
 
-* `publish_local_targets` publishes a few files of one folder as one unit (a snapshot and the
-  config that names it). It stages and fsyncs every file first, keeps a hard-link backup of
-  each file it replaces, and restores or removes every file if any replace fails. A
-  non-blocking `flock` on the folder keeps a second publisher out until the first is done.
-  The lock is POSIX only (Windows has no `fcntl`, so no lock there). A rollback covers every
-  exception, an interrupt included; a rollback step that fails keeps its backup and raises
-  `ATOMIC_ROLLBACK_INCOMPLETE` with the backup names, or with the names of new files it could
-  not remove. A SIGKILL between two replaces cannot
-  be rolled back and can leave a half pair plus a hidden `.<name>.decoy-*.bak`.
+* `publish_local_targets` (several files of one folder as one unit) lives in `_atomic_batch`;
+  it uses the staging, backup, publish and rollback steps of this module.
 
 Not covered: the vault commit in `cli/run/_vault.py`, which needs a hard-link backup and rollback,
 and the install-directory moves in `distribution/`. Both are allowlisted with reasons.
@@ -64,14 +57,9 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from decoy import _private_file
 from decoy._private_file import (
-    PRIVATE_BUSY,
-    PRIVATE_OPEN_FAILED,
-    PrivateFileError,
-    advisory_lock_available,
     apply_mode,
     create_exclusive,
     restrict_owner_only,
-    try_lock_exclusive,
 )
 
 __all__ = [
@@ -85,13 +73,11 @@ __all__ = [
     "ATOMIC_TARGET_EXISTS",
     "ATOMIC_WRITE_FAILED",
     "AtomicWriteError",
-    "LocalTarget",
     "WriteMode",
     "describe",
     "destination_entry",
     "fsync_directory",
     "is_device_name",
-    "publish_local_targets",
     "replace_symlink",
     "staged_local_target",
     "staged_private_target",
@@ -108,12 +94,12 @@ ATOMIC_BAD_NAME = "atomic_name_invalid"
 ATOMIC_TARGET_BUSY = "atomic_target_busy"
 # CREATE_ONCE on a mount with no atomic no-clobber move (no hard links).
 ATOMIC_NOCLOBBER_UNSUPPORTED = "atomic_noclobber_unsupported"
-# `publish_local_targets`: another publisher holds the folder; a create-only target exists;
+# `_atomic_batch.publish_local_targets`: another publisher holds the folder; a create-only target exists;
 # the batch is malformed (empty, two folders, a repeated name).
 ATOMIC_BATCH_BUSY = "atomic_batch_busy"
 ATOMIC_TARGET_EXISTS = "atomic_target_exists"
 ATOMIC_BATCH_INVALID = "atomic_batch_invalid"
-# `publish_local_targets` failed and could not undo every target; the error's `kept` holds
+# `_atomic_batch.publish_local_targets` failed and could not undo every target; the error's `kept` holds
 # the hidden backup names (each one the old bytes of a file that was not put back) and its
 # `left` the names of new files that could not be removed.
 ATOMIC_ROLLBACK_INCOMPLETE = "atomic_rollback_incomplete"
@@ -618,16 +604,6 @@ def _sync_directories(directory: Path, tmp_dir: Path | None) -> None:
         raise AtomicWriteError(ATOMIC_SYNC_FAILED, failed_errno)
 
 
-@dataclass(frozen=True)
-class LocalTarget:
-    """One file of a `publish_local_targets` batch. `private` publishes it 0600."""
-
-    path: Path
-    data: bytes
-    mode: WriteMode = WriteMode.REPLACE
-    private: bool = False
-
-
 def _stage_bytes(real: Path, data: bytes, private: bool) -> tuple[str, int]:
     """Write `data` to a fsynced temp beside `real`; return its name and the create-time bits."""
     tmp, created = create_exclusive(real.parent, real.name, private=private)
@@ -643,56 +619,67 @@ def _stage_bytes(real: Path, data: bytes, private: bool) -> tuple[str, int]:
     return tmp, created
 
 
-def _unlink_quietly(path: str | Path) -> None:
-    with contextlib.suppress(OSError):
-        os.unlink(path)
-
-
-@contextlib.contextmanager
-def _folder_lock(directory: Path) -> Iterator[None]:
-    """Hold a non-blocking exclusive lock on the folder itself, so no loose lock file exists.
-
-    POSIX only: without `fcntl` (Windows) there is no lock and two publishers can interleave.
-    """
-    if not advisory_lock_available():
-        yield
-        return
-    failure: PrivateFileError | None = None
-    fd = -1
+def _same_file(first: str | Path, second: Path) -> bool:
     try:
-        fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-        try_lock_exclusive(fd)
-    except PrivateFileError as exc:
-        failure = exc
-    except OSError as exc:
-        failure = PrivateFileError(PRIVATE_OPEN_FAILED, exc.errno)
-    if failure is not None:
-        if fd >= 0:
-            os.close(fd)
-        raise AtomicWriteError(
-            ATOMIC_BATCH_BUSY if failure.code == PRIVATE_BUSY else ATOMIC_WRITE_FAILED,
-            failure.errno,
-        )
-    try:
-        yield
-    finally:
-        os.close(fd)  # closing releases the lock
+        return os.path.samefile(first, second)
+    except OSError:
+        return False
 
 
-def _rollback(done: list[tuple[Path, str | None]]) -> tuple[list[str], list[str]]:
-    """Undo published targets, newest first: put the old file back, or remove a new one.
+# Test-only fault hook, `None` in production: a test sets it to a callable that receives the
+# point name, the target and the backup name, and may raise there.
+_fault: Callable[[str, Path, str | None], None] | None = None
 
-    Returns the backups it could not restore (the caller keeps those on disk) and the file
-    names of new targets it could not remove.
+
+def _fault_point(point: str, real: Path, backup: str | None) -> None:
+    if _fault is not None:
+        _fault(point, real, backup)
+
+
+class _Stage(enum.IntEnum):
+    """Ledger states of one batch target. A transition only moves forward."""
+
+    PROPOSED = 0  # a backup name is chosen; no link made, so the name is not owned
+    LINKED = 1  # `os.link` returned: the batch owns the backup name (or none is needed)
+    REPLACED = 2  # the replace has begun or finished
+    RESTORED = 3  # the old file is back (or the new target is removed)
+    SETTLED = 4  # cleanup decided the backup's fate
+
+
+@dataclass
+class _Entry:
+    """One target in the batch ledger, kept in target order."""
+
+    real: Path
+    backup: str | None = None
+    stage: _Stage = _Stage.PROPOSED
+
+
+def _rollback(entries: Sequence[_Entry]) -> tuple[list[str], list[str]]:
+    """Undo replaced targets, newest first: put the old file back, or remove a new one.
+
+    Returns the backups it could not restore (cleanup keeps those on disk) and the file names
+    of new targets it could not remove. A target whose replace never ran is fine: its new file
+    is absent, or its backup is the file itself. A target is marked `RESTORED` only after the
+    undo happened; cleanup re-checks identity itself and never trusts this walk to finish.
     """
     stuck: list[str] = []
     left: list[str] = []
-    for real, backup in reversed(done):
+    for entry in reversed(entries):
+        if entry.stage is not _Stage.REPLACED:
+            continue
+        real, backup = entry.real, entry.backup
         try:
             if backup is None:
-                os.unlink(real)
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(real)
             else:
-                os.replace(backup, real)
+                same = _same_file(backup, real)
+                _fault_point("rollback_samefile_checked", real, backup)
+                if not same:  # else the replace never ran
+                    _fault_point("rollback_before_restore", real, backup)
+                    os.replace(backup, real)
+            entry.stage = _Stage.RESTORED
         except OSError:
             if backup is None:
                 left.append(real.name)
@@ -701,100 +688,12 @@ def _rollback(done: list[tuple[Path, str | None]]) -> tuple[list[str], list[str]
     return stuck, left
 
 
-def publish_local_targets(
-    targets: Sequence[LocalTarget], *, check: Callable[[list[Path]], None] | None = None
-) -> None:
-    """Publish every target in order, or none: on any failure the old files come back.
-
-    All targets sit in one folder, which this holds locked until it is done. Every file is
-    staged and fsynced before the first replace. A file that already exists keeps a hard-link
-    backup (the old inode, so its bytes and mode return exactly). If a replace fails, the
-    published files are restored or removed and `AtomicWriteError` is raised; so are they on
-    any other exception, `KeyboardInterrupt` included, which then propagates. A restore that
-    fails keeps its backup and raises `ATOMIC_ROLLBACK_INCOMPLETE` instead. A `CREATE_ONCE`
-    target that exists once the lock is held is refused before anything changes. Lock, backup
-    or staging failures also refuse before the first replace. `check`, when given, receives the
-    staged temp paths (in target order) once everything is staged and before the first replace;
-    whatever it raises propagates and nothing has changed. The directory sync after the
-    last replace can fail with `ATOMIC_SYNC_FAILED`: the new files are then in place.
-    """
-    if not targets:
-        raise AtomicWriteError(ATOMIC_BATCH_INVALID)
-    for target in targets:
-        _require_component(target.path.name)
-    resolve_failed = False
-    resolve_errno: int | None = None
-    try:
-        reals = [destination_entry(t.path, follow_final=True) for t in targets]
-    except OSError as exc:
-        resolve_failed, resolve_errno = True, exc.errno
-    if resolve_failed:
-        raise AtomicWriteError(ATOMIC_WRITE_FAILED, resolve_errno)
-    directory = reals[0].parent
-    if any(r.parent != directory for r in reals) or len({r.name for r in reals}) != len(reals):
-        raise AtomicWriteError(ATOMIC_BATCH_INVALID)
-
-    staged: list[tuple[str, int]] = []
-    backups: list[str | None] = []
-    done: list[tuple[Path, str | None]] = []
-    stuck: list[str] = []
-    left: list[str] = []
-    failed = False
-    failed_errno: int | None = None
-    try:
-        with _folder_lock(directory):
-            try:
-                existing = [_existing(real) for real in reals]
-                for target, old in zip(targets, existing, strict=True):
-                    if target.mode is WriteMode.CREATE_ONCE and old is not None:
-                        raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
-                for target, real in zip(targets, reals, strict=True):
-                    staged.append(_stage_bytes(real, target.data, target.private))
-                for real, old in zip(reals, existing, strict=True):
-                    backups.append(None if old is None else _backup(real))
-                if check is not None:
-                    check([Path(tmp) for tmp, _created in staged])
-                for target, real, old, (tmp, created) in zip(
-                    targets, reals, existing, staged, strict=True
-                ):
-                    bits = _final_bits(tmp, old, target.private, created)
-                    if not _publish(tmp, real, bits, target.mode):
-                        raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
-                    done.append((real, backups[len(done)]))
-            except BaseException as exc:
-                stuck, left = _rollback(done)
-                if stuck or left:
-                    pass  # reported below, after the backups are left in place
-                elif isinstance(exc, OSError):
-                    failed, failed_errno = True, exc.errno
-                else:
-                    raise
-    finally:
-        for tmp, _created in staged:
-            _unlink_quietly(tmp)
-        for backup in backups:
-            if backup is not None and backup not in stuck:
-                _unlink_quietly(backup)
-    if stuck or left:
-        raise AtomicWriteError(
-            ATOMIC_ROLLBACK_INCOMPLETE,
-            kept=tuple(Path(name).name for name in stuck),
-            left=tuple(left),
-        )
-    if failed:
-        raise AtomicWriteError(ATOMIC_WRITE_FAILED, failed_errno)
-    _sync_directories(directory, None)
+def _backup_name(real: Path) -> str:
+    """A fresh hidden name beside `real` for its backup. The caller records it before `_backup`."""
+    return str(real.parent / f".{real.name}.decoy-{secrets.token_hex(6)}.bak")
 
 
-def _existing(real: Path) -> os.stat_result | None:
-    try:
-        return os.stat(real)
-    except FileNotFoundError:
-        return None
-
-
-def _backup(real: Path) -> str:
-    """A same-folder hard link to the file about to be replaced."""
-    name = real.parent / f".{real.name}.decoy-{secrets.token_hex(6)}.bak"
+def _backup(real: Path, name: str) -> None:
+    """Hard-link `name` to the file about to be replaced."""
+    _fault_point("backup_link_before", real, name)
     os.link(real, name)
-    return str(name)

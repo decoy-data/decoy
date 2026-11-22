@@ -82,7 +82,9 @@ def _refuse_scheme(state, url: str) -> None:
 
 
 def upgrade(
-    version: str = typer.Option(None, "--version", help="Install this exact version instead of latest."),
+    version: str = typer.Option(
+        None, "--version", help="Install this exact version instead of latest."
+    ),
     check: bool = typer.Option(False, "--check", help="Only report if a newer version exists."),
     force: bool = typer.Option(False, "--force", help="Reinstall even if already current."),
     url: str = typer.Option(None, "--url", help="Override the version-document URL.", hidden=True),
@@ -112,7 +114,9 @@ def upgrade(
     try:
         pubkey = release_key.pinned_public_pem()
     except release_key.NoPinnedKeyError as exc:
-        emit_error(state, "upgrade", "this build carries no pinned release key.", code="upgrade_no_key")
+        emit_error(
+            state, "upgrade", "this build carries no pinned release key.", code="upgrade_no_key"
+        )
         raise typer.Exit(code=EXIT_USAGE) from exc
 
     # Local rollback must not depend on the network. An explicit `--version <v>` that is
@@ -123,11 +127,20 @@ def upgrade(
     # `--check` is excluded too: it is READ-ONLY (report whether a newer version exists),
     # so it must never activate -- i.e. swap `current` and rewrite the launcher. It falls
     # through to the check-and-report branch below.
-    if version is not None and not force and not check and installer.local_version_present(version, home):
+    if (
+        version is not None
+        and not force
+        and not check
+        and installer.local_version_present(version, home)
+    ):
         try:
-            outcome = installer.activate_local_version(version, home=home, expected_public_pem=pubkey)
+            outcome = installer.activate_local_version(
+                version, home=home, expected_public_pem=pubkey
+            )
         except installer.InstallError as exc:
-            _refuse(state, "could not activate the installed version", "upgrade_activate_failed", exc)
+            _refuse(
+                state, "could not activate the installed version", "upgrade_activate_failed", exc
+            )
         _report_outcome(state, outcome, "activated")
         raise typer.Exit(code=EXIT_OK)
 
@@ -143,7 +156,9 @@ def upgrade(
     if isinstance(failure, _outbound.OutboundRefused):
         _refuse(state, _outbound_text(failure, "the version endpoint"), failure.code, failure)
     if failure is not None:
-        _refuse(state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", failure)
+        _refuse(
+            state, "could not reach the version endpoint", "upgrade_endpoint_unreachable", failure
+        )
 
     if not vd.verify_document(doc_bytes, doc_sig, expected_public_pem=pubkey):
         emit_error(
@@ -167,12 +182,19 @@ def upgrade(
     newer = vd.newer_available(__version__, doc)
     if check or (not force and not newer and version is None):
         if state.mode is OutputMode.json:
-            emit_json(state, {
-                "current": __version__, "latest": latest,
-                "newer_available": bool(newer), "action": "none",
-            })
+            emit_json(
+                state,
+                {
+                    "current": __version__,
+                    "latest": latest,
+                    "newer_available": bool(newer),
+                    "action": "none",
+                },
+            )
         elif newer:
-            state.console.print(success("update available:"), f"{__version__} -> {latest}. Run `decoy upgrade`.")
+            state.console.print(
+                success("update available:"), f"{__version__} -> {latest}. Run `decoy upgrade`."
+            )
         else:
             state.console.print(success("up to date:"), f"decoy {__version__} is current.")
         raise typer.Exit(code=EXIT_OK)
@@ -184,7 +206,9 @@ def upgrade(
         # Validate the swapped-in runtime actually launches and reports the new version.
         launcher = current / "decoy"
         try:
-            out = subprocess.run([str(launcher), "--version"], capture_output=True, text=True, timeout=60)
+            out = subprocess.run(
+                [str(launcher), "--version"], capture_output=True, text=True, timeout=60
+            )
         except Exception:
             return False
         return out.returncode == 0 and target_version is not None and target_version in out.stdout
@@ -210,7 +234,12 @@ def upgrade(
     except (_outbound.OutboundRefused, installer.InstallError) as exc:
         install_failure = exc
     if isinstance(install_failure, _outbound.OutboundRefused):
-        _refuse(state, _outbound_text(install_failure, "a download"), install_failure.code, install_failure)
+        _refuse(
+            state,
+            _outbound_text(install_failure, "a download"),
+            install_failure.code,
+            install_failure,
+        )
     if install_failure is not None:
         _refuse(
             state,
@@ -242,10 +271,15 @@ def _refuse(state, message: str, code: str, exc: BaseException) -> NoReturn:
 def _report_outcome(state, outcome, action: str) -> None:
     """Emit the install/activation result (JSON or human), with the rollback hint."""
     if state.mode is OutputMode.json:
-        emit_json(state, {
-            "current": outcome.version, "previous": outcome.previous_version,
-            "target": outcome.target, "action": action,
-        })
+        emit_json(
+            state,
+            {
+                "current": outcome.version,
+                "previous": outcome.previous_version,
+                "target": outcome.target,
+                "action": action,
+            },
+        )
         return
     state.console.print(
         success(f"{action}:"),
@@ -254,4 +288,6 @@ def _report_outcome(state, outcome, action: str) -> None:
     # The rollback hint points at the retained previous runtime; `decoy upgrade
     # --version <previous>` activates it in place (local swap), it does not re-download.
     if outcome.rollback_version:
-        state.console.print(" ", hint("rollback:"), f"decoy upgrade --version {outcome.rollback_version}")
+        state.console.print(
+            " ", hint("rollback:"), f"decoy upgrade --version {outcome.rollback_version}"
+        )

@@ -206,9 +206,7 @@ class LocalTokenVault:
     @property
     def derivation_scope(self) -> bytes | None:
         """The vault's token-derivation scope, or None for a vault written without one."""
-        row = self._conn.execute(
-            "SELECT value FROM meta WHERE key = ?", (_SCOPE_KEY,)
-        ).fetchone()
+        row = self._conn.execute("SELECT value FROM meta WHERE key = ?", (_SCOPE_KEY,)).fetchone()
         return bytes.fromhex(row[0]) if row is not None else None
 
     def _ensure_schema(self, *, create: bool) -> None:
@@ -230,7 +228,9 @@ class LocalTokenVault:
                 );
                 """
             )
-            fresh = cur.execute("SELECT 1 FROM meta WHERE key = 'schema_version'").fetchone() is None
+            fresh = (
+                cur.execute("SELECT 1 FROM meta WHERE key = 'schema_version'").fetchone() is None
+            )
             cur.execute(
                 "INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', ?)",
                 (str(_SCHEMA_VERSION),),
@@ -271,9 +271,7 @@ class LocalTokenVault:
                         "(no token_map table); pass the vault the tokenize run wrote."
                     ),
                 )
-            ver = cur.execute(
-                "SELECT value FROM meta WHERE key='schema_version'"
-            ).fetchone()
+            ver = cur.execute("SELECT value FROM meta WHERE key='schema_version'").fetchone()
             if ver is not None and ver[0] != str(_SCHEMA_VERSION):
                 raise TokenVaultError(
                     code="vault_schema_mismatch",
@@ -389,9 +387,7 @@ class LocalTokenVault:
         self.close()
 
 
-def iter_tokenize_columns(
-    config_dict: dict, table_name: str
-) -> Iterator[tuple[str, str]]:
+def iter_tokenize_columns(config_dict: dict, table_name: str) -> Iterator[tuple[str, str]]:
     """Yield `(column, namespace)` for each `strategy: tokenize` column of a table.
 
     Reads the validated config dump. The engine REQUIRES an explicit namespace

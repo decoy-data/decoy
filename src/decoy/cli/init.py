@@ -286,16 +286,9 @@ def _build_scaffold_yaml(
         f"    path: {output_quoted}\n"
     )
 
-    column_blocks = "\n".join(
-        emit_column_yaml(name, inferences[name]) for name in column_names
-    )
+    column_blocks = "\n".join(emit_column_yaml(name, inferences[name]) for name in column_names)
 
-    tables_block = (
-        "tables:\n"
-        f"  - name: {_TABLE_NAME}\n"
-        "    columns:\n"
-        f"{column_blocks}\n"
-    )
+    tables_block = f"tables:\n  - name: {_TABLE_NAME}\n    columns:\n{column_blocks}\n"
 
     body = (
         "version: 2\n\n"
@@ -407,8 +400,7 @@ def _scaffold_from_file(
         emit_error(
             state,
             "init",
-            "scaffolder emitted YAML that failed PipelineConfig validation: "
-            f"{type(exc).__name__}.",
+            f"scaffolder emitted YAML that failed PipelineConfig validation: {type(exc).__name__}.",
         )
         raise typer.Exit(code=EXIT_RUNTIME) from exc
 
@@ -514,6 +506,7 @@ def _init(
 
         if out_is_stdout:
             import sys
+
             sys.stdout.write(body)
             return
 
@@ -613,10 +606,14 @@ def _init(
 
     if preset is None:
         choices = " | ".join(_template_names())
-        chosen = typer.prompt(
-            f"Preset ({choices})",
-            default="minimal",
-        ).strip().lower()
+        chosen = (
+            typer.prompt(
+                f"Preset ({choices})",
+                default="minimal",
+            )
+            .strip()
+            .lower()
+        )
         while chosen not in _template_names():
             emit_error(
                 state,
