@@ -211,13 +211,12 @@ def _engine_registry_codes() -> frozenset[str]:
     return _codes_from_registry(reasons.manifest()["entries"])
 
 
-# Literal codes the engine emits outside the registry (sources at engine v0.28.2). The test
+# Literal codes the engine emits outside the registry (sources at engine v0.28.3). The test
 # holds this set equal to what an AST scan of the installed engine finds minus the registry.
 _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
     {
         "abi-mismatch",  # execution/native/_companion_status.py:346
         "absent",  # execution/native/_companion_status.py:269
-        "ambiguous_dropped",  # vault/_reader.py:106
         "bad_token",  # _canonical/_strict_spec.py:119
         "binding_pair",  # records/_payloads.py:117
         "collision_rate",  # execution/native/_pool_quality.py:442

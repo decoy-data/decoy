@@ -275,6 +275,7 @@ def _run_compile_layer(
     all layers and aggregates rather than short-circuiting here.
     """
     from decoy_engine import __version__ as engine_version
+    from decoy_engine.contracts.column_shape import NO_SOURCES
     from decoy_engine.plan import PlanCompileError, compile_plan
     from decoy_engine.subset import SubsetError, split_subset_config
 
@@ -315,6 +316,7 @@ def _run_compile_layer(
             decoy_engine_version=engine_version,
             no_profile=True,
             base_dir=config_dir,
+            sources=NO_SOURCES,
         )
     except PlanCompileError as exc:
         err_code, message, extra = _plan_error_fields(exc)

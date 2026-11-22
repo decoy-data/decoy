@@ -79,26 +79,20 @@ def vault_setup(tmp_path: Path, mask_secret: str):
 class TestVaultInfoHappyPath:
     def test_exit_0_and_entry_count_positive(self, vault_setup) -> None:
         cfg, vault = vault_setup
-        result = runner.invoke(
-            app, ["report", "vault", str(vault), "--config", str(cfg)]
-        )
+        result = runner.invoke(app, ["report", "vault", str(vault), "--config", str(cfg)])
         assert result.exit_code == 0, result.output
         assert "entries" in result.output or "OK" in result.output
 
     def test_namespaces_reported(self, vault_setup) -> None:
         cfg, vault = vault_setup
-        result = runner.invoke(
-            app, ["report", "vault", str(vault), "--config", str(cfg)]
-        )
+        result = runner.invoke(app, ["report", "vault", str(vault), "--config", str(cfg)])
         assert result.exit_code == 0, result.output
         # The namespace we declared is "email_ns"
         assert "email_ns" in result.output
 
     def test_json_envelope_keys(self, vault_setup) -> None:
         cfg, vault = vault_setup
-        result = runner.invoke(
-            app, ["report", "vault", str(vault), "--config", str(cfg), "--json"]
-        )
+        result = runner.invoke(app, ["report", "vault", str(vault), "--config", str(cfg), "--json"])
         assert result.exit_code == 0, result.output
         payload = json.loads(result.output.strip())
         assert payload["command"] == "report vault"
@@ -220,7 +214,9 @@ class TestVaultInfoErrors:
         unkeyed["tables"][0]["columns"] = [{"name": "email", "strategy": "redact"}]
         path = tmp_path / "unkeyed.yaml"
         path.write_text(yaml.safe_dump(unkeyed), encoding="utf-8")
-        result = runner.invoke(app, ["report", "vault", str(vault), "--config", str(path), "--json"])
+        result = runner.invoke(
+            app, ["report", "vault", str(vault), "--config", str(path), "--json"]
+        )
         assert result.exit_code == EXIT_USAGE, result.output
         assert json.loads(result.output.strip())["error"] == REPORT_VAULT
 
@@ -244,13 +240,20 @@ class TestVaultInfoInstallLine:
     def test_engine_install_line_keeps_its_bracketed_extra(
         self, vault_setup, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # load_vault's vault_crypto_not_installed message ends in
-        # `pip install 'decoy-engine[vault]'`; printed through Rich markup,
-        # `[vault]` is parsed as a tag and disappears.
-        import sys
+        # A vault_crypto_not_installed message that ends in `pip install 'decoy-engine[vault]'`;
+        # printed through Rich markup, `[vault]` is parsed as a tag and disappears. Engine 0.28.3
+        # no longer words its own message that way (the vault uses PyNaCl, a base dependency), so
+        # the engine call is patched to raise the old text and the CLI's escaping is checked.
+        from decoy_engine import VaultError
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise VaultError(
+                code="vault_crypto_not_installed",
+                message="the vault needs a package; run pip install 'decoy-engine[vault]'",
+            )
 
         cfg, vault = vault_setup
-        monkeypatch.setitem(sys.modules, "cryptography.fernet", None)
+        monkeypatch.setattr("decoy_engine.load_vault", _raise)
         result = runner.invoke(app, ["report", "vault", str(vault), "--config", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         flat = " ".join(result.output.split())

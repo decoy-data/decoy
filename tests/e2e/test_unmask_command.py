@@ -90,9 +90,7 @@ def _assert_census_complete(config: Path, masked: Path, out: Path, *args: str) -
     real = [e for e in entries if e["status"] != "table_missing"]
     missing = [e for e in entries if e["status"] == "table_missing"]
 
-    plain_res = runner.invoke(
-        app, ["unmask", str(config), str(masked), "-o", str(out), *args]
-    )
+    plain_res = runner.invoke(app, ["unmask", str(config), str(masked), "-o", str(out), *args])
     assert plain_res.exit_code == 0, plain_res.output
     counts = _displayed_counts(plain_res.output)
 
@@ -323,9 +321,7 @@ class TestUnmaskVaultError:
 
         return cfg_path, masked, vault_path
 
-    def test_vault_protocol_version_mismatch_exits_usage(
-        self, tmp_path: Path
-    ) -> None:
+    def test_vault_protocol_version_mismatch_exits_usage(self, tmp_path: Path) -> None:
         from decoy_engine import VaultError
 
         cfg_path, masked, vault_path = self._minimal_setup(tmp_path)
@@ -349,8 +345,7 @@ class TestUnmaskVaultError:
             )
 
         assert result.exit_code == EXIT_USAGE, (
-            f"Expected EXIT_USAGE ({EXIT_USAGE}), got {result.exit_code}. "
-            f"output={result.output!r}"
+            f"Expected EXIT_USAGE ({EXIT_USAGE}), got {result.exit_code}. output={result.output!r}"
         )
         combined = (result.output or "") + (result.stderr if hasattr(result, "stderr") else "")
         assert "version" in combined.lower() or "mismatch" in combined.lower(), (
@@ -360,9 +355,7 @@ class TestUnmaskVaultError:
             f"Expected migration hint in output, got: {combined!r}"
         )
 
-    def test_vault_protocol_version_mismatch_json_exits_usage(
-        self, tmp_path: Path
-    ) -> None:
+    def test_vault_protocol_version_mismatch_json_exits_usage(self, tmp_path: Path) -> None:
         from decoy_engine import VaultError
 
         cfg_path, masked, vault_path = self._minimal_setup(tmp_path)
@@ -387,8 +380,7 @@ class TestUnmaskVaultError:
             )
 
         assert result.exit_code == EXIT_USAGE, (
-            f"Expected EXIT_USAGE ({EXIT_USAGE}), got {result.exit_code}. "
-            f"output={result.output!r}"
+            f"Expected EXIT_USAGE ({EXIT_USAGE}), got {result.exit_code}. output={result.output!r}"
         )
         payload = json.loads(result.output)
         assert payload["status"] == "error"
@@ -399,14 +391,20 @@ class TestUnmaskVaultError:
     def test_engine_install_line_keeps_its_bracketed_extra(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Real engine path: with cryptography.fernet unimportable, load_vault
-        # raises vault_crypto_not_installed whose message ends in
-        # `pip install 'decoy-engine[vault]'`. The error print must not hand
-        # that to Rich's markup parser, which drops `[vault]` as a tag.
-        import sys
+        # A vault_crypto_not_installed message that ends in `pip install 'decoy-engine[vault]'`.
+        # The error print must not hand that to Rich's markup parser, which drops `[vault]` as a
+        # tag. Engine 0.28.3 no longer words its own message that way (the vault uses PyNaCl, a
+        # base dependency), so the engine call is patched to raise the old text.
+        from decoy_engine import VaultError
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise VaultError(
+                code="vault_crypto_not_installed",
+                message="the vault needs a package; run pip install 'decoy-engine[vault]'",
+            )
 
         cfg_path, masked, vault_path = self._minimal_setup(tmp_path)
-        monkeypatch.setitem(sys.modules, "cryptography.fernet", None)
+        monkeypatch.setattr("decoy_engine.unmask_pipeline", _raise)
         result = runner.invoke(
             app, ["unmask", str(cfg_path), str(masked), "--vault", str(vault_path)]
         )
@@ -415,9 +413,7 @@ class TestUnmaskVaultError:
         assert "vault_crypto_not_installed" in flat, flat
         assert "decoy-engine[vault]" in flat, flat
 
-    def test_other_vault_error_code_exits_usage(
-        self, tmp_path: Path
-    ) -> None:
+    def test_other_vault_error_code_exits_usage(self, tmp_path: Path) -> None:
         from decoy_engine import VaultError
 
         cfg_path, masked, vault_path = self._minimal_setup(tmp_path)
@@ -517,7 +513,11 @@ class TestUnmaskConsoleSurfacesReversedUnverified:
         # And the round trip is real: the scaffolded PAN column comes back exactly.
         original = pd.read_csv(csv_with_pan, dtype=str)
         recovered = pd.read_csv(out, dtype=str)
-        pan = next(c for c in original.columns if c in recovered.columns and original[c].str.isdigit().all())
+        pan = next(
+            c
+            for c in original.columns
+            if c in recovered.columns and original[c].str.isdigit().all()
+        )
         assert list(recovered[pan]) == list(original[pan])
 
     def test_no_secret_unmask_of_the_scaffold_refuses_with_the_registered_code(
@@ -526,7 +526,12 @@ class TestUnmaskConsoleSurfacesReversedUnverified:
         """The job_seed reversal this class used to exercise no longer exists:
         without a secret the scaffold's keyed run is refused before any output."""
         out_cfg = tmp_path / "pipeline.yaml"
-        assert runner.invoke(app, ["init", str(csv_with_pan), "--output", str(out_cfg), "--quiet"]).exit_code == 0
+        assert (
+            runner.invoke(
+                app, ["init", str(csv_with_pan), "--output", str(out_cfg), "--quiet"]
+            ).exit_code
+            == 0
+        )
         run_result = runner.invoke(app, ["run", str(out_cfg)])
         assert run_result.exit_code == EXIT_USAGE, run_result.output
         assert "keyed_strategy_requires_secret" in run_result.output
@@ -540,9 +545,9 @@ def _multitable_cfg(tmp_path: Path) -> tuple[Path, Path]:
     so unmasking the accounts file alone yields a `table_missing` pseudo-entry
     for orders. Returns (config_path, masked_accounts_path)."""
     src = tmp_path / "acc.csv"
-    pd.DataFrame(
-        {"card": ["4111111111111111", "4012888888881881", "5500005555555559"]}
-    ).to_csv(src, index=False)
+    pd.DataFrame({"card": ["4111111111111111", "4012888888881881", "5500005555555559"]}).to_csv(
+        src, index=False
+    )
     masked = tmp_path / "acc.masked.csv"
     cfg = {
         "version": 2,
@@ -572,9 +577,7 @@ def _multitable_cfg(tmp_path: Path) -> tuple[Path, Path]:
                 ],
             },
         ],
-        "targets": {
-            "accounts": {"type": "file", "format": "csv", "path": str(masked)}
-        },
+        "targets": {"accounts": {"type": "file", "format": "csv", "path": str(masked)}},
     }
     cfg_path = tmp_path / "pipeline.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
@@ -597,9 +600,7 @@ class TestUnmaskSummaryIsCompleteCensus:
     ) -> None:
         cfg_path, masked = _multitable_cfg(tmp_path)
         out = tmp_path / "recovered.csv"
-        plain = _assert_census_complete(
-            cfg_path, masked, out, "--table", "accounts"
-        )
+        plain = _assert_census_complete(cfg_path, masked, out, "--table", "accounts")
         flat = _flatten(plain)
         # The absent table is surfaced as its OWN clause, never counted as a
         # column, and its note names the table (not the "*" placeholder).
@@ -631,41 +632,27 @@ class TestUnmaskSummaryIsCompleteCensus:
                         ],
                     }
                 ],
-                "targets": {
-                    "accounts": {"type": "file", "format": "csv", "path": str(out)}
-                },
+                "targets": {"accounts": {"type": "file", "format": "csv", "path": str(out)}},
             }
 
         src1 = tmp_path / "in1.csv"
-        pd.DataFrame({"email": [f"user{i}@x.com" for i in range(10)]}).to_csv(
-            src1, index=False
-        )
+        pd.DataFrame({"email": [f"user{i}@x.com" for i in range(10)]}).to_csv(src1, index=False)
         out1 = tmp_path / "out1.csv"
         cfg1 = tmp_path / "cfg1.yaml"
         cfg1.write_text(yaml.safe_dump(_cfg(src1, out1)), encoding="utf-8")
         vault_a = tmp_path / "vaultA.bin"
-        assert (
-            runner.invoke(app, ["run", str(cfg1), "--vault", str(vault_a)]).exit_code
-            == 0
-        )
+        assert runner.invoke(app, ["run", str(cfg1), "--vault", str(vault_a)]).exit_code == 0
 
         src2 = tmp_path / "in2.csv"
-        pd.DataFrame({"email": [f"alt{i}@x.com" for i in range(10)]}).to_csv(
-            src2, index=False
-        )
+        pd.DataFrame({"email": [f"alt{i}@x.com" for i in range(10)]}).to_csv(src2, index=False)
         out2 = tmp_path / "out2.csv"
         cfg2 = tmp_path / "cfg2.yaml"
         cfg2.write_text(yaml.safe_dump(_cfg(src2, out2)), encoding="utf-8")
         vault_b = tmp_path / "vaultB.bin"
-        assert (
-            runner.invoke(app, ["run", str(cfg2), "--vault", str(vault_b)]).exit_code
-            == 0
-        )
+        assert runner.invoke(app, ["run", str(cfg2), "--vault", str(vault_b)]).exit_code == 0
 
         out = tmp_path / "recovered.csv"
-        plain = _assert_census_complete(
-            cfg1, out1, out, "--vault", str(vault_b)
-        )
+        plain = _assert_census_complete(cfg1, out1, out, "--vault", str(vault_b))
         flat = _flatten(plain)
         # The vault_miss column is counted (not dropped to nowhere) and noted.
         assert "1 vault-miss" in flat, flat
