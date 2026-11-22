@@ -13,7 +13,6 @@ Blocks the 1.0 release.
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
 | 36 | L2-cli: scan snapshots on the library (~380 lines; replaces SCAN-MULTI S1d) | CLI | NOT STARTED. Plan passed 2026-11-06. L1c and L1d are merged (rows 34 and 35); it now waits only on SCAN-MULTI S1c | same | SCAN-MULTI S1c (L1c and L1d merged) |
-| 37 | L3a-cli: evidence and run-result records (~520 lines) | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L1c; RESULT for the run-result half |
 
 ## Later (1.x)
 
