@@ -28,10 +28,13 @@
 #                 unless HEAD equals origin/main with a clean tree. Needs origin/main. A
 #                 failing id with a memory address in it is refused (it never matches again).
 #                 The exit code is still 1 after a successful write when main has known failures.
-#   --steps LIST  comma list from: env,ruff,format,mypy,sentry,layers,tests (default: all)
+#   --steps LIST  comma list from: env,ruff,lintdebt,format,mypy,sentry,layers,tests (default: all)
 #                 layers bootstraps .venv-layers from requirements-dev.lock and runs only
 #                 $LAYER_TEST there. `--steps layers` alone needs no ordinary .venv and no
 #                 origin/main.
+#   lintdebt      per-file counts of extra ruff rules (BLE001, ANN401, PTH, C901, T20, ...) against
+#                 tests/sentry/baselines/lint-debt.json; new debt fails, `scripts/dev/lintdebt.py
+#                 --shrink` lowers the baseline after a fix. CI's `ruff check` does not select them.
 #   --full        run the whole `tests` directory (same as passing `tests`)
 #   The CLI suite runs serial in collection order; there is no worker or order option.
 #   test paths    default: tests touching files changed against origin/main. That is a
@@ -73,7 +76,7 @@ DOC_WALK_GUARDS=(${SENTRY_PATHS[@]+"${SENTRY_PATHS[@]}"})
 ROOT=$(git rev-parse --show-toplevel) || exit 2
 VENV=${DECOY_VENV:-$ROOT/.venv}
 BIN=$VENV/bin
-KEEP=0 BASELINE=0 FULL=0 BASEFILE='' WRITEBASE='' STEPS=env,ruff,format,mypy,sentry,layers,tests PATHS=()
+KEEP=0 BASELINE=0 FULL=0 BASEFILE='' WRITEBASE='' STEPS=env,ruff,lintdebt,format,mypy,sentry,layers,tests PATHS=()
 while [ $# -gt 0 ]; do
   case $1 in
     --keep-going) KEEP=1 ;;
@@ -104,7 +107,7 @@ done
 # read as shared with main.
 if [ $BASELINE = 1 ]; then KEEP=1; fi
 for name in ${STEPS//,/ }; do
-  case $name in env|ruff|format|mypy|sentry|layers|tests) ;; *) echo "gates: unknown step $name" >&2; exit 2 ;; esac
+  case $name in env|ruff|lintdebt|format|mypy|sentry|layers|tests) ;; *) echo "gates: unknown step $name" >&2; exit 2 ;; esac
 done
 LAYER_VENV=$ROOT/.venv-layers
 LAYERS_ONLY=0
@@ -256,6 +259,9 @@ run_steps() {  # $1 label, $2 tree
     case $name in
       env) cmd=(bash "$ROOT/scripts/dev/bootstrap.sh" --check) ;;
       ruff) cmd=("$BIN/ruff" check ${RUFF_PATHS[@]+"${RUFF_PATHS[@]}"}) ;;
+      # extra ruff rules in report mode against the lint-debt baseline; CI's ruff check is untouched.
+      # Skipped in trees that predate the script (the baseline worktree).
+      lintdebt) cmd=(bash -c 'if [ -f scripts/dev/lintdebt.py ]; then exec "$0" scripts/dev/lintdebt.py --ruff "$1"; fi' "$BIN/python" "$BIN/ruff") ;;
       format) cmd=("$BIN/ruff" format --check ${RUFF_PATHS[@]+"${RUFF_PATHS[@]}"}) ;;
       mypy) cmd=("$BIN/mypy" ${MYPY_ARGS[@]+"${MYPY_ARGS[@]}"}) ;;
       # ratchet_check first (baselines never grow); skipped in trees that predate it (the baseline worktree)
