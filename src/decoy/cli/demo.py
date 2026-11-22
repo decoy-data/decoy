@@ -224,6 +224,7 @@ def _run_v2_mask(pipeline_yaml: Path) -> None:
         parse_pipeline_config,
         select_execution_adapter,
     )
+    from decoy_engine.contracts.column_shape import NO_SOURCES
     from decoy_engine.profile import profile_source
     from decoy_engine.relationships import (
         RelationshipGraph,
@@ -248,6 +249,7 @@ def _run_v2_mask(pipeline_yaml: Path) -> None:
         profile,
         decoy_engine_version=engine_version,
         base_dir=pipeline_yaml.parent,
+        sources=NO_SOURCES,
     )
     ns_registry = build_namespace_registry(config_dict, profile)
     if profile.relationships:

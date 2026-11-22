@@ -193,6 +193,7 @@ def compile(
 
     from decoy_engine import __version__ as engine_version
     from decoy_engine import parse_pipeline_config
+    from decoy_engine.contracts.column_shape import NO_SOURCES
     from decoy_engine.plan import compile_plan
     from decoy_engine.profile import profile_from_json
     from decoy_engine.subset import split_subset_config
@@ -250,6 +251,7 @@ def compile(
             decoy_engine_version=engine_version,
             no_profile=not use_profile,
             base_dir=config_path.parent,
+            sources=NO_SOURCES,
         )
     except Exception as exc:
         _compile_error(state, config_path, exc)

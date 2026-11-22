@@ -86,6 +86,7 @@ _VAULTED = [
 
 def test_compile_output_is_private_and_its_bytes_are_the_rendered_plan(tmp_path: Path) -> None:
     from decoy_engine import __version__ as engine_version
+    from decoy_engine.contracts.column_shape import NO_SOURCES
     from decoy_engine.plan import compile_plan
 
     from decoy.cli.plan import empty_profile_for_no_profile, render_plan_artifact
@@ -102,6 +103,7 @@ def test_compile_output_is_private_and_its_bytes_are_the_rendered_plan(tmp_path:
         empty_profile_for_no_profile(raw, engine_version),
         decoy_engine_version=engine_version,
         no_profile=True,
+        sources=NO_SOURCES,
     )
     assert plan_path.read_bytes() == render_plan_artifact(plan, "yaml").encode("utf-8")
 
