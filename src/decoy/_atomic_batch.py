@@ -175,10 +175,15 @@ def publish_local_targets(
     except BaseException as exc:
         pending = exc
     # Cleanup runs outside the handler, so an interrupt in it is raised with no chained fault
-    # (the fault's text can name a path).
-    for tmp, _created in staged:
-        _unlink_quietly(tmp)
+    # (the fault's text can name a path). Backups settle first; every temp is still tried after
+    # an interrupt, and only the first interrupt is raised once all cleanup has run.
     kept, interrupted = _settle(ledger, committed)
+    for tmp, _created in staged:
+        try:
+            _unlink_quietly(tmp)
+        except BaseException as exc:
+            if interrupted is None:
+                interrupted = exc
     if interrupted is not None:
         interrupted.__context__ = None
         raise interrupted

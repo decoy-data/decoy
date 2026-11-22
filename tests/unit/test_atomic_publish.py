@@ -579,6 +579,37 @@ def test_an_interrupt_while_deleting_one_backup_still_settles_the_others(
 
 
 @posix
+def test_an_interrupt_while_deleting_a_staged_temp_still_settles_backups_and_temps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real_unlink = os.unlink
+    hit: list[str] = []
+
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+        if not str(path).endswith(".bak") and not hit:
+            hit.append(str(path))
+            raise KeyboardInterrupt
+
+    def refuse(_staged: list[Path]) -> None:
+        raise RuntimeError("stop before any replace")
+
+    monkeypatch.setattr(os, "unlink", unlink)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        publish_local_targets(
+            [LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")], check=refuse
+        )
+
+    assert hit
+    assert caught.value.__context__ is None
+    monkeypatch.undo()
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["a.json", "b.yaml"]
+
+
+@posix
 def test_a_backup_that_cannot_be_deleted_after_a_commit_is_reported(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
