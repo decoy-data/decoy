@@ -619,6 +619,13 @@ def _stage_bytes(real: Path, data: bytes, private: bool) -> tuple[str, int]:
     return tmp, created
 
 
+def _same_file(first: str | Path, second: Path) -> bool:
+    try:
+        return os.path.samefile(first, second)
+    except OSError:
+        return False
+
+
 def _rollback(
     done: list[tuple[Path, str | None]], restored: list[str] | None = None
 ) -> tuple[list[str], list[str]]:
@@ -638,7 +645,8 @@ def _rollback(
                 with contextlib.suppress(FileNotFoundError):
                     os.unlink(real)
             else:
-                os.replace(backup, real)
+                if not _same_file(backup, real):  # else the replace never ran
+                    os.replace(backup, real)
                 if restored is not None:
                     restored.append(backup)
         except OSError:
