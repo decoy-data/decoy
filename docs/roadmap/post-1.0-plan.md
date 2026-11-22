@@ -53,13 +53,11 @@ Each slot is a row in the Later table of its group file, tagged with its release
 identical is not 1.x and goes back to the owner. The release notes and the proof manifest carry the
 before and after numbers.
 
+Owner 2026-11-22: the speed slots below that were 1.0.x or 1.1 (GEN-VECTOR-STREAMS, TEXT-REDACT-RUST-SPLICE, FPE-CHECKSUM-NATIVE, PER-COLUMN-ROUTING) moved into 1.0, and FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN are firm 1.0. Engine fast-path gaps are due 2026-12-15. SEAM-REASONS stays a candidate; its first decline reason ships inside ROUTE-LABEL-TRUTH.
+
 | Release | Slot | Group |
 |---|---|---|
-| 1.0.x | GEN-VECTOR-STREAMS | [generate](groups/generate.md) |
-| 1.0.x | TEXT-REDACT-RUST-SPLICE, FPE-CHECKSUM-NATIVE | [mask](groups/mask.md) |
-| 1.0.x if no V1 slot | FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN (1.0 rows) | [mask](groups/mask.md) |
 | 1.0.x if its plan is not small | NONFK-OOM part (b) (1.0 row) | [run](groups/run.md) |
-| 1.1 | PER-COLUMN-ROUTING, with the SEAM-REASONS candidate | [run](groups/run.md) |
 | 1.2 | RUST-DATE-TEXT | [mask](groups/mask.md) |
 | 1.3 | CHUNK-PARALLEL | [run](groups/run.md) |
 | 1.x | PIP-NATIVE-EXTRA | [release](groups/release.md) |

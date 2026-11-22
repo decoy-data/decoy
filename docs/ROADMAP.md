@@ -86,22 +86,24 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-48 rows block 1.0, 33 are Later and 13 are Maintenance (2026-11-22). Each cell lists the row
+65 rows block 1.0, 29 are Later and 13 are Maintenance (2026-11-22). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its v1+
 candidates that have no plan yet (86 in all), and the health file lists 31 maintenance candidates. The named 1.x speed slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md).
 
 | Group | 1.0 (open) | Later (1.x) | Maintenance |
 |---|---|---|---|
 | [Scan and detection](roadmap/groups/scan.md) | 16 NAME-REMOVAL E1, 27 SCAN-MULTI S1c-cli, 29 SCAN-MULTI S3-cli, 32c SCAN-ML-MD, 56 NAME-REMOVAL, CLI half, PRE-SCAN-RUN | 30 SCAN-LIB, 31 DIST-INTEGRITY, 32 DRIFT, 80 F15 | none |
-| [Config, validation and the init wizard](roadmap/groups/config.md) | DECOY-LANG | none | none |
-| [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 79 F09, FAKER-MIGRATE, FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN, COLUMN-SHAPE-RULE | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters, TEXT-REDACT-RUST-SPLICE (1.0.x), FPE-CHECKSUM-NATIVE (1.0.x), RUST-DATE-TEXT (1.2) | none |
-| [Fit and generate](roadmap/groups/generate.md) | 24n GEN-REL, 24p GEN-PROVIDERS, 24q GEN-TYPES, GEN-WINDOWED-BATCH | 24r GEN-INHERIT, GEN-VECTOR-STREAMS (1.0.x) | none |
-| [Run, publication and results](roadmap/groups/run.md) | 58 F25, 59 F22, 61 CLI delivery, 63 SAMPLE CLI half, 63a RUN-STREAM, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT, NONFK-OOM, NATIVE-MISSING-WARN, CHUNKED-STRUCT, FIXED-LIST-NULL | 85 F23 resume, CLI half, PER-COLUMN-ROUTING (1.1), CHUNK-PARALLEL (1.3), OOC-QUARANTINE (1.x), OOC-DATE-BUCKET (1.x), FK-CHUNKED-HASH-CHILD (1.x) | none |
+| [Config, validation and the init wizard](roadmap/groups/config.md) | DECOY-LANG, VALIDATE-SUBSET-EDGES | none | none |
+| [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 79 F09, FAKER-MIGRATE, FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN, COLUMN-SHAPE-RULE, FAKER-DEFAULT-POOL, WHEN-READS-SOURCE, DATE-SHIFT-TYPED, FPE-CHECKSUM-NATIVE, BUCKET-TOPCODE-NATIVE, TEXT-REDACT-RUST-SPLICE, CODE-SET-NATIVE | 24zt F16-PROHIBIT-DOC, 81 F16, 83 F13 external adapters, RUST-DATE-TEXT (1.2) | none |
+| [Fit and generate](roadmap/groups/generate.md) | 24n GEN-REL, 24p GEN-PROVIDERS, 24q GEN-TYPES, GEN-WINDOWED-BATCH, GEN-STREAM-ALL, GEN-PER-COLUMN, GEN-VECTOR-STREAMS, GEN-NONFAKER-DRAWS | 24r GEN-INHERIT | none |
+| [Run, publication and results](roadmap/groups/run.md) | 58 F25, 59 F22, 61 CLI delivery, 63 SAMPLE CLI half, 63a RUN-STREAM, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT, NONFK-OOM, NATIVE-MISSING-WARN, CHUNKED-STRUCT, FIXED-LIST-NULL, ROUTE-LABEL-TRUTH, PER-COLUMN-ROUTING, NATIVE-THREADS-DEFAULT, CSV-WRITE-FAST, EXPECT-OFF-ROUTE | 85 F23 resume, CLI half, CHUNK-PARALLEL (1.3), OOC-QUARANTINE (1.x), OOC-DATE-BUCKET (1.x), FK-CHUNKED-HASH-CHILD (1.x) | none |
 | [Local record library](roadmap/groups/library.md) | 36 L2-cli | 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02 | none |
 | [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10 | none |
 | [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, UPGRADE-KEY, 89 WIN-FEAS, 6 WIN-RUNNER, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER, QA-BETA, PROMO-VIDEO | 90a REL-IMAGE, PIP-NATIVE-EXTRA (1.x) | 24zr SETUP-NER-JSON |
 | [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, SIGNATURE-SENTRY | none | ENGINE-ARCH, 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
+
+Engine fast-path gaps are due 2026-12-15 (owner 2026-11-22). Every masking strategy and generation provider runs its fastest path by default in V1. The named pandas exceptions are shuffle, geo_generalize, joint_mask, nested and tokenize; they show on the run card.
 
 Build order inside 1.0 follows each row's After column and the sequencing rules in
 [roadmap/working-rules.md](roadmap/working-rules.md). The release rows (90 to 94) come last.
