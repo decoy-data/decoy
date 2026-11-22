@@ -83,7 +83,7 @@ Non-goals: `decoy.mask()` prints nothing (M4 rule; only the comment at `api.py:5
 New `tests/e2e/run_native/__init__.py` and `tests/e2e/run_native/test_missing_warn.py` (about 100 lines). Each test wraps the real `decoy_engine.run_pipeline` and returns `dataclasses.replace(result, native_fallback_code=X)`. X is `str(decoy_engine.reasons.warning.NATIVE_COMPANION_MISSING)` or None, so the host's companion never decides the result. The status probe is patched to absent with `monkeypatch.setattr("decoy_engine.native_companion_status", ...)`, as in `tests/e2e/test_run_native.py:93-94`. The config is that file's 10-row hash config. The code is never written as a string literal (sentry `tests/sentry/test_engine_reason_code_copies.py`).
 
 - AT-C1: `decoy run CFG` with X set: stderr has exactly one line that contains `No compiled kernel ran`, and that line equals the G1 text. Then `decoy run CFG --json --no-library` with X set and with X None: parse both stdouts, drop the volatile fields the parent names (top-level `elapsed_s`; `result.invocation_id`; `result.timings` `started_at`, `finished_at` and `elapsed_s`; each `result.timings.phases[*].elapsed_s`; each `result.tables[*].elapsed_s`), and assert the two are equal. The `--json` run with X set has the G1 line on stderr.
-- AT-C2: absent companion, X None: no stderr line starts with `native:`.
+- AT-C2: (red first with AT-C1 and the unit test; AT-C3 to AT-C6 are regression cells and pass without the feature) absent companion, X None: no stderr line starts with `native:`.
 - AT-C3: the G1 line contains no table name, column name or source path from the fixture.
 - AT-C4: X set, once each with `--no-native`, `--chunked` and `--quiet`: `No compiled kernel ran` is on neither stderr nor stdout, and the exit code equals that of the same run with X None.
 - AT-C5: `decoy run GEN_CFG --rows 5` prints no notice.
@@ -124,6 +124,7 @@ Size: about 130 lines with tests, about 20 of them source. Files touched: 6 (one
 
 - Every non-chunked `run_pipeline` route (unified slice, auto-chunk, SEQ, OOC, mixed) returns to the one call site at `src/decoy/cli/run/_execute.py:390`.
 - `--chunked` (`src/decoy/cli/run/_execute.py:333-347`) and `--rows` (`execute_preview`, `:423`) do not reach it, by design (G3).
+- `run --all` inherits the notice from its child runs. `demo` uses a separate adapter and deliberately skips it.
 
 #### FK shapes
 
