@@ -36,6 +36,8 @@ from decoy.cli.io import (
 from decoy.cli.run import _progress
 from decoy.cli.run._context import DEFAULT_CHUNK_SIZE, RunContext
 from decoy.cli.run._vault import _commit_vault
+from decoy.ui.output import OutputMode
+from decoy.ui.theme import warn
 
 
 class _ChunkedGenerateError(Exception):
@@ -388,6 +390,11 @@ def execute(ctx: RunContext) -> None:
             **_resources.run_pipeline_kwargs(ctx._res),
         )
         ctx._execution = result
+        notice = _native_gate.fallback_notice(result, intent=ctx.native_intent)
+        if notice is not None and ctx.state.mode is not OutputMode.quiet:
+            ctx.state.err_console.print(
+                warn("warning:"), notice, markup=False, highlight=False, soft_wrap=True
+            )
         ctx._subset_metrics = result.quality_metrics.get("subset")
         ctx._post_scan = run_report(ctx.config_dict, result.quality_metrics)
         ctx._native_route = _native_gate.classify_route(

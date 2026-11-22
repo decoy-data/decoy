@@ -21,9 +21,11 @@ import pytest
 from decoy_engine import NativeCompanionStatus
 
 from decoy._native_gate import (
+    FALLBACK_HINT,
     NativeGateError,
     PreGateResult,
     classify_route,
+    fallback_notice,
     is_unified_slice_candidate,
     post_run_verify,
     pre_execution_gate,
@@ -649,7 +651,7 @@ def test_default_on_ineligible_shape_never_probes_and_stays_enabled():
     assert result.info_message is None
 
 
-def test_default_on_eligible_shape_with_absent_companion_hints_install():
+def test_default_on_eligible_shape_with_absent_companion_is_silent():
     result = pre_execution_gate(
         intent="default",
         chunked=False,
@@ -658,8 +660,7 @@ def test_default_on_eligible_shape_with_absent_companion_hints_install():
         status=_ABSENT,
     )
     assert result.unified_slice_enabled is True
-    assert result.info_message is not None
-    assert "decoy explain native" in result.info_message
+    assert result.info_message is None
 
 
 def test_default_on_eligible_shape_with_healthy_companion_is_silent():
@@ -811,3 +812,26 @@ def test_no_native_passes_the_keyword_whatever_the_run_pipeline_signature(monkey
         "unified_slice_enabled": False
     }
     assert run_pipeline_kwargs(PreGateResult(unified_slice_enabled=True)) == {}
+
+
+def test_fallback_notice_default_intent_gives_summary_and_hint():
+    from types import SimpleNamespace
+
+    from decoy_engine import reasons
+
+    code = str(reasons.warning.NATIVE_COMPANION_MISSING)
+    spec = reasons.find("warning", code)
+    assert spec is not None
+    result = SimpleNamespace(native_fallback_code=code)
+    assert fallback_notice(result, intent="default") == f"{spec.summary} {FALLBACK_HINT}"
+
+
+def test_fallback_notice_is_none_for_require_disable_and_no_code():
+    from types import SimpleNamespace
+
+    from decoy_engine import reasons
+
+    code = str(reasons.warning.NATIVE_COMPANION_MISSING)
+    assert fallback_notice(SimpleNamespace(native_fallback_code=code), intent="require") is None
+    assert fallback_notice(SimpleNamespace(native_fallback_code=code), intent="disable") is None
+    assert fallback_notice(SimpleNamespace(native_fallback_code=None), intent="default") is None
