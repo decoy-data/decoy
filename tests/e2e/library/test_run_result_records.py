@@ -110,7 +110,13 @@ def test_an_unwritable_library_warns_once_for_both_records(project: Path) -> Non
     result = _run("--json")
     assert result.exit_code == EXIT_OK, result.output
     assert json.loads(result.stdout)["library"]["status"] == "failed"
-    assert len([line for line in result.stderr.splitlines() if "warning" in line]) == 1
+    # Only the library's own warning counts; a node without the companion also warns.
+    warnings = [
+        line
+        for line in result.stderr.splitlines()
+        if "warning" in line and "No compiled kernel ran" not in line
+    ]
+    assert len(warnings) == 1
 
 
 def test_the_result_file_and_the_record_hold_the_same_document(project: Path) -> None:  # noqa: F811
