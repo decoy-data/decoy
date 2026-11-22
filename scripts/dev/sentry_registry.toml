@@ -199,3 +199,9 @@ id = "old-org-refs"
 baseline = "tests/sentry/baselines/old-org-refs.json"
 kind = "json"
 consumer = "tests/sentry/release/test_old_org_refs.py"
+
+[[sentry]]
+id = "lint-debt"
+baseline = "tests/sentry/baselines/lint-debt.json"
+kind = "json"
+consumer = "tests/sentry/test_lint_debt.py"

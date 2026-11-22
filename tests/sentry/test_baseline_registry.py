@@ -73,6 +73,7 @@ CREATED_IN = {
     "banned-text-allow": "PROP-C-G1",
     "outbound-network-owners": "FREEZE-S6",
     "old-org-refs": "CLI-REL-S0id",
+    "lint-debt": "LINTDEBT-A1",
 }
 SNAPSHOT = json.loads(
     (bs.SENTRY / "allowlist-before.json").read_text(encoding="utf-8")
