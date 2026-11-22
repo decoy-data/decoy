@@ -86,7 +86,7 @@ key on it. Superseded branch `claude/wizardly-allen-8ymekg`.
 (`E:verification/postmask/runner.py:38-43`), so routing forces full-frame
 (`E:execution/_pipeline_routing.py:140-142`); PK uniqueness and FK link checks are full-frame only.
 
-**CLI delivery (row 61).** UX map sections 5.1 to 5.3a: a `delivery:` YAML key owned by the engine;
+**CLI delivery (row 61; best-effort is row 61b, 1.3, and 1.0 refuses it at validate).** UX map sections 5.1 to 5.3a: a `delivery:` YAML key owned by the engine;
 every run writes into an immutable per-run delivery root; post-scan runs on the staged output; the
 attempt vault is made durable; one publication record is published last. Strict delivers nothing if
 any table fails; best-effort delivers the good tables and drops failed ones and their FK dependents.

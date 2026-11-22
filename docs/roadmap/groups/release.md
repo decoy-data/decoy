@@ -60,8 +60,8 @@ Source: `C:docs/plans/2026-10-22-cli-distribution-and-packaging-spec.md`.
   OQ-4). This supersedes the F22 "Linux and macOS only" note.
 - Native companion wheels through the engine native-release workflow and the B-2 owner tasks.
 - Versioning freeze at V1: exit codes (including 6), the result document schema, the YAML schema, the
-  reason registry. Exit 6 is planned, not shipped: DELIV slice C3 (row 61) adds `EXIT_PARTIAL = 6`
-  for a best-effort run that delivers some tables and drops others.
+  reason registry. Exit 6 is reserved in the freeze but no 1.0 run returns it: best-effort delivery
+  (row 61b, 1.3) returns `EXIT_PARTIAL = 6`, and 1.0 refuses `delivery: best_effort` at validate.
 - CLI `--version` (literal `0.1.0` today, G2), CLI NOTICE and SBOM, security contact, release notes.
 - Public docs, download page, install and upgrade docs.
 - License: FSL-1.1-ALv2 for the engine, native companion and CLI (owner decision 2026-11-10,

@@ -53,7 +53,7 @@ Each slot is a row in the Later table of its group file, tagged with its release
 identical is not 1.x and goes back to the owner. The release notes and the proof manifest carry the
 before and after numbers.
 
-Owner 2026-11-22 (scope cut): rows 36, 29 and 32c, F09 rotation and remap (79b) and F25 quotas (58b) moved from 1.0 to the slots below. They are not speed slots, but they keep the same rule: a 1.0 config or run keeps its result.
+Owner 2026-11-22 (scope cut): rows 36, 29 and 32c, F09 rotation and remap (79b), F25 quotas (58b), the GEN-TYPES distribution families (24qb) and DELIV best-effort (61b) moved from 1.0 to the slots below. They are not speed slots, but they keep the same rule: a 1.0 config or run keeps its result.
 
 Owner 2026-11-22: the speed slots below that were 1.0.x or 1.1 (GEN-VECTOR-STREAMS, TEXT-REDACT-RUST-SPLICE, FPE-CHECKSUM-NATIVE, PER-COLUMN-ROUTING) moved into 1.0, and FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN are firm 1.0. Engine fast-path gaps are due 2026-12-15. SEAM-REASONS stays a candidate; its first decline reason ships inside ROUTE-LABEL-TRUTH.
 
@@ -64,8 +64,10 @@ Owner 2026-11-22: the speed slots below that were 1.0.x or 1.1 (GEN-VECTOR-STREA
 | 1.1 | 32c SCAN-ML-MD as an opt-in model (the small model stays the default) | [scan](groups/scan.md) |
 | 1.2 | RUST-DATE-TEXT | [mask](groups/mask.md) |
 | 1.2 | 79b F09 rotation and remap | [mask](groups/mask.md) |
+| 1.2 | 24qb GEN-TYPES E1b distribution families | [generate](groups/generate.md) |
 | 1.3 | CHUNK-PARALLEL | [run](groups/run.md) |
 | 1.3 | 58b F25 quotas, opt-in with no default quota | [run](groups/run.md) |
+| 1.3 | 61b DELIV best-effort and exit 6 (1.0 refuses `best_effort` at validate) | [run](groups/run.md) |
 | 1.x | PIP-NATIVE-EXTRA | [release](groups/release.md) |
 | 1.x | OOC-QUARANTINE, then OOC-DATE-BUCKET | [run](groups/run.md) |
 | 1.x, on demand | FK-CHUNKED-HASH-CHILD | [run](groups/run.md) |
