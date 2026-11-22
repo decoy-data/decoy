@@ -18,6 +18,8 @@ Triage empties this page. Each item gets exactly one outcome:
 
 ## Untriaged
 
+- 2026-11-22, header promo video (vault `10_Projects/decoy/header-promo-video-2026-11-22.md`): `decoy scan` does not flag a 16-digit `card_number` column.
+- 2026-11-22, header promo video: the run card prints `v` where a check mark is expected.
 - 2026-11-22, freeze-surface audit (vault `10_Projects/decoy/freeze-audit-2026-11-22.md`), QA notes: env-var freeze rows; `DECOY_PK_LENIENT` and `DECOY_FK_STRICT_DETERMINISM` are dead; five error classes are never raised; freeze rows for the CLI `settings.json` and the library layout; six spellings of the output flags; the `--post-validate` name; the `--native` and `--no-native` pair; the library gaps in `-y`, `-q`, `-v`, `--json` and `status`; the legacy wire codes `route.legacy_lane` and `safe_output.legacy_withheld`; the mix of stored-tag styles; `register_faker_provider_v2`.
 - 2026-11-22, QA (found at CLI #381 CI, exempted in `test_items_error_envelope`): `decoy validate CONFIG --json` reports a bad config as a validation-result document (status error), while `validate config` emits the `decoy-error/v1` envelope. The two disagree.
 - 2026-11-22, QA, engine #757 (DELIV E2a): LOW-1 `FD_STAGED_LABELS` placement; LOW-2 a duplicate `os.replace` in `_local` (one `_rename_staged` would keep registry 201); LOW-3 the mode refusal class differs per policy; LOW-4 a pointer of kind `dir` is not refused (unreachable).
