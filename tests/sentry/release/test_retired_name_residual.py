@@ -1,4 +1,4 @@
-"""AT-S2, AT-C7 and AT-C8: the retired product name appears in no tracked file outside the history list.
+"""AT-S2, AT-C4, AT-C7 and AT-C8: the retired product name appears in no tracked file outside the history list.
 
 The owner decided that a V1 user never meets the retired name in the CLI. The one choke point is
 a scan of the real artifact: every path and every text file that `git` tracks (plus untracked,
@@ -17,7 +17,7 @@ from __future__ import annotations
 import fnmatch
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -260,3 +260,87 @@ def test_sdist_excludes_every_history_root() -> None:
     exclude = set(data["tool"]["hatch"]["build"]["targets"]["sdist"]["exclude"])
     assert {r.rstrip("/") for r in HISTORY_ROOTS} <= exclude
     assert "tests" in exclude
+
+
+# AT-C4: the installed engine holds no old name in its reason registry or its files, so the SARIF
+# rule-code allowlist holds none either. Needs an engine release that carries the tombstone delete.
+ENGINE_DIST = "decoy-engine"
+MANIFEST_FIELDS = ("code", "summary", "owner", "symbol")
+# Entry count of the reason manifest in engine 0.28.3; a smaller count means the check read less.
+MANIFEST_FLOOR = 1400
+
+
+def engine_violations(
+    entries: Iterable[Mapping[str, object]], installed: Mapping[str, bytes | None]
+) -> list[str]:
+    """Names the entry index and field, or the path, never the matched text."""
+    out: list[str] = []
+    for i, entry in enumerate(entries):
+        out.extend(
+            f"manifest entry {i}: {field}"
+            for field in MANIFEST_FIELDS
+            if RETIRED_PATTERN.search(str(entry.get(field, "")))
+        )
+    for path, data in sorted(installed.items()):
+        path_hit = bool(RETIRED_PATTERN.search(path))
+        lines = hit_lines(data) if data is not None else 0
+        if lines == "undecodable":
+            out.append(f"{path}: undecodable")
+        elif path_hit or lines:
+            out.append(f"{path}: {lines} line(s)" + (", path" if path_hit else ""))
+    return out
+
+
+def _installed_engine_files() -> dict[str, bytes | None]:
+    from importlib.metadata import files
+
+    found = files(ENGINE_DIST)
+    assert found is not None, "no file record for the installed engine"
+    out: dict[str, bytes | None] = {}
+    for f in found:
+        located = Path(str(f.locate()))
+        out[str(f)] = located.read_bytes() if located.is_file() else None
+    return out
+
+
+def test_installed_engine_holds_no_retired_name() -> None:
+    from decoy_engine import reasons
+
+    entries = reasons.manifest()["entries"]
+    installed = _installed_engine_files()
+    assert len(entries) >= MANIFEST_FLOOR
+    assert "decoy_engine/__init__.py" in installed
+    found = engine_violations(entries, installed)
+    assert not found, "the installed engine holds the retired name:\n" + "\n".join(found)
+
+
+def test_rule_code_allowlist_holds_no_retired_name() -> None:
+    from decoy.ci.rule_codes import validation_codes
+
+    assert not [c for c in validation_codes() if RETIRED_PATTERN.search(c)]
+
+
+_ENTRY = {"code": "a.b", "summary": "ok", "owner": "o", "symbol": "S"}
+
+
+@pytest.mark.parametrize("field", MANIFEST_FIELDS)
+def test_engine_seed_manifest_field_is_reported(field: str) -> None:
+    entry = {**_ENTRY, field: f"x {_CAP} y"}
+    assert engine_violations([entry], {}) == [f"manifest entry 0: {field}"]
+
+
+def test_engine_seed_installed_files_are_reported() -> None:
+    assert engine_violations([_ENTRY], {"decoy_engine/" + _NAME + ".py": b"x = 1\n"})
+    assert engine_violations([_ENTRY], {"decoy_engine/a.py": f"# {_CAP}\n".encode()})
+    assert engine_violations([_ENTRY], {"decoy_engine/a.py": f"caf\xe9 {_CAP}\n".encode("latin-1")})
+
+
+def test_engine_clean_inputs_and_missing_file_are_not_reported() -> None:
+    assert (
+        engine_violations([_ENTRY], {"decoy_engine/a.py": b"x = 1\n", "decoy_engine/b": None}) == []
+    )
+
+
+def test_engine_violation_message_never_holds_the_matched_text() -> None:
+    out = engine_violations([{**_ENTRY, "summary": f"secret {_CAP}"}], {})
+    assert "secret" not in "".join(out)
