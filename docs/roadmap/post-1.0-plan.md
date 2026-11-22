@@ -40,7 +40,7 @@ Where the source says "V2", "V2-LOG", "post-V1" or "V1+", read the bucket on thi
 
 | Bucket | Home |
 |---|---|
-| Before 1.0 freeze | 1.0 rows: PROP-FALLBACK (24zi), PROP-SURFACE (24zj), PROP-SHIMS (24zk), FREEZE-SURFACE and FREEZE-OUTPUT in the group files; open choices in [inbox.md](inbox.md) |
+| Before 1.0 freeze | 1.0 rows: PROP-FALLBACK (24zi), PROP-SURFACE (24zj), PROP-SHIMS (24zk), FREEZE-OUTPUT in the group files; open choices in [inbox.md](inbox.md) |
 | 1.x minor | "Candidates with no plan yet" under Later in each [group file](groups/); platform-only ones in [platform-parked.md](platform-parked.md) |
 | 1.x patch | "Maintenance candidates" in [groups/health.md](groups/health.md) |
 | 2.0, and "2.0 only if built the other way" | [2.0-holding.md](2.0-holding.md) |
