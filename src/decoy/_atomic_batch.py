@@ -123,12 +123,11 @@ def publish_local_targets(
         raise AtomicWriteError(ATOMIC_BATCH_INVALID)
 
     staged: list[tuple[str, int]] = []
-    backups: list[str | None] = []
-    done: list[tuple[Path, str | None]] = []
+    ledger = [_atomic._Entry(real) for real in reals]
     stuck: list[str] = []
     left: list[str] = []
-    restored: list[str] = []
-    settled = False  # the batch finished, or its rollback ran to the end
+    kept: list[str] = []
+    committed = False
     failed = False
     failed_code = ATOMIC_WRITE_FAILED
     failed_errno: int | None = None
@@ -141,37 +140,29 @@ def publish_local_targets(
                         raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
                 for target, real in zip(targets, reals, strict=True):
                     staged.append(_atomic._stage_bytes(real, target.data, target.private))
-                for real, old in zip(reals, existing, strict=True):
-                    if old is None:
-                        backups.append(None)
-                        continue
-                    # The name is recorded before the link, so an interrupt between the two
-                    # still leaves the cleanup knowing the name.
-                    name = _atomic._backup_name(real)
-                    backups.append(name)
-                    _atomic._backup(real, name)
+                for entry, old in zip(ledger, existing, strict=True):
+                    _link_backup(entry, old)
                 if check is not None:
                     check([Path(tmp) for tmp, _created in staged])
-                for target, real, old, (tmp, created) in zip(
-                    targets, reals, existing, staged, strict=True
+                for target, entry, old, (tmp, created) in zip(
+                    targets, ledger, existing, staged, strict=True
                 ):
                     bits = _final_bits(tmp, old, target.private, created)
-                    # Recorded before the replace: an interrupt that lands just after it must
+                    # Marked before the replace: an interrupt that lands just after it must
                     # still find this target in the rollback.
-                    done.append((real, backups[len(done)]))
-                    if not _atomic._publish(tmp, real, bits, target.mode):
-                        done.pop()  # refused with nothing replaced
+                    entry.stage = _atomic._Stage.REPLACED
+                    if not _atomic._publish(tmp, entry.real, bits, target.mode):
+                        entry.stage = _atomic._Stage.LINKED  # refused with nothing replaced
                         raise AtomicWriteError(ATOMIC_TARGET_EXISTS)
-                settled = True
+                committed = True
             except BaseException as exc:
                 try:
-                    stuck, left = _atomic._rollback(done, restored)
+                    stuck, left = _atomic._rollback(ledger)
                 except BaseException as second:
                     # A second interrupt: the first fault's text can name a path, so it is
                     # not chained onto the one that propagates.
                     second.__context__ = None
                     raise
-                settled = True
                 if stuck or left:
                     pass  # reported below, after the backups are left in place
                 elif isinstance(exc, OSError):
@@ -183,16 +174,11 @@ def publish_local_targets(
     finally:
         for tmp, _created in staged:
             _unlink_quietly(tmp)
-        # An interrupt can end the rollback early: then only a backup that is back in place
-        # (or never used) may go, because the rest still hold the old bytes.
-        unsafe = set() if settled else {b for _real, b in done if b is not None} - set(restored)
-        for backup in backups:
-            if backup is not None and backup not in stuck and backup not in unsafe:
-                _unlink_quietly(backup)
-    if stuck or left:
+        kept = _settle(ledger, committed)
+    if kept or left:
         raise AtomicWriteError(
             ATOMIC_ROLLBACK_INCOMPLETE,
-            kept=tuple(Path(name).name for name in stuck),
+            kept=tuple(Path(name).name for name in kept),
             left=tuple(left),
         )
     if failed:
@@ -205,3 +191,50 @@ def _existing(real: Path) -> os.stat_result | None:
         return os.stat(real)
     except FileNotFoundError:
         return None
+
+
+def _link_backup(entry: _atomic._Entry, old: os.stat_result | None) -> None:
+    """Make the hard-link backup of one target; the name is owned only once the link returns.
+
+    The name is proposed first, so a failed link (`EEXIST`, `EPERM`, `EXDEV`, anything) leaves
+    it unowned and whatever sits there untouched. An interrupt can land after the kernel made
+    the link but before `os.link` returned; the fresh random name then shares the target's
+    inode, which proves this run made it, so only that case is adopted.
+    """
+    if old is None:
+        entry.stage = _atomic._Stage.LINKED  # a new target needs no backup
+        return
+    name = _atomic._backup_name(entry.real)
+    entry.backup = name
+    try:
+        _atomic._backup(entry.real, name)
+    except BaseException:
+        if _atomic._same_file(name, entry.real):
+            entry.stage = _atomic._Stage.LINKED
+        raise
+    entry.stage = _atomic._Stage.LINKED
+
+
+def _settle(ledger: Sequence[_atomic._Entry], committed: bool) -> list[str]:
+    """The one cleanup decision, the same for every outcome and every `BaseException`.
+
+    Only owned (`LINKED` or later) backups are considered; a proposed, unlinked name is never
+    touched. An owned backup goes when the batch committed, when its target was restored from
+    it, or when the target is still the backup's inode (nothing changed, so the backup holds
+    nothing the target lacks). That identity is checked here, not trusted from the rollback.
+    Anything else is a value-bearing old file: it stays and its name is returned.
+    """
+    kept: list[str] = []
+    for entry in ledger:
+        if entry.stage < _atomic._Stage.LINKED or entry.backup is None:
+            continue
+        if (
+            committed
+            or entry.stage is _atomic._Stage.RESTORED
+            or _atomic._same_file(entry.backup, entry.real)
+        ):
+            _unlink_quietly(entry.backup)
+        else:
+            kept.append(entry.backup)
+        entry.stage = _atomic._Stage.SETTLED
+    return kept

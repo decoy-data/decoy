@@ -50,7 +50,7 @@ import re
 import secrets
 import stat
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -626,29 +626,60 @@ def _same_file(first: str | Path, second: Path) -> bool:
         return False
 
 
-def _rollback(
-    done: list[tuple[Path, str | None]], restored: list[str] | None = None
-) -> tuple[list[str], list[str]]:
-    """Undo published targets, newest first: put the old file back, or remove a new one.
+# Test-only fault hook, `None` in production: a test sets it to a callable that receives the
+# point name, the target and the backup name, and may raise there.
+_fault: Callable[[str, Path, str | None], None] | None = None
 
-    Returns the backups it could not restore (the caller keeps those on disk) and the file
-    names of new targets it could not remove. A target whose replace never ran is fine: its
-    new file is absent, or its backup is the file itself. Each backup that is back in place is
-    added to `restored` as it happens, so a caller whose rollback is interrupted knows which
-    backups are safe to delete.
+
+def _fault_point(point: str, real: Path, backup: str | None) -> None:
+    if _fault is not None:
+        _fault(point, real, backup)
+
+
+class _Stage(enum.IntEnum):
+    """Ledger states of one batch target. A transition only moves forward."""
+
+    PROPOSED = 0  # a backup name is chosen; no link made, so the name is not owned
+    LINKED = 1  # `os.link` returned: the batch owns the backup name (or none is needed)
+    REPLACED = 2  # the replace has begun or finished
+    RESTORED = 3  # the old file is back (or the new target is removed)
+    SETTLED = 4  # cleanup decided the backup's fate
+
+
+@dataclass
+class _Entry:
+    """One target in the batch ledger, kept in target order."""
+
+    real: Path
+    backup: str | None = None
+    stage: _Stage = _Stage.PROPOSED
+
+
+def _rollback(entries: Sequence[_Entry]) -> tuple[list[str], list[str]]:
+    """Undo replaced targets, newest first: put the old file back, or remove a new one.
+
+    Returns the backups it could not restore (cleanup keeps those on disk) and the file names
+    of new targets it could not remove. A target whose replace never ran is fine: its new file
+    is absent, or its backup is the file itself. A target is marked `RESTORED` only after the
+    undo happened; cleanup re-checks identity itself and never trusts this walk to finish.
     """
     stuck: list[str] = []
     left: list[str] = []
-    for real, backup in reversed(done):
+    for entry in reversed(entries):
+        if entry.stage is not _Stage.REPLACED:
+            continue
+        real, backup = entry.real, entry.backup
         try:
             if backup is None:
                 with contextlib.suppress(FileNotFoundError):
                     os.unlink(real)
             else:
-                if not _same_file(backup, real):  # else the replace never ran
+                same = _same_file(backup, real)
+                _fault_point("rollback_samefile_checked", real, backup)
+                if not same:  # else the replace never ran
+                    _fault_point("rollback_before_restore", real, backup)
                     os.replace(backup, real)
-                if restored is not None:
-                    restored.append(backup)
+            entry.stage = _Stage.RESTORED
         except OSError:
             if backup is None:
                 left.append(real.name)
@@ -664,4 +695,5 @@ def _backup_name(real: Path) -> str:
 
 def _backup(real: Path, name: str) -> None:
     """Hard-link `name` to the file about to be replaced."""
+    _fault_point("backup_link_before", real, name)
     os.link(real, name)

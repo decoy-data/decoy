@@ -473,3 +473,76 @@ def test_a_second_interrupt_does_not_chain_the_first_faults_text(
         publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
 
     assert caught.value.__context__ is None
+
+
+def _hook(monkeypatch: pytest.MonkeyPatch, point: str, action: object) -> None:
+    def fault(name: str, target: Path, backup: str | None) -> None:
+        if name == point:
+            action(target, backup)  # type: ignore[operator]
+
+    monkeypatch.setattr(_atomic, "_fault", fault)
+
+
+def _baks(folder: Path) -> list[Path]:
+    return [p for p in folder.iterdir() if p.name.endswith(".bak")]
+
+
+@posix
+def test_at63_a_link_that_hits_an_existing_name_deletes_nothing_it_does_not_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    sentinel: list[Path] = []
+
+    def plant(_target: Path, backup: str | None) -> None:
+        assert backup is not None
+        Path(backup).write_bytes(b"sentinel")
+        sentinel.append(Path(backup))
+
+    _hook(monkeypatch, "backup_link_before", plant)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert caught.value.code == _atomic.ATOMIC_WRITE_FAILED
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert [p.read_bytes() for p in sentinel] == [b"sentinel"]
+    assert _names(tmp_path) == sorted(["a.json", "b.yaml", sentinel[0].name])
+
+
+@posix
+def test_at64_an_interrupt_after_the_samefile_check_leaves_no_bak_beside_an_unchanged_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 1)
+
+    def interrupt(_target: Path, _backup: str | None) -> None:
+        raise KeyboardInterrupt
+
+    _hook(monkeypatch, "rollback_samefile_checked", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert _baks(tmp_path) == []
+
+
+@posix
+def test_at65_an_interrupt_before_a_restore_keeps_the_value_bearing_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    _fail_on_call(monkeypatch, 2)
+
+    def interrupt(_target: Path, _backup: str | None) -> None:
+        raise KeyboardInterrupt
+
+    _hook(monkeypatch, "rollback_before_restore", interrupt)
+
+    with pytest.raises(KeyboardInterrupt):
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    assert first.read_bytes() == b"new-a"
+    assert [p.read_bytes() for p in _baks(tmp_path)] == [b"old-a"]
