@@ -580,13 +580,12 @@ def mask(
             any_generate=any_generate,
             config_dict=config_dict,
         )
-        # `info_message` (absent companion) is normal portable operation --
-        # the CLI shows it at most as a hint, never a warning (M4
-        # remediation: an earlier version used `warnings.warn` for BOTH
-        # messages, which would raise under a caller's `-W error` / strict
-        # `filterwarnings` policy for the ordinary, expected case). Only
-        # `warn_message` (a broken companion, downgraded via `native=False`)
-        # is an actual anomaly worth a real warning.
+        # An absent companion is normal portable operation and prints nothing
+        # here (the engine's fallback notice is a CLI-only line). Only
+        # `warn_message` (a broken companion, downgraded via `native=False`) is
+        # an actual anomaly worth a real warning; an earlier version used
+        # `warnings.warn` for both, which would raise under a caller's
+        # `-W error` policy for the ordinary case.
         if gate_result.warn_message:
             warnings.warn(gate_result.warn_message, stacklevel=2)
 
