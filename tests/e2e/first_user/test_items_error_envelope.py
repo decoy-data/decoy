@@ -39,6 +39,7 @@ BAD_INPUT: dict[str, list[str]] = {
     "list": ["list", "nonsense"],
     "show": ["show", "nonsense"],
     "subset": ["subset", BAD_YAML],
+    "scan": ["scan", BAD_CSV],
     "validate config": ["validate", "config", BAD_YAML],
     "validate compile": ["validate", "compile", BAD_YAML],
     "project new": ["project", "new", GOOD_CSV],
@@ -76,6 +77,7 @@ EXEMPT: dict[str, str] = {
     "project list": "lists folders and has no failing input",
     "demo": "its only inputs are range-checked by the parser",
     "validate preflight": "reports a failed check as status fail, a result not an error",
+    "validate": "reports config errors in its frozen validation-result document, not the envelope",
 }
 
 
