@@ -253,7 +253,7 @@ class TestVaultInfoInstallLine:
             )
 
         cfg, vault = vault_setup
-        monkeypatch.setattr("decoy_engine.load_vault", _raise)
+        monkeypatch.setattr("decoy_engine.vault.open_vault", _raise)
         result = runner.invoke(app, ["report", "vault", str(vault), "--config", str(cfg)])
         assert result.exit_code == EXIT_USAGE, result.output
         flat = " ".join(result.output.split())

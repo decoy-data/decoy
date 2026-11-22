@@ -1896,10 +1896,14 @@ counts (pandas v2.x). No novel statistical method is used.
 
 Inspect a vault file: report entry count, namespaces, and dropped-ambiguous count.
 
+Also shows the vault format, the key version and a short vault id from its authenticated
+header.
+
 Opens the vault with the mask secret that --mask-secret or
 global_settings.mask_secret_ref in the pipeline config names, the secret the `decoy run --vault` call
 used; the seed is not key material. A missing or wrong secret exits 1.
-Exits 0 on success, 1 on a config/vault/usage error.
+Exits 0 on success, 1 on a config/vault/usage error, 3 on a vault that fails its
+own authentication (vault_tampered).
 
 **Usage**:
 
@@ -1923,7 +1927,8 @@ $ decoy report vault [OPTIONS] VAULT
 Examples:
 
   decoy report vault vault.bin --config pipeline.yaml
-    Show entry count, namespaces, and ambiguous-dropped count.
+    Show format, key version, a short vault id, entry count, namespaces, and
+    ambiguous-dropped count.
 
   decoy report vault vault.bin --config pipeline.yaml --json
     Same data as a JSON envelope for scripting.
@@ -1934,7 +1939,9 @@ Examples:
 The vault opens only under the mask secret that the `decoy run --vault`
 call used. Pass the same secret with --mask-secret, or name it in the
 config's global_settings.mask_secret_ref. The seed is not key material.
-A missing or wrong secret exits 1.
+A missing or wrong secret exits 1. A vault that fails its own
+authentication (edited, truncated, reordered or spliced) exits 3 with
+`vault_tampered`. The report never prints values or the key check value.
 
 See also: decoy run --vault, decoy unmask --vault.
 

@@ -102,21 +102,28 @@ def _argv(surface: str, root: Path, ref: str, written: tuple[Path, Path] | None)
     raise AssertionError(f"no argv for surface {surface!r}")
 
 
-# Each place that admits a `file:` secret (a call to `admitted_key_provider`, keyed
-# `file::function::ordinal` and derived from the AST below) to the surface ids that exercise it
-# through the CLI, or the test functions in this module that exercise it through `decoy.mask()`.
+# Each place that admits a `file:` secret (a call to `admitted_key_provider` or
+# `admitted_prepared_secret`, keyed `file::function::ordinal` and derived from the AST below) to the
+# surface ids that exercise it through the CLI, or the test functions in this module that exercise
+# it through `decoy.mask()`.
 ADMISSION_SITES: dict[str, tuple[str, ...]] = {
     "cli/run/_prepare.py::prepare::1": ("run", "run_chunked"),
     "cli/tokenize.py::tokenize::1": ("tokenize",),
     "cli/unmask.py::unmask::1": ("unmask",),
-    "cli/report.py::_vault::1": ("report_vault",),
+    "cli/reports/_vault.py::_open::1": ("report_vault",),
     "api.py::mask::1": (
         "test_api_mask_refuses_an_unsafe_file",
         "test_api_mask_reads_the_checked_descriptor",
     ),
 }
 _SRC = Path(__file__).resolve().parents[2] / "src" / "decoy"
-_ADMITTER = "decoy._mask_secret.admitted_key_provider"
+# The one admission (`_mask_secret._admitted`) has two views: the provider and the prepared secret.
+_ADMITTERS = frozenset(
+    {
+        "decoy._mask_secret.admitted_key_provider",
+        "decoy._mask_secret.admitted_prepared_secret",
+    }
+)
 
 
 def admission_sites(files: Mapping[str, str]) -> list[str]:
@@ -125,7 +132,7 @@ def admission_sites(files: Mapping[str, str]) -> list[str]:
     for rel in sorted(files):
         seen: dict[str, int] = {}
         for site in sites(ast.parse(files[rel])):
-            if isinstance(site.node, ast.Call) and site.name == _ADMITTER:
+            if isinstance(site.node, ast.Call) and site.name in _ADMITTERS:
                 n = seen[site.scope] = seen.get(site.scope, 0) + 1
                 found.append(f"{rel}::{site.scope}::{n}")
     return found

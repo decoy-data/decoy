@@ -181,7 +181,7 @@ def unmask(
         raise typer.Exit(code=EXIT_USAGE)
 
     import pyarrow as pa
-    from decoy_engine import VaultError, unmask_pipeline
+    from decoy_engine import VaultError, reasons, unmask_pipeline
     from decoy_engine.errors import ConfigError
     from decoy_engine.execution import ExecutionError
     from decoy_engine.keyprovider import MaskSecretError
@@ -243,6 +243,16 @@ def unmask(
         _emit_error(f"{err_code}: {message}")
         raise typer.Exit(code=EXIT_USAGE)
     except (ExecutionError, ConfigError) as exc:
+        failure_code = getattr(exc, "code", None)
+        if failure_code == reasons.runtime.VAULT_TAMPERED:
+            # The engine re-raises a vault's failure as an ExecutionError with the same code. The
+            # text names no path or value.
+            _emit_error(
+                str(getattr(exc, "message", "")),
+                code=failure_code,
+                hint_text="the vault was changed or damaged after it was written; do not use it.",
+            )
+            raise typer.Exit(code=exit_code_for(exc))
         _emit_error(f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}")
         raise typer.Exit(code=EXIT_USAGE)
     except VaultError as exc:

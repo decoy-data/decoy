@@ -189,15 +189,32 @@ def _checked_secret_file(config_dict: dict) -> Iterator[dict]:
 
 
 @contextmanager
+def _admitted(config_dict: dict) -> Iterator[Any]:
+    """The one admission: the engine's `AdmittedKey`, closed on every exit path."""
+    from decoy_engine.secret_providers import AdmissionScope, admit_mask_key
+
+    with AdmissionScope() as scope:
+        with _checked_secret_file(config_dict) as checked:
+            admitted = scope.adopt(admit_mask_key(checked))
+        yield admitted
+
+
+@contextmanager
 def admitted_key_provider(config_dict: dict) -> Iterator[Any]:
     """The command's one admitted provider; None when nothing is keyed and no ref is set.
 
     Every surface that admits the secret (`run`, `tokenize`, `unmask`, `report vault`,
     `decoy.mask()`) comes through here and hands the engine this provider, so the engine never
     reads the ref itself. The checked file is closed once admission has read it."""
-    from decoy_engine.secret_providers import AdmissionScope, admit_mask_key
-
-    with AdmissionScope() as scope:
-        with _checked_secret_file(config_dict) as checked:
-            admitted = scope.adopt(admit_mask_key(checked))
+    with _admitted(config_dict) as admitted:
         yield admitted.key_provider
+
+
+@contextmanager
+def admitted_prepared_secret(config_dict: dict) -> Iterator[Any]:
+    """The same admission as `admitted_key_provider`, handing out the `PreparedSecret`.
+
+    For the engine calls that take a prepared secret (`open_vault`). None when no secret is
+    configured. It is the same single read, not a second admission path."""
+    with _admitted(config_dict) as admitted:
+        yield admitted.prepared
