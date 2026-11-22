@@ -13,8 +13,14 @@ _SECRET_HINT = (
 
 
 def is_vault_code(code: object) -> bool:
-    """True for an engine vault reason code (`vault_tampered`, `vault_key_mismatch`, ...)."""
-    return isinstance(code, str) and code.startswith("vault_")
+    """True for a code in the engine's vault refusal registry (`vault_tampered`, ...).
+
+    Membership, not a `vault_` prefix: the registry also holds codes such as `weak_mask_secret`,
+    and a prefix match would claim any future `vault_*` code the engine does not refuse with.
+    """
+    from decoy_engine.vault import VAULT_REFUSAL_CODES
+
+    return isinstance(code, str) and code in VAULT_REFUSAL_CODES
 
 
 def vault_hint(code: str) -> str | None:
