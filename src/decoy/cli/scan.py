@@ -42,12 +42,12 @@ from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
 from decoy.cli.scanning import (
     DEFAULT_SCAN_ROWS,
+    SCAN_EPILOG,
     SampleStrategy,
     diff_scan_sets,
     pii_bucket,
     saved_field_facts,
 )
-from decoy.cli.scanning._help import SCAN_EPILOG as _SCAN_EPILOG
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 from decoy.ui.table import make_table
@@ -147,7 +147,7 @@ scan_app = typer.Typer(
     name="scan",
     cls=make_default_group("_scan"),
     help=_SCAN_GROUP_HELP,
-    epilog=_SCAN_EPILOG,
+    epilog=SCAN_EPILOG,
     no_args_is_help=True,
 )
 
@@ -880,7 +880,7 @@ def _diff(
 # The hidden default command: `decoy scan SOURCE` (no subcommand) routes here
 # via the shared default-command group. Hidden so it stays out of help / the
 # generated reference / completion, while the group can still dispatch to it.
-scan_app.command(name="_scan", hidden=True, epilog=_SCAN_EPILOG)(_scan)
+scan_app.command(name="_scan", hidden=True, epilog=SCAN_EPILOG)(_scan)
 scan_app.command(name="fields", epilog=_FIELDS_EPILOG)(_fields)
 scan_app.command(name="show", epilog=_SHOW_EPILOG)(_show)
 scan_app.command(name="diff", epilog=_DIFF_EPILOG)(_diff)
