@@ -127,6 +127,7 @@ def publish_local_targets(
     stuck: list[str] = []
     left: list[str] = []
     kept: list[str] = []
+    pending: BaseException | None = None
     committed = False
     failed = False
     failed_code = ATOMIC_WRITE_FAILED
@@ -171,10 +172,18 @@ def publish_local_targets(
                         failed_code = ATOMIC_TARGET_BUSY
                 else:
                     raise
-    finally:
-        for tmp, _created in staged:
-            _unlink_quietly(tmp)
-        kept = _settle(ledger, committed)
+    except BaseException as exc:
+        pending = exc
+    # Cleanup runs outside the handler, so an interrupt in it is raised with no chained fault
+    # (the fault's text can name a path).
+    for tmp, _created in staged:
+        _unlink_quietly(tmp)
+    kept, interrupted = _settle(ledger, committed)
+    if interrupted is not None:
+        interrupted.__context__ = None
+        raise interrupted
+    if pending is not None:
+        raise pending
     if kept or left:
         raise AtomicWriteError(
             ATOMIC_ROLLBACK_INCOMPLETE,
@@ -215,26 +224,42 @@ def _link_backup(entry: _atomic._Entry, old: os.stat_result | None) -> None:
     entry.stage = _atomic._Stage.LINKED
 
 
-def _settle(ledger: Sequence[_atomic._Entry], committed: bool) -> list[str]:
+def _settle(
+    ledger: Sequence[_atomic._Entry], committed: bool
+) -> tuple[list[str], BaseException | None]:
     """The one cleanup decision, the same for every outcome and every `BaseException`.
 
     Only owned (`LINKED` or later) backups are considered; a proposed, unlinked name is never
     touched. An owned backup goes when the batch committed, when its target was restored from
     it, or when the target is still the backup's inode (nothing changed, so the backup holds
     nothing the target lacks). That identity is checked here, not trusted from the rollback.
-    Anything else is a value-bearing old file: it stays and its name is returned.
+    Anything else is a value-bearing old file: it stays and its name is returned, and so is a
+    backup whose delete failed. Each entry runs under its own `try`: an interrupt in one never
+    stops the others, and the first one is returned for the caller to re-raise.
     """
     kept: list[str] = []
+    interrupted: BaseException | None = None
     for entry in ledger:
-        if entry.stage < _atomic._Stage.LINKED or entry.backup is None:
+        backup = entry.backup
+        if entry.stage < _atomic._Stage.LINKED or backup is None:
             continue
-        if (
-            committed
-            or entry.stage is _atomic._Stage.RESTORED
-            or _atomic._same_file(entry.backup, entry.real)
-        ):
-            _unlink_quietly(entry.backup)
-        else:
-            kept.append(entry.backup)
-        entry.stage = _atomic._Stage.SETTLED
-    return kept
+        try:
+            if (
+                committed
+                or entry.stage is _atomic._Stage.RESTORED
+                or _atomic._same_file(backup, entry.real)
+            ):
+                try:
+                    os.unlink(backup)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    kept.append(backup)
+            else:
+                kept.append(backup)
+            entry.stage = _atomic._Stage.SETTLED
+        except BaseException as exc:
+            kept.append(backup)  # unknown whether it went: report it rather than lose it
+            if interrupted is None:
+                interrupted = exc
+    return kept, interrupted

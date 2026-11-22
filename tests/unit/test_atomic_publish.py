@@ -546,3 +546,58 @@ def test_at65_an_interrupt_before_a_restore_keeps_the_value_bearing_backup(
 
     assert first.read_bytes() == b"new-a"
     assert [p.read_bytes() for p in _baks(tmp_path)] == [b"old-a"]
+
+
+@posix
+def test_an_interrupt_while_deleting_one_backup_still_settles_the_others(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real_unlink = os.unlink
+    hit: list[str] = []
+
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+        if str(path).endswith(".bak") and not hit:
+            hit.append(str(path))
+            raise KeyboardInterrupt
+
+    def refuse(_staged: list[Path]) -> None:
+        raise RuntimeError("stop before any replace")
+
+    monkeypatch.setattr(os, "unlink", unlink)
+
+    with pytest.raises(KeyboardInterrupt) as caught:
+        publish_local_targets(
+            [LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")], check=refuse
+        )
+
+    assert caught.value.__context__ is None
+    monkeypatch.undo()
+    assert (first.read_bytes(), second.read_bytes()) == (b"old-a", b"old-b")
+    assert _baks(tmp_path) == []
+
+
+@posix
+def test_a_backup_that_cannot_be_deleted_after_a_commit_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = _old_pair(tmp_path)
+    real_unlink = os.unlink
+
+    def unlink(path: str, *args: object, **kwargs: object) -> None:
+        if str(path).endswith(".bak"):
+            raise OSError(errno.EIO, "cannot remove /secret/path")
+        real_unlink(path, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(os, "unlink", unlink)
+
+    with pytest.raises(AtomicWriteError) as caught:
+        publish_local_targets([LocalTarget(first, b"new-a"), LocalTarget(second, b"new-b")])
+
+    monkeypatch.undo()
+    err = caught.value
+    assert err.code == _atomic.ATOMIC_ROLLBACK_INCOMPLETE
+    assert "/secret" not in str(err)
+    assert sorted(err.kept) == sorted(p.name for p in _baks(tmp_path)) and len(err.kept) == 2
+    assert (first.read_bytes(), second.read_bytes()) == (b"new-a", b"new-b")
