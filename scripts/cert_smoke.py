@@ -123,6 +123,7 @@ def main() -> None:
     from datetime import datetime, timezone
     from pathlib import Path
 
+    from decoy_engine.contracts.column_shape import NO_SOURCES
     from decoy_engine.plan import compile_plan
     from decoy_engine.profile import Profile
 
@@ -158,7 +159,7 @@ def main() -> None:
             profiled_at=datetime.now(timezone.utc),
             decoy_engine_version="cert-smoke",
         )
-        plan = compile_plan(config, profile, decoy_engine_version="cert-smoke")
+        plan = compile_plan(config, profile, decoy_engine_version="cert-smoke", sources=NO_SOURCES)
 
         from decoy_engine.generation.synthesize import generate_tables
 
