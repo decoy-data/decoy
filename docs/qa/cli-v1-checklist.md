@@ -621,6 +621,8 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 Rows no check covers:
 
 - 9 (X0a-h): DEFERRED off the V1 path by the owner.
-- 74 (F26 CLI local cleanup): PARKED until F22 settles and re-scoped by Opus. Its checks are written
-  when the re-scope names the command; its overlap with LIB-08 is settled there.
+- 74 (F26): V1 keeps only the engine arena sweep, which the engine checklist covers. The `decoy cleanup`
+  command is row 74b (1.x, owner 2026-11-22); its checks are written for 1.x QA, and its overlap with
+  LIB-08 is settled there.
+- LANG-SIDECAR (DECOY-LANG S7, 1.x): its sidecar check is written for 1.x QA.
 - 92a (this checklist).

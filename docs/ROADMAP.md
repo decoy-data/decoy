@@ -86,17 +86,17 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-61 rows block 1.0, 36 are Later and 13 are Maintenance (2026-11-22, after the owner moved rows 29, 32c and 36 and parts of rows 24q, 58, 61 and 79 to 1.x, and PROMO-VIDEO to the website roadmap). Each cell lists the row
+61 rows block 1.0, 38 are Later and 13 are Maintenance (2026-11-22, after the owner moved rows 29, 32c and 36 and parts of rows 24q, 58, 61, 74, 79 and DECOY-LANG to 1.x, and PROMO-VIDEO to the website roadmap). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its v1+
 candidates that have no plan yet (86 in all), and the health file lists 31 maintenance candidates. The named 1.x slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md). PROMO-VIDEO is on the website roadmap (`decoy-web-docs/docs-src/ROADMAP.md`).
 
 | Group | 1.0 (open) | Later (1.x) | Maintenance |
 |---|---|---|---|
 | [Scan and detection](roadmap/groups/scan.md) | 16 NAME-REMOVAL E1, 27 SCAN-MULTI S1c-cli, 56 NAME-REMOVAL, CLI half, PRE-SCAN-RUN | 29 SCAN-MULTI S3-cli (1.1), 30 SCAN-LIB, 31 DIST-INTEGRITY, 32 DRIFT, 32c SCAN-ML-MD opt-in (1.1), 80 F15 | none |
-| [Config, validation and the init wizard](roadmap/groups/config.md) | DECOY-LANG, VALIDATE-SUBSET-EDGES | none | none |
+| [Config, validation and the init wizard](roadmap/groups/config.md) | DECOY-LANG, VALIDATE-SUBSET-EDGES | LANG-SIDECAR (1.1) | none |
 | [Masking, policy, vault and secrets](roadmap/groups/mask.md) | 79 F09 vault header, FAKER-MIGRATE, FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN, COLUMN-SHAPE-RULE, FAKER-DEFAULT-POOL, WHEN-READS-SOURCE, DATE-SHIFT-TYPED, FPE-CHECKSUM-NATIVE, BUCKET-TOPCODE-NATIVE, TEXT-REDACT-RUST-SPLICE, CODE-SET-NATIVE | 24zt F16-PROHIBIT-DOC, 79b F09 rotation and remap (1.2), 81 F16, 83 F13 external adapters, RUST-DATE-TEXT (1.2) | none |
 | [Fit and generate](roadmap/groups/generate.md) | 24n GEN-REL, 24p GEN-PROVIDERS, 24q GEN-TYPES (uniform only), GEN-WINDOWED-BATCH, GEN-STREAM-ALL, GEN-PER-COLUMN, GEN-VECTOR-STREAMS, GEN-NONFAKER-DRAWS | 24qb GEN-TYPES E1b distribution families (1.2), 24r GEN-INHERIT | none |
-| [Run, publication and results](roadmap/groups/run.md) | 58 F25 scratch and orphan recovery, 59 F22, 61 CLI delivery (strict), 63 SAMPLE CLI half, 63a RUN-STREAM, 74 F26 CLI local cleanup and engine part, FREEZE-OUTPUT, NONFK-OOM, NATIVE-MISSING-WARN, CHUNKED-STRUCT, FIXED-LIST-NULL, ROUTE-LABEL-TRUTH, PER-COLUMN-ROUTING, NATIVE-THREADS-DEFAULT, CSV-WRITE-FAST, EXPECT-OFF-ROUTE | 58b F25 quotas (1.3), 61b DELIV best-effort (1.3), 85 F23 resume, CLI half, CHUNK-PARALLEL (1.3), OOC-QUARANTINE (1.x), OOC-DATE-BUCKET (1.x), FK-CHUNKED-HASH-CHILD (1.x) | none |
+| [Run, publication and results](roadmap/groups/run.md) | 58 F25 scratch and orphan recovery, 59 F22, 61 CLI delivery (strict), 63 SAMPLE CLI half, 63a RUN-STREAM, 74 F26 arena sweep, FREEZE-OUTPUT, NONFK-OOM, NATIVE-MISSING-WARN, CHUNKED-STRUCT, FIXED-LIST-NULL, ROUTE-LABEL-TRUTH, PER-COLUMN-ROUTING, NATIVE-THREADS-DEFAULT, CSV-WRITE-FAST, EXPECT-OFF-ROUTE | 58b F25 quotas (1.3), 61b DELIV best-effort (1.3), 74b F26 `decoy cleanup` (1.3), 85 F23 resume, CLI half, CHUNK-PARALLEL (1.3), OOC-QUARANTINE (1.x), OOC-DATE-BUCKET (1.x), FK-CHUNKED-HASH-CHILD (1.x) | none |
 | [Local record library](roadmap/groups/library.md) | none | 36 L2-cli (1.1), 38 L3b-cli, 41 L5a-cli, 42 L5b-cli | none |
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC, 82 F07, 86 F01, 87 F02 | none |
 | [Quality and evidence](roadmap/groups/trust.md) | none | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10 | none |

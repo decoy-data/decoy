@@ -130,7 +130,7 @@ signing key joins the backup and custody list (G22).
 `run`, `unmask` and `report vault` MERGED (CLI #78). Remaining: plan revision for 3b and 5; slice 3a
 is platform provider injection (parked). Live Vault tests UNVERIFIED.
 
-**F26 (row 74).** Sweeper for expired uploads, outputs, snapshots, staging and checkpoints; dry-run
+**F26 (row 74; `decoy cleanup` and stage reclaim are row 74b, 1.3; V1 keeps the E3 arena sweep).** Sweeper for expired uploads, outputs, snapshots, staging and checkpoints; dry-run
 inventory; hold- and dependency-aware audited cleanup; a CLI local-cleanup command. The inventory
 includes the F25 scratch roots (G6). LIB L4b `prune` and `clean` overlap it; the re-scope settles the
 boundary.
