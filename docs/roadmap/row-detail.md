@@ -71,7 +71,7 @@ retry and checkpoint progress); C0 record MERGED (engine #367). FRAME findings: 
 raw exception text (closes 13.7 on the CLI side); if free, a `warning` event on native-kernel silent
 fallback (G11). The CLI does not retry or self-orchestrate.
 
-**F25 (row 58).** A scratch manager (job-owned 0700 dirs plus byte quotas that every spool, temp
+**F25 (row 58; quotas are row 58b, 1.3).** A scratch manager (job-owned 0700 dirs plus byte quotas that every spool, temp
 Parquet, subset and DB spill registers with), at-rest encryption, lease-checked orphan sweep. FRAME
 findings: the three temp roots register with the one scratch manager (G6); cloud reads go through a
 bounded reader (G7); the isolated route caps staged-table materialization (G7); spill encryption is
@@ -152,7 +152,7 @@ digests, generator logic, deps). FRAME: `runtime_identity` includes Faker and pr
 digests; the engine's wide dependency floors (G12) are what it must pin. Source
 `P:docs/plans/2026-10-24-upgrade-determinism-gate.md`.
 
-**F09 (row 79).** The immutable domain-version object {input type, canon, namespace, transform, key
+**F09 (row 79; rotation and remap are row 79b, 1.2).** The immutable domain-version object {input type, canon, namespace, transform, key
 version, output format, collision policy}, three rotation modes, impact preview, remap manifest;
 reduced scope defers the advanced UI. FRAME: `key_version` on the Plan and in evidence for every keyed
 strategy. B-6 existing-vault compatibility is a hard cut; the CLI refuses to overwrite an existing
