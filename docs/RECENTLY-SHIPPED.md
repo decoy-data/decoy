@@ -11,6 +11,37 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-22: roadmap catch-up for merges of 2026-11-21 to 2026-11-22
+
+Rows closed (each leaves its group file):
+
+- Row 24s (GEN-CATALOG): GC3 is CLI #373 (`c7ae0008`, 2026-11-21): `decoy list codesets`, `one_of` in the generate type listing.
+- Row 24f (QA-FIT-REDACT): C1 is CLI #347 (`4de12ec5`, 2026-11-21): `--numeric-bins` on the plain fit, and the message says what it floors.
+- Row 24e (CLI-QA1): DI-C1 is CLI #371 (`09b13b1c`, 2026-11-21): intended fidelity columns are marked, and the same-as-source rate is shown.
+- Row 37 (L3a-cli): the evidence record is CLI #309 (`a4f57a67`, 2026-11-21) and the run-result record is CLI #367 (`f6e9904c`, 2026-11-21).
+- DATE-SHIFT-FORMAT: CLI #376 (`7579fb81`, 2026-11-21): `decoy validate` hints at `date_format` when it refuses a `date_shift`.
+- OUTPUT-METADATA-LEAK: C1 is CLI #375 (`f0e33f57`, 2026-11-21): every CLI Parquet write goes through the engine metadata allow-list.
+- ENGINE-THREADS-DEFAULT: engine #729 (`667a5e082`, 2026-11-20), in engine 0.28.2. Plan `E:plan/engine-threads-default`. `run_mask_chunked` keeps `native_threads=1` by default (V2-LOG, owner Q1, recommended answer applied).
+- HANDLER-ROW-COUNT: engine #744 (`9c301f518`, 2026-11-21), in engine 0.28.3. Plan `E:plan/handler-row-count`. Gap 2 of the vault data-flow note is closed.
+- DOC-DRIFT-ROUTES: engine #755 (`222ea3536`, 2026-11-22): route tables, the cycle note, the byte-estimate rule, the out-of-core pool and the native module docs are corrected. Plan `E:plan/doc-drift-routes`; a route-table sentry is V2-LOG (Q1).
+- Row 24zs (F26-RESERVED-NAME, slice E4): engine #756 (`19fbdf503`, 2026-11-22): reserved publication member names are refused (casefolded, suffix-derived names included) before `out.begin`. The list is `fileaccess.RESERVED_MEMBER_NAMES`.
+- FREEZE-SURFACE: every slice is merged and signed off. E-DEAD is engine #760 (2026-11-22): `LicenseError`, `LicenseExpiredError`, `FlagPauseSignal`, `get_default_executor` and the `VALIDATION_CODES` re-export are removed (pre-GA, with a Breaking line). C-HIDDEN is CLI #381 (`9770d1cb`, 2026-11-22): the `scan` and `validate` flags and their `--json` shapes are frozen. DOCS is engine #761 (2026-11-22) and this change. Item 7 outcome: the owner did not approve the F22 names on 2026-11-12 (`CommitUncertain`, `LockUnavailable`, `LockTimeout`, `LeafTooLarge`), so F22 adds no public renames. The engine compatibility contract says so below its public renames table, and that table is the single owner of the renames behind rows 16, 56 and 59.
+
+Other merges:
+
+- **Engine 0.28.3 (#759, 2026-11-22):** the release folds COLUMN-SHAPE E1a and E1b, E0, PRE-SCAN-RUN E1, vault v3, the F26 reserved names, DOC-DRIFT-ROUTES, NONFK, DUCKDB2, HANDLER-ROW-COUNT, GEN-WINDOWED, DELIV E2a and NATIVE-MISSING-WARN E1.
+- **Engine #748 (`54db2e5f`) and #749 (`7c9012f9`) (PRE-SCAN-RUN E1 and E2, 2026-11-21):** the `pre_scan.on_findings` switch and the pre-scan coverage verdict. The CLI run-start step is not merged.
+- **Engine #750 (`03554338`, COLUMN-SHAPE E1a, 2026-11-21) and #751 (`ccf3f454d`, E1b, 2026-11-22):** column shapes are recorded in the profile and the plan. `date_shift` works on typed dates with no declaration and writes a typed output; an integer or naive-timestamp column is refused at compile as `column_shape_mismatch`. The draw-site catalogue is re-pinned.
+- **Engine #752 (`713c047d`, ENGINE-ARCH LAYERS-FORBID, 2026-11-21):** a forbidden import-linter contract keeps the policy packages from importing I/O and backends.
+- **Engine #754 (CHUNKED-STRUCT S1, 2026-11-22):** struct, list and map passthrough columns work in chunked runs (they raised `TypeError`).
+- **Engine #757 (row 61, DELIV E2a, 2026-11-22):** pointer files are replaced durably on publish.
+- **Engine #758 (NATIVE-MISSING-WARN E1, `b20578c08`, 2026-11-22):** `native_fallback_code` on the run result through `with_native_notice`; advisory, never fails the run.
+- **Engine #746 (`49e5d815`, 2026-11-21):** the native parity tests run in the companion lane.
+- **CLI #378 (row 61, DELIV C0, `b65c15e80`, 2026-11-22):** one-folder atomic batch publish with a backup ledger and settle-first cleanup; kept backups give `ATOMIC_ROLLBACK_INCOMPLETE`.
+- **CLI #372 (row 63a, C1l, `c31eaee6`, 2026-11-21):** plain `decoy run` hands its sources to the engine lazily.
+- **CLI #380 (LINTDEBT-A1, 2026-11-22):** the `lintdebt` step in `gates.sh` blocks new lint debt (owner 2026-11-22).
+- **CLI #377 (`7aa69642`, 2026-11-21):** the journey test scopes its home snapshot to the CLI's own paths.
+
 ## 2026-11-21: merges of the day
 
 - **Engine #747 (STAMP-IMPORT, `94ec3cb6`):** the release stamp no longer deletes the `UNRELEASED` import from a reason module, so a new unreleased code on a stamped module no longer fails at import. A sentry checks every reason module.
