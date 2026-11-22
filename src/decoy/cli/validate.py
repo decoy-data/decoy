@@ -55,6 +55,13 @@ from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.theme import accent, code, error, hint, success, warn
 
 _VALIDATE_EPILOG = """\
+Options of `decoy validate CONFIG` (the whole gate; the subcommands below have
+their own):
+
+  --fail-on-warning            Exit non-zero when any advisory warning fires.
+  --json                       Emit one aggregate JSON envelope on stdout.
+  -q, --quiet / -v, --verbose  Less or more output.
+
 Examples:
 
   decoy validate pipeline.yaml

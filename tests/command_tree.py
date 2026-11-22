@@ -89,10 +89,27 @@ def registry() -> tuple[set[str], dict[str, set[str]]]:
     return leaf_top, groups
 
 
+# Hidden default commands that run under a user-facing name: `decoy scan SOURCES` runs the hidden
+# `scan _scan`, `decoy validate CONFIG` runs the hidden `validate _gate`. Their flags and `--json`
+# documents are part of the contract (docs/release/frozen-surfaces.md, tier `frozen-hidden`). This is
+# the one allow-list; every other hidden command stays out of the `--json` snapshot.
+PUBLIC_DEFAULT_COMMANDS: dict[tuple[str, ...], tuple[str, ...]] = {
+    ("scan", "_scan"): ("scan",),
+    ("validate", "_gate"): ("validate",),
+}
+
+
 def json_leaf_commands() -> set[str]:
-    """Space-joined paths of the visible leaf commands that take ``--json``."""
+    """Space-joined user-facing paths of the leaf commands that take ``--json``.
+
+    Visible leaves, plus the hidden default commands in ``PUBLIC_DEFAULT_COMMANDS`` under the
+    name the user types.
+    """
     return {
-        " ".join(o.cmd.path)
+        " ".join(PUBLIC_DEFAULT_COMMANDS.get(o.cmd.path, o.cmd.path))
         for o in options()
-        if o.cmd.path and not o.cmd.hidden and not o.cmd.is_group and "--json" in o.spellings
+        if o.cmd.path
+        and (not o.cmd.hidden or o.cmd.path in PUBLIC_DEFAULT_COMMANDS)
+        and not o.cmd.is_group
+        and "--json" in o.spellings
     }

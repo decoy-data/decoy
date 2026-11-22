@@ -951,6 +951,13 @@ $ decoy validate [OPTIONS] COMMAND [ARGS]...
 
 * `--help`: Show this message and exit.
 
+Options of `decoy validate CONFIG` (the whole gate; the subcommands below have
+their own):
+
+  --fail-on-warning            Exit non-zero when any advisory warning fires.
+  --json                       Emit one aggregate JSON envelope on stdout.
+  -q, --quiet / -v, --verbose  Less or more output.
+
 Examples:
 
   decoy validate pipeline.yaml
@@ -1293,6 +1300,22 @@ $ decoy scan [OPTIONS] COMMAND [ARGS]...
 **Options**:
 
 * `--help`: Show this message and exit.
+
+Options of `decoy scan SOURCES...` (the default command; the subcommands below
+have their own):
+
+  --has-header / --no-header   Does row 1 of a CSV hold the column names? Required for every CSV.
+  --column-names TEXT          Names for one headerless CSV (needs --no-header).
+  --rows INTEGER               Scan the first N rows; 0 scans every row. Default: 10000.
+  --strategy [head|random]     Sampling strategy when --rows bounds the scan.
+  --format TEXT                Input format: delimited, parquet or fixed-width.
+  --layout PATH                Column layout (YAML or JSON) for fixed-width input.
+  --detectors TEXT             Which detectors to run.
+  --ner-model TEXT             NER model for the name detector.
+  --show-fields                Show per-field detail.
+  -o, --output PATH            Save the value-free scan JSON; - writes to stdout.
+  --json                       Emit a JSON result on stdout.
+  -q, --quiet / -v, --verbose  Less or more output.
 
 Examples:
 

@@ -14,6 +14,7 @@ from decoy.cli.scanning._engine_call import (
     core_bytes,
     scan_descriptors,
 )
+from decoy.cli.scanning._help import SCAN_EPILOG
 from decoy.cli.scanning._multi import (
     API_SPELLING,
     CLI_SPELLING,
@@ -30,6 +31,7 @@ __all__ = [
     "DEFAULT_SCAN_ROWS",
     "DETECTORS_OPTION",
     "NER_MODEL_OPTION",
+    "SCAN_EPILOG",
     "SampleStrategy",
     "ScanDiff",
     "ScanRun",

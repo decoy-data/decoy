@@ -5,7 +5,9 @@ surface is "Hidden commands and options". Its "Completeness source" cell lists `
 A command's name is its space-joined path (`scan _scan`); an option's name is the command path then
 the flag (`ci check --unsafe-debug-log`). A hidden name with no span fails, a span naming something that
 no longer exists fails, and the tier must match the rule: a hidden command whose last segment starts
-with `_` is `internal`, every other hidden command or option is `frozen-hidden`.
+with `_` is `internal`, except the two public default commands in
+`tests.command_tree.PUBLIC_DEFAULT_COMMANDS` (`scan _scan`, `validate _gate`), which are
+`frozen-hidden`; every other hidden command or option is `frozen-hidden`.
 
 Seeded mutations (each makes the named test red): add `hidden=True` to any option of `run`
 (`test_the_real_map_is_clean`); delete a span from the row (`test_a_dropped_span_is_found`);
@@ -18,7 +20,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from tests.command_tree import Cmd, Opt, commands, options
+from tests.command_tree import PUBLIC_DEFAULT_COMMANDS, Cmd, Opt, commands, options
 
 ROOT = Path(__file__).resolve().parents[3]
 MAP = ROOT / "docs" / "release" / "frozen-surfaces.md"
@@ -31,6 +33,8 @@ KNOWN = {"scan _scan", "validate _gate", "upgrade --url", "ci check --unsafe-deb
 
 def tier_of(name: str, is_option: bool) -> str:
     last = name.split()[-1]
+    if tuple(name.split()) in PUBLIC_DEFAULT_COMMANDS:
+        return "frozen-hidden"
     return "internal" if not is_option and last.startswith("_") else "frozen-hidden"
 
 
@@ -105,7 +109,11 @@ def test_the_walk_finds_the_known_names() -> None:
 
 
 def test_internal_names_start_with_an_underscore() -> None:
+    public = {" ".join(p) for p in PUBLIC_DEFAULT_COMMANDS}
     for name, tier in hidden_names().items():
+        if name in public:
+            assert tier == "frozen-hidden", name
+            continue
         assert (tier == "internal") == (name.split()[-1].startswith("_")), name
 
 

@@ -42,6 +42,7 @@ from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.io import ScanSetFormatError, load_scan_set, select_table
 from decoy.cli.scanning import (
     DEFAULT_SCAN_ROWS,
+    SCAN_EPILOG,
     SampleStrategy,
     diff_scan_sets,
     pii_bucket,
@@ -91,49 +92,6 @@ class InputFormat(str, Enum):
 # Used by `_emit_load_error` to swap the generic JSON parse hint for a
 # specific "scan it first" suggestion.
 _RAW_DATA_SUFFIXES = {".csv", ".tsv", ".txt", ".parquet", ".json.gz", ".jsonl"}
-
-
-_SCAN_EPILOG = """\
-Examples:
-
-  decoy scan data.csv --has-header
-    Profile a CSV: row/field counts, PII candidates (as suggestions), reid risk.
-    A CSV always needs --has-header or --no-header: scan never guesses.
-    Reads the first 10 000 rows by default and labels the counts a sample, with
-    no key candidates (--rows 0 reads every row and gives whole-file numbers).
-
-  decoy scan customers.csv orders.csv --has-header
-    Scan several files in one run: one table each, named from the file stem.
-
-  decoy scan raw.csv --no-header --column-names id,name,email
-    A headerless CSV: row 1 is data, the names come from you.
-
-  decoy scan data.csv --has-header --show-fields
-    Per-field detail: dtype, null_rate, distinct_count, PII candidate flag.
-
-  decoy scan data.csv --has-header --rows 50000 --strategy random
-    Sample 50K random rows instead of the first 10 000.
-
-  decoy scan data.csv --has-header --output scan.json
-    Save the value-free scan to scan.json, then: decoy scan fields scan.json
-
-  decoy scan data.csv --has-header --output -
-    Stream the scan JSON to stdout for downstream tooling.
-
-  decoy scan records.fwf --layout layout.yaml
-    Scan a fixed-width file using an explicit column layout.
-    Layout YAML: columns: [{name: id, start: 0, width: 5}, ...]
-
-HONESTY: PII candidates are SUGGESTIONS based on pattern matching. They
-are NOT authoritative classifications. You review each flagged field and decide
-what masking to apply. Decoy never auto-classifies PII.
-
-No raw cell values appear in the inline output or in --output. Field stats
-include dtype, null_rate, distinct_count only.
-
-See also: decoy scan fields, decoy scan show, decoy scan diff,
-  decoy explain scan, decoy validate.
-"""
 
 
 _FIELDS_EPILOG = """\
@@ -189,7 +147,7 @@ scan_app = typer.Typer(
     name="scan",
     cls=make_default_group("_scan"),
     help=_SCAN_GROUP_HELP,
-    epilog=_SCAN_EPILOG,
+    epilog=SCAN_EPILOG,
     no_args_is_help=True,
 )
 
@@ -922,7 +880,7 @@ def _diff(
 # The hidden default command: `decoy scan SOURCE` (no subcommand) routes here
 # via the shared default-command group. Hidden so it stays out of help / the
 # generated reference / completion, while the group can still dispatch to it.
-scan_app.command(name="_scan", hidden=True, epilog=_SCAN_EPILOG)(_scan)
+scan_app.command(name="_scan", hidden=True, epilog=SCAN_EPILOG)(_scan)
 scan_app.command(name="fields", epilog=_FIELDS_EPILOG)(_fields)
 scan_app.command(name="show", epilog=_SHOW_EPILOG)(_show)
 scan_app.command(name="diff", epilog=_DIFF_EPILOG)(_diff)
