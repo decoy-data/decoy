@@ -18,6 +18,9 @@ Triage empties this page. Each item gets exactly one outcome:
 
 ## Untriaged
 
+- 2026-11-22, code-quality handoff ([handoff](../handoffs/2026-11-22-code-quality-audit-and-pre-merge-checks.md)): run one full read-only quality audit at V1 alpha, beside QA, and triage its findings with QA's; a delta pass on the alpha-to-release diff before REL-GATE. Candidate for release-gates R1.
+- 2026-11-22, code-quality handoff section 4: a narrow freeze-surface audit now (public names, reason codes, flags, exit codes, `--json` shapes, config keys, env vars, stored formats) for anything rows 24zj and FREEZE-SURFACE miss.
+- 2026-11-22, code-quality handoff section 5: standard pre-merge checks in the dev loop (`/simplify` and `/code-review` on every PR diff, `/security-review` and a Windows checklist by area) and a `lintdebt` ratchet step in `gates.sh` for both repos. Owner questions in section 6.
 - 2026-11-21, language write-up (owner: go with recommended): `decoy validate` on a `.decoy` file shows an engine schema error with the config path but no line number, while `compile_text` has the line. Fix inside row DECOY-LANG.
 - 2026-11-21, language write-up: check that the guide's `date_shift(min_days: -30, max_days: 30)` examples (02-masking.md, cheat-sheet.md, agent-card.md) still compile now that DATE-SHIFT-FORMAT requires `date_format` on text dates; fix the guide in that row if not.
 - 2026-11-21, language write-up: `decoy validate` accepts an S3 target that `decoy run` refuses. Cloud buckets are out of 1.0 (owner 2026-11-21), so this goes with row 64 CLI-CLOUD.
