@@ -1,0 +1,1566 @@
+{
+ "sentry_id": "lint-debt",
+ "created_in": "LINTDEBT-A1",
+ "entries": {
+  "src/decoy/__main__.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 14
+  },
+  "src/decoy/__main__.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_atomic.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic.py::PTH104": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic.py::PTH105": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/_atomic.py::PTH108": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 6
+  },
+  "src/decoy/_atomic.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_atomic.py::PTH121": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic.py::PTH123": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic_batch.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/_atomic_batch.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic_batch.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic_batch.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_atomic_batch.py::PTH108": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_atomic_batch.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_config_file.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_native_gate.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "src/decoy/_native_gate.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_native_gate.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_outbound.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_private_file.py::PTH101": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_private_file.py::PTH102": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_private_file.py::PTH106": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_private_file.py::PTH108": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_resources.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_resources.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/_resources.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_source_positions.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/_update_check.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/api.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 11
+  },
+  "src/decoy/api.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/api.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/adapters.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/ci/reporting.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/runner.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/runner.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/runner.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/staged.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/staged.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ci/staged.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/_duckdb_source.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/_sources.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 9
+  },
+  "src/decoy/cli/_token_vault.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/_token_vault.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/ci.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/ci.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/ci.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/ci.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/cockpit.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/cockpit.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/compile_explain.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/compile_explain.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/compile_explain.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/compile_explain.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/completers.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/cli/demo.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/evidence.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 6
+  },
+  "src/decoy/cli/evidence.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/evidence.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/evidence.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/evidence.py::PTH117": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/evidence.py::PTH121": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/exit_codes.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/exit_codes.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/fit.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/fit.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/fit.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/fit.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/fit.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gate/_layers.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/gate/_layers.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gate/_run.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "src/decoy/cli/gen/_fit.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/gen/_fit.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/gen/_fit.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gen/_fit.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gen/_fit.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gen/_preview.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/cli/gen/_scaffold.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gen/_scaffold.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/gen/_scaffold.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/init.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/init.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/init.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/init.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_integrity_report.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/cli/io/_layout.py::PTH100": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/io/_layout.py::PTH106": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_layout.py::PTH121": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/io/_pipelines.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "src/decoy/cli/io/_pipelines.py::PTH113": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_pipelines.py::PTH208": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/io/_placement.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_placement.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_placement.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_placement.py::PTH100": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_placement.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/io/_placement.py::PTH208": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_project.py::PTH111": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_project.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/io/_scan_set.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/__init__.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_cli.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_destructive.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_destructive.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_destructive.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_diff.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/library/_export.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_export.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_export.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_fs.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_fs.py::PTH100": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/library/_fs.py::PTH106": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "src/decoy/cli/library/_fs.py::PTH108": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/library/_fs.py::PTH110": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_fs.py::PTH112": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_fsck.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_fsck.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_paths.py::PTH100": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/library/_policy.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/library/_read.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/cli/library/_remote.py::PTH100": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/models/__init__.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/models/_commands.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/preflight.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/preflight.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/preflight.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/preflight.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/project/_list.py::PTH201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/project/_new.py::PTH111": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/project/_run_all.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/project/_scaffold.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/project/_scaffold.py::PTH113": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/cli/report.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/cli/report.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 7
+  },
+  "src/decoy/cli/report.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 7
+  },
+  "src/decoy/cli/report.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 6
+  },
+  "src/decoy/cli/run/_context.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_errors.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_errors.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_errors.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_errors.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_errors.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_flow.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_flow.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_flow.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_flow.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_notify.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/run/_prepare.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_prepare.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_prepare.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_prepare.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_progress.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_progress.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_render.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_render.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_render.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_render.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_render.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/run/_result.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 8
+  },
+  "src/decoy/cli/run/_result.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/run/_vault.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/scan.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/scan.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/scan.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/scan.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/scanning/_detectors.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/scanning/_multi.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/scanning/_multi.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/scanning/_multi.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/scanning/_multi.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/scanning/_multi.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/setup/__init__.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/cli/setup/__init__.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/setup/__init__.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/setup/__init__.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/setup/_models.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/setup/_step.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/subset.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/subset.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/subset.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/subset.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/tokenize.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/tokenize.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/tokenize.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/unmask.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/unmask.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/unmask.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/unmask.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/upgrade.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/upgrade.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/upgrade.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/upgrade.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/validate.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/validate.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/validate.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/first_install.py::PTH105": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/first_install.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "src/decoy/distribution/installer.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/distribution/installer.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/distribution/installer.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/installer.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/installer.py::PTH101": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/installer.py::PTH105": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/distribution/installer.py::PTH108": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/layout.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/distribution/layout.py::PTH118": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/layout_point.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/manifest.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/manifest.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/manifest.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/manifest.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/distribution/manifest.py::PTH117": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/manifest.py::PTH123": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/distribution/selfcheck.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/distribution/selfcheck.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/distribution/verify_extracted.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/lang/_ast.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_connectors.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_convert.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 8
+  },
+  "src/decoy/lang/_convert.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_convert.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/lang/_format.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/lang/_format.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_links.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_links.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_lower.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/lang/_lower.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/lang/_lower.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/lang/_parse.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/lang/_print.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/lang/_subset.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/notify.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "src/decoy/telemetry.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ui/output.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/ui/summary.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 7
+  },
+  "src/decoy/ui/summary.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ui/summary.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/ui/summary.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/ci_support.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/command_tree.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/csv_sources.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/cli_fmt/test_output_metadata_canary.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/cli_fmt/test_target_format_readers.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "tests/e2e/cli_fmt/test_target_format_readers.py::ERA001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/config_explicit/test_config_explicit_reports.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/config_explicit/test_config_explicit_run.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 7
+  },
+  "tests/e2e/dup_defects/test_dup_defects_e2e.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/dup_freeze/test_dup_freeze_e2e.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/first_user/test_fit_rows.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 16
+  },
+  "tests/e2e/first_user/test_items_declared_columns.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "tests/e2e/first_user/test_items_fit_joint_cap.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/first_user/test_items_privacy.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 8
+  },
+  "tests/e2e/generate_config/test_generate_capacity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/generate_config/test_validate_generate.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/library/_records.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "tests/e2e/library/test_library_destructive.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/library/test_library_export.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/library/test_library_fsck.py::PTH101": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/library/test_library_l4b_review.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "tests/e2e/library/test_library_output_guard.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/library/test_library_read_commands.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 7
+  },
+  "tests/e2e/project_layout/test_no_stray_files.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_output_spelling.py::PTH100": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/project_layout/test_owning_run.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_owning_run.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 9
+  },
+  "tests/e2e/project_layout/test_project_group.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_run_placement.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_run_placement.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/project_layout/test_run_placement.py::PTH208": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_run_placement.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/project_layout/test_run_surfaces.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_run_surfaces.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_run_surfaces.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_side_files.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_side_files.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_tokenize_out_dir.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/project_layout/test_tokenize_out_dir.py::PTH121": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/project_layout/test_walkthrough.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/release_freeze/write_shapes.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 12
+  },
+  "tests/e2e/run_progress/test_run_progress_events.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/run_stream/_perf_driver.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/run_stream/_support.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 18
+  },
+  "tests/e2e/run_stream/test_lazy_flags.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 8
+  },
+  "tests/e2e/run_stream/test_lazy_matrix.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/run_stream/test_lazy_parity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "tests/e2e/run_stream/test_lazy_perf.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/run_stream/test_lazy_perf.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/run_stream/test_lazy_relationship_failures.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 9
+  },
+  "tests/e2e/run_stream/test_lazy_values.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_atomic_output.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 15
+  },
+  "tests/e2e/test_ci_adapter_parity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/test_ci_output_handling.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_ci_staged_scan.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/e2e/test_demo_command.py::PTH109": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_fit_command.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 12
+  },
+  "tests/e2e/test_mask_secret_single_read.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_output_modes.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_preflight_capacity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 19
+  },
+  "tests/e2e/test_report_diff_command.py::ERA001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_run_native.py::ERA001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_run_preflight_capacity_parity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 15
+  },
+  "tests/e2e/test_run_subset.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 7
+  },
+  "tests/e2e/test_run_validate_always.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 16
+  },
+  "tests/e2e/test_scan_diff_move.py::PTH109": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_scan_diff_move.py::PTH110": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/e2e/test_scan_one_call.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/e2e/test_validate_gate.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 20
+  },
+  "tests/fixtures/scan/capture_legacy_profile.py::T201": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/_baseline_sources.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/_ci_lock_scan.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/sentry/_ci_lock_scan.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/sentry/_ci_lock_scan.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/_ratchet.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/_ratchet.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/_ratchet.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/ci_scan/test_identity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/defects/_defect_scan.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/defects/_defect_scan.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/defects/test_kind_canary.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/io_policy/test_lazy_source_choke_point.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/io_policy/test_lazy_source_choke_point.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/io_policy/test_library_fs.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/io_policy/test_library_fs.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/io_policy/test_library_writer.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/io_policy/test_library_writer.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/layout/test_run_package_shape.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/run/test_one_result_builder.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_atomic_writer.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_ci_lock_installs.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_ci_r2_leak_paths.py::PTH202": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_engine_import_surface.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/sentry/test_engine_import_surface.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_engine_internal_boundary.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/test_engine_internal_boundary.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/sentry/test_gate_single_entry.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_gate_single_entry.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_mask_secret_file_mode.py::PTH105": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_mask_secret_file_mode.py::PTH121": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_one_stderr_console.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_otel_closed.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/test_otel_closed.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/tooling/_ci_lanes.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/tooling/_ci_lanes.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/tooling/_ci_lanes.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/sentry/tooling/test_ci_lanes.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/api_scan/test_inputs.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/api_scan/test_parity.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/distribution/test_release_pins_and_custody.py::ERA001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/distribution/test_sign_release_sshsig.py::PTH208": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/lang/test_convert.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/library/test_fs.py::PTH101": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/library/test_fsck.py::PTH101": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "tests/unit/library/test_fsck_review.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/library/test_index.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/library/test_index_failures.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/library/test_read_safety.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/library/test_refs.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/unit/library/test_scratch.py::PTH101": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/library/test_store.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/models/_rig.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/models/test_install_source.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/models/test_install_source.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/private_file/test_private_file.py::PTH104": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/private_file/test_private_file.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 3
+  },
+  "tests/unit/project_layout/test_layout.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/project_layout/test_small_file.py::PTH105": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/qa/test_io_sentry.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/qa/test_io_sentry.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/scanning/test_engine_call.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/test_api.py::PTH121": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_atomic.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 5
+  },
+  "tests/unit/test_atomic_publish.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_atomic_staged.py::PTH116": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_atomic_staged.py::PTH123": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "tests/unit/test_ci_manifest.py::PTH211": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_ci_rule_codes.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_ci_rule_codes.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_distribution.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_distribution.py::PTH118": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_distribution.py::PTH123": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/test_distribution_acceptance.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_distribution_acceptance.py::PTH115": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_evidence.py::ERA001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "tests/unit/test_gate_layers.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 15
+  },
+  "tests/unit/test_native_gate.py::ERA001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "tests/unit/test_template_disguise_drift.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  }
+ }
+}
