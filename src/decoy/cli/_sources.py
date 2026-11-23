@@ -20,9 +20,12 @@ from __future__ import annotations
 import itertools
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
+
+if TYPE_CHECKING:
+    from decoy_engine import DeclarationRequest, PreparedDeclaredSources
 
 
 def resolve_path(raw_path: str, base_dir: Path) -> Path:
@@ -114,12 +117,12 @@ def _read_refusal(exc: Exception) -> Any:
 
 
 def _prepare(
-    request_for: Callable[[dict[str, Any]], Any],
+    request_for: Callable[[dict[str, Any]], DeclarationRequest],
     config_dict: dict[str, Any],
     base_dir: Path,
     *,
     passthrough: tuple[type[BaseException], ...],
-) -> Any:
+) -> PreparedDeclaredSources:
     """Build a request on the reader-side copy and prepare it; the one exception contract.
 
     An exception in `passthrough` is a gate refusal and leaves as raised. Any other engine read
@@ -163,7 +166,7 @@ def prepared_sources(
     """
     from decoy_engine import DeclarationRequest, PipelineValidationError
 
-    def request_for(resolved: dict[str, Any]) -> Any:
+    def request_for(resolved: dict[str, Any]) -> DeclarationRequest:
         if schemas is not None:
             return DeclarationRequest.for_supplied(resolved, schemas)
         # A source with no `path` is not read (`source_is_materialized`), so it has no header.
@@ -173,28 +176,34 @@ def prepared_sources(
     return _prepare(request_for, config_dict, base_dir, passthrough=(PipelineValidationError,))
 
 
+def scan_gate_refusals() -> tuple[type[Exception], ...]:
+    """The engine refusals `scan_prepared_sources` lets through as raised: coded, value-free."""
+    from decoy_engine import ConfigError, PipelineValidationError
+    from decoy_engine.config import PipelineConfigError
+
+    return (PipelineValidationError, PipelineConfigError, ConfigError)
+
+
 def scan_prepared_sources(
     sources_config: dict[str, Any],
     *,
     base_dir: Path,
     tables: Sequence[str] | None = None,
-) -> Any:
+) -> PreparedDeclaredSources:
     """The scan's gate: a sources mapping (or a full pipeline) to a scan capability, no row read.
 
     `DeclarationRequest.for_scan` checks the shape, every descriptor, the table selection and the
     declared relationships; a names file is read once and inlined. It opens no data file, so a
-    missing data file still fails during the scan. A refusal is the engine's coded
-    `PipelineConfigError`, `PipelineValidationError` or dialect `ConfigError` as raised; any other
-    read failure takes the same fixed refusal as `prepared_sources`.
+    missing data file still fails during the scan. A refusal is one of `scan_gate_refusals()` as
+    raised; any other read failure takes the same fixed refusal as `prepared_sources`.
     """
-    from decoy_engine import ConfigError, DeclarationRequest, PipelineValidationError
-    from decoy_engine.config import PipelineConfigError
+    from decoy_engine import DeclarationRequest
 
     return _prepare(
         lambda resolved: DeclarationRequest.for_scan(resolved, tables),
         sources_config,
         base_dir,
-        passthrough=(PipelineValidationError, PipelineConfigError, ConfigError),
+        passthrough=scan_gate_refusals(),
     )
 
 

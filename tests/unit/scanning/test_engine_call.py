@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from decoy.cli._sources import csv_file_source, scan_prepared_sources
 from decoy.cli.scanning import SampleStrategy, ScanUsageError, check_scan_options, scan_descriptors
 
+if TYPE_CHECKING:
+    from decoy_engine import PreparedDeclaredSources
+
 
 @pytest.fixture
-def prepared(tmp_path: Path) -> Any:
+def prepared(tmp_path: Path) -> PreparedDeclaredSources:
     """A scan capability from the real gate; the file need not exist (the gate opens no data)."""
     source = csv_file_source(tmp_path / "t.csv", has_header=True)
     return scan_prepared_sources({"sources": {"t": source}}, base_dir=tmp_path)
@@ -37,7 +40,7 @@ def engine(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
 @pytest.mark.parametrize("rows", [0, None])
 def test_zero_and_none_read_every_row(
-    engine: list[dict[str, Any]], prepared: Any, rows: int | None
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources, rows: int | None
 ) -> None:
     scan_descriptors(prepared, rows=rows, strategy="head")
     assert engine[0]["sample_rows"] is None
@@ -45,18 +48,22 @@ def test_zero_and_none_read_every_row(
 
 
 def test_a_bounded_sample_keeps_rows_and_strategy(
-    engine: list[dict[str, Any]], prepared: Any
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources
 ) -> None:
     scan_descriptors(prepared, rows=5, strategy="random")
     assert (engine[0]["sample_rows"], engine[0]["strategy"]) == (5, "random")
 
 
-def test_full_strategy_reads_every_row(engine: list[dict[str, Any]], prepared: Any) -> None:
+def test_full_strategy_reads_every_row(
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources
+) -> None:
     scan_descriptors(prepared, rows=5, strategy="full")
     assert (engine[0]["sample_rows"], engine[0]["strategy"]) == (None, "full")
 
 
-def test_bad_options_raise_before_the_engine(engine: list[dict[str, Any]], prepared: Any) -> None:
+def test_bad_options_raise_before_the_engine(
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources
+) -> None:
     with pytest.raises(ScanUsageError, match="rows must be 0 or more, got -1"):
         scan_descriptors(prepared, rows=-1, strategy="head")
     allowed = [s.value for s in SampleStrategy]
@@ -68,7 +75,9 @@ def test_bad_options_raise_before_the_engine(engine: list[dict[str, Any]], prepa
     assert engine == []
 
 
-def test_pre_scan_reaches_the_engine_unchanged(engine: list[dict[str, Any]], prepared: Any) -> None:
+def test_pre_scan_reaches_the_engine_unchanged(
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources
+) -> None:
     sentinel = object()
     scan_descriptors(prepared, rows=1, strategy="head", pre_scan=sentinel)  # type: ignore[arg-type]
     assert engine[0]["pre_scan"] is sentinel
@@ -77,7 +86,7 @@ def test_pre_scan_reaches_the_engine_unchanged(engine: list[dict[str, Any]], pre
 
 
 def test_on_stage_runs_after_the_scan_and_after_the_core(
-    engine: list[dict[str, Any]], prepared: Any
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources
 ) -> None:
     ticks: list[int] = []
     run = scan_descriptors(
@@ -89,7 +98,7 @@ def test_on_stage_runs_after_the_scan_and_after_the_core(
 
 
 def test_the_engine_gets_exactly_the_declaration(
-    engine: list[dict[str, Any]], prepared: Any, monkeypatch: pytest.MonkeyPatch
+    engine: list[dict[str, Any]], prepared: PreparedDeclaredSources, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import decoy_engine
 

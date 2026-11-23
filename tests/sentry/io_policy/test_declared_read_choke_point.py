@@ -308,38 +308,50 @@ def _own_nodes(scope: _Scope) -> list[ast.AST]:
     return found
 
 
+def _bound_names(target: ast.AST) -> list[str]:
+    """Names a binding target introduces (`a`, `(a, b)`, `*rest`)."""
+    if isinstance(target, ast.Name):
+        return [target.id]
+    if isinstance(target, (ast.Tuple, ast.List, ast.Starred)):
+        return [n for inner in ast.iter_child_nodes(target) for n in _bound_names(inner)]
+    return []
+
+
+def _node_bindings(node: ast.AST) -> list[tuple[str, ast.AST | None]]:
+    """(name, assigned value or None) for what one node binds; None means not a plain assignment."""
+    if isinstance(node, ast.Assign):
+        return [
+            (n, node.value if isinstance(t, ast.Name) else None)
+            for t in node.targets
+            for n in _bound_names(t)
+        ]
+    if isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)):
+        return [(n, None) for n in _bound_names(node.target)]
+    if isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+        return [(n, None) for n in _bound_names(node.target)]
+    if isinstance(node, (ast.With, ast.AsyncWith)):
+        return [
+            (n, None)
+            for item in node.items
+            if item.optional_vars is not None
+            for n in _bound_names(item.optional_vars)
+        ]
+    if isinstance(node, ast.ExceptHandler) and node.name:
+        return [(node.name, None)]
+    return []
+
+
 def _binders(scope: _Scope) -> dict[str, list[ast.AST | None]]:
     """Each local name to what binds it: the assigned value, or None for any other binding."""
     bound: dict[str, list[ast.AST | None]] = {}
-
-    def add(target: ast.AST, value: ast.AST | None) -> None:
-        if isinstance(target, ast.Name):
-            bound.setdefault(target.id, []).append(value)
-        elif isinstance(target, (ast.Tuple, ast.List, ast.Starred)):
-            for inner in ast.iter_child_nodes(target):
-                add(inner, None)
-
     if not isinstance(scope, ast.Module):
         a = scope.args
         for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg):
             if arg is not None:
                 bound.setdefault(arg.arg, []).append(None)
     for node in _own_nodes(scope):
-        if isinstance(node, ast.Assign):
-            for t in node.targets:
-                add(t, node.value if isinstance(t, ast.Name) else None)
-        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-            add(node.target, None)
-        elif isinstance(node, ast.NamedExpr):
-            add(node.target, None)
-        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
-            add(node.target, None)
-        elif isinstance(node, (ast.With, ast.AsyncWith)):
-            for item in node.items:
-                if item.optional_vars is not None:
-                    add(item.optional_vars, None)
-        elif isinstance(node, ast.ExceptHandler) and node.name:
-            bound.setdefault(node.name, []).append(None)
+        for name, value in _node_bindings(node):
+            bound.setdefault(name, []).append(value)
     return bound
 
 
@@ -564,6 +576,9 @@ def test_seeded_scan_bypasses_are_detected() -> None:
     assert scan_caller_violations(
         _caller("    for prepared in cfg:\n        scan_descriptors(prepared, rows=1)\n")
     )
+
+
+def test_seeded_import_spellings_are_detected() -> None:
     # (5) the aliased import
     assert scan_caller_violations(
         _caller(
@@ -591,10 +606,21 @@ def test_seeded_scan_bypasses_are_detected() -> None:
             "import decoy.cli.scanning\n",
         )
     )
+
+
+def test_seeded_value_references_are_detected() -> None:
+    good = _caller(
+        "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+        "    return scan_descriptors(prepared, rows=1)\n"
+    )
     # (7) passed as a value, or stored
     assert scan_value_references(_caller("    return pool.submit(scan_descriptors, cfg)\n"))
     assert scan_value_references(_caller("    f = scan_descriptors\n    return f(cfg)\n"))
     assert scan_value_references(good) == []
+
+
+def test_seeded_owner_bypasses_are_detected() -> None:
+    assert scan_call_violations(_OWNER_OK) == []
     # (8) fed from a copied mapping, not the capability
     assert scan_call_violations(
         _OWNER_OK.replace(

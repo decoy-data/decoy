@@ -70,7 +70,7 @@ def _parse_layout(layout_path: Path) -> list[dict]:
     text = layout_path.read_text(encoding="utf-8")
     try:
         data = _yaml.safe_load(text)
-    except Exception:
+    except _yaml.YAMLError:
         data = _json_mod.loads(text)
 
     if not isinstance(data, dict) or "columns" not in data:
