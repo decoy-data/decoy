@@ -35,6 +35,7 @@ Some rows never hold a group, although checks cite them:
 - Rows 6 (WIN-RUNNER) and 89 (WIN-FEAS) decide only the Windows cells. A Windows cell is blocked
   until row 89 clears Windows for V1 and row 6 provides the runner; the other platforms run.
 - Rows marked DEFERRED or PARKED by the owner are out of V1.
+- Moved to 1.x QA (owner 2026-11-22): SCAN-08 (row 29), SCAN-09 and LIB-04 (rows 30 and 36), DLV-03 and the best-effort half of DLV-02 (row 61b), and the exit 6 trigger in EXIT-02. These checks stay in this file, marked **1.x**, and run when their 1.x release is built. The distribution families of row 24q (normal, lognormal, exponential, poisson, beta, zipf) have no check yet; one is added with their 1.x row. V1 QA does not wait on these rows.
 
 A check whose surface is not built yet is marked **Not built.** Its command names come from the
 row's plan and are corrected here when the row merges, before the group's pass.
@@ -48,7 +49,7 @@ Sixteen groups, 205 checks.
 | 1 | [Install, version and upgrade](#1-install-version-and-upgrade) | INST-01 to INST-19 | 18, 47, 76, 78, 88, 90, 90a, 91 |
 | 2 | [Projects, init and layout](#2-projects-init-and-layout) | PROJ-01 to PROJ-18 | 24, 24e, 24o, 24t, 32b |
 | 3 | [Validate and the pre-run gate](#3-validate-and-the-pre-run-gate) | GATE-01 to GATE-19 | 19, 20, 20b, 22, 23, 24a, 24b, 24e, 24k, 24o, 24zf |
-| 4 | [Scan](#4-scan) | SCAN-01 to SCAN-17 | 22, 24c, 24e, 27, 29, 30, 31, 32, 32a, 36, 56, 80, 81 |
+| 4 | [Scan](#4-scan) | SCAN-01 to SCAN-17 | 22, 24c, 24e, 27, 30, 31, 32, 32a, 56, 80, 81 (29 and 36 are 1.x) |
 | 5 | [Mask run](#5-mask-run) | RUN-01 to RUN-21 | 19, 20, 21b, 24d, 24e, 24zb, 24zd, 24zh, 38, 57, 61a, 62, 63, 63a, 90, 95 |
 | 6 | [Delivery, run result, resume and connectors](#6-delivery-run-result-resume-and-connectors) | DLV-01 to DLV-12 | 24t, 61, 62, 64, 64b, 66, 85, 86, 87 |
 | 7 | [Keys and secrets](#7-keys-and-secrets) | KEY-01 to KEY-09 | 24zb, 65, 73, 79, 83 |
@@ -56,7 +57,7 @@ Sixteen groups, 205 checks.
 | 9 | [Fit and generation](#9-fit-and-generation) | GEN-01 to GEN-16 | 24e, 24f, 24g, 24j, 24l, 24m, 24o, 24s, 24w, 24x, 24y, 24zc |
 | 10 | [Evidence and reports](#10-evidence-and-reports) | EVD-01 to EVD-13 | 21, 24e, 24o, 37, 39, 65, 66, 70, 72 |
 | 11 | [Exit codes and the output contract](#11-exit-codes-and-the-output-contract) | EXIT-01 to EXIT-09 | 17, 24a, 24zf, 61, 62 |
-| 12 | [Local record library and job logs](#12-local-record-library-and-job-logs) | LIB-01 to LIB-10 | 30, 34, 35, 36, 37, 38, 39, 40, 41, 42 |
+| 12 | [Local record library and job logs](#12-local-record-library-and-job-logs) | LIB-01 to LIB-10 | 30, 34, 35, 37, 38, 39, 40, 41, 42 (36 is 1.x) |
 | 13 | [CI integration](#13-ci-integration) | CI-01 to CI-06 | 20b, 24e, 62 |
 | 14 | [Settings, notifications and telemetry](#14-settings-notifications-and-telemetry) | OPS-01 to OPS-06 | 63a, 65, 66, 71 |
 | 15 | [Help, explain and docs truth](#15-help-explain-and-docs-truth) | DOC-01 to DOC-10 | 24e, 24o, 56, 75, 92 |
@@ -250,8 +251,8 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 | SCAN-05 | `decoy scan data/raw.csv --no-header --column-names a,b,c`; then `decoy scan data/raw.csv --has-header --column-names a,b,c` | 0, 1 | Named columns; the second is refused | 27 | |
 | SCAN-06 | `decoy scan data/rec.fwf --layout data/layout.yaml`; then `decoy scan data/rec.fwf` without `--layout` | 0, 1 | Scans; the second is refused | 27 | |
 | SCAN-07 | `decoy scan diff old.json new.json --strict` where `new` adds a high-PII field; then `decoy scan diff old.json old.json --strict` with no drift; then `decoy scan diff - -` | 4, 0, 1 | Drift is a finding; no drift is clean; both inputs from stdin is refused | 27 | |
-| SCAN-08 | `decoy scan data/t1.csv --has-header --emit-config`; `--compare <baseline>` | tbd | **Not built.** A starter pipeline YAML; a drift report against the baseline | 29 | |
-| SCAN-09 | Save a scan snapshot to the library, reference it as the pipeline's baseline, run | tbd | **Not built.** The run's evidence carries the snapshot hash | 30, 36 | |
+| SCAN-08 | `decoy scan data/t1.csv --has-header --emit-config`; `--compare <baseline>` | tbd | **Not built.** **1.x.** A starter pipeline YAML; a drift report against the baseline | 29 | |
+| SCAN-09 | Save a scan snapshot to the library, reference it as the pipeline's baseline, run | tbd | **Not built.** **1.x.** The run's evidence carries the snapshot hash | 30, 36 | |
 | SCAN-10 | Opt-in distribution capture, then a run whose output drifts past the set percentage, in strict mode | tbd | **Not built.** The breach blocks publication; outside strict mode it warns | 31 | |
 | SCAN-11 | `on_drift: fail` with a source that drifted from the baseline; then `on_drift: warn` | tbd | **Not built.** The run refuses at start; with `warn` it warns and runs | 32 | |
 | SCAN-12 | Scan with defaults; enable the classifier, then NER, per pipeline; remove spaCy and scan with NER on | tbd | **Not built.** Default is regex only and says so; the scan report and run result name each detector, model and version; without spaCy, an install line for the `ner` extra and a non-zero exit | 32a | |
@@ -305,8 +306,8 @@ Today the CLI runs with `delivery_mode="in_place"` (`src/decoy/cli/exit_codes.py
 | Id | Command | Exit | Expected | Rows | Pass/fail |
 |---|---|---|---|---|---|
 | DLV-01 | `mask-fk` in strict delivery, with the child table's delivery forced to fail | tbd | **Not built.** No target is published; staged files removed; non-zero exit | 61 | |
-| DLV-02 | The same in best-effort delivery | tbd | **Not built.** The parent is delivered and the child withheld; exit 6; the run result lists both | 61, 62 | |
-| DLV-03 | `decoy run --all` where one child exits 6 | tbd | **Not built.** The summary counts it as 6, not 3 (CLI #270 keeps a child's 6); a child that exits 6 needs row 61 | 24t, 61 | |
+| DLV-02 | `decoy validate` and `decoy run` on `mask-fk` with `delivery: best_effort`, in YAML and in `.decoy` | 1, 1 | **Not built.** V1: refused at validate with a coded error, before any read, in both file kinds. 1.x (row 61b): the parent is delivered and the child withheld; exit 6; the run result lists both | 61, 61b, 62 | |
+| DLV-03 | `decoy run --all` where one child exits 6 | tbd | **Not built.** **1.x.** The summary counts it as 6, not 3 (CLI #270 keeps a child's 6); a child that exits 6 needs row 61 | 24t, 61 | |
 | DLV-04 | `decoy run mask-fk` with targets under two different roots in one run | 1 | Refused under the local single-root rule | 61 | |
 | DLV-05 | `decoy run mask-basic --json`; read the run result document | tbd | **Not built.** `decoy-run-result/v1`: status, exit code, reason codes, tables; value-free; the shape matches the REL-GATE snapshot | 62, 66 | |
 | DLV-06 | `decoy run mask-big` where a worker runs out of memory | 5 | Reported as a capacity failure, not a crash (capacity widening) | 62 | |
@@ -319,7 +320,7 @@ Today the CLI runs with `delivery_mode="in_place"` (`src/decoy/cli/exit_codes.py
 
 Open points:
 
-- Exit 6 needs row 61 before DLV-03 can run: no child exits 6 yet. CLI #270 already ranks it
+- Exit 6 is 1.x (row 61b, owner 2026-11-22), so DLV-03 runs in 1.x QA: no child exits 6 in V1. CLI #270 already ranks it
   (`5, 3, 1, 6, 4, 2, 0`) and keeps it in the `run --all` summary.
 
 ## 7. Keys and secrets
@@ -413,7 +414,7 @@ the frozen surfaces REL-GATE snapshots.
 | Id | Command | Exit | Expected | Rows | Pass/fail |
 |---|---|---|---|---|---|
 | EXIT-01 | **RC.** `decoy explain exit-codes`; README "Exit codes"; `decoy.cli.exit_codes`; the crash handler | 0 | All agree: 0 to 6 as named, 130 for Ctrl-C, and the crash exit EXIT-03 observes. Since CLI #270 both docs list 130 and name 1 for an internal error, and `tests/sentry/cli_text/test_exit_code_docs.py` pins them to `decoy.cli.exit_codes` | 93 | |
-| EXIT-02 | One trigger per code: `decoy run mask-basic` (clean), `decoy validate mask-basic` on a bad config, `decoy validate mask-abs --fail-on-warning`, `decoy run mask-basic` with an unwritable output mid-run, `decoy report integrity <copy>` with a finding, `decoy run mask-big` refused for capacity, `decoy run mask-fk` with best-effort partial delivery (after row 61), Ctrl-C during `decoy run mask-big` | 0, 1, 2, 3, 4, 5, 6, 130 | Each exits with its code | 61, 62 | |
+| EXIT-02 | One trigger per code: `decoy run mask-basic` (clean), `decoy validate mask-basic` on a bad config, `decoy validate mask-abs --fail-on-warning`, `decoy run mask-basic` with an unwritable output mid-run, `decoy report integrity <copy>` with a finding, `decoy run mask-big` refused for capacity, Ctrl-C during `decoy run mask-big` | 0, 1, 2, 3, 4, 5, 130 | Each exits with its code. Exit 6 stays reserved in the freeze; its trigger (a best-effort partial delivery of mask-fk, row 61b) is 1.x QA | 61, 62 | |
 | EXIT-03 | `decoy validate mask-basic` with an uncaught exception forced (an engine module that raises on import, in a scratch runtime) | 1 | `error: internal error (<Type>)` and the `--verbose` hint; no traceback, as `tests/sentry/cli_text/test_no_traceback_escape.py` pins | 24zf | |
 | EXIT-04 | Every leaf command with `--json`, on success and on a refusal. Exempt: the `ci check` command (no `--json`; its `--format json` report is checked in CI-03) | none | stdout is exactly one JSON object; refusals use the one error shape; progress only on stderr | 24zf | |
 | EXIT-05 | Every leaf command with `--quiet`. Exempt: `ci check -o -`, which still writes its report to stdout | none | stdout empty; the exit code still carries the result | 24zf | |
@@ -440,7 +441,7 @@ of the surface is **Not built.** Command names come from the LIB plan.
 | LIB-01 | Write records while killing the process mid-write | none | No torn record; the store opens | 34 | |
 | LIB-02 | After any run, list scratch under `.decoy/` | none | Scratch removed on every exit path, on each OS lane | 34, 38 | |
 | LIB-03 | Corrupt one record, then run the library check | tbd | **Not built.** The check names the record; the library lists the rest in degraded mode | 35 | |
-| LIB-04 | Save two scans to the library | tbd | **Not built.** Both stored as scan snapshots and listed | 30, 36 | |
+| LIB-04 | Save two scans to the library | tbd | **Not built.** **1.x.** Both stored as scan snapshots and listed | 30, 36 | |
 | LIB-05 | A run with evidence | tbd | **Not built.** An evidence record and a run-result record are stored | 37 | |
 | LIB-06 | A sample run | tbd | **Not built.** A sample-run record; its scratch is removed | 38 | |
 | LIB-07 | `decoy library list`, `show`, `diff`, `ref`, `export` | tbd | **Not built.** Each works on the records from LIB-04 to LIB-06; sweep clean | 39 | |
@@ -562,7 +563,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 24zf | DUP-FREEZE | GATE-11, GATE-17, GATE-18, EXIT-03 to EXIT-06 |
 | 24zh | DUP-DEST | RUN-13, REV-06, REV-07 |
 | 27 | SCAN-MULTI S1c-cli | SCAN-01 to SCAN-03, SCAN-05 to SCAN-07 |
-| 29 | SCAN-MULTI S3-cli | SCAN-08 |
+| 29 | SCAN-MULTI S3-cli (1.x) | SCAN-08 |
 | 30 | SCAN-LIB | SCAN-09, LIB-04 |
 | 31 | DIST-INTEGRITY | SCAN-10 |
 | 32 | DRIFT | SCAN-11 |
@@ -570,7 +571,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 32b | INIT-WIZARD | PROJ-16, PROJ-17 |
 | 34 | LIB L1b-cli | LIB-01, LIB-02 |
 | 35 | LIB L1c-cli | LIB-03 |
-| 36 | LIB L2-cli | SCAN-09, LIB-04 |
+| 36 | LIB L2-cli (1.x) | SCAN-09, LIB-04 |
 | 37 | LIB L3a-cli | EVD-07, LIB-05 |
 | 38 | LIB L3b-cli | RUN-12, LIB-02, LIB-06 |
 | 39 | LIB L4a-cli | EVD-07, LIB-07 |
@@ -583,6 +584,7 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 | 56 | Retired product name, CLI half | SCAN-13, DOC-08 |
 | 57 | SUB-RUN | RUN-10, RUN-11 |
 | 61 | CLI delivery | DLV-01 to DLV-04, EXIT-02 |
+| 61b | DELIV best-effort (1.x) | DLV-02 (1.x half), DLV-03, EXIT-02 (exit 6) |
 | 61a | ATOMIC-CHUNKED | RUN-04 |
 | 62 | RESULT | RUN-16, RUN-18, DLV-02, DLV-05, DLV-06, EXIT-02, CI-05 |
 | 63 | SAMPLE CLI half | RUN-12 |
@@ -619,6 +621,8 @@ checks wait on them. Rows 6, 77, 89, 93 and 94 never hold a group (see "When a g
 Rows no check covers:
 
 - 9 (X0a-h): DEFERRED off the V1 path by the owner.
-- 74 (F26 CLI local cleanup): PARKED until F22 settles and re-scoped by Opus. Its checks are written
-  when the re-scope names the command; its overlap with LIB-08 is settled there.
+- 74 (F26): V1 keeps only the engine arena sweep, which the engine checklist covers. The `decoy cleanup`
+  command is row 74b (1.x, owner 2026-11-22); its checks are written for 1.x QA, and its overlap with
+  LIB-08 is settled there.
+- LANG-SIDECAR (DECOY-LANG S7, 1.x): its sidecar check is written for 1.x QA.
 - 92a (this checklist).

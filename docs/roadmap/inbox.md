@@ -90,7 +90,7 @@ to triage here.
 - NATIVE-MISSING-WARN (M3): promoted 2026-11-19 (owner). 1.0 row NATIVE-MISSING-WARN, [run](groups/run.md).
 - GEN-WINDOWED-BATCH (F1): promoted 2026-11-19 (owner). 1.0 row GEN-WINDOWED-BATCH, [generate](groups/generate.md).
 - ENGINE-THREADS-DEFAULT (F3): promoted 2026-11-19 (owner). 1.0 row ENGINE-THREADS-DEFAULT, [run](groups/run.md).
-- FAKER-NATIVE-WIDEN (C1): promoted 2026-11-19 (owner). 1.0 row, V1 if a slot is free, else 1.0.x, [mask](groups/mask.md).
+- FAKER-NATIVE-WIDEN (C1): promoted 2026-11-19 (owner). 1.0 row, made firm V1 on 2026-11-22, [mask](groups/mask.md).
 - GEN-VECTOR-STREAMS (C2): promoted 2026-11-19 (owner). Later row, 1.0.x, [generate](groups/generate.md).
 - TEXT-REDACT-RUST-SPLICE (C3), FPE-CHECKSUM-NATIVE (C5): promoted 2026-11-19 (owner). Later rows, 1.0.x, [mask](groups/mask.md).
 - LARGE-STRING-CAST and UF-DOMAIN (C4): promoted 2026-11-19 (owner). 1.0 row, V1 if a slot is free, else 1.0.x, [mask](groups/mask.md).
