@@ -88,7 +88,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-57 rows block 1.0, 46 are Later and 13 are Maintenance (2026-11-23, after the owner moved rows 29, 32c and 36 and parts of rows 24q, 58, 61, 74, 79 and DECOY-LANG to 1.x, PROMO-VIDEO to the website roadmap, and added NESTED-FREEZE and FIT-CODES-TEXT in the V2-to-V1 cut). Each cell lists the row
+58 rows block 1.0, 46 are Later and 13 are Maintenance (2026-11-23, after the owner moved rows 29, 32c and 36 and parts of rows 24q, 58, 61, 74, 79 and DECOY-LANG to 1.x, PROMO-VIDEO to the website roadmap, and added NESTED-FREEZE and FIT-CODES-TEXT in the V2-to-V1 cut). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its 1.x
 candidates that have no plan yet (90 in all), and the health file lists 31 maintenance candidates. The named 1.x slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md). The 1.x program (the old V1+ and V2 branch work) and the order of the 1.x releases are in [roadmap/releases-1x.md](roadmap/releases-1x.md). PROMO-VIDEO is on the website roadmap (`decoy-web-docs/docs-src/ROADMAP.md`).
 
