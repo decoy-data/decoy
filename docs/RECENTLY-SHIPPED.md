@@ -11,10 +11,11 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
-## 2026-11-23: rows 79, 56, NATIVE-MISSING-WARN, NESTED-FREEZE, CSV-WRITE-FAST and FAKER-NATIVE-WIDEN closed
+## 2026-11-23: rows 27, 79, 56, NATIVE-MISSING-WARN, NESTED-FREEZE, CSV-WRITE-FAST and FAKER-NATIVE-WIDEN closed
 
 Rows closed (each leaves its group file):
 
+- Row 27 (SCAN-MULTI S1c-cli): S1c.2 is CLI #400 (2026-11-23, `87f87b59`): scan, demo and `decoy.scan()` share one gated scan call. S1c.1 was CLI #166.
 - CSV-WRITE-FAST: CLI #397 (2026-11-23) writes Arrow CSV targets with pyarrow in bounded batches. Its one slice.
 - FAKER-NATIVE-WIDEN: engine #776 (2026-11-23) runs the name, email, phone and address providers native (plan rev 6 plus A1; S0, S1 and S2 as one artifact). S3 moved to the new item FAKER-POOL-STREAMED-BUILD. The old wait on FAKER-MIGRATE no longer applies. CLI users get it with the next engine release and CLI repin.
 - Row 56 (NAME-REMOVAL, CLI half): C3a and C3b are both merged in CLI #389 (2026-11-23).
