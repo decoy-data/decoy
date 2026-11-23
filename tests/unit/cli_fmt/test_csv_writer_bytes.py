@@ -362,3 +362,20 @@ def test_a7_private_arrow_table_uses_the_arrow_writer_and_stays_owner_only(tmp_p
     write_table(table, "csv", public)
     assert private.read_bytes() == public.read_bytes()
     assert private.stat().st_mode & 0o777 == 0o600
+
+
+def test_chunked_write_failing_after_chunk_one_keeps_the_old_file(tmp_path: Path) -> None:
+    """A chunk stream that raises mid-write publishes nothing and leaves no temp (staged write)."""
+    out = tmp_path / "out.csv"
+    out.write_bytes(b"old\n")
+
+    def chunks():  # type: ignore[no-untyped-def]
+        yield pa.table({"a": [1, 2]})
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        write_chunked_output(
+            chunks(), "csv", str(out), RunLayout.fixed(tmp_path), empty_schema=None
+        )
+    assert out.read_bytes() == b"old\n"
+    assert [p.name for p in tmp_path.iterdir()] == ["out.csv"]

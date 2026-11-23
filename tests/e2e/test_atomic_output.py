@@ -22,6 +22,7 @@ from typer.testing import CliRunner
 
 import decoy
 from decoy.__main__ import app
+from decoy.cli.io import _targets
 from tests.csv_sources import file_source
 from tests.keyed_secret import TEST_MASK_SECRET_REF
 
@@ -165,11 +166,12 @@ def test_whole_table_write_failure_keeps_the_prior_state(
     if prior is not None:
         target.write_bytes(prior)
 
-    def half_then_raise(self: pd.DataFrame, path: Any, *args: Any, **kwargs: Any) -> None:
-        Path(path).write_text("half")
+    def half_then_raise(table: Any, writer: Any) -> None:
+        writer.write_batch(table.slice(0, 1).to_batches()[0])  # half the file, then the disk fills
         raise OSError(errno.ENOSPC, "no space")
 
-    monkeypatch.setattr(pd.DataFrame, "to_csv", half_then_raise)
+    # The Arrow CSV writer replaced `DataFrame.to_csv` for a generate or mask table.
+    monkeypatch.setattr(_targets, "_write_csv", half_then_raise)
     result = _run(cfg)
     assert result.exit_code == 3, result.output
     assert (target.read_bytes() if prior is not None else None) == prior
@@ -224,17 +226,19 @@ def test_an_empty_parquet_source_still_writes_a_zero_row_parquet(tmp_path: Path)
 
 # -- AT-A5: success bytes are the base's ---------------------------------------------------
 
-# sha256 of each output, recorded on CLI main ff82bc9 before this slice.
+# sha256 of each output, recorded on CLI main ff82bc9 before this slice. The CSV rows (run, chunked,
+# mask_api, demo, tokenize, unmask) were regenerated on the CSV-WRITE-FAST head: CSV writer moved to
+# pyarrow. The detokenize, Parquet rows are the originals.
 _BASE_SHA: dict[str, str] = {
-    "chunked_csv": "f9987e148964006181da8b39f71723fc5f85bc3dd73768ad9f9d6d50d177a9b8",
+    "chunked_csv": "b2dc81999fe264b6cf883fbc3e4a3362a72e2466da2bb6a8bae10706dac82ad9",
     "chunked_parquet": "b0683c6a777c6eed16efa729aa8816be938cc545efd43a9a92d050115a7e663d",
-    "demo": "d784565e2ae6bc228f266b8080ad49ab3fd80ee94269f7b7261f79e624723011",
+    "demo": "e145b68275ad20d9e9e1a0f0379d572d82ba6995078fef786b7097b40efa2c49",
     "detokenize": "22bc0317beeb6d82d44f6e003f9441d41e63e9efd59122173a11393b425fc909",
-    "mask_api": "f9987e148964006181da8b39f71723fc5f85bc3dd73768ad9f9d6d50d177a9b8",
-    "run_csv": "f9987e148964006181da8b39f71723fc5f85bc3dd73768ad9f9d6d50d177a9b8",
+    "mask_api": "b2dc81999fe264b6cf883fbc3e4a3362a72e2466da2bb6a8bae10706dac82ad9",
+    "run_csv": "b2dc81999fe264b6cf883fbc3e4a3362a72e2466da2bb6a8bae10706dac82ad9",
     "run_parquet": "fbaa202d72c0db74793d4b068ae984abe3919d95062cc7ca0e7ead23c0f74f1a",
-    "tokenize": "6b6fe58a12176fcd25252857e4d053033f62521684f3c741a03e3d2be81651de",
-    "unmask": "f02d2dca5c249826e217b8aaa531146f8d99a4dff1e6cae2555efdbcb55b5ed1",
+    "tokenize": "dfb3919d535b8f5fa556da41116e03a0195fb48a75be8d5928084b82e5a52e00",
+    "unmask": "c583b2fcf81abac52ae8a151e38ef00e021073dc1fd9d5c4381b795c0434d99f",
 }
 
 
