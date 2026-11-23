@@ -28,12 +28,10 @@ _REFUSED = {
     "list": pa.list_(pa.int64()),
     "struct": pa.struct([("a", pa.int64())]),
     "duration": pa.duration("us"),
-    "time64": pa.time64("us"),
     "int_dictionary": pa.dictionary(pa.int8(), pa.int64()),
     "map": pa.map_(pa.string(), pa.int64()),
     "large_list": pa.large_list(pa.int64()),
     "fixed_size_binary": pa.binary(4),
-    "time32": pa.time32("s"),
     "interval": pa.month_day_nano_interval(),
 }
 _ACCEPTED = [
@@ -51,6 +49,10 @@ _ACCEPTED = [
     pa.decimal128(10, 2),
     pa.dictionary(pa.int8(), pa.string()),
     pa.null(),
+    pa.time32("s"),
+    pa.time32("ms"),
+    pa.time64("us"),
+    pa.time64("ns"),
 ]
 
 
@@ -146,14 +148,14 @@ def test_chunked_writer_refuses_an_unsupported_first_chunk_before_staging(tmp_pa
 
 def test_one_schema_publishes_one_file_with_one_header(tmp_path: Path) -> None:
     out = _chunks(tmp_path, [pa.table({"a": [1, 2]}), pa.table({"a": [3]})])
-    assert out.read_bytes() == b'"a"\n1\n2\n3\n'
+    assert out.read_bytes() == b'"a"\n"1"\n"2"\n"3"\n'
 
 
-def test_a_null_column_matches_any_type_and_takes_the_first_real_one() -> None:
+def test_a_null_column_matches_any_type_either_way() -> None:
     nulls = pa.schema([("a", pa.int64()), ("b", pa.null())])
     typed = pa.schema([("a", pa.int64()), ("b", pa.string())])
-    assert check_csv_types("t", typed, expected_schema=nulls).types == typed.types
-    assert check_csv_types("t", nulls, expected_schema=typed).types == typed.types
+    check_csv_types("t", typed, expected_schema=nulls)
+    check_csv_types("t", nulls, expected_schema=typed)
 
 
 def test_chunked_writer_casts_a_later_null_chunk_to_the_first_type(tmp_path: Path) -> None:
@@ -163,9 +165,20 @@ def test_chunked_writer_casts_a_later_null_chunk_to_the_first_type(tmp_path: Pat
     assert out.read_bytes() == b'"a","b"\n1,"x"\n2,\n'
 
 
-def test_chunked_writer_refuses_values_after_an_all_null_first_chunk(tmp_path: Path) -> None:
+def test_chunked_writer_takes_text_for_a_column_that_is_all_null_in_the_first_chunk(
+    tmp_path: Path,
+) -> None:
     first = pa.table({"a": [1], "b": pa.nulls(1)})
     later = pa.table({"a": [2], "b": ["x"]})
+    out = _chunks(tmp_path, [first, later])
+    assert out.read_bytes() == b'"a","b"\n1,\n2,"x"\n'
+
+
+def test_chunked_writer_refuses_a_non_text_type_after_an_all_null_first_chunk(
+    tmp_path: Path,
+) -> None:
+    first = pa.table({"a": [1], "b": pa.nulls(1)})
+    later = pa.table({"a": [2], "b": [5]})
     with pytest.raises(TargetFormatError) as caught:
         _chunks(tmp_path, [first, later])
     assert caught.value.code == "target.csv_schema_drift"

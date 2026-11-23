@@ -1,7 +1,7 @@
 """CSV-WRITE-FAST A5 and A6 (run side): no CSV target is placed before every target passes.
 
 Resident runs go through `write_targets`; chunked runs through the `--chunked` coordinator, which
-drains each CSV target's masked stream through `check_csv_types` before any target is staged. The
+stages every target (one mask pass each) and publishes only after all are staged. The
 chunked cases wrap the engine's chunk stream to put a bad type or a changed schema in a later
 chunk of the second target, and record when each stream opens, yields and closes.
 """
@@ -180,63 +180,37 @@ def test_chunked_run_refuses_before_any_target_is_placed(
         ("chunk", "a", i) for i in range(3)
     ]
     assert events.count(("open", "a")) == 1  # nothing reached the publication pass
-    assert events[-1] == ("close", "b")
 
 
-def test_chunked_run_drains_each_stream_then_publishes_with_the_same_factory(
+def test_chunked_run_masks_each_table_once_and_publishes_after_all_are_staged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A2.3: one mask pass per table; nothing is published until every table is staged."""
+    out = tmp_path / "out"
     events = _instrument(monkeypatch, lambda _t, _i, chunk: chunk)
     result = _run(tmp_path)
     assert result.exit_code == 0, result.output
-    opens = [e[1] for e in events if e[0] == "open"]
-    assert opens == ["a", "b", "a", "b"]  # validate a, validate b, publish a, publish b
-    first_publish = (tmp_path / "out" / "a.csv").read_bytes()
-    assert first_publish.startswith(b'"id","v"\n')
-    assert first_publish.count(b"\n") == 7
+    assert [e[1] for e in events if e[0] == "open"] == ["a", "b"]
+    assert (out / "a.csv").read_bytes().startswith(b'"id","v"\n')
+    assert (out / "a.csv").read_bytes().count(b"\n") == 7
+    assert (out / "b.csv").exists()
 
 
-def test_prepared_targets_hold_no_table_batch_or_iterator() -> None:
-    import dataclasses
+def test_a_published_target_does_not_appear_before_the_last_target_is_staged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "out"
+    at_open_b: list[list[str]] = []
+    import decoy_engine
 
-    from decoy.cli.run._execute import _ChunkedTarget
+    real = decoy_engine.run_mask_pipeline_chunked
 
-    names = {f.name for f in dataclasses.fields(_ChunkedTarget)}
-    assert names == {"name", "src_spec", "tgt_spec", "fmt", "csv_schema"}
+    def wrapped(*args: object, table: str, **kwargs: object) -> Iterator[pa.Table]:
+        if table == "b":
+            at_open_b.append(sorted(p.name for p in out.iterdir() if not p.name.startswith(".")))
+        return real(*args, table=table, **kwargs)
 
-
-def test_validation_keeps_no_masked_chunk_between_checks(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The drain retains no chunk: each is gone once the next is requested, and the stream closes."""
-    import gc
-    import weakref
-
-    from decoy.cli.run import _execute
-
-    refs: list[Any] = []
-    closed: list[bool] = []
-
-    def stream() -> Iterator[pa.Table]:
-        try:
-            for i in range(4):
-                chunk = pa.table({"a": [i]})
-                refs.append(weakref.ref(chunk))
-                yield chunk
-                del chunk
-        finally:
-            closed.append(True)
-
-    seen_alive: list[int] = []
-    real_check = _execute.check_csv_types
-
-    def spying(*args: object, **kwargs: object) -> pa.Schema:
-        gc.collect()
-        seen_alive.append(sum(1 for r in refs if r() is not None))
-        return real_check(*args, **kwargs)
-
-    monkeypatch.setattr(_execute, "_masked_chunks", lambda *_a, **_k: stream())
-    monkeypatch.setattr(_execute, "check_csv_types", spying)
-    target = _execute._ChunkedTarget("t", {}, {}, "csv")
-    schema = _execute._validate_csv_stream(target, {}, Path(), 1, None)
-    assert schema.names == ["a"]
-    assert seen_alive == [1, 1, 1, 1]
-    assert closed == [True]
+    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", wrapped)
+    result = _run(tmp_path)
+    assert result.exit_code == 0, result.output
+    assert at_open_b == [[]]  # a is staged, not yet published, when b starts

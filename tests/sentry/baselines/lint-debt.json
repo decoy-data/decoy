@@ -1176,7 +1176,7 @@
   },
   "tests/e2e/test_atomic_output.py::ANN401": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 15
+   "count": 12
   },
   "tests/e2e/test_ci_adapter_parity.py::ANN401": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",

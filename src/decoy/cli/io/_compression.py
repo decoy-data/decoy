@@ -21,6 +21,7 @@ import bz2
 import contextlib
 import gzip
 import lzma
+import shutil
 import tarfile
 import tempfile
 import zipfile
@@ -112,6 +113,10 @@ def _stream_codec(stack: contextlib.ExitStack, method: str | None, raw: IO[bytes
     return raw
 
 
+# The largest member a USTAR header can size (11 octal digits). A larger one needs PAX.
+_USTAR_MAX_SIZE = 8**11 - 1
+
+
 def _tar_member(name: str, size: int) -> tarfile.TarInfo:
     info = tarfile.TarInfo(name)
     info.size = size
@@ -122,12 +127,19 @@ def _tar_member(name: str, size: int) -> tarfile.TarInfo:
     return info
 
 
-def _zip_member(name: str) -> zipfile.ZipInfo:
+def _zip_member(name: str, size: int) -> zipfile.ZipInfo:
     info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
     info.compress_type = zipfile.ZIP_DEFLATED  # level: zlib's default, which is 6
     info.create_system = 3
     info.external_attr = 0o100644 << 16
+    info.file_size = size  # known up front, so a member over the limit gets a zip64 header
     return info
+
+
+def _spooled_size(spool: IO[bytes]) -> int:
+    size = spool.seek(0, 2)
+    spool.seek(0)
+    return size
 
 
 @contextlib.contextmanager
@@ -135,25 +147,29 @@ def open_csv_sink(tmp: Path, out_path: Path) -> Iterator[IO[bytes]]:
     """A writable byte stream into the staged `tmp` for the codec `out_path`'s suffix names.
 
     The caller writes the CSV bytes and leaves the block; the codec trailer, zip central
-    directory or tar blocks are written on the way out. A tar archive needs the member size
-    first, so its CSV goes to an anonymous spool file and the archive is built on exit.
+    directory or tar blocks are written on the way out. A zip or tar archive needs the member
+    size first (zip64 for a large zip member, PAX for a large tar member), so its CSV goes to an
+    anonymous spool file and the archive is built on exit.
     """
     method = split_compression(out_path)[1]
     with contextlib.ExitStack() as stack:
         raw = stack.enter_context(tmp.open("wb"))
-        if method == "zip":
-            archive = stack.enter_context(zipfile.ZipFile(raw, "w"))
-            yield stack.enter_context(archive.open(_zip_member(_archive_name(out_path)), "w"))
-        elif method == "tar":
+        if method in ARCHIVES:
             spool = stack.enter_context(tempfile.TemporaryFile(dir=tmp.parent))
             yield spool
-            size = spool.seek(0, 2)
-            spool.seek(0)
-            outer = _suffix_codec(out_path)
-            with contextlib.ExitStack() as inner:
-                wrapped = _stream_codec(inner, outer, raw)
-                with tarfile.open(fileobj=wrapped, mode="w", format=tarfile.USTAR_FORMAT) as tf:
-                    tf.addfile(_tar_member(_archive_name(out_path), size), spool)
+            size = _spooled_size(spool)
+            name = _archive_name(out_path)
+            if method == "zip":
+                with zipfile.ZipFile(raw, "w") as archive:
+                    with archive.open(_zip_member(name, size), "w") as member:
+                        shutil.copyfileobj(spool, member)
+            else:
+                outer = _suffix_codec(out_path)
+                fmt = tarfile.USTAR_FORMAT if size <= _USTAR_MAX_SIZE else tarfile.PAX_FORMAT
+                with contextlib.ExitStack() as inner:
+                    wrapped = _stream_codec(inner, outer, raw)
+                    with tarfile.open(fileobj=wrapped, mode="w", format=fmt) as tf:
+                        tf.addfile(_tar_member(name, size), spool)
         else:
             yield _stream_codec(stack, method, raw)
 

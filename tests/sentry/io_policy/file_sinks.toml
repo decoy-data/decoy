@@ -180,7 +180,7 @@ reason = "Masked whole-table output keeps the old file's mode bits (OQ3); masked
 
 [[row]]
 file = "cli/io/_targets.py"
-function = "write_chunked_output"
+function = "_staged_chunked"
 sink = "staged_local_target"
 ordinal = 1
 output_kind = "target"

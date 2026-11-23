@@ -1,12 +1,10 @@
 """How `decoy run` executes: the chunked and plain branches, and the source and target I/O."""
 
 from collections.abc import Iterator
-from dataclasses import dataclass, replace
+from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
 from typing import Any
-
-import pyarrow as pa
 
 from decoy import _native_gate, _resources
 from decoy.cli import gen
@@ -14,10 +12,8 @@ from decoy.cli.extras import check_cloud_endpoints, check_cloud_endpoints_suppor
 from decoy.cli.io import (
     DuckDBSourceError,
     RunLayout,
-    check_csv_types,
     check_target_formats,
     duckdb_probe_config,
-    is_csv_format,
     iter_source_chunks,
     lazy_sources,
     open_run_layout,
@@ -119,70 +115,47 @@ def _run_chunked_mask(
 
     sources = config_dict.get("sources") or {}
     targets = config_dict.get("targets") or {}
-    prepared: list[_ChunkedTarget] = []
-    for table_entry in config_dict.get("tables") or []:
-        if not isinstance(table_entry, dict) or not table_entry.get("columns"):
-            continue
-        name = table_entry.get("name")
-        assert isinstance(name, str)  # pydantic guarantees a str table name
-        src_spec = sources.get(name) if isinstance(sources, dict) else None
-        tgt_spec = targets.get(name) if isinstance(targets, dict) else None
-        if not isinstance(src_spec, dict) or not isinstance(src_spec.get("path"), str):
-            continue
-        if not isinstance(tgt_spec, dict) or not isinstance(tgt_spec.get("path"), str):
-            continue
-        target = _ChunkedTarget(name, src_spec, tgt_spec, resolve_target_format(name, tgt_spec))
-        if is_csv_format(target.fmt):
-            # Drain the whole no-publication stream first, so a column type or schema change in
-            # any later chunk refuses the run before any target is placed or staged.
-            target = replace(
-                target,
-                csv_schema=_validate_csv_stream(
-                    target, config_dict, base_dir, chunk_size, key_provider
-                ),
-            )
-        prepared.append(target)
-
     published: dict[str, Path | None] = {}
-    for target in prepared:
-        src_spec = target.src_spec
-        src_path = _resolve_path(src_spec["path"], base_dir)
-        published[target.name] = write_chunked_output(
-            _masked_chunks(target, config_dict, base_dir, chunk_size, key_provider),
-            target.fmt,
-            target.tgt_spec["path"],
-            layout,
-            empty_schema=(
+    # Every target is staged on this stack and published only when it exits cleanly, so a bad
+    # chunk in any target (a type outside the CSV allowlist, a schema change) publishes none.
+    with ExitStack() as staged:
+        for table_entry in config_dict.get("tables") or []:
+            if not isinstance(table_entry, dict) or not table_entry.get("columns"):
+                continue
+            name = table_entry.get("name")
+            assert isinstance(name, str)  # pydantic guarantees a str table name
+            src_spec = sources.get(name) if isinstance(sources, dict) else None
+            tgt_spec = targets.get(name) if isinstance(targets, dict) else None
+            if not isinstance(src_spec, dict) or not isinstance(src_spec.get("path"), str):
+                continue
+            if not isinstance(tgt_spec, dict) or not isinstance(tgt_spec.get("path"), str):
+                continue
+            src_path = _resolve_path(src_spec["path"], base_dir)
+            empty = (
                 partial(parquet_schema, src_path) if src_spec.get("format") == "parquet" else None
-            ),
-            ledger=ledger,
-            name=target.name,
-            csv_schema=target.csv_schema,
-        )
+            )
+            published[name] = write_chunked_output(
+                _masked_chunks(name, src_spec, config_dict, base_dir, chunk_size, key_provider),
+                resolve_target_format(name, tgt_spec),
+                tgt_spec["path"],
+                layout,
+                empty_schema=empty,
+                ledger=ledger,
+                name=name,
+                defer=staged,
+            )
     return published
 
 
-@dataclass(frozen=True)
-class _ChunkedTarget:
-    """One selected chunked target: its structural specs only, never a table or an iterator."""
-
-    name: str
-    src_spec: dict
-    tgt_spec: dict
-    fmt: str
-    csv_schema: pa.Schema | None = (
-        None  # the unified output schema a CSV validation pass found (no data)
-    )
-
-
 def _masked_chunks(
-    target: _ChunkedTarget,
+    name: str,
+    src_spec: dict,
     config_dict: dict,
     base_dir: Path,
     chunk_size: int,
     key_provider,
 ) -> Iterator[Any]:
-    """The one factory of a chunked target's masked stream, for validation and publication."""
+    """The one factory of a chunked table's masked stream."""
     from decoy_engine import __version__ as engine_version
     from decoy_engine import run_mask_pipeline_chunked
 
@@ -190,40 +163,16 @@ def _masked_chunks(
     # reader exists until every declared source column is checked (G-ONE-DECLARED-READ).
     prepared_sources(config_dict, base_dir=base_dir)
     source_schema, chunks = source_schema_and_chunks(
-        target.name,
-        target.src_spec,
-        base_dir,
-        iter_source_chunks(target.name, target.src_spec, base_dir, chunk_size),
+        name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
     )
     return run_mask_pipeline_chunked(
         resolved_source_config(config_dict, base_dir),
         chunks,
-        table=target.name,
+        table=name,
         engine_version=engine_version,
         key_provider=key_provider,
         source_schema=source_schema,
     )
-
-
-def _validate_csv_stream(
-    target: _ChunkedTarget, config_dict: dict, base_dir: Path, chunk_size: int, key_provider
-) -> pa.Schema | None:
-    """Check every masked chunk of a CSV target against the shared type and schema policy.
-
-    Holds at most one source chunk and one masked chunk, and closes the stream before it
-    returns. It returns the unified output schema (a `pyarrow.Schema`, no data) for the
-    publication pass; nothing else it reads is kept.
-    """
-    stream = _masked_chunks(target, config_dict, base_dir, chunk_size, key_provider)
-    try:
-        expected = None
-        for masked in stream:
-            expected = check_csv_types(target.name, masked.schema, expected_schema=expected)
-        return expected
-    finally:
-        close = getattr(stream, "close", None)
-        if close is not None:
-            close()
 
 
 _CHUNKED_INTEGRITY_MESSAGE = (

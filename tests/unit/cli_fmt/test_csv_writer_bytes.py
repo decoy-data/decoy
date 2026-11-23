@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import math
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from decoy.cli.io._layout import RunLayout
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "cli_fmt" / "csv_writer"
 PAYLOAD = FIXTURES / "csv-writer-payload.bin"
+ONE_COLUMN = FIXTURES / "csv-writer-one-column.json"
 SUFFIXES = tuple(suffix for suffix, _method in COMPRESSION)
 STREAM_SUFFIXES = (".gz", ".bz2", ".xz", ".zst")
 STREAM_ROWS = 30_001
@@ -61,6 +63,10 @@ def mixed_table() -> pa.Table:
             "ts_ns": pa.array(
                 [datetime(2024, 1, 2, 3, 4, 5, 6), None, utc] * 2, pa.timestamp("ns")
             ),
+            "t32_s": pa.array([time(3, 4, 5), None, time(23, 59, 59)] * 2, pa.time32("s")),
+            "t32_ms": pa.array([time(3, 4, 5), None, time(0, 0, 0)] * 2, pa.time32("ms")),
+            "t64_us": pa.array([time(3, 4, 5, 6), None, time(0, 0, 0)] * 2, pa.time64("us")),
+            "t64_ns": pa.array([time(3, 4, 5, 6), None, time(0, 0, 0)] * 2, pa.time64("ns")),
             "dec": pa.array(
                 [Decimal("1.50"), None, Decimal("-0.01"), Decimal("0.00"), Decimal("9.99"), None],
                 pa.decimal128(10, 2),
@@ -70,6 +76,25 @@ def mixed_table() -> pa.Table:
             "int_key": pa.array([10, 20, 30, 40, 50, 60], pa.int32()),
         }
     )
+
+
+def one_column_cases() -> dict[str, pa.Table]:
+    """One-column tables (A2.1): every null is written as `""` so no row is a blank line."""
+    utc = datetime(2024, 1, 2, 3, 4, 5, 6)
+    return {
+        "int64": pa.table({"c": pa.array([1, None, -3, None], pa.int64())}),
+        "string": pa.table({"c": pa.array(["a", None, "", 'q"x'], pa.string())}),
+        "all_null": pa.table({"c": pa.nulls(3)}),
+        "float64": pa.table({"c": pa.array([1.0, None, -0.0, float("nan")])}),
+        "bool": pa.table({"c": pa.array([True, None, False, None])}),
+        "date32": pa.table({"c": pa.array([date(2024, 1, 2), None, None], pa.date32())}),
+        "timestamp_utc": pa.table(
+            {"c": pa.array([utc, None], pa.timestamp("us", tz="America/New_York"))}
+        ),
+        "dictionary": pa.table({"c": pa.array(["x", None, "y"]).dictionary_encode()}),
+        "decimal": pa.table({"c": pa.array([Decimal("1.50"), None], pa.decimal128(10, 2))}),
+        "time64": pa.table({"c": pa.array([time(3, 4, 5, 6), None], pa.time64("us"))}),
+    }
 
 
 def stream_table(rows: int = STREAM_ROWS) -> pa.Table:
@@ -104,6 +129,14 @@ def write_fixtures(dest: Path) -> None:
         out = Path(work) / "mixed.csv"
         write_table(mixed_table(), "csv", out)
         (dest / PAYLOAD.name).write_bytes(out.read_bytes())
+        texts = {}
+        for case, table in one_column_cases().items():
+            one = Path(work) / f"one-{case}.csv"
+            write_table(table, "csv", one)
+            texts[case] = one.read_bytes().decode("utf-8")
+        (dest / ONE_COLUMN.name).write_text(
+            json.dumps(texts, indent=1, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         for suffix in SUFFIXES:
             target = Path(work) / f"out.csv{suffix}"
             write_table(stream_table(), "csv", target)
@@ -121,6 +154,13 @@ def _written(table: pa.Table, tmp_path: Path, name: str = "out.csv") -> bytes:
 
 def test_a1_mixed_table_equals_the_checked_in_bytes(tmp_path: Path) -> None:
     assert _written(mixed_table(), tmp_path) == PAYLOAD.read_bytes()
+
+
+@pytest.mark.parametrize("case", sorted(one_column_cases()))
+def test_a1_one_column_tables_equal_the_fixture(tmp_path: Path, case: str) -> None:
+    expected = json.loads(ONE_COLUMN.read_text(encoding="utf-8"))[case]
+    assert _written(one_column_cases()[case], tmp_path).decode("utf-8") == expected
+    assert "\n\n" not in expected  # no blank line, so no reader drops a row
 
 
 def test_a1_platform_text_contract(tmp_path: Path) -> None:
@@ -148,6 +188,10 @@ def _cells() -> dict[str, list[str]]:
         ("s", ["a", "", "", 'say "hi"', "c,d", "l1\nl2"]),
         ("dec", ["1.50", "", "-0.01", "0.00", "9.99", ""]),
         ("dict", ["x", "y", "x", "", "y", "c,d"]),
+        ("t32_s", ["03:04:05", "", "23:59:59"] * 2),
+        ("t32_ms", ["03:04:05.000", "", "00:00:00.000"] * 2),
+        ("t64_us", ["03:04:05.000006", "", "00:00:00.000000"] * 2),
+        ("t64_ns", ["03:04:05.000006000", "", "00:00:00.000000000"] * 2),
         ("ts_utc", ["2024-01-02 03:04:05.000000Z", "", "2024-01-02 03:04:05.000000Z"] * 2),
         ("ts_ny", ["2024-01-02 03:04:05.000000Z", "", "2024-01-02 03:04:05.000000Z"] * 2),
         ("ts_off", ["2024-01-02 03:04:05.000000Z", "", "2024-01-02 03:04:05.000000Z"] * 2),
@@ -379,3 +423,62 @@ def test_chunked_write_failing_after_chunk_one_keeps_the_old_file(tmp_path: Path
         )
     assert out.read_bytes() == b"old\n"
     assert [p.name for p in tmp_path.iterdir()] == ["out.csv"]
+
+
+# --- A2.2: members over the zip and ustar limits --------------------------------------------
+
+
+def test_a22_zip_member_over_the_zip64_limit_is_published(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import zipfile
+
+    monkeypatch.setattr(zipfile, "ZIP64_LIMIT", 1000)
+    table = stream_table(500)
+    out = tmp_path / "out.csv.zip"
+    write_table(table, "csv", out)
+    plain = _written(table, tmp_path, "plain.csv")
+    assert len(plain) > 1000
+    with zipfile.ZipFile(out) as archive:
+        (info,) = archive.infolist()
+        assert archive.read("out.csv") == plain
+        assert info.file_size == len(plain)
+        assert info.extra != b""  # the zip64 extra field
+
+
+def test_a22_zip_member_under_the_limit_has_no_zip64_field(tmp_path: Path) -> None:
+    import zipfile
+
+    out = tmp_path / "out.csv.zip"
+    write_table(stream_table(50), "csv", out)
+    with zipfile.ZipFile(out) as archive:
+        assert archive.infolist()[0].extra == b""
+
+
+@pytest.mark.parametrize(("limit", "expected"), [(10**9, "ustar"), (1000, "pax")])
+def test_a22_tar_format_follows_the_member_size(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, limit: int, expected: str
+) -> None:
+    import tarfile
+
+    from decoy.cli.io import _compression
+
+    monkeypatch.setattr(_compression, "_USTAR_MAX_SIZE", limit, raising=False)
+    formats: list[int] = []
+    real_open = tarfile.open
+
+    def spy(*args: object, **kwargs: object) -> tarfile.TarFile:
+        if kwargs.get("mode") == "w":
+            formats.append(int(kwargs["format"]))  # type: ignore[call-overload]
+        return real_open(*args, **kwargs)  # type: ignore[call-overload]
+
+    monkeypatch.setattr(tarfile, "open", spy)
+    table = stream_table(500)
+    out = tmp_path / "out.csv.tar"
+    write_table(table, "csv", out)
+    want = tarfile.USTAR_FORMAT if expected == "ustar" else tarfile.PAX_FORMAT
+    assert formats == [want]
+    with real_open(out) as tar:
+        member = tar.extractfile("out.csv")
+        assert member is not None
+        assert member.read() == _written(table, tmp_path, "plain.csv")

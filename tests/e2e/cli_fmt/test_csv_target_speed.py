@@ -107,3 +107,72 @@ def test_a9_gzip_csv_10m_rows_is_within_8_seconds(
     took = _time(lambda: write_table(table, "csv", tmp_path / "t.csv.gz"))
     record_property("measured", f"A9 gzip csv={took:.2f}s")
     assert took <= 8.0
+
+
+def _chunked_mask_seconds(work: Path, rows: int, target_format: str) -> float:
+    """Wall time of `decoy run --chunked` masking a Parquet source into `target_format`."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    import yaml
+    from typer.testing import CliRunner
+
+    from decoy.__main__ import app
+    from tests.keyed_secret import TEST_MASK_SECRET_REF
+
+    src = work / "in.parquet"
+    pq.write_table(
+        pa.table(
+            {
+                "id": pa.array([f"id{i}" for i in range(rows)]),
+                "name": pa.array([f"name {i % 5000}" for i in range(rows)]),
+                "age": pa.array([i % 90 for i in range(rows)], pa.int64()),
+            }
+        ),
+        src,
+    )
+    cfg = {
+        "version": 2,
+        "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
+        "sources": {"t": {"type": "file", "format": "parquet", "path": str(src)}},
+        "tables": [
+            {
+                "name": "t",
+                "columns": [
+                    {"name": "id", "strategy": "hash", "namespace": "id_ns"},
+                    {"name": "name", "strategy": "redact"},
+                    {"name": "age", "strategy": "passthrough"},
+                ],
+            }
+        ],
+        "targets": {
+            "t": {
+                "type": "file",
+                "format": target_format,
+                "path": str(work / f"out.{target_format}"),
+            }
+        },
+    }
+    path = work / "pipeline.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    start = time.perf_counter()
+    result = CliRunner().invoke(app, ["run", str(path), "--chunked", "--chunk-size", "200000"])
+    took = time.perf_counter() - start
+    assert result.exit_code == 0, result.output
+    return took
+
+
+@pytest.mark.usefixtures("mask_secret")
+def test_a9_chunked_mask_csv_is_not_slower_than_main(
+    tmp_path: Path, record_property: Callable[[str, object], None]
+) -> None:
+    """A2.3: one mask pass. Set `DECOY_CSV_MAIN_CHUNKED_SECONDS` to main's time on this node."""
+    rows = 2_000_000
+    (tmp_path / "csv").mkdir()
+    (tmp_path / "parquet").mkdir()
+    csv_time = _chunked_mask_seconds(tmp_path / "csv", rows, "csv")
+    parquet_time = _chunked_mask_seconds(tmp_path / "parquet", rows, "parquet")
+    record_property("measured", f"A9 chunked mask csv={csv_time:.2f}s parquet={parquet_time:.2f}s")
+    main = os.environ.get("DECOY_CSV_MAIN_CHUNKED_SECONDS")
+    if main:
+        assert csv_time <= float(main) * 1.05
+    assert csv_time <= parquet_time * 2.5  # one pass: far under the old two-pass cost

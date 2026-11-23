@@ -54,7 +54,13 @@ STAGED_WRITERS = ("_write_table", "write_chunked_output")
 # `_write_table` receives its stager as `stage`; the callers below are checked to pass real ones.
 # `open_csv_sink(tmp, path)` yields a stream over the stager's temp, so a name it binds is a staged
 # name too; `test_open_csv_sink_wraps_only_the_stagers_temp` checks that its first argument is.
-STAGE_CALLS = frozenset({"stage", "staged_local_target", "staged_private_target", "open_csv_sink"})
+# `_staged_chunked` is the chunked writer's staging wrapper; `test_staged_chunked_only_stages`
+# checks that it opens nothing but `staged_local_target`.
+# `_staged_chunked` is the chunked writer's staging wrapper; `test_staged_chunked_only_stages`
+# checks that it opens nothing but `staged_local_target`.
+STAGE_CALLS = frozenset(
+    {"stage", "staged_local_target", "staged_private_target", "open_csv_sink", "_staged_chunked"}
+)
 STAGERS = frozenset({"staged_local_target", "staged_private_target"})
 
 _METHODS = frozenset({"to_csv", "to_parquet"})
@@ -581,3 +587,15 @@ def test_open_csv_sink_wraps_only_the_stagers_temp() -> None:
     for _rel, _scope, node in calls:
         first = node.args[0] if node.args else None
         assert isinstance(first, ast.Name) and first.id == "tmp"
+
+
+def test_staged_chunked_only_stages() -> None:
+    """`_staged_chunked` yields only what `staged_local_target` made, and writes no file itself."""
+    tree = ast.parse((SRC / CHOKE_POINT).read_text(encoding="utf-8"))
+    func = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_staged_chunked"
+    )
+    calls = _calls_named(ast.unparse(func), {"staged_local_target", "open"})
+    called = {getattr(c.func, "id", getattr(c.func, "attr", "")) for c, _scope in calls}
+    assert "staged_local_target" in called
+    assert "open" not in called

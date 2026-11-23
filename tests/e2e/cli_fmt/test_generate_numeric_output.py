@@ -37,10 +37,7 @@ def _config(out: Path) -> dict:
                         "start": 1000,
                         "step": 1,
                         "null_probability": 0.5,
-                    },
-                    # A second, never-null column: a null in a one-column CSV is an empty line,
-                    # which every CSV reader skips (CSV-WRITE-FAST), so it could not be counted.
-                    {"name": "n", "type": "sequence", "start": 1, "step": 1},
+                    }
                 ],
             }
         ],
