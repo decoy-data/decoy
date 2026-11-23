@@ -11,10 +11,13 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
-## 2026-11-23: rows 79, NATIVE-MISSING-WARN and NESTED-FREEZE closed
+## 2026-11-23: rows 79, 56, NATIVE-MISSING-WARN, NESTED-FREEZE, CSV-WRITE-FAST and FAKER-NATIVE-WIDEN closed
 
 Rows closed (each leaves its group file):
 
+- CSV-WRITE-FAST: CLI #397 (2026-11-23) writes Arrow CSV targets with pyarrow in bounded batches. Its one slice.
+- FAKER-NATIVE-WIDEN: engine #776 (2026-11-23) runs the name, email, phone and address providers native (plan rev 6 plus A1; S0, S1 and S2 as one artifact). S3 moved to the new item FAKER-POOL-STREAMED-BUILD. The old wait on FAKER-MIGRATE no longer applies. CLI users get it with the next engine release and CLI repin.
+- Row 56 (NAME-REMOVAL, CLI half): C3a and C3b are both merged in CLI #389 (2026-11-23).
 - NESTED-FREEZE: engine #772 (2026-11-23, `9d7b9675d`) limits the nested `target` path to a closed JSONPath subset, checked at compile time. Its only slice.
 - Row 79 (F09, 1.0 part): CLI #390 (2026-11-23) shows the v3 vault header and refuses a tampered vault, on engine 0.28.3. Every 1.0 part is merged. Rotation and remap stay in row 79b (1.2).
 - NATIVE-MISSING-WARN: C1 is CLI #384 (2026-11-22): the CLI prints the engine's native fallback notice after a run. E1 was engine #758.
@@ -24,6 +27,11 @@ Other merges:
 - **Engine #765 (FIT-CODES-TEXT, 2026-11-23):** `decoy fit` keeps zero-padded codes as text. The CLI picks it up with the engine 0.28.4 pin bump.
 - **Engine #753 (COLUMN-SHAPE-RULE E3, 2026-11-23):** the column-shape rule for numeric strategies.
 - **Engine #762 (COLUMN-SHAPE-RULE E2, 2026-11-23):** slice E2 of the column-shape rule. The row stays open.
+- **Engine #768 (FAKER-DEFAULT-POOL, 2026-11-23):** a `faker` column with no `pool_size` takes the default of 10,000 on every route. Its one slice; the row stays in the mask group file with a CLOSED cell until the next close pass.
+- **Engine #766 (DELIV E2f, 2026-11-23):** `publish_unit` binds nested and non-Parquet members under a closed stage. Row 61 stays open.
+- **Engine #767 (NONFK-OOM S4b, 2026-11-23):** a no-FK full-frame job that cannot fit is refused before it opens an output (exit 5). Left: S4c and S5.
+- **Engine #769 (WHEN-READS-SOURCE S1, 2026-11-23):** `source.` and `masked.` prefixes and backtick names in `when:`. S2 is in build.
+- **Engine #771, #773 and #779 (2026-11-23):** CI and test fixes tied to no row. #771 runs the sentry gate step in parallel. #773 repairs companion-only test reds and runs the companion tests on pushes to main. #779 fixes a nested-child test after #772.
 
 ## 2026-11-22: roadmap catch-up for merges of 2026-11-21 to 2026-11-22
 
