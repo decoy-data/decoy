@@ -220,6 +220,8 @@ def exit_code_for(exc: BaseException) -> int:
     from decoy_engine.reasons.runtime import VAULT_EXISTS
     from decoy_engine.verification.postmask import PostScanBlockedError
 
+    from decoy.cli.run._value_free import is_out_of_memory
+
     if isinstance(exc, ProvenanceError):
         return EXIT_RUNTIME
     if isinstance(exc, DpBudgetError):
@@ -267,17 +269,6 @@ def exit_code_for(exc: BaseException) -> int:
         if translate_missing_extra(exc) is not None:
             return EXIT_USAGE
     return EXIT_RUNTIME
-
-
-def is_out_of_memory(exc: BaseException) -> bool:
-    """True when `exc` is the host or Arrow running out of memory (the capacity exit).
-
-    The one classification for the chunked read boundary and the run error exit.
-    `ArrowMemoryError` is a `MemoryError`; `ArrowCapacityError` is not, so it is named.
-    """
-    import pyarrow as pa
-
-    return isinstance(exc, (MemoryError, pa.ArrowCapacityError))
 
 
 def usage_error_types() -> tuple[type, ...]:
@@ -362,5 +353,4 @@ __all__ = [
     "EXIT_WARNINGS",
     "PRECEDENCE",
     "RUN_EXIT_MAP",
-    "is_out_of_memory",
 ]

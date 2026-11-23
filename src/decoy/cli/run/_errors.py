@@ -28,6 +28,7 @@ from decoy.cli.run._context import (
     RunRefusal,
 )
 from decoy.cli.run._notify import _dispatch_run_notifications
+from decoy.cli.run._value_free import is_out_of_memory
 from decoy.cli.run._vault import VAULT_COMMIT_FAILED_HINT, _VaultWriteError
 from decoy.ui.output import OutputMode, print_traceback
 from decoy.ui.theme import error, hint
@@ -165,7 +166,7 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
         capacity_code = exc.code
     # A bare MemoryError has no code and often no text; it is still the host running out of
     # memory, so it takes the capacity exit with fixed text instead of an empty `error: `.
-    out_of_memory = _exit_codes.is_out_of_memory(exc)
+    out_of_memory = is_out_of_memory(exc)
 
     # Phase 3.1: `NativeGateError.code` distinguishes a usage refusal
     # (--native/--no-native conflict, an ineligible shape) from a

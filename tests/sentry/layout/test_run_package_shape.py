@@ -38,6 +38,7 @@ ORDER = (
     "_notify",
     "_vault",
     "_result",
+    "_value_free",
     "_execute",
     "_sample",
     "_prepare",
