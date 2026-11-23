@@ -1,5 +1,6 @@
 """How `decoy run` executes: the chunked and plain branches, and the source and target I/O."""
 
+import lzma
 import zlib
 from collections.abc import Iterator
 from contextlib import ExitStack
@@ -285,6 +286,7 @@ def _value_free_failure(exc: Exception, *, reading: bool = False) -> Exception |
             pa.ArrowNotImplementedError,
             EOFError,
             zlib.error,
+            lzma.LZMAError,
         )
         # A decoder failure (a corrupt gzip member or Snappy page) is an OSError with no errno
         # and its text can quote source bytes. A missing or unreadable file has an errno.

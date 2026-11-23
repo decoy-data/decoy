@@ -127,6 +127,23 @@ class TestAt3DecoderFailureIsValueFree:
         assert "unexpected_error" not in result.output
         assert "decompression" not in result.output.lower()
 
+    @pytest.mark.parametrize("flag", ["--json", "--verbose"])
+    def test_corrupt_xz_tail(self, tmp_path: Path, flag: str) -> None:
+        import lzma
+
+        good = b"id,email\n" + b"".join(f"{i},user{i}@x.com\n".encode() for i in range(80_000))
+        packed = bytearray(lzma.compress(good))
+        # Damage the stream near its end so the decoder fails mid-read, after rows were yielded.
+        packed[-40:-20] = b"\xff" * 20
+        src = tmp_path / "in.csv.xz"
+        src.write_bytes(bytes(packed))
+        cfg = _source_config(tmp_path, src, "csv")
+        result = _run(cfg, flag)
+        assert result.exit_code == 3, result.output
+        assert "chunked_passthrough_value_unrepresentable" in result.output
+        assert "unexpected_error" not in result.output
+        assert "lzma" not in result.output.lower()
+
 
 def _patched_engine(monkeypatch: pytest.MonkeyPatch, *, at: str, exc: Exception) -> None:
     import decoy_engine
@@ -160,3 +177,14 @@ class TestAt2OutOfMemoryIsCapacity:
         assert result.exit_code == 5, result.output
         payload = _json.loads(result.output.strip().splitlines()[-1])
         assert payload.get("error_kind") == "capacity"
+
+    def test_exit_code_for_agrees_with_the_run_handler(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, at: str, make: type
+    ) -> None:
+        from decoy.cli.exit_codes import exit_code_for
+
+        exc = make("out of memory")
+        cfg = _csv_config(tmp_path, [b"1,a@x.com\n", b"2,b@x.com\n"])
+        _patched_engine(monkeypatch, at=at, exc=exc)
+        result = _run(cfg, "--json")
+        assert exit_code_for(exc) == result.exit_code == 5

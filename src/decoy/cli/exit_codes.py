@@ -227,7 +227,7 @@ def exit_code_for(exc: BaseException) -> int:
     if isinstance(exc, (DpError, CarrierError)):
         return EXIT_USAGE
 
-    if isinstance(exc, MemoryError):
+    if is_out_of_memory(exc):
         return EXIT_CAPACITY
     if isinstance(exc, DecoyError) and getattr(exc, "code", None) in capacity_codes():
         return EXIT_CAPACITY
