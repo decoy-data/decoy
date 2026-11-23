@@ -184,7 +184,8 @@ def test_explain_retired_topic_is_a_usage_error_and_never_suggested():
 def _flat(*argv: str) -> str:
     result = runner.invoke(app, list(argv))
     assert result.exit_code == 0, result.output
-    return " ".join(result.output.split())
+    # Rich draws a panel border on each wrapped line; drop it so a phrase split across lines joins.
+    return " ".join(result.output.replace("│", " ").split())
 
 
 def test_chunked_text_says_chunked_can_run_compiled_kernels():
