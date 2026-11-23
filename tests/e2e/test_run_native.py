@@ -556,11 +556,21 @@ def test_chunked_label_is_mixed_for_one_native_and_one_no_kernel_table(tmp_path:
 def test_chunked_label_is_pandas_for_a_table_the_engine_declines(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """A non-deterministic categorical with a `when:` is declined by the engine, so the
-    evidence says `native_admitted` False (unlike the admitted no-kernel table above)."""
+    """A categorical with a `when:` over a `large_string` source (the dup_defects config) is
+    declined by the engine, so the evidence says `native_admitted` False, unlike the admitted
+    no-kernel table above."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
     src = tmp_path / "cat.parquet"
-    pd.DataFrame({"c": ["a", "b", "a", "c"], "keep": ["A", "B", "A", "B"]}).to_parquet(
-        src, index=False
+    pq.write_table(
+        pa.table(
+            {
+                "c": pa.array(["a", "b", "a", "c"], pa.large_string()),
+                "keep": pa.array(["A", "B", "A", "B"], pa.large_string()),
+            }
+        ),
+        src,
     )
     config = {
         "version": 2,
