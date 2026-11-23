@@ -1,7 +1,7 @@
 """How `decoy run` executes: the chunked and plain branches, and the source and target I/O."""
 
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -133,7 +133,12 @@ def _run_chunked_mask(
         if is_csv_format(target.fmt):
             # Drain the whole no-publication stream first, so a column type or schema change in
             # any later chunk refuses the run before any target is placed or staged.
-            _validate_csv_stream(target, config_dict, base_dir, chunk_size, key_provider)
+            target = replace(
+                target,
+                csv_schema=_validate_csv_stream(
+                    target, config_dict, base_dir, chunk_size, key_provider
+                ),
+            )
         prepared.append(target)
 
     published: dict[str, Path | None] = {}
@@ -150,6 +155,7 @@ def _run_chunked_mask(
             ),
             ledger=ledger,
             name=target.name,
+            csv_schema=target.csv_schema,
         )
     return published
 
@@ -162,6 +168,7 @@ class _ChunkedTarget:
     src_spec: dict
     tgt_spec: dict
     fmt: str
+    csv_schema: Any = None  # the unified output schema a CSV validation pass found (no data)
 
 
 def _masked_chunks(
@@ -196,19 +203,19 @@ def _masked_chunks(
 
 def _validate_csv_stream(
     target: _ChunkedTarget, config_dict: dict, base_dir: Path, chunk_size: int, key_provider
-) -> None:
+) -> Any:
     """Check every masked chunk of a CSV target against the shared type and schema policy.
 
     Holds at most one source chunk and one masked chunk, and closes the stream before it
-    returns; nothing it reads is kept for the publication pass.
+    returns. It returns the unified output schema (a `pyarrow.Schema`, no data) for the
+    publication pass; nothing else it reads is kept.
     """
     stream = _masked_chunks(target, config_dict, base_dir, chunk_size, key_provider)
     try:
         expected = None
         for masked in stream:
-            if expected is None:
-                expected = masked.schema
-            check_csv_types(target.name, masked.schema, expected_schema=expected)
+            expected = check_csv_types(target.name, masked.schema, expected_schema=expected)
+        return expected
     finally:
         close = getattr(stream, "close", None)
         if close is not None:

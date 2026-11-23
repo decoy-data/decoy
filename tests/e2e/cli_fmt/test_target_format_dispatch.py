@@ -43,8 +43,9 @@ runner = CliRunner()
 
 _PAR1 = b"PAR1"
 _DETOKENIZE_PARQUET_SHA256 = "af79fcce22552ef79447e2ef4ba35bb6fd3cba32bb4eef2f3e3bd3f524b1e980"
-_DEMO_MASKED_SHA256 = "d784565e2ae6bc228f266b8080ad49ab3fd80ee94269f7b7261f79e624723011"
-_CSV_HEADER = b"id,name,age"
+# Regenerated: CSV writer moved to pyarrow (CSV-WRITE-FAST), from `decoy demo` on the slice head.
+_DEMO_MASKED_SHA256 = "e145b68275ad20d9e9e1a0f0379d572d82ba6995078fef786b7097b40efa2c49"
+_CSV_HEADER = b'"id","name","age"'
 
 
 def _target_layout(expected: pd.DataFrame) -> dict[str, Any]:
@@ -367,7 +368,7 @@ def test_demo_writer_uses_the_rule(tmp_path: Path) -> None:
     result = runner.invoke(app, ["demo", "--dir", str(tmp_path / "demo")])
     assert result.exit_code == 0, result.output
     masked = (tmp_path / "demo" / "customers_masked.csv").read_bytes()
-    # Recorded on the base tree (05bf840): the bundled demo output must not change.
+    # Pinned on the CSV-WRITE-FAST head; the bundled demo output must not change after this.
     assert hashlib.sha256(masked).hexdigest() == _DEMO_MASKED_SHA256
 
 
