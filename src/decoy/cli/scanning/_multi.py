@@ -21,7 +21,12 @@ from typing import Any
 import typer
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
-from decoy.cli._sources import csv_file_source, scan_gate_refusals, scan_prepared_sources
+from decoy.cli._sources import (
+    csv_file_source,
+    scan_gate_refusals,
+    scan_prepared_sources,
+    scan_refusal_fields,
+)
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
 from decoy.cli.scanning import _detectors
 from decoy.cli.scanning._engine_call import (
@@ -333,9 +338,13 @@ def _layout_columns(layout: Path | list[dict] | None, spelling: ScanSpelling) ->
 
 
 def _emit_error(
-    state: OutputState, where: dict[str, Any], message: str, hint_text: str | None
+    state: OutputState,
+    where: dict[str, Any],
+    message: str,
+    hint_text: str | None,
+    code: str | None = None,
 ) -> None:
-    emit_error(state, "scan", message, hint=hint_text, context=where)
+    emit_error(state, "scan", message, code=code, hint=hint_text, context=where)
 
 
 def _failure_message(exc: Exception) -> str:
@@ -561,7 +570,7 @@ def run_scan(
     given = [str(p) for p in sources]
     where: dict[str, Any] = {"source": given[0]} if len(given) == 1 else {"sources": given}
     streamed = out is not None and str(out) == "-"
-    gate_refusal: str | None = None
+    gate_refusal: tuple[str, str] | None = None
     try:
         if streamed and state.mode is not OutputMode.default:
             flag = "json" if state.mode is OutputMode.json else "quiet"
@@ -583,9 +592,9 @@ def run_scan(
         # The engine's coded refusal names a table or key, never a value. Emitted below, after the
         # handler closes, so the exit carries no exception context. The gate opens no data file,
         # so this is a usage-class refusal (exit 1) and not a scan failure (exit 3).
-        gate_refusal = str(exc)
+        gate_refusal = scan_refusal_fields(exc)
     if gate_refusal is not None:
-        _emit_error(state, where, gate_refusal, None)
+        _emit_error(state, where, gate_refusal[0], None, gate_refusal[1])
         raise typer.Exit(code=EXIT_USAGE)
     # A model that cannot run refuses here, before the first table is read.
     _detectors.preflight(state, where, pre_scan)

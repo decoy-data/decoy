@@ -92,11 +92,11 @@ GATES = frozenset(
         "prepared_sources",
         "gate_report_source",
         "check_declared_before_acquire",
-        "scan_prepared_sources",
     )
 )
-# The only gates whose capability `scan_descriptors` accepts (a `for_scan` request). Any other gate
-# builds a different capability, which `scan_declaration` refuses at run time.
+# The only gates whose capability `scan_descriptors` accepts (a `for_scan` request). They are not
+# in `GATES`: a scan checks no declared columns (it finds them), so a run or config path that
+# swapped one in for `prepared_sources` would lose the column check and must fail the sentry.
 SCAN_GATES = frozenset(
     f"{module}.scan_prepared_sources" for module in ("decoy.cli._sources", "decoy.cli.io")
 )
@@ -128,14 +128,19 @@ REQUIRED: tuple[tuple[str, str], ...] = (
     ("cli/run/_execute.py", "_run_chunked_mask"),
     ("cli/run/_prepare.py", "prepare"),
     ("cli/demo.py", "_run_v2_mask"),
-    ("cli/demo.py", "_run_single_demo"),
-    ("cli/scanning/_multi.py", "run_scan"),
-    ("api.py", "scan"),
     ("cli/subset.py", "subset"),
     ("cli/report.py", "_fidelity"),
     ("cli/report.py", "_integrity"),
     ("api.py", "_stage_data_sources"),
     ("api.py", "_gate_in_memory_data"),
+)
+
+
+# Where a scan runs: each must hold a scan gate call (and no other gate stands in for it).
+REQUIRED_SCAN: tuple[tuple[str, str], ...] = (
+    ("cli/demo.py", "_run_single_demo"),
+    ("cli/scanning/_multi.py", "run_scan"),
+    ("api.py", "scan"),
 )
 
 
@@ -151,7 +156,7 @@ def _calls(source: str) -> list[tuple[str, str, int, ast.Call]]:
     return found
 
 
-def _gate_lines(source: str, rel: str) -> dict[str, int]:
+def _gate_lines(source: str, rel: str, gates: frozenset[str] = GATES) -> dict[str, int]:
     """The first line of each function's gate call, matched on the resolved qualified name."""
     first: dict[str, int] = {}
     for s in sites(ast.parse(source)):
@@ -159,7 +164,7 @@ def _gate_lines(source: str, rel: str) -> dict[str, int]:
             continue
         resolved = qualified(s.node, s.bound)
         local = resolved is None and (rel, _name_of(s.node)) in LOCAL_GATES
-        if resolved in GATES or local:
+        if resolved in gates or local:
             fn = _top(s.scope)
             first[fn] = min(s.lineno, first.get(fn, s.lineno))
     return first
@@ -225,6 +230,16 @@ def test_required_commands_hold_a_gate() -> None:
     for rel, fn in REQUIRED:
         if fn not in _gate_lines(modules[rel], rel):
             missing.append((rel, fn))
+    assert missing == []
+
+
+def test_scan_commands_hold_a_scan_gate() -> None:
+    modules = dict(_modules())
+    missing = [
+        (rel, fn)
+        for rel, fn in REQUIRED_SCAN
+        if fn not in _gate_lines(modules[rel], rel, SCAN_GATES)
+    ]
     assert missing == []
 
 
@@ -397,22 +412,22 @@ def _is_declaration_of(value: ast.AST | None, param: str) -> bool:
 
 
 def scan_call_violations(source: str) -> list[str]:
-    """Check A: the one `scan_sources` call in `scan_descriptors` is fed only by its capability."""
+    """Check A: the one `scan_sources` call in the module sits in `scan_descriptors`, fed only by
+    its capability. Call discovery and scope names come from the shared `sites()` scanner."""
     tree = ast.parse(source)
-    found = [s for s in _scopes(tree) if s[0] == "scan_descriptors"]
-    if len(found) != 1:
-        return ["no scan_descriptors function"]
-    _name, fn, bound = found[0]
-    assert not isinstance(fn, ast.Module)
     calls = [
-        n
-        for n in _own_nodes(fn)
-        if isinstance(n, ast.Call) and qualified(n, bound) == "decoy_engine.scan_sources"
+        s
+        for s in sites(tree)
+        if isinstance(s.node, ast.Call) and s.name == "decoy_engine.scan_sources"
     ]
     if len(calls) != 1:
-        return [f"expected one scan_sources call, found {len(calls)}"]
-    if not fn.args.args:
+        return [f"expected one scan_sources call in the module, found {len(calls)}"]
+    if calls[0].scope != "scan_descriptors":
+        return [f"the scan_sources call is in {calls[0].scope}, not scan_descriptors"]
+    found = [fn for name, fn, _bound in _scopes(tree) if name == "scan_descriptors"]
+    if len(found) != 1 or isinstance(found[0], ast.Module) or not found[0].args.args:
         return ["scan_descriptors takes no capability parameter"]
+    fn = found[0]
     param = fn.args.args[0].arg
     binders = _binders(fn)
     problems = []
@@ -423,7 +438,8 @@ def scan_call_violations(source: str) -> list[str]:
         for name, values in binders.items()
         if name != param and values and all(_is_declaration_of(v, param) for v in values)
     }
-    call = calls[0]
+    call = calls[0].node
+    assert isinstance(call, ast.Call)
     given = {kw.arg: kw.value for kw in call.keywords if kw.arg}
     given["<first>"] = call.args[0] if call.args else None  # type: ignore[assignment]
     for slot in ("<first>", *_SCAN_KEYWORDS):
@@ -449,17 +465,21 @@ def _gate_result(arg: ast.AST | None, scope: _Scope, bound: dict[str, str]) -> b
 
 
 def scan_caller_violations(source: str) -> list[str]:
-    """Check B: every call of `scan_descriptors` passes a scan gate result bound in the same function."""
+    """Check B: every call of `scan_descriptors` passes a scan gate result bound in the same
+    function. Calls come from the shared `sites()` scanner, so a call inside a lambda or a nested
+    function is seen; a scope that is not a plain function has no gate and is red."""
     tree = ast.parse(source)
+    scopes = {name: scope for name, scope, _bound in _scopes(tree)}
     problems = []
-    for name, scope, bound in _scopes(tree):
-        for node in _own_nodes(scope):
-            if not (isinstance(node, ast.Call) and _resolves_to(node, bound, SCAN_CALL)):
-                continue
-            by_keyword = next((k.value for k in node.keywords if k.arg == "prepared"), None)
-            arg = node.args[0] if node.args else by_keyword
-            if not _gate_result(arg, scope, bound):
-                problems.append(f"{name}:{node.lineno}")
+    for s in sites(tree):
+        node = s.node
+        if not (isinstance(node, ast.Call) and s.name in SCAN_CALL):
+            continue
+        by_keyword = next((k.value for k in node.keywords if k.arg == "prepared"), None)
+        arg = node.args[0] if node.args else by_keyword
+        scope = scopes.get(s.scope)
+        if scope is None or not _gate_result(arg, scope, s.bound):
+            problems.append(f"{s.scope}:{node.lineno}")
     return problems
 
 
@@ -648,6 +668,36 @@ def test_seeded_owner_bypasses_are_detected() -> None:
         )
     )
     assert scan_call_violations("def scan_descriptors(prepared):\n    return 1\n")
+
+
+def test_seeded_scan_gate_substitution_and_hidden_calls_are_detected() -> None:
+    # The scan gate is not a declared-column gate: swapping it into a run path is red.
+    swapped = (
+        "from decoy.cli._sources import scan_prepared_sources\n"
+        "def cmd(cfg, base):\n"
+        "    scan_prepared_sources(cfg, base_dir=base)\n"
+        "    return read_source('t', cfg, base)\n"
+    )
+    assert ordering_violations(swapped) == ["cmd"]
+    assert "cmd" not in _gate_lines(swapped, "cli/run/_execute.py")
+    assert "cmd" in _gate_lines(swapped, "cli/scanning/_multi.py", SCAN_GATES)
+    # A scan call inside a lambda or a nested function is seen by check B.
+    lam = _caller(
+        "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+        "    return (lambda: scan_descriptors(prepared, rows=1))()\n"
+    )
+    assert scan_caller_violations(lam)
+    nested = _caller(
+        "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+        "    def inner():\n        return scan_descriptors(prepared, rows=1)\n"
+        "    return inner()\n"
+    )
+    assert scan_caller_violations(nested)
+    # A second function in the owner module that calls scan_sources is red for check A alone.
+    second = _OWNER_OK + (
+        "def other(d):\n    from decoy_engine import scan_sources\n    return scan_sources(d)\n"
+    )
+    assert scan_call_violations(second)
 
 
 def test_a_scan_caller_in_api_py_is_not_exempt() -> None:

@@ -187,6 +187,18 @@ def scan_gate_refusals() -> tuple[type[Exception], ...]:
     return (PipelineValidationError, PipelineConfigError, ConfigError)
 
 
+def scan_refusal_fields(exc: Exception) -> tuple[str, str]:
+    """The printable message and the engine reason code of a scan gate refusal.
+
+    The code comes from the engine's reason adapter, as for a run failure, so `--json` and the
+    `[code]` prefix of the human line agree. The message drops a leading `code: ` (the printer
+    shows the code itself) and, like every engine refusal here, names a table or key, never a value.
+    """
+    from decoy_engine import reason_adapter
+
+    return refusal_message(exc), reason_adapter.reason_from_exception(exc).code
+
+
 def scan_prepared_sources(
     sources_config: dict[str, Any],
     *,

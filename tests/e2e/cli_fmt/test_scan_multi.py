@@ -334,10 +334,9 @@ def test_a_bad_layout_never_echoes_the_rejected_value(
 # -- T2-positional-gate-exit (S1c.2a) ---------------------------------------------------------
 
 
-def test_a_refused_positional_descriptor_exits_1_before_the_scan(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spy_engine: list[object]
-) -> None:
-    """The engine refuses a CLI-built descriptor at the gate (exit 1), not during the scan (3)."""
+@pytest.fixture
+def descriptor_without_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`resolve_sources` drops `has_header`, so the engine refuses the descriptor at the gate."""
     from decoy.cli.scanning import _multi
 
     real = _multi.resolve_sources
@@ -349,13 +348,46 @@ def test_a_refused_positional_descriptor_exits_1_before_the_scan(
         return descriptors, shown
 
     monkeypatch.setattr(_multi, "resolve_sources", without_header)
+
+
+def _engine_code() -> str:
+    from decoy_engine.config import PipelineConfigError
+    from decoy_engine.reason_adapter import reason_from_exception
+
+    return reason_from_exception(PipelineConfigError("x")).code
+
+
+def _assert_engine_refusal(output: str) -> None:
+    # The engine's own coded refusal, not the fixed read refusal a relabel would give.
+    assert "source descriptor for table 'a' is invalid" in output
+    assert "could not be read" not in output
+    assert "csv_malformed" not in output
+    assert "scan failed" not in output
+    assert "ZQCANARY" not in output
+
+
+@pytest.mark.usefixtures("descriptor_without_header")
+def test_a_refused_positional_descriptor_exits_1_before_the_scan(
+    tmp_path: Path, spy_engine: list[object]
+) -> None:
+    """The engine refuses a CLI-built descriptor at the gate (exit 1), not during the scan (3)."""
     a = _csv(tmp_path / "a.csv", "A")
     result = runner.invoke(app, ["scan", str(a), "--has-header"])
     assert result.exit_code == 1, result.output
-    assert "scan failed" not in result.output
-    assert "ZQCANARY" not in result.output
-    # The engine's own coded refusal, not the fixed read refusal a relabel would give.
-    assert "source descriptor for table 'a' is invalid" in result.output
-    assert "could not be read" not in result.output
-    assert "csv_malformed" not in result.output
+    _assert_engine_refusal(result.output)
+    assert f"[{_engine_code()}]" in result.output
+    assert spy_engine == []
+
+
+@pytest.mark.usefixtures("descriptor_without_header")
+def test_a_refused_positional_descriptor_carries_its_code_in_json(
+    tmp_path: Path, spy_engine: list[object]
+) -> None:
+    a = _csv(tmp_path / "a.csv", "A")
+    result = runner.invoke(app, ["scan", str(a), "--has-header", "--json"])
+    assert result.exit_code == 1, result.output
+    _assert_engine_refusal(result.output)
+    doc = json.loads(result.output)
+    assert doc["status"] == "error"
+    assert doc["code"] == _engine_code()
     assert spy_engine == []
