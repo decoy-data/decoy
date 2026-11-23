@@ -158,7 +158,7 @@ sink = "to_csv"
 ordinal = 1
 output_kind = "target"
 disposition = "staged"
-reason = "Writes into the stager the caller passes; G-ONE-TARGET-WRITE checks the stager."
+reason = "Writes into the open_csv_sink stream over the descriptor's stager temp; G-ONE-TARGET-WRITE checks both."
 
 [[row]]
 file = "cli/io/_targets.py"

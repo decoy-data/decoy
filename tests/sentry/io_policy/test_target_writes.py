@@ -23,6 +23,7 @@ adds it to the watch set. `csv.writer` and `write_text` are not table writers he
 from __future__ import annotations
 
 import ast
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -448,23 +449,88 @@ def test_staged_path_rule_only_covers_the_two_staged_writers() -> None:
     assert unstaged_writes(source) == []
 
 
-def _stagers_passed_to_write_table(source: str) -> list[str]:
-    """Names passed as the last argument of each `_write_table(...)` call in the module."""
-    names = []
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_write_table":
-            last = node.args[-1] if node.args else None
-            names.append(last.id if isinstance(last, ast.Name) else "<other>")
-    return names
+def _write_table_descriptors(source: str) -> dict[str, str]:
+    """For each function, the name passed as the last argument of its `_write_table(...)` call."""
+    found: dict[str, str] = {}
+    for func in ast.walk(ast.parse(source)):
+        if not isinstance(func, ast.FunctionDef):
+            continue
+        for node in ast.walk(func):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_write_table":
+                last = node.args[-1] if node.args else None
+                found[func.name] = last.id if isinstance(last, ast.Name) else "<other>"
+    return found
+
+
+def _privacy_assignments(source: str) -> dict[str, tuple[str, str]]:
+    """Module-level `NAME = _TargetPrivacy(stage, mode)` as `NAME -> (stage, mode)` names."""
+    found = {}
+    for node in ast.parse(source).body:
+        call = node.value if isinstance(node, ast.Assign) else None
+        if not (isinstance(call, ast.Call) and getattr(call.func, "id", "") == "_TargetPrivacy"):
+            continue
+        args = [a.id if isinstance(a, ast.Name) else "<other>" for a in call.args]
+        found[node.targets[0].id] = (args[0], args[1])  # type: ignore[attr-defined]
+    return found
+
+
+_EXPECTED_DESCRIPTORS = {
+    "PUBLIC_TARGET": ("staged_local_target", "PUBLIC_MEMBER_MODE"),
+    "PRIVATE_TARGET": ("staged_private_target", "PRIVATE_MEMBER_MODE"),
+}
+_EXPECTED_PASSED = {"write_table": "PUBLIC_TARGET", "write_private_table": "PRIVATE_TARGET"}
+
+
+def descriptor_problems(source: str) -> list[str]:
+    problems = []
+    if _privacy_assignments(source) != _EXPECTED_DESCRIPTORS:
+        problems.append("descriptors do not pair the right stager and member mode")
+    if _write_table_descriptors(source) != _EXPECTED_PASSED:
+        problems.append("a writer passes the wrong or an inline descriptor to _write_table")
+    return problems
 
 
 def test_the_public_whole_table_writers_pass_a_real_stager() -> None:
     source = (SRC / CHOKE_POINT).read_text(encoding="utf-8")
-    passed = _stagers_passed_to_write_table(source)
-    assert sorted(passed) == ["staged_local_target", "staged_private_target"]
-    assert set(passed) <= STAGERS
-    seeded = source + "\ndef sneaky(d, f, p):\n    _write_table(d, f, p, None, open)\n"
-    assert "open" in _stagers_passed_to_write_table(seeded)
+    assert descriptor_problems(source) == []
+    assert {stage for stage, _mode in _privacy_assignments(source).values()} <= STAGERS
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda s: s.replace(
+            "PRIVATE_TARGET = _TargetPrivacy(staged_private_target",
+            "PRIVATE_TARGET = _TargetPrivacy(staged_local_target",
+        ),
+        lambda s: s.replace(
+            "_TargetPrivacy(staged_private_target, PRIVATE_MEMBER_MODE)",
+            "_TargetPrivacy(staged_private_target, PUBLIC_MEMBER_MODE)",
+        ),
+        lambda s: s.replace(
+            "_write_table(data, fmt, path, layout, PRIVATE_TARGET)",
+            "_write_table(data, fmt, path, layout, PUBLIC_TARGET)",
+        ),
+        lambda s: s.replace(
+            "_write_table(data, fmt, path, layout, PUBLIC_TARGET)",
+            "_write_table(data, fmt, path, layout, _TargetPrivacy(open, 0o644))",
+        ),
+    ],
+    ids=["swapped-stager", "swapped-mode", "swapped-writers", "inline-descriptor"],
+)
+def test_a_wrong_descriptor_is_detected(mutate: Callable[[str], str]) -> None:
+    source = (SRC / CHOKE_POINT).read_text(encoding="utf-8")
+    mutated = mutate(source)
+    assert mutated != source
+    assert descriptor_problems(mutated) != []
+
+
+def test_the_staged_path_rule_takes_the_descriptor_stage_and_not_other_calls() -> None:
+    head = _STAGED_PRELUDE + "def _write_table(data, path, target):\n"
+    ok = head + "    with target.stage(path) as tmp:\n        data.to_csv(tmp)\n"
+    bad = head + "    with target.open(path) as tmp:\n        data.to_csv(tmp)\n"
+    assert unstaged_writes(ok) == []
+    assert unstaged_writes(bad) != []
 
 
 # Restored original values must be written owner-only: these two commands may call only the

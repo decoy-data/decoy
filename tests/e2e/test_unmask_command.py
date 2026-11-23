@@ -658,3 +658,19 @@ class TestUnmaskSummaryIsCompleteCensus:
         assert "1 vault-miss" in flat, flat
         assert "0 column(s) reversed" in flat, flat
         assert "note: email:" in flat, flat
+
+
+class TestUnmaskArchiveTarget:
+    def test_zip_member_is_owner_only(self, tmp_path: Path) -> None:
+        import zipfile
+
+        cfg_path = _run_mask(tmp_path)
+        out = tmp_path / "recovered.csv.zip"
+        result = runner.invoke(
+            app, ["unmask", str(cfg_path), str(tmp_path / "masked.csv"), "--output", str(out)]
+        )
+        assert result.exit_code == 0, result.output
+        with zipfile.ZipFile(out) as archive:
+            (info,) = archive.infolist()
+            assert info.filename == "recovered.csv"
+            assert (info.external_attr >> 16) & 0o777 == 0o600

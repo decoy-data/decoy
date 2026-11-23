@@ -482,3 +482,195 @@ def test_a22_tar_format_follows_the_member_size(
         member = tar.extractfile("out.csv")
         assert member is not None
         assert member.read() == _written(table, tmp_path, "plain.csv")
+
+
+# --- FREEZE-OUTPUT O2: a DataFrame target goes through the codec opener -----------------------
+
+_O2_ARCHIVES = (".zip", ".tar", ".tar.gz", ".tar.bz2", ".tar.xz")
+_GZIP_HEADER = bytes.fromhex("1f8b08000000000000ff")
+
+
+def frame_f() -> pd.DataFrame:
+    return pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b,c", None], "n": [0.5, 1.0, 2.25]})
+
+
+def _o2_golden(kind: str, suffix: str) -> Path:
+    return FIXTURES / f"csv-writer-df-{kind}.csv{suffix}"
+
+
+def write_o2_goldens(dest: Path) -> None:
+    """Write the DataFrame-route goldens. Run it only for a plan revision that moves a byte."""
+    import tempfile
+
+    dest.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as work:
+        for suffix in SUFFIXES:
+            out = Path(work) / f"out.csv{suffix}"
+            write_table(frame_f(), "csv", out)
+            (dest / _o2_golden("public", suffix).name).write_bytes(out.read_bytes())
+        for suffix in _O2_ARCHIVES:
+            out = Path(work) / f"out.csv{suffix}"
+            write_private_table(frame_f(), "csv", out)
+            (dest / _o2_golden("private", suffix).name).write_bytes(out.read_bytes())
+
+
+def _o2_write(kind: str, frame: object, out: Path) -> bytes:
+    (write_table if kind == "public" else write_private_table)(frame, "csv", out)  # type: ignore[operator]
+    return out.read_bytes()
+
+
+def _o2_decoded(suffix: str, raw: bytes, member: str = "out.csv") -> bytes:
+    import tarfile
+    import zipfile
+
+    if suffix == ".zip":
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            return archive.read(member)
+    if suffix.startswith(".tar"):
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tar:
+            extracted = tar.extractfile(member)
+            assert extracted is not None
+            return extracted.read()
+    return _extract(suffix, raw)
+
+
+@pytest.mark.parametrize("kind", ["public", "private"])
+def test_o1_gzip_target_has_no_name_and_no_time(tmp_path: Path, kind: str) -> None:
+    raw = _o2_write(kind, frame_f(), tmp_path / "out.csv.gz")
+    assert raw[:10] == _GZIP_HEADER
+    assert b"decoy-" not in raw and b".tmp" not in raw
+
+
+@pytest.mark.parametrize("suffix", SUFFIXES)
+def test_o2_public_dataframe_targets_equal_the_goldens(tmp_path: Path, suffix: str) -> None:
+    assert _o2_write("public", frame_f(), tmp_path / f"out.csv{suffix}") == (
+        _o2_golden("public", suffix).read_bytes()
+    )
+
+
+@pytest.mark.parametrize("suffix", _O2_ARCHIVES)
+def test_o2_private_dataframe_archives_equal_the_goldens(tmp_path: Path, suffix: str) -> None:
+    assert _o2_write("private", frame_f(), tmp_path / f"out.csv{suffix}") == (
+        _o2_golden("private", suffix).read_bytes()
+    )
+
+
+@pytest.mark.parametrize("suffix", SUFFIXES)
+def test_o3_two_writes_ten_seconds_apart_give_equal_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    import time
+
+    # ZIP dates have 2-second steps, so a gap under 2 s would hide a clock-stamped member.
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_000.0)
+    first = _o2_write("public", frame_f(), tmp_path / f"a.csv{suffix}")
+    monkeypatch.setattr(time, "time", lambda: 1_700_000_010.0)
+    assert _o2_write("public", frame_f(), tmp_path / f"b.csv{suffix}") == first
+
+
+@pytest.mark.parametrize("suffix", ["", *SUFFIXES])
+def test_o4_the_decoded_payload_is_the_pandas_csv(tmp_path: Path, suffix: str) -> None:
+    raw = _o2_write("public", frame_f(), tmp_path / f"out.csv{suffix}")
+    expected = frame_f().to_csv(index=False).encode()
+    assert (raw if suffix == "" else _o2_decoded(suffix, raw)) == expected
+
+
+def test_o5_private_gzip_keeps_0600_over_a_0644_target_and_leaves_no_staging_file(
+    tmp_path: Path,
+) -> None:
+    import os
+
+    out = tmp_path / "out.csv.gz"
+    out.write_bytes(b"old")
+    out.chmod(0o644)
+    old = os.umask(0o077)
+    try:
+        write_private_table(frame_f(), "csv", out)
+    finally:
+        os.umask(old)
+    assert out.stat().st_mode & 0o777 == 0o600
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["out.csv.gz"]
+
+
+@pytest.mark.parametrize("suffix", _O2_ARCHIVES)
+@pytest.mark.parametrize("arrow", [False, True])
+def test_o8_member_modes_follow_the_writer(tmp_path: Path, suffix: str, arrow: bool) -> None:
+    import tarfile
+    import zipfile
+
+    def mode(kind: str) -> int:
+        frame = frame_f()
+        data = pa.Table.from_pandas(frame[["id", "name"]], preserve_index=False) if arrow else frame
+        raw = _o2_write(kind, data, tmp_path / f"{kind}.csv{suffix}")
+        if suffix == ".zip":
+            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                return (archive.infolist()[0].external_attr >> 16) & 0o777
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tar:
+            return tar.getmembers()[0].mode
+
+    assert (mode("public"), mode("private")) == (0o644, 0o600)
+
+
+@pytest.mark.parametrize("suffix", _O2_ARCHIVES)
+def test_o8_the_chunked_writer_refuses_an_archive_target(tmp_path: Path, suffix: str) -> None:
+    from decoy.cli.io._targets import STREAMING_UNSUPPORTED, TargetFormatError
+
+    with pytest.raises(TargetFormatError) as caught:
+        chunked_bytes(stream_table(10), f"c.csv{suffix}", 5, tmp_path)
+    assert caught.value.code == STREAMING_UNSUPPORTED
+
+
+def _tar_first_block(suffix: str, raw: bytes) -> bytes:
+    import gzip as _gzip
+
+    return (_gzip.decompress(raw) if suffix == ".tar.gz" else raw)[:512]
+
+
+_O9_NAMES = {
+    "101-ascii": "a" * 101,
+    "100-byte-member": "a" * 96,
+    "multibyte": "あ" * 33,  # 99 characters would fit, 103 bytes with `.csv` do not
+    "raw-byte": __import__("os").fsdecode(b"x" * 100 + b"\xff"),
+}
+
+
+@pytest.mark.parametrize("suffix", [".tar", ".tar.gz"])
+@pytest.mark.parametrize("kind", ["public", "private"])
+@pytest.mark.parametrize("case", sorted(_O9_NAMES))
+def test_o9_a_long_tar_member_name_writes_as_pax(
+    tmp_path: Path, suffix: str, kind: str, case: str
+) -> None:
+    import tarfile
+
+    base = _O9_NAMES[case]
+    member = f"{base}.csv"
+    out = tmp_path / f"{member}{suffix}"
+    raw = _o2_write(kind, frame_f(), out)
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:*") as tar:
+        assert tar.getnames() == [member]
+    flag = _tar_first_block(suffix, raw)[156:157]
+    assert flag == (b"0" if case == "100-byte-member" else b"x")
+
+
+def test_o10_a_suffix_only_archive_target_has_the_fallback_member(tmp_path: Path) -> None:
+    import tarfile
+    import zipfile
+
+    for kind in ("public", "private"):
+        for suffix in (".zip", ".tar", ".tar.gz"):
+            for data in (frame_f(), pa.Table.from_pandas(frame_f(), preserve_index=False)):
+                one, two = tmp_path / kind / "one", tmp_path / kind / "two"
+                one.mkdir(parents=True, exist_ok=True)
+                two.mkdir(parents=True, exist_ok=True)
+                raw = _o2_write(kind, data, one / suffix)
+                assert _o2_write(kind, data, two / suffix) == raw
+                extract = tmp_path / kind / f"x{suffix}{type(data).__name__}"
+                if suffix == ".zip":
+                    with zipfile.ZipFile(one / suffix) as archive:
+                        assert archive.namelist() == ["data.csv"]
+                        archive.extractall(extract)
+                else:
+                    with tarfile.open(one / suffix) as tar:
+                        assert tar.getnames() == ["data.csv"]
+                        tar.extractall(extract, filter="data")
+                assert (extract / "data.csv").exists()

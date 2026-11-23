@@ -14,7 +14,7 @@ import pytest
 from pandas.io.common import extension_to_compression
 
 from decoy.cli.io import write_table
-from decoy.cli.io._compression import COMPRESSION, csv_compression
+from decoy.cli.io._compression import COMPRESSION
 
 _FRAME = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 _CSV = b"id,name\n1,a\n2,b\n"
@@ -30,27 +30,6 @@ def test_the_local_suffix_table_equals_pandas_and_has_no_tgz() -> None:
     suffixes = [suffix for suffix, _m in COMPRESSION]
     for i, earlier in enumerate(suffixes):  # longest first: `.tar.gz` is tried before `.gz`
         assert not any(later != earlier and later.endswith(earlier) for later in suffixes[i + 1 :])
-
-
-@pytest.mark.parametrize(
-    ("name", "expected"),
-    [
-        ("out.csv", None),
-        ("out.csv.gz", "gzip"),
-        ("OUT.CSV.GZ", "gzip"),
-        ("out.csv.bz2", "bz2"),
-        ("out.csv.xz", "xz"),
-        ("out.csv.zst", "zstd"),
-        ("out.csv.zip", {"method": "zip", "archive_name": "out.csv"}),
-        ("out.csv.tar", {"method": "tar", "archive_name": "out.csv", "mode": "w"}),
-        ("out.csv.tar.gz", {"method": "tar", "archive_name": "out.csv", "mode": "w:gz"}),
-        ("out.csv.tar.bz2", {"method": "tar", "archive_name": "out.csv", "mode": "w:bz2"}),
-        ("out.csv.tar.xz", {"method": "tar", "archive_name": "out.csv", "mode": "w:xz"}),
-        ("out.csv.tgz", None),
-    ],
-)
-def test_csv_compression_follows_the_real_name(name: str, expected: object) -> None:
-    assert csv_compression(Path("/x") / name) == expected
 
 
 def _decoded(path: Path) -> bytes:

@@ -39,7 +39,8 @@ from decoy._atomic import (
 )
 from decoy.cli._sources import resolve_path
 from decoy.cli.io._compression import (
-    csv_compression,
+    PRIVATE_MEMBER_MODE,
+    PUBLIC_MEMBER_MODE,
     is_archive_csv,
     open_csv_sink,
     split_compression,
@@ -541,12 +542,24 @@ def _write_fixed_width(table: pa.Table, layout: Mapping[str, Any] | None, path: 
     write_fixed_width(frame, dict(layout), path)
 
 
+@dataclass(frozen=True)
+class _TargetPrivacy:
+    """The stager and archive member mode of one whole-table writer, kept as a single fact."""
+
+    stage: Callable[[Path], AbstractContextManager[Path]]
+    member_mode: int
+
+
+PUBLIC_TARGET = _TargetPrivacy(staged_local_target, PUBLIC_MEMBER_MODE)
+PRIVATE_TARGET = _TargetPrivacy(staged_private_target, PRIVATE_MEMBER_MODE)
+
+
 def _write_table(
     data: pa.Table | pd.DataFrame,
     fmt: str,
     path: Path,
     layout: Mapping[str, Any] | None,
-    stage: Callable[[Path], AbstractContextManager[Path]],
+    target: _TargetPrivacy,
 ) -> None:
     import pandas as pd
     import pyarrow.parquet as pq
@@ -565,12 +578,13 @@ def _write_table(
         raise TargetFormatError(FORMAT_UNKNOWN, "unsupported target format")
     if fmt == "csv" and not isinstance(data, pd.DataFrame):
         check_csv_types("output", data.schema)
-    with stage(path) as tmp:
+    with target.stage(path) as tmp:
         if isinstance(data, pd.DataFrame) and fmt == "csv":
-            data.to_csv(tmp, index=False, compression=csv_compression(path))
+            with open_csv_sink(tmp, path, member_mode=target.member_mode) as sink:
+                data.to_csv(sink, index=False)
         elif fmt == "csv":
             with (
-                open_csv_sink(tmp, path) as sink,
+                open_csv_sink(tmp, path, member_mode=target.member_mode) as sink,
                 pacsv.CSVWriter(
                     sink, _csv_schema(data.schema), write_options=_CSV_WRITE_OPTIONS
                 ) as writer,
@@ -596,7 +610,7 @@ def write_table(
     failure keeps the old file. An existing file keeps its mode bits. Fixed width goes straight
     to the engine writer, which stages and publishes by itself.
     """
-    _write_table(data, fmt, path, layout, staged_local_target)
+    _write_table(data, fmt, path, layout, PUBLIC_TARGET)
 
 
 def write_private_table(
@@ -611,7 +625,7 @@ def write_private_table(
     """
     if fmt == "fixed_width":
         raise TargetFormatError(FORMAT_UNKNOWN, "a private output cannot be fixed_width")
-    _write_table(data, fmt, path, layout, staged_private_target)
+    _write_table(data, fmt, path, layout, PRIVATE_TARGET)
 
 
 @contextlib.contextmanager
@@ -750,7 +764,7 @@ def write_chunked_output(
                     writer.write_table(output_table(masked))
         else:
             first_schema = cast("pa.Table", first).schema
-            with open_csv_sink(tmp, out_path) as sink:
+            with open_csv_sink(tmp, out_path, member_mode=PUBLIC_MEMBER_MODE) as sink:
                 # One sink and one header. Each chunk gets a writer on its own types, because
                 # CSV carries none and the adapter may change a column's type between chunks.
                 for index, masked in enumerate(itertools.chain((first,), chunks)):
