@@ -377,7 +377,8 @@ def test_vault_reversal_outputs_follow_the_suffix(tmp_path: Path) -> None:
     unmask_dir.mkdir()
     cfg = _run_mask(unmask_dir)
     masked = unmask_dir / "masked.csv"
-    for name, magic in (("rec.parquet", _PAR1), ("rec.csv", b"ssn")):
+    # unmask writes an Arrow table, so its CSV is quoted by the pyarrow writer (CSV-WRITE-FAST).
+    for name, magic in (("rec.parquet", _PAR1), ("rec.csv", b'"ssn"')):
         out = unmask_dir / name
         result = runner.invoke(app, ["unmask", str(cfg), str(masked), "-o", str(out)])
         assert result.exit_code == 0, result.output

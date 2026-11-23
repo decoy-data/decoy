@@ -33,6 +33,19 @@ _ALIASED_SINKS = [
         "write_fixed_width",
     ),
     ("import tempfile as tf\ndef f():\n    return tf.mkdtemp()\n", "tempfile.mkdtemp"),
+    # CSV-WRITE-FAST: every codec and Arrow CSV sink spelling is a watched sink outside its module.
+    ("import pyarrow.csv as pc\ndef f(t, p):\n    pc.write_csv(t, p)\n", "write_csv"),
+    ("from pyarrow.csv import CSVWriter\ndef f(p, s):\n    CSVWriter(p, s)\n", "CSVWriter"),
+    ("import gzip\ndef f(p):\n    gzip.open(p, 'wb')\n", "open"),
+    ("import lzma\ndef f(p):\n    lzma.LZMAFile(p, 'wb')\n", "LZMAFile"),
+    (
+        "import pyarrow as pa\ndef f(s):\n    pa.CompressedOutputStream(s, 'zstd')\n",
+        "CompressedOutputStream",
+    ),
+    ("import bz2\ndef f(p):\n    bz2.BZ2File(p, 'wb')\n", "BZ2File"),
+    ("import gzip\ndef f(p):\n    gzip.GzipFile(p, 'wb')\n", "GzipFile"),
+    ("import zipfile\ndef f(p):\n    zipfile.ZipFile(p, 'w')\n", "ZipFile"),
+    ("import tarfile\ndef f(p):\n    tarfile.open(p, 'w')\n", "open"),
 ]
 
 

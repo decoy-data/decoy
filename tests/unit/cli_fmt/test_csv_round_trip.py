@@ -115,27 +115,31 @@ def test_float_negative_zero_and_nan_read_back_typed(tmp_path: Path) -> None:
 _WHOLE = datetime(2024, 1, 2, 3, 4, 5)
 
 
-@pytest.mark.parametrize(
-    ("unit", "frac_new", "whole_new"),
-    [
-        ("us", "2024-01-02 03:04:05.000006", "2024-01-02 03:04:05.000000"),
-        ("ns", "2024-01-02 03:04:05.000006000", "2024-01-02 03:04:05.000000000"),
-    ],
-)
-def test_naive_timestamp_text_differs_only_as_listed(
-    tmp_path: Path, unit: str, frac_new: str, whole_new: str
-) -> None:
-    """A1.7: a whole-second `us` gains `.000000`; `ns` gains nine digits; a `us` fraction is equal."""
-    table = pa.table({"k": [1, 2], "c": pa.array([_TS, _WHOLE], pa.timestamp(unit))})
+def _naive_texts(tmp_path: Path, values: list[datetime], unit: str) -> tuple[list[str], list[str]]:
+    table = pa.table({"k": list(range(len(values))), "c": pa.array(values, pa.timestamp(unit))})
     new, old = tmp_path / "new.csv", tmp_path / "old.csv"
     write_table(table, "csv", new)
     _old_text(table, old)
-    got, was = _all_text(new)["c"].tolist(), _all_text(old)["c"].tolist()
-    assert got == [frac_new, whole_new]
-    if unit == "us":
-        assert was[0] == got[0]  # nonzero fraction: unchanged text
-    assert was[1] == "2024-01-02 03:04:05"  # pandas wrote no fraction for a whole second
-    assert got[1] != was[1]
+    return _all_text(new)["c"].tolist(), _all_text(old)["c"].tolist()
+
+
+def test_naive_us_whole_seconds_gain_a_six_digit_fraction(tmp_path: Path) -> None:
+    """A1.7: pandas wrote no fraction for a whole-second column; Arrow writes `.000000`."""
+    got, was = _naive_texts(tmp_path, [_WHOLE, _WHOLE], "us")
+    assert was == ["2024-01-02 03:04:05"] * 2
+    assert got == ["2024-01-02 03:04:05.000000"] * 2
+
+
+def test_naive_us_with_a_nonzero_fraction_stays_equal(tmp_path: Path) -> None:
+    got, was = _naive_texts(tmp_path, [_TS, _WHOLE], "us")
+    assert got == was == ["2024-01-02 03:04:05.000006", "2024-01-02 03:04:05.000000"]
+
+
+def test_naive_ns_gains_the_nine_digit_fraction(tmp_path: Path) -> None:
+    got, was = _naive_texts(tmp_path, [_TS, _WHOLE], "ns")
+    assert got == ["2024-01-02 03:04:05.000006000", "2024-01-02 03:04:05.000000000"]
+    assert was[0] == "2024-01-02 03:04:05.000006"
+    assert got != was
 
 
 @pytest.mark.parametrize("unit", ["us", "ns"])

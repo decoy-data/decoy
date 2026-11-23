@@ -146,6 +146,8 @@ def test_writer_module_writes_only_in_its_writers() -> None:
         "import pyarrow.parquet as pq\ndef f(t, p):\n    pq.write_to_dataset(t, p)\n",
         "import pyarrow.csv\ndef f(t, p):\n    pyarrow.csv.write_csv(t, p)\n",
         "import pyarrow.csv as pc\ndef f(p, s):\n    pc.CSVWriter(p, s)\n",
+        "from pyarrow.csv import CSVWriter\ndef f(p, s):\n    CSVWriter(p, s)\n",
+        "import pyarrow.csv as pc\ndef f(t, p):\n    pc.write_csv(t, p)\n",
         "import pyarrow.parquet.core\ndef f(t, p):\n    pyarrow.parquet.core.write_table(t, p)\n",
         "import pyarrow.dataset as ds\ndef f(t, p):\n    ds.write_dataset(t, p)\n",
         "import pyarrow as pa\ndef f(t, p):\n    pa.parquet.write_table(t, p)\n",

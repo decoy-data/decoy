@@ -352,3 +352,13 @@ def test_a7_private_dataframe_route_is_unchanged(
     write_private_table(frame, "csv", out)
     assert out.read_bytes() == frame.to_csv(index=False).encode()
     assert out.stat().st_mode & 0o777 == 0o600
+
+
+def test_a7_private_arrow_table_uses_the_arrow_writer_and_stays_owner_only(tmp_path: Path) -> None:
+    """`decoy unmask` hands an Arrow table to `write_private_table`: same bytes as a public write."""
+    table = pa.table({"s": ["a", None], "n": [1, 2]})
+    private, public = tmp_path / "p.csv", tmp_path / "q.csv"
+    write_private_table(table, "csv", private)
+    write_table(table, "csv", public)
+    assert private.read_bytes() == public.read_bytes()
+    assert private.stat().st_mode & 0o777 == 0o600
