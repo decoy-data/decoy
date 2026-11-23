@@ -155,7 +155,7 @@ def validation_outcome(
 
 
 # ---------------------------------------------------------------------------
-# Drift (saved STORM scans) over the existing categorizer
+# Drift (saved scans) over the existing categorizer
 # ---------------------------------------------------------------------------
 
 

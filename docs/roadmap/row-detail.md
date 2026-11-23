@@ -35,14 +35,9 @@ E2, C1, C2 (row 9) are deferred off the V1 path. Test trust (owner, 2026-11-05):
 red under a named mutation; the platform test-trust slices are parked; the CLI journey row is 75.
 The dev-rule `cross-cutting-concerns.md` is the standing rule (ROADMAP section 4).
 
-**STORM concept reframe (2026-10-29).** STORM is removed as a concept. Decoy is a data-manipulation
-compiler pipeline with phase-bound scans: pre-scan (profile and detect), transform (mask and
-generate), post-scan (verify, leak and fidelity). The STORM wire, config, route, CLI and doc surfaces
-(`run_storm`, `decoy storm` verbs, `storm.scan`, `storm-post-mask/v1`) are renamed in one pre-GA
-wave. Rules the wave honours: permission flags are deny-only rows, so a rename without a row
-migration fails open; lenient request models silently drop old keys; the scheduler filters on the
-stored mode `storm.scan`. The after-publish STORM post-mask hook retires once DELIV lands one in-run
-post-scan path. Earlier engine parts MERGED (engine #329, #349).
+**Retired product name (owner 2026-10-29, 2026-11-16).** Decoy is a compiler pipeline with
+phase-bound scans: pre-scan, transform, post-scan. The old name is removed from every CLI and engine
+surface (rows 16 and 56); history is in the archived roadmap snapshot.
 
 **Phase 1 slice 0 (owner, 2026-10-30; before F31).** 11.1 vault writer seed fallback (`vault.py:349-355`
 falls back to the 8-byte `job_seed`; reproduced) plus the 12.3 simpleeval floor (housekeeping): row

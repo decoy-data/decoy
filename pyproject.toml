@@ -270,8 +270,19 @@ packages = ["src/decoy"]
 
 [tool.hatch.build.targets.sdist]
 # Keep hatchling's default file selection, but never ship the test suite: it is
-# dev-only, not importable from an install, and only adds download weight.
-exclude = ["tests"]
+# dev-only, not importable from an install, and only adds download weight. The dated history
+# folders stay out too: they are records, not product, and they may name the retired product.
+exclude = [
+    "tests",
+    "docs/plans",
+    "docs/records",
+    "docs/archive",
+    "docs/superpowers/plans",
+    "docs/overnight-dev/findings",
+    "docs/handoffs",
+    "docs/roadmap/decisions.md",
+    "docs/RECENTLY-SHIPPED.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
