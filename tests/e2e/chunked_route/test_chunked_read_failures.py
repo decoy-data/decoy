@@ -1,0 +1,109 @@
+"""`decoy run --chunked` read failures: value-free refusals and capacity (PCNI S2, R3).
+
+B1: no source value reaches `--json` or `--verbose` output from any read failure, at any row,
+including a csv chunk the reader consumes before the engine starts.
+B2: an Arrow or Python out-of-memory is a capacity failure (exit 5), never a bad cell.
+"""
+
+from __future__ import annotations
+
+import json as _json
+from pathlib import Path
+
+import pyarrow as pa
+import pytest
+import yaml
+from typer.testing import CliRunner
+
+from decoy.__main__ import app
+from tests.csv_sources import file_source
+from tests.keyed_secret import TEST_MASK_SECRET_REF
+
+pytestmark = pytest.mark.usefixtures("mask_secret")
+
+runner = CliRunner()
+
+_VALID_ROWS = 80_000
+
+
+def _csv_config(tmp_path: Path, rows: list[bytes]) -> Path:
+    src = tmp_path / "in.csv"
+    src.write_bytes(b"id,email\n" + b"".join(rows))
+    cfg = {
+        "version": 2,
+        "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
+        "sources": {"t": file_source(src, "csv")},
+        "tables": [
+            {
+                "name": "t",
+                "columns": [
+                    {"name": "id", "strategy": "passthrough"},
+                    {"name": "email", "strategy": "hash", "namespace": "e_ns"},
+                ],
+            }
+        ],
+        "targets": {"t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}},
+    }
+    path = tmp_path / "pipeline.yaml"
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return path
+
+
+def _run(cfg: Path, *flags: str):
+    return runner.invoke(app, ["run", str(cfg), "--chunked", *flags])
+
+
+class TestAt1BadCsvByteIsValueFree:
+    """AT-B1: row 80,001 is past the 10,000-row preflight and inside the first 100,000-row chunk."""
+
+    @pytest.mark.parametrize("flag", ["--json", "--verbose"])
+    def test_late_invalid_utf8_byte_never_reaches_the_output(
+        self, tmp_path: Path, flag: str
+    ) -> None:
+        good = [f"{i},user{i}@x.com\n".encode() for i in range(_VALID_ROWS)]
+        bad = [b"80000,leakcell\xffsecret@x.com\n"]
+        cfg = _csv_config(tmp_path, [*good, *bad])
+        result = _run(cfg, flag)
+        assert result.exit_code == 3, result.output
+        assert "chunked_passthrough_value_unrepresentable" in result.output
+        for marker in ("0xff", "\\xff", "�", "leakcell", "secret@x.com", "position"):
+            assert marker not in result.output, marker
+        assert not (tmp_path / "out.csv").exists()
+
+    def test_json_error_kind_is_the_coded_refusal(self, tmp_path: Path) -> None:
+        good = [f"{i},user{i}@x.com\n".encode() for i in range(_VALID_ROWS)]
+        cfg = _csv_config(tmp_path, [*good, b"80000,a\xffb@x.com\n"])
+        result = _run(cfg, "--json")
+        assert result.exit_code == 3
+        payload = _json.loads(result.output.strip().splitlines()[-1])
+        assert payload.get("error_kind") != "capacity"
+
+
+def _patched_engine(monkeypatch: pytest.MonkeyPatch, *, at: str, exc: Exception) -> None:
+    import decoy_engine
+
+    def fake(*args, **kwargs):
+        if at == "creation":
+            raise exc
+
+        def gen():
+            yield from ()
+            raise exc
+
+        return gen()
+
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", fake)
+
+
+@pytest.mark.parametrize("at", ["creation", "iteration"])
+@pytest.mark.parametrize("make", [pa.ArrowMemoryError, MemoryError], ids=["arrow", "python"])
+class TestAt2OutOfMemoryIsCapacity:
+    def test_exit_5_and_capacity_kind(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, at: str, make: type
+    ) -> None:
+        cfg = _csv_config(tmp_path, [b"1,a@x.com\n", b"2,b@x.com\n"])
+        _patched_engine(monkeypatch, at=at, exc=make("out of memory"))
+        result = _run(cfg, "--json")
+        assert result.exit_code == 5, result.output
+        payload = _json.loads(result.output.strip().splitlines()[-1])
+        assert payload.get("error_kind") == "capacity"

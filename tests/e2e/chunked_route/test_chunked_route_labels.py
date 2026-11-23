@@ -24,12 +24,6 @@ pytestmark = pytest.mark.usefixtures("mask_secret")
 runner = CliRunner()
 
 
-@pytest.fixture
-def force_absent_companion(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The companion is genuinely absent for the CLI probe and the engine's own admission."""
-    monkeypatch.setitem(sys.modules, "decoy_engine_native", None)
-
-
 def _no_kernel_table(name: str, src: Path, out: Path) -> tuple[dict, dict, dict]:
     """A table the engine admits natively but that runs no kernel (`text_redact` has none)."""
     pd.DataFrame({"note": [f"call {i}" for i in range(6)]}).to_parquet(src, index=False)

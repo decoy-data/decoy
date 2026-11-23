@@ -207,17 +207,25 @@ def _masked_chunks(
     # The factory is the one place a chunked source is opened, so it carries its own gate: no
     # reader exists until every declared source column is checked (G-ONE-DECLARED-READ).
     prepared_sources(config_dict, base_dir=base_dir)
-    # `run_mask_chunked` takes no source schema; the reader gives the chunks and the empty
-    # Parquet schema, so the call stays.
-    _source_schema, chunks = source_schema_and_chunks(
-        name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
-    )
     failure: Exception | None = None
+    try:
+        # Opening the reader and taking the source schema fail on a source cell here: a csv
+        # reads its whole first chunk before the engine starts.
+        chunks = iter_source_chunks(name, src_spec, base_dir, chunk_size)
+        # `run_mask_chunked` takes no source schema; the reader gives the chunks and the empty
+        # Parquet schema, so the call stays.
+        _source_schema, chunks = source_schema_and_chunks(name, src_spec, base_dir, chunks)
+    except Exception as exc:
+        failure = _value_free_failure(exc, reading=True)
+        if failure is None:
+            raise
+    if failure is not None:
+        raise failure
     try:
         # The first chunk is profiled when the engine is called, so it can fail right here.
         stream = run_mask_chunked(
             resolved_source_config(config_dict, base_dir),
-            chunks,
+            _value_free(chunks, reading=True),
             table=name,
             engine_version=engine_version,
             key_provider=key_provider,
@@ -237,31 +245,53 @@ _UNCONVERTIBLE_MESSAGE = (
     "a source value cannot be converted by the pandas route. The text names no column or value, "
     "because the library error quotes the cell. Drop --no-native, or fix the source value."
 )
+_UNREADABLE_MESSAGE = (
+    "a source value cannot be read. The text names no column or value, because the library "
+    "error quotes the cell. Fix the source value."
+)
 
 
-def _value_free_failure(exc: Exception) -> Exception | None:
-    """A value-free replacement for an engine failure that can quote a source cell, or None.
+def _value_free_failure(exc: Exception, *, reading: bool = False) -> Exception | None:
+    """A value-free replacement for a failure that can quote a source cell, or None.
 
-    The pandas conversion error quotes the cell, and a coded engine error chains that error as
-    its cause, which `--verbose` prints. Both are replaced by a fresh error with no cause.
+    The pandas conversion error and the csv decode error quote the cell, and a coded engine
+    error chains that error as its cause, which `--verbose` prints. All are replaced by a fresh
+    error with no cause. Only conversion and parse errors qualify: an out-of-memory failure
+    (`MemoryError`, `ArrowMemoryError`, `ArrowCapacityError`) returns None, so it reaches the
+    capacity exit. `reading` is a failure of the source reader, which has a narrower set of
+    types so that a usage error of the reader (an unknown format) is not renamed.
     """
+    import pandas as pd
+    import pyarrow as pa
     from decoy_engine import ExecutionError, reasons
-    from pyarrow import ArrowException
 
     code = reasons.runtime.CHUNKED_PASSTHROUGH_VALUE_UNREPRESENTABLE
+    if isinstance(exc, (MemoryError, pa.ArrowCapacityError)):
+        return None
     if isinstance(exc, ExecutionError):
         if exc.code != code:
             return None
         return ExecutionError(code=code, message=exc.message)
-    if getattr(exc, "code", None) is None and isinstance(
-        exc, (ValueError, ArithmeticError, ArrowException)
-    ):
+    if getattr(exc, "code", None) is not None:
+        return None
+    if reading:
+        read_types: tuple[type[Exception], ...] = (
+            UnicodeError,
+            pd.errors.ParserError,
+            pa.ArrowInvalid,
+            pa.ArrowTypeError,
+            pa.ArrowNotImplementedError,
+        )
+        if isinstance(exc, read_types):
+            return ExecutionError(code=code, message=_UNREADABLE_MESSAGE)
+        return None
+    if isinstance(exc, (ValueError, ArithmeticError, pa.ArrowException)):
         return ExecutionError(code=code, message=_UNCONVERTIBLE_MESSAGE)
     return None
 
 
-def _value_free(stream: Iterator[Any]) -> Iterator[Any]:
-    """The engine stream with its cell-quoting failures replaced by `_value_free_failure`.
+def _value_free(stream: Iterator[Any], *, reading: bool = False) -> Iterator[Any]:
+    """The stream with its cell-quoting failures replaced by `_value_free_failure`.
 
     The replacement is raised after the `except` block, so it carries no `__cause__` or
     `__context__`. The inner stream is closed with this one.
@@ -275,7 +305,7 @@ def _value_free(stream: Iterator[Any]) -> Iterator[Any]:
             except StopIteration:
                 return
             except Exception as exc:
-                failure = _value_free_failure(exc)
+                failure = _value_free_failure(exc, reading=reading)
                 if failure is None:
                     raise
             else:

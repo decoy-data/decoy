@@ -6,7 +6,7 @@ these tests hold regardless of whether a compiled `decoy-engine-native`
 companion happens to be installed in whatever environment runs them:
 
 1. **Genuine absence, everywhere, on demand.** `force_absent_companion`
-   (a fixture below) sets `sys.modules["decoy_engine_native"] = None`,
+   (a fixture in `tests/e2e/conftest.py`) sets `sys.modules["decoy_engine_native"] = None`,
    which is the standard way to make Python's import system report a
    module as genuinely not installed (`importlib.util.find_spec` returns
    `None` for a `None` sys.modules entry) -- this fools the ENGINE's own
@@ -66,14 +66,6 @@ _requires_real_companion = pytest.mark.skipif(
     not _NATIVE_COMPANION_INSTALLED,
     reason="needs a real compiled decoy-engine-native companion (none importable here)",
 )
-
-
-@pytest.fixture
-def force_absent_companion(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make the companion genuinely absent for BOTH the CLI probe and the
-    engine's own internal admission check, regardless of whether one is
-    actually installed in this environment. See module docstring point 1."""
-    monkeypatch.setitem(sys.modules, "decoy_engine_native", None)
 
 
 def _status(
