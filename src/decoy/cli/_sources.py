@@ -177,7 +177,10 @@ def prepared_sources(
 
 
 def scan_gate_refusals() -> tuple[type[Exception], ...]:
-    """The engine refusals `scan_prepared_sources` lets through as raised: coded, value-free."""
+    """The engine refusals `scan_prepared_sources` lets through as raised: coded, value-free.
+
+    A function, not a module constant, so the engine is imported only when a scan runs.
+    """
     from decoy_engine import ConfigError, PipelineValidationError
     from decoy_engine.config import PipelineConfigError
 

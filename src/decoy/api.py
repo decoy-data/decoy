@@ -711,9 +711,9 @@ def scan(
     Raises:
         ValueError: A usage error, found before any file is read.
         TypeError: `data` is neither a path nor a DataFrame, or Arrow cannot convert it.
-
-    A descriptor the engine refuses is refused before any row is read, with the engine's coded
-    `PipelineConfigError` (a `ValueError`) or `PipelineValidationError`.
+        PipelineConfigError: The engine refused the source descriptor before any row was read
+            (a `ValueError`). A `PipelineValidationError` or a dialect `ConfigError` is raised
+            the same way.
     """
     is_frame = isinstance(data, pd.DataFrame)
     if not is_frame and not isinstance(data, (str, Path)):

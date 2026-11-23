@@ -354,4 +354,8 @@ def test_a_refused_positional_descriptor_exits_1_before_the_scan(
     assert result.exit_code == 1, result.output
     assert "scan failed" not in result.output
     assert "ZQCANARY" not in result.output
+    # The engine's own coded refusal, not the fixed read refusal a relabel would give.
+    assert "source descriptor for table 'a' is invalid" in result.output
+    assert "could not be read" not in result.output
+    assert "csv_malformed" not in result.output
     assert spy_engine == []

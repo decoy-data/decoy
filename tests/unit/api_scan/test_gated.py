@@ -60,3 +60,39 @@ def test_a_gate_refusal_removes_the_staged_dataframe_file(
         decoy.scan(pd.DataFrame({"a": [1]}))
     assert staged
     assert not any(p.exists() for p in staged)
+
+
+def test_a_gate_refusal_is_the_engines_coded_value_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A descriptor the engine refuses keeps its class (a `ValueError`), not a read refusal."""
+    from decoy_engine.config import PipelineConfigError
+
+    real = api.resolve_sources
+
+    def without_header(
+        paths: list[Path],
+        *,
+        fmt: str | None,
+        layout: object,
+        has_header: bool | None,
+        column_names: object,
+        spelling: object,
+    ) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+        descriptors, shown = real(
+            paths,
+            fmt=fmt,
+            layout=layout,  # type: ignore[arg-type]
+            has_header=has_header,
+            column_names=column_names,  # type: ignore[arg-type]
+            spelling=spelling,  # type: ignore[arg-type]
+        )
+        for d in descriptors.values():
+            d.pop("has_header", None)
+        return descriptors, shown
+
+    monkeypatch.setattr(api, "resolve_sources", without_header)
+    with pytest.raises(PipelineConfigError) as info:
+        decoy.scan(write_csv(tmp_path / "a.csv"), has_header=True)
+    assert isinstance(info.value, ValueError)
+    assert "could not be read" not in str(info.value)
