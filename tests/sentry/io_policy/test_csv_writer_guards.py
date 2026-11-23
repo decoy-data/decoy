@@ -121,11 +121,13 @@ def test_chunked_seeds_are_red() -> None:
     )
     assert "publication inside the selection loop" in chunked_findings(published)
     nexted = live.replace(
-        "            _validate_csv_stream(target, config_dict, base_dir, chunk_size, key_provider)",
-        "            next(iter(()), None)",
+        "        prepared.append(target)\n",
+        "        prepared.append(target)\n        next(stream)\n",
         1,
     )
-    assert chunked_findings(nexted)
+    assert "_run_chunked_mask validates with next()" in chunked_findings(nexted)
+    no_drain = live.replace("_validate_csv_stream(\n", "_elsewhere(\n", 1)
+    assert "_run_chunked_mask lacks _validate_csv_stream" in chunked_findings(no_drain)
 
 
 def _write_csv_uses_bounded_batches(source: str) -> bool:

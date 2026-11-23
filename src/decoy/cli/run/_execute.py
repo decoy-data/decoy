@@ -6,6 +6,8 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
+
 from decoy import _native_gate, _resources
 from decoy.cli import gen
 from decoy.cli.extras import check_cloud_endpoints, check_cloud_endpoints_supported
@@ -168,7 +170,9 @@ class _ChunkedTarget:
     src_spec: dict
     tgt_spec: dict
     fmt: str
-    csv_schema: Any = None  # the unified output schema a CSV validation pass found (no data)
+    csv_schema: pa.Schema | None = (
+        None  # the unified output schema a CSV validation pass found (no data)
+    )
 
 
 def _masked_chunks(
@@ -203,7 +207,7 @@ def _masked_chunks(
 
 def _validate_csv_stream(
     target: _ChunkedTarget, config_dict: dict, base_dir: Path, chunk_size: int, key_provider
-) -> Any:
+) -> pa.Schema | None:
     """Check every masked chunk of a CSV target against the shared type and schema policy.
 
     Holds at most one source chunk and one masked chunk, and closes the stream before it
