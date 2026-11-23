@@ -10,9 +10,7 @@ Rows keep their number from the pre-split track. A row number or section number 
 
 Blocks the 1.0 release.
 
-| # | Item | Repo | State | Branch, plan or handoff | After |
-|---|---|---|---|---|---|
-| NESTED-FREEZE | Two nested-data points that 1.0 would otherwise freeze (V2-to-V1 cut, evaluation ranks 2 and 4). (a) Limit the nested `target` path to a closed RFC 9535 subset (child, wildcard, index, slice; no filters, no `..`), checked at compile time. Today `target` is any jsonpath-ng expression, checked only at run time (`execution/_strategies/nested/_handler.py`), so 1.0 would freeze the jsonpath-ng grammar. (b) A native Parquet or Arrow struct, list or map column with no rule fails with a coded reason. First check whether it already fails closed; if it does, (b) is only tests and docs. The plan reconciles (b) with CHUNKED-STRUCT (engine #754), which made these columns pass through with their types kept. The masking half stays 1.x: candidate NESTED-NATIVE below | engine | NOT STARTED, needs plan, owner 2026-11-22 (V2-to-V1 cut). 2 slices, (a) and (b) | vault `V2-TO-V1-EVALUATION-2026-11-22.md` section 5 | none |
+None. NESTED-FREEZE closed on 2026-11-23 (engine #772).
 
 ## Later (1.x)
 
