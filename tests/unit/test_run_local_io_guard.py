@@ -51,6 +51,6 @@ def test_local_only_targets_still_write(tmp_path: Path) -> None:
     del cfg["targets"]["remote"]
     _write_mask_outputs(cfg, _result(), RunLayout.fixed(tmp_path))
     assert (tmp_path / "local.csv").read_text(encoding="utf-8").splitlines() == [
-        "ssn",
-        "000000000",
+        '"ssn"',  # the pyarrow CSV writer quotes the header and strings (CSV-WRITE-FAST)
+        '"000000000"',
     ]

@@ -90,6 +90,7 @@ _LEAF = frozenset(
         "write_text", "write_bytes", "to_csv", "to_parquet", "write_table", "ParquetWriter",
         "write_to_dataset", "write_dataset", "write_csv", "CSVWriter", "write_fixed_width",
         "extractall", "staged_local_target", "chmod", "lchmod",
+        "CompressedOutputStream", "GzipFile", "BZ2File", "LZMAFile", "ZipFile",
     }
 )  # fmt: skip
 # Raw sinks matched by the dotted name a bound import resolves to.
@@ -630,15 +631,15 @@ def test_the_live_tree_is_clean(files: dict[str, str]) -> None:
     assert run(files) == []
 
 
-def test_the_census_is_62_watched_sinks(files: dict[str, str]) -> None:
+def test_the_census_is_72_watched_sinks(files: dict[str, str]) -> None:
     sinks = watched(collect(files))
-    assert len(sinks) == 62
+    assert len(sinks) == 72
     assert len([s for s in sinks if is_entry(s)]) == 28
     counts: dict[str, int] = {}
     for r in ROWS:
         if r.disposition != ENTRY:
             counts[r.disposition] = counts.get(r.disposition, 0) + 1
-    assert counts == {"public": 20, "private": 4, "staged": 2, "temp": 2, "read": 6}
+    assert counts == {"public": 29, "private": 4, "staged": 3, "temp": 2, "read": 6}
 
 
 def test_the_baseline_has_two_rows_with_exits() -> None:

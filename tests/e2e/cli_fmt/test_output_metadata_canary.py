@@ -214,10 +214,18 @@ def test_cc4_out_of_core_fk_run_parquet_targets_are_clean(
 
 
 def test_cc5_csv_target_has_no_canary(tmp_path: Path) -> None:
-    result = runner.invoke(app, ["run", str(_config(tmp_path, target_format="csv"))])
+    # A struct column cannot go to CSV (CSV-WRITE-FAST refuses it), so the guard runs on flat columns.
+    result = runner.invoke(app, ["run", str(_config(tmp_path, target_format="csv", nested=False))])
     assert result.exit_code == 0, result.output
     text = (tmp_path / "out.csv").read_text(encoding="utf-8")
     assert [c for c in mc.ALL_CANARIES if c in text] == []
+
+
+def test_cc5_a_struct_column_is_refused_for_a_csv_target(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["run", str(_config(tmp_path, target_format="csv"))])
+    assert result.exit_code != 0
+    assert "cannot write" in result.output
+    assert not (tmp_path / "out.csv").exists()
 
 
 def test_cc2_dataframe_attrs_are_not_written(tmp_path: Path) -> None:

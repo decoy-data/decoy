@@ -1,5 +1,7 @@
 """How `decoy run` executes: the chunked and plain branches, and the source and target I/O."""
 
+from collections.abc import Iterator
+from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -111,48 +113,73 @@ def _run_chunked_mask(
     # No reader or iterator exists until every source column is declared.
     prepared_sources(config_dict, base_dir=base_dir)
 
-    from decoy_engine import __version__ as engine_version
-    from decoy_engine import run_mask_pipeline_chunked
-
     sources = config_dict.get("sources") or {}
     targets = config_dict.get("targets") or {}
     published: dict[str, Path | None] = {}
-    for table_entry in config_dict.get("tables") or []:
-        if not isinstance(table_entry, dict) or not table_entry.get("columns"):
-            continue
-        name = table_entry.get("name")
-        assert isinstance(name, str)  # pydantic guarantees a str table name
-        src_spec = sources.get(name) if isinstance(sources, dict) else None
-        tgt_spec = targets.get(name) if isinstance(targets, dict) else None
-        if not isinstance(src_spec, dict) or not isinstance(src_spec.get("path"), str):
-            continue
-        src_path = _resolve_path(src_spec["path"], base_dir)
-        if not isinstance(tgt_spec, dict) or not isinstance(tgt_spec.get("path"), str):
-            continue
-
-        source_schema, chunks = source_schema_and_chunks(
-            name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
-        )
-        masked_iter = run_mask_pipeline_chunked(
-            resolved_source_config(config_dict, base_dir),
-            chunks,
-            table=name,
-            engine_version=engine_version,
-            key_provider=key_provider,
-            source_schema=source_schema,
-        )
-        published[name] = write_chunked_output(
-            masked_iter,
-            resolve_target_format(name, tgt_spec),
-            tgt_spec["path"],
-            layout,
-            empty_schema=(
+    # Every target is staged on this stack and published only when it exits cleanly, so a bad
+    # chunk in any target (a type outside the CSV allowlist, a schema change) publishes none.
+    with ExitStack() as staged:
+        for table_entry in config_dict.get("tables") or []:
+            if not isinstance(table_entry, dict) or not table_entry.get("columns"):
+                continue
+            name = table_entry.get("name")
+            assert isinstance(name, str)  # pydantic guarantees a str table name
+            src_spec = sources.get(name) if isinstance(sources, dict) else None
+            tgt_spec = targets.get(name) if isinstance(targets, dict) else None
+            if not isinstance(src_spec, dict) or not isinstance(src_spec.get("path"), str):
+                continue
+            if not isinstance(tgt_spec, dict) or not isinstance(tgt_spec.get("path"), str):
+                continue
+            src_path = _resolve_path(src_spec["path"], base_dir)
+            empty = (
                 partial(parquet_schema, src_path) if src_spec.get("format") == "parquet" else None
-            ),
-            ledger=ledger,
-            name=name,
-        )
+            )
+            stream = _masked_chunks(name, src_spec, config_dict, base_dir, chunk_size, key_provider)
+            # A refusal unwinds this stack, so every stream it opened is closed with it.
+            staged.callback(getattr(stream, "close", _no_close))
+            published[name] = write_chunked_output(
+                stream,
+                resolve_target_format(name, tgt_spec),
+                tgt_spec["path"],
+                layout,
+                empty_schema=empty,
+                ledger=ledger,
+                name=name,
+                defer=staged,
+            )
     return published
+
+
+def _no_close() -> None:
+    """The close of a stream that has none (a plain iterator)."""
+
+
+def _masked_chunks(
+    name: str,
+    src_spec: dict,
+    config_dict: dict,
+    base_dir: Path,
+    chunk_size: int,
+    key_provider,
+) -> Iterator[Any]:
+    """The one factory of a chunked table's masked stream."""
+    from decoy_engine import __version__ as engine_version
+    from decoy_engine import run_mask_pipeline_chunked
+
+    # The factory is the one place a chunked source is opened, so it carries its own gate: no
+    # reader exists until every declared source column is checked (G-ONE-DECLARED-READ).
+    prepared_sources(config_dict, base_dir=base_dir)
+    source_schema, chunks = source_schema_and_chunks(
+        name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
+    )
+    return run_mask_pipeline_chunked(
+        resolved_source_config(config_dict, base_dir),
+        chunks,
+        table=name,
+        engine_version=engine_version,
+        key_provider=key_provider,
+        source_schema=source_schema,
+    )
 
 
 _CHUNKED_INTEGRITY_MESSAGE = (

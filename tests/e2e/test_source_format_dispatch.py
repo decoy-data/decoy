@@ -9,6 +9,7 @@ and native eligibility follows the declared format.
 
 from __future__ import annotations
 
+import io
 import json as _json
 from pathlib import Path
 from typing import Any
@@ -205,10 +206,13 @@ def test_csv_and_parquet_run_output_is_identical(tmp_path: Path):
         config = _config(d, d / name, fmt)
         assert runner.invoke(app, ["run", str(config)]).exit_code == 0
         outs.append((d / "out.csv").read_bytes())
-    # Same hash column over the same values: identical bytes regardless of
-    # which reader fed the engine (the age column is int64 vs str but
-    # serializes identically).
-    assert outs[0] == outs[1]
+    # Same hash column over the same values, whichever reader fed the engine. The age column is
+    # str from a csv source and int64 from Parquet, and the pyarrow CSV writer quotes strings
+    # (CSV-WRITE-FAST), so the bytes differ only by the quotes on `age`; every cell reads back equal.
+    assert outs[0].replace(b'"', b"") == outs[1].replace(b'"', b"")
+    csv_back = pd.read_csv(io.BytesIO(outs[0]), dtype=str)
+    pq_back = pd.read_csv(io.BytesIO(outs[1]), dtype=str)
+    pd.testing.assert_frame_equal(csv_back, pq_back)
 
 
 # --------------------------------------------------------------------------

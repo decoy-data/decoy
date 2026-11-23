@@ -89,7 +89,8 @@ def test_run_writes_v3_and_unmask_recovers_it(written: tuple[Path, Path], tmp_pa
         ],
     )
     assert result.exit_code == 0, result.output
-    assert _EMAIL in recovered.read_text(encoding="utf-8").splitlines()
+    # unmask writes an Arrow table, so the pyarrow CSV writer quotes the string (CSV-WRITE-FAST).
+    assert f'"{_EMAIL}"' in recovered.read_text(encoding="utf-8").splitlines()
 
 
 def test_report_shows_header_fields_and_no_secret_material(

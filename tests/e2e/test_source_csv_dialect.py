@@ -82,7 +82,9 @@ def _reference(tmp_path: Path) -> pd.DataFrame:
     return _out(ref)
 
 
-_DEFAULT_OUTPUT_SHA256 = "ca340c14e64a0e12770630e3b54c8dd0977c0f56e18d97473e8b5891b5b5cff8"
+# Regenerated: CSV writer moved to pyarrow (CSV-WRITE-FAST). Produced by running this test's
+# `_write` and `_config` helpers on the slice head and hashing `out.csv`.
+_DEFAULT_OUTPUT_SHA256 = "0e259619ce26dbea1f58d1277e563d7995896418b218c6e876f93265dc4adb9b"
 _HEADERLESS = {"has_header": False, "column_names": _NAMES}
 _DIALECTS = {
     "tab": ("\t", True, {"delimiter": "\t"}),
@@ -141,7 +143,7 @@ def test_default_dialect_unchanged(tmp_path: Path) -> None:
     # and the test mask secret. Produced by running those helpers on that commit and hashing
     # `out.csv`.
     assert hashlib.sha256(outs[0]).hexdigest() == _DEFAULT_OUTPUT_SHA256
-    assert outs[0].decode().splitlines()[0] == "id,name,age"
+    assert outs[0].decode().splitlines()[0] == '"id","name","age"'
 
 
 def test_report_source_without_config_equals_pandas(tmp_path: Path) -> None:

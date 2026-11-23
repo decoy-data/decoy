@@ -180,7 +180,7 @@ reason = "Masked whole-table output keeps the old file's mode bits (OQ3); masked
 
 [[row]]
 file = "cli/io/_targets.py"
-function = "write_chunked_output"
+function = "_staged_chunked"
 sink = "staged_local_target"
 ordinal = 1
 output_kind = "target"
@@ -208,11 +208,101 @@ reason = "Chunked masked output keeps the old file's mode bits (OQ3)."
 [[row]]
 file = "cli/io/_targets.py"
 function = "write_chunked_output"
-sink = "to_csv"
+sink = "CSVWriter"
 ordinal = 1
 output_kind = "target"
 disposition = "public"
-reason = "Chunked masked output keeps the old file's mode bits (OQ3)."
+reason = "Chunked masked output keeps the old file's mode bits (OQ3); the writer feeds the staged temp."
+
+[[row]]
+file = "cli/io/_targets.py"
+function = "_write_table"
+sink = "CSVWriter"
+ordinal = 1
+output_kind = "target"
+disposition = "staged"
+reason = "Writes into the open_csv_sink stream over the stager's temp; G-ONE-TARGET-WRITE checks both."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "open_csv_sink"
+sink = "open"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Opens the staged temp the caller's stager made for writing; the stager owns the file mode (OQ3 or 0600)."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "open_csv_sink"
+sink = "open"
+ordinal = 2
+output_kind = "target"
+disposition = "public"
+reason = "The zip member stream inside that same staged temp; no other file is created."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "open_csv_sink"
+sink = "tempfile.TemporaryFile"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Anonymous spool of the tar member (mode 0600, no name, gone at close); the archive built from it goes to the staged temp."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "open_csv_sink"
+sink = "open"
+ordinal = 3
+output_kind = "target"
+disposition = "public"
+reason = "Writes the tar blocks into the stream over the staged temp; no other file is created."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "_stream_codec"
+sink = "GzipFile"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Wraps the caller's stream over the staged temp in the frozen GzipFile codec; creates no file."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "_stream_codec"
+sink = "BZ2File"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Wraps the caller's stream over the staged temp in the frozen BZ2File codec; creates no file."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "_stream_codec"
+sink = "LZMAFile"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Wraps the caller's stream over the staged temp in the frozen LZMAFile codec; creates no file."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "_stream_codec"
+sink = "CompressedOutputStream"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Wraps the caller's stream over the staged temp in the frozen CompressedOutputStream codec; creates no file."
+
+[[row]]
+file = "cli/io/_compression.py"
+function = "open_csv_sink"
+sink = "ZipFile"
+ordinal = 1
+output_kind = "target"
+disposition = "public"
+reason = "Writes the zip central directory into the stream over the staged temp; creates no file."
 
 [[row]]
 file = "cli/io/_small_file.py"

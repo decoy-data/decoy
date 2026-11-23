@@ -39,13 +39,26 @@ from tests.sentry.io_policy._calls import (
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
 CHOKE_POINT = "cli/io/_targets.py"
-WRITERS = ("_write_table", "write_chunked_output", "_write_fixed_width")
+WRITERS = ("_write_table", "write_chunked_output", "_write_fixed_width", "_write_csv")
+# A feeder calls only `writer.write_batch` on a writer its caller built, so it has no watched
+# write site of its own. It is allowed by exact (path, name), and its callers are pinned below.
+FEEDERS = ("_write_csv",)
+FEEDER_CALLERS = {
+    ("cli/io/_targets.py", "_write_table"),
+    ("cli/io/_targets.py", "write_chunked_output"),
+}
 # These two stage their output: every path they write is the temp that `staged_local_target`
 # yields. `_write_fixed_width` is exempt: the engine's `write_fixed_width` stages and publishes
 # atomically by itself, so wrapping it would stage twice.
 STAGED_WRITERS = ("_write_table", "write_chunked_output")
 # `_write_table` receives its stager as `stage`; the callers below are checked to pass real ones.
-STAGE_CALLS = frozenset({"stage", "staged_local_target", "staged_private_target"})
+# `open_csv_sink(tmp, path)` yields a stream over the stager's temp, so a name it binds is a staged
+# name too; `test_open_csv_sink_wraps_only_the_stagers_temp` checks that its first argument is.
+# `_staged_chunked` is the chunked writer's staging wrapper; `test_staged_chunked_only_stages`
+# checks that it opens nothing but `staged_local_target`.
+STAGE_CALLS = frozenset(
+    {"stage", "staged_local_target", "staged_private_target", "open_csv_sink", "_staged_chunked"}
+)
 STAGERS = frozenset({"staged_local_target", "staged_private_target"})
 
 _METHODS = frozenset({"to_csv", "to_parquet"})
@@ -120,7 +133,8 @@ def test_writer_module_writes_only_in_its_writers() -> None:
     source = (SRC / CHOKE_POINT).read_text(encoding="utf-8")
     scopes = {scope for _l, scope in write_sites(source)}
     assert _outside_writers(source) == []
-    assert set(WRITERS) <= scopes, f"writers with no write site: {sorted(set(WRITERS) - scopes)}"
+    missing = set(WRITERS) - set(FEEDERS) - scopes
+    assert not missing, f"writers with no write site: {sorted(missing)}"
     seeded = source + "\n\ndef sneaky(df, p):\n    df.to_csv(p)\n"
     assert _outside_writers(seeded) == ["sneaky"]
 
@@ -136,6 +150,8 @@ def test_writer_module_writes_only_in_its_writers() -> None:
         "import pyarrow.parquet as pq\ndef f(t, p):\n    pq.write_to_dataset(t, p)\n",
         "import pyarrow.csv\ndef f(t, p):\n    pyarrow.csv.write_csv(t, p)\n",
         "import pyarrow.csv as pc\ndef f(p, s):\n    pc.CSVWriter(p, s)\n",
+        "from pyarrow.csv import CSVWriter\ndef f(p, s):\n    CSVWriter(p, s)\n",
+        "import pyarrow.csv as pc\ndef f(t, p):\n    pc.write_csv(t, p)\n",
         "import pyarrow.parquet.core\ndef f(t, p):\n    pyarrow.parquet.core.write_table(t, p)\n",
         "import pyarrow.dataset as ds\ndef f(t, p):\n    ds.write_dataset(t, p)\n",
         "import pyarrow as pa\ndef f(t, p):\n    pa.parquet.write_table(t, p)\n",
@@ -492,3 +508,92 @@ def test_the_private_only_rule_is_green_on_the_private_writer() -> None:
         "def f(t, p):\n    write_private_table(t, 'csv', p)\n"
     )
     assert public_writer_uses(source) == []
+
+
+def _feeder_callers(
+    root: Path, source_by_path: dict[str, str] | None = None
+) -> set[tuple[str, str]]:
+    """(path, enclosing function) of every call to a feeder anywhere under `root`."""
+    found: set[tuple[str, str]] = set()
+    for path in sorted(root.rglob("*.py")):
+        rel = path.relative_to(root).as_posix()
+        text = (source_by_path or {}).get(rel) or path.read_text(encoding="utf-8")
+        for _node, scope in _calls_named(text, set(FEEDERS)):
+            found.add((rel, scope))
+    return found
+
+
+def _calls_named(source: str, names: set[str]) -> list[tuple[ast.Call, str]]:
+    out: list[tuple[ast.Call, str]] = []
+
+    def walk(node: ast.AST, scope: str) -> None:
+        for child in ast.iter_child_nodes(node):
+            inner = scope
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                inner = f"{scope}.{child.name}" if scope else child.name
+            elif isinstance(child, ast.ClassDef):
+                inner = f"{scope}.{child.name}" if scope else child.name
+            if isinstance(child, ast.Call):
+                func = child.func
+                called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", "")
+                if called in names:
+                    out.append((child, scope))
+            walk(child, inner)
+
+    walk(ast.parse(source), "")
+    return out
+
+
+def test_the_csv_feeder_is_called_only_by_the_two_writers() -> None:
+    assert _feeder_callers(SRC) == FEEDER_CALLERS
+
+
+def test_a_third_feeder_caller_is_red() -> None:
+    seeded = {
+        "cli/io/_targets.py": (SRC / CHOKE_POINT).read_text(encoding="utf-8")
+        + "\n\ndef sneaky(t, w):\n    _write_csv(t, w)\n"
+    }
+    assert ("cli/io/_targets.py", "sneaky") in _feeder_callers(SRC, seeded)
+    assert _feeder_callers(SRC, seeded) != FEEDER_CALLERS
+    other = {"cli/run/_execute.py": "def f(t, w):\n    _write_csv(t, w)\n"}
+    assert ("cli/run/_execute.py", "f") in _feeder_callers(SRC, other)
+
+
+def _sink_calls() -> list[tuple[str, str, ast.Call]]:
+    found = []
+    for path in sorted(SRC.rglob("*.py")):
+        rel = path.relative_to(SRC).as_posix()
+        found += [
+            (rel, scope, node)
+            for node, scope in _calls_named(path.read_text(encoding="utf-8"), {"open_csv_sink"})
+        ]
+    return found
+
+
+def test_open_csv_sink_wraps_only_the_stagers_temp() -> None:
+    calls = _sink_calls()
+    assert {(rel, scope) for rel, scope, _n in calls} == FEEDER_CALLERS
+    source = (SRC / CHOKE_POINT).read_text(encoding="utf-8")
+    stagers = frozenset(STAGE_CALLS - {"open_csv_sink"})
+    for _node, scope, names in call_contexts(
+        source,
+        qualified_match=lambda _m, n: n == "open_csv_sink",
+        with_calls=stagers,
+    ):
+        assert scope in STAGED_WRITERS
+        assert names, "open_csv_sink is called outside a stager block"
+    for _rel, _scope, node in calls:
+        first = node.args[0] if node.args else None
+        assert isinstance(first, ast.Name) and first.id == "tmp"
+
+
+def test_staged_chunked_only_stages() -> None:
+    """`_staged_chunked` yields only what `staged_local_target` made, and writes no file itself."""
+    tree = ast.parse((SRC / CHOKE_POINT).read_text(encoding="utf-8"))
+    func = next(
+        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "_staged_chunked"
+    )
+    calls = _calls_named(ast.unparse(func), {"staged_local_target", "open"})
+    called = {getattr(c.func, "id", getattr(c.func, "attr", "")) for c, _scope in calls}
+    assert "staged_local_target" in called
+    assert "open" not in called

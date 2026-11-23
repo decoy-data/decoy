@@ -18,6 +18,8 @@ from decoy.cli.io._compression import COMPRESSION, csv_compression
 
 _FRAME = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 _CSV = b"id,name\n1,a\n2,b\n"
+# An Arrow table goes through pyarrow.csv (CSV-WRITE-FAST): header and strings are quoted.
+_ARROW_CSV = b'"id","name"\n1,"a"\n2,"b"\n'
 
 
 def test_the_local_suffix_table_equals_pandas_and_has_no_tgz() -> None:
@@ -80,7 +82,7 @@ def test_whole_table_write_honours_the_compression_the_name_implies(
     target = tmp_path / f"out.csv{suffix}"
     data = pa.Table.from_pandas(_FRAME) if as_arrow else _FRAME
     write_table(data, "csv", target)
-    assert _decoded(target) == _CSV
+    assert _decoded(target) == (_ARROW_CSV if as_arrow else _CSV)
     assert [p.name for p in tmp_path.iterdir()] == [target.name]
 
 
