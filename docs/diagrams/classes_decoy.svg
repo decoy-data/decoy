@@ -195,7 +195,7 @@
 <text xml:space="preserve" text-anchor="middle" x="4689.85" y="-1911.2" font-family="Times,serif" font-size="14.00" fill="green">validation</text>
 </g>
 <!-- decoy.ci.contracts._Strict -->
-<g id="node246" class="node">
+<g id="node247" class="node">
 <title>decoy.ci.contracts._Strict</title>
 <polygon fill="none" stroke="black" points="5121.25,-2271.38 5121.25,-2347.12 5318.75,-2347.12 5318.75,-2271.38 5121.25,-2271.38"/>
 <text xml:space="preserve" text-anchor="start" x="5196.38" y="-2329.82" font-family="Times,serif" font-size="14.00">_Strict</text>
@@ -1195,7 +1195,7 @@
 <text xml:space="preserve" text-anchor="start" x="12794.75" y="-1760.58" font-family="Times,serif" font-size="14.00"> </text>
 </g>
 <!-- decoy.cli.library._policy._Strict -->
-<g id="node247" class="node">
+<g id="node246" class="node">
 <title>decoy.cli.library._policy._Strict</title>
 <polygon fill="none" stroke="black" points="13406.25,-2029.25 13406.25,-2105 13603.75,-2105 13603.75,-2029.25 13406.25,-2029.25"/>
 <text xml:space="preserve" text-anchor="start" x="13481.38" y="-2087.7" font-family="Times,serif" font-size="14.00">_Strict</text>
@@ -1642,26 +1642,26 @@
 <polyline fill="none" stroke="black" points="16665.88,-560.5 16924.12,-560.5"/>
 <text xml:space="preserve" text-anchor="start" x="16792.75" y="-543.2" font-family="Times,serif" font-size="14.00"> </text>
 </g>
-<!-- decoy.ci.manifest.ManifestError -->
-<g id="node87" class="node">
-<title>decoy.ci.manifest.ManifestError</title>
-<polygon fill="none" stroke="black" points="16942.25,-552.5 16942.25,-628.25 17079.75,-628.25 17079.75,-552.5 16942.25,-552.5"/>
-<text xml:space="preserve" text-anchor="start" x="16960" y="-610.95" font-family="Times,serif" font-size="14.00" fill="red">ManifestError</text>
-<polyline fill="none" stroke="black" points="16942.25,-603 17079.75,-603"/>
-<text xml:space="preserve" text-anchor="start" x="16950.25" y="-585.7" font-family="Times,serif" font-size="14.00" fill="red">reason_code : str</text>
-<polyline fill="none" stroke="black" points="16942.25,-577.75 17079.75,-577.75"/>
-<text xml:space="preserve" text-anchor="start" x="17008.75" y="-560.45" font-family="Times,serif" font-size="14.00" fill="red"> </text>
-</g>
 <!-- decoy.cli.evidence.ManifestError -->
-<g id="node88" class="node">
+<g id="node87" class="node">
 <title>decoy.cli.evidence.ManifestError</title>
-<polygon fill="none" stroke="black" points="17098,-543.88 17098,-636.88 17216,-636.88 17216,-543.88 17098,-543.88"/>
-<text xml:space="preserve" text-anchor="start" x="17106" y="-619.58" font-family="Times,serif" font-size="14.00" fill="red">ManifestError</text>
-<polyline fill="none" stroke="black" points="17098,-611.62 17216,-611.62"/>
-<text xml:space="preserve" text-anchor="start" x="17109" y="-594.33" font-family="Times,serif" font-size="14.00" fill="red">kind : str</text>
-<text xml:space="preserve" text-anchor="start" x="17109" y="-577.08" font-family="Times,serif" font-size="14.00" fill="red">message : str</text>
-<polyline fill="none" stroke="black" points="17098,-569.12 17216,-569.12"/>
-<text xml:space="preserve" text-anchor="start" x="17154.75" y="-551.83" font-family="Times,serif" font-size="14.00" fill="red"> </text>
+<polygon fill="none" stroke="black" points="16942,-543.88 16942,-636.88 17060,-636.88 17060,-543.88 16942,-543.88"/>
+<text xml:space="preserve" text-anchor="start" x="16950" y="-619.58" font-family="Times,serif" font-size="14.00" fill="red">ManifestError</text>
+<polyline fill="none" stroke="black" points="16942,-611.62 17060,-611.62"/>
+<text xml:space="preserve" text-anchor="start" x="16953" y="-594.33" font-family="Times,serif" font-size="14.00" fill="red">kind : str</text>
+<text xml:space="preserve" text-anchor="start" x="16953" y="-577.08" font-family="Times,serif" font-size="14.00" fill="red">message : str</text>
+<polyline fill="none" stroke="black" points="16942,-569.12 17060,-569.12"/>
+<text xml:space="preserve" text-anchor="start" x="16998.75" y="-551.83" font-family="Times,serif" font-size="14.00" fill="red"> </text>
+</g>
+<!-- decoy.ci.manifest.ManifestError -->
+<g id="node88" class="node">
+<title>decoy.ci.manifest.ManifestError</title>
+<polygon fill="none" stroke="black" points="17078.25,-552.5 17078.25,-628.25 17215.75,-628.25 17215.75,-552.5 17078.25,-552.5"/>
+<text xml:space="preserve" text-anchor="start" x="17096" y="-610.95" font-family="Times,serif" font-size="14.00" fill="red">ManifestError</text>
+<polyline fill="none" stroke="black" points="17078.25,-603 17215.75,-603"/>
+<text xml:space="preserve" text-anchor="start" x="17086.25" y="-585.7" font-family="Times,serif" font-size="14.00" fill="red">reason_code : str</text>
+<polyline fill="none" stroke="black" points="17078.25,-577.75 17215.75,-577.75"/>
+<text xml:space="preserve" text-anchor="start" x="17144.75" y="-560.45" font-family="Times,serif" font-size="14.00" fill="red"> </text>
 </g>
 <!-- decoy.lang._ast.Mask -->
 <g id="node89" class="node">
@@ -2042,8 +2042,21 @@
 <polyline fill="none" stroke="black" points="22340.12,-560.5 22455.88,-560.5"/>
 <text xml:space="preserve" text-anchor="start" x="22395.75" y="-543.2" font-family="Times,serif" font-size="14.00"> </text>
 </g>
-<!-- decoy.ci.contracts.PipelineRef -->
+<!-- decoy.cli.io._pipelines.PipelineRef -->
 <g id="node121" class="node">
+<title>decoy.cli.io._pipelines.PipelineRef</title>
+<polygon fill="none" stroke="black" points="22474.12,-526.62 22474.12,-654.12 22655.88,-654.12 22655.88,-526.62 22474.12,-526.62"/>
+<text xml:space="preserve" text-anchor="start" x="22524.12" y="-636.83" font-family="Times,serif" font-size="14.00">PipelineRef</text>
+<polyline fill="none" stroke="black" points="22474.12,-628.88 22655.88,-628.88"/>
+<text xml:space="preserve" text-anchor="start" x="22482.12" y="-611.58" font-family="Times,serif" font-size="14.00">given_as : str</text>
+<text xml:space="preserve" text-anchor="start" x="22482.12" y="-594.33" font-family="Times,serif" font-size="14.00">name : str | None</text>
+<text xml:space="preserve" text-anchor="start" x="22482.12" y="-577.08" font-family="Times,serif" font-size="14.00">project : Project | None</text>
+<text xml:space="preserve" text-anchor="start" x="22482.12" y="-559.83" font-family="Times,serif" font-size="14.00">yaml : Path</text>
+<polyline fill="none" stroke="black" points="22474.12,-551.88 22655.88,-551.88"/>
+<text xml:space="preserve" text-anchor="start" x="22562.75" y="-534.58" font-family="Times,serif" font-size="14.00"> </text>
+</g>
+<!-- decoy.ci.contracts.PipelineRef -->
+<g id="node122" class="node">
 <title>decoy.ci.contracts.PipelineRef</title>
 <polygon fill="none" stroke="black" points="5779.88,-2012 5779.88,-2122.25 6068.12,-2122.25 6068.12,-2012 5779.88,-2012"/>
 <text xml:space="preserve" text-anchor="start" x="5883.12" y="-2104.95" font-family="Times,serif" font-size="14.00">PipelineRef</text>
@@ -2059,19 +2072,6 @@
 <title>decoy.ci.contracts.PipelineRef&#45;&gt;decoy.ci.contracts._Strict</title>
 <path fill="none" stroke="black" d="M5869.58,-2122.71C5842.14,-2147.29 5807.08,-2174.59 5771,-2191.75 5627.87,-2259.83 5445.08,-2288.4 5330.24,-2300.21"/>
 <polygon fill="none" stroke="black" points="5330.11,-2296.7 5320.5,-2301.18 5330.8,-2303.67 5330.11,-2296.7"/>
-</g>
-<!-- decoy.cli.io._pipelines.PipelineRef -->
-<g id="node122" class="node">
-<title>decoy.cli.io._pipelines.PipelineRef</title>
-<polygon fill="none" stroke="black" points="22474.12,-526.62 22474.12,-654.12 22655.88,-654.12 22655.88,-526.62 22474.12,-526.62"/>
-<text xml:space="preserve" text-anchor="start" x="22524.12" y="-636.83" font-family="Times,serif" font-size="14.00">PipelineRef</text>
-<polyline fill="none" stroke="black" points="22474.12,-628.88 22655.88,-628.88"/>
-<text xml:space="preserve" text-anchor="start" x="22482.12" y="-611.58" font-family="Times,serif" font-size="14.00">given_as : str</text>
-<text xml:space="preserve" text-anchor="start" x="22482.12" y="-594.33" font-family="Times,serif" font-size="14.00">name : str | None</text>
-<text xml:space="preserve" text-anchor="start" x="22482.12" y="-577.08" font-family="Times,serif" font-size="14.00">project : Project | None</text>
-<text xml:space="preserve" text-anchor="start" x="22482.12" y="-559.83" font-family="Times,serif" font-size="14.00">yaml : Path</text>
-<polyline fill="none" stroke="black" points="22474.12,-551.88 22655.88,-551.88"/>
-<text xml:space="preserve" text-anchor="start" x="22562.75" y="-534.58" font-family="Times,serif" font-size="14.00"> </text>
 </g>
 <!-- decoy.cli.io._pipelines.PipelineToken -->
 <g id="node123" class="node">
