@@ -10,7 +10,7 @@ Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P
   agreement done (R-a, R-b; static `version` with hatchling). Open: CLI `__version__` literal
   `"0.1.0"`; wide engine dependency floors (G12, F10). Branch `E:fix/faker-40-31-migration`
   (`e68b66c1`, replay by patch after R1).
-- **B-3** Marketing-web currency: `docs-src/` off STORM branding and the old command surface;
+- **B-3** Marketing-web currency: `docs-src/` off the retired product name and the old command surface;
   `CLAIMS-AUDIT.md` complete; `/proof` synced to the catalog.
 - **D-5** Public Fumadocs launch-gate flip, aligned to FSL-1.1-ALv2 at launch.
 - **GA-confidentiality freeze (audit packets 11 to 20):** 11.1 and the 12.1 residue land before the

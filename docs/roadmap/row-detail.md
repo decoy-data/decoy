@@ -35,14 +35,9 @@ E2, C1, C2 (row 9) are deferred off the V1 path. Test trust (owner, 2026-11-05):
 red under a named mutation; the platform test-trust slices are parked; the CLI journey row is 75.
 The dev-rule `cross-cutting-concerns.md` is the standing rule (ROADMAP section 4).
 
-**STORM concept reframe (2026-10-29).** STORM is removed as a concept. Decoy is a data-manipulation
-compiler pipeline with phase-bound scans: pre-scan (profile and detect), transform (mask and
-generate), post-scan (verify, leak and fidelity). The STORM wire, config, route, CLI and doc surfaces
-(`run_storm`, `decoy storm` verbs, `storm.scan`, `storm-post-mask/v1`) are renamed in one pre-GA
-wave. Rules the wave honours: permission flags are deny-only rows, so a rename without a row
-migration fails open; lenient request models silently drop old keys; the scheduler filters on the
-stored mode `storm.scan`. The after-publish STORM post-mask hook retires once DELIV lands one in-run
-post-scan path. Earlier engine parts MERGED (engine #329, #349).
+**Retired product name (owner 2026-10-29, 2026-11-16).** Decoy is a compiler pipeline with
+phase-bound scans: pre-scan, transform, post-scan. The old name is removed from every CLI and engine
+surface (rows 16 and 56); history is in the archived roadmap snapshot.
 
 **Phase 1 slice 0 (owner, 2026-10-30; before F31).** 11.1 vault writer seed fallback (`vault.py:349-355`
 falls back to the 8-byte `job_seed`; reproduced) plus the 12.3 simpleeval floor (housekeeping): row
@@ -71,7 +66,7 @@ retry and checkpoint progress); C0 record MERGED (engine #367). FRAME findings: 
 raw exception text (closes 13.7 on the CLI side); if free, a `warning` event on native-kernel silent
 fallback (G11). The CLI does not retry or self-orchestrate.
 
-**F25 (row 58).** A scratch manager (job-owned 0700 dirs plus byte quotas that every spool, temp
+**F25 (row 58; quotas are row 58b, 1.3).** A scratch manager (job-owned 0700 dirs plus byte quotas that every spool, temp
 Parquet, subset and DB spill registers with), at-rest encryption, lease-checked orphan sweep. FRAME
 findings: the three temp roots register with the one scratch manager (G6); cloud reads go through a
 bounded reader (G7); the isolated route caps staged-table materialization (G7); spill encryption is
@@ -86,7 +81,7 @@ key on it. Superseded branch `claude/wizardly-allen-8ymekg`.
 (`E:verification/postmask/runner.py:38-43`), so routing forces full-frame
 (`E:execution/_pipeline_routing.py:140-142`); PK uniqueness and FK link checks are full-frame only.
 
-**CLI delivery (row 61).** UX map sections 5.1 to 5.3a: a `delivery:` YAML key owned by the engine;
+**CLI delivery (row 61; best-effort is row 61b, 1.3, and 1.0 refuses it at validate).** UX map sections 5.1 to 5.3a: a `delivery:` YAML key owned by the engine;
 every run writes into an immutable per-run delivery root; post-scan runs on the staged output; the
 attempt vault is made durable; one publication record is published last. Strict delivers nothing if
 any table fails; best-effort delivers the good tables and drops failed ones and their FK dependents.
@@ -130,7 +125,7 @@ signing key joins the backup and custody list (G22).
 `run`, `unmask` and `report vault` MERGED (CLI #78). Remaining: plan revision for 3b and 5; slice 3a
 is platform provider injection (parked). Live Vault tests UNVERIFIED.
 
-**F26 (row 74).** Sweeper for expired uploads, outputs, snapshots, staging and checkpoints; dry-run
+**F26 (row 74; `decoy cleanup` and stage reclaim are row 74b, 1.3; V1 keeps the E3 arena sweep).** Sweeper for expired uploads, outputs, snapshots, staging and checkpoints; dry-run
 inventory; hold- and dependency-aware audited cleanup; a CLI local-cleanup command. The inventory
 includes the F25 scratch roots (G6). LIB L4b `prune` and `clean` overlap it; the re-scope settles the
 boundary.
@@ -152,7 +147,7 @@ digests, generator logic, deps). FRAME: `runtime_identity` includes Faker and pr
 digests; the engine's wide dependency floors (G12) are what it must pin. Source
 `P:docs/plans/2026-10-24-upgrade-determinism-gate.md`.
 
-**F09 (row 79).** The immutable domain-version object {input type, canon, namespace, transform, key
+**F09 (row 79; rotation and remap are row 79b, 1.2).** The immutable domain-version object {input type, canon, namespace, transform, key
 version, output format, collision policy}, three rotation modes, impact preview, remap manifest;
 reduced scope defers the advanced UI. FRAME: `key_version` on the Plan and in evidence for every keyed
 strategy. B-6 existing-vault compatibility is a hard cut; the CLI refuses to overwrite an existing

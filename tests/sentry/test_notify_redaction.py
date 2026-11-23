@@ -157,7 +157,7 @@ def test_run_notify_json_envelope_never_leaks_raw_pii(tmp_path: Path, monkeypatc
     assert _SENTINEL_SECRET not in result.output, (
         "decoy run --notify leaked the webhook secret into --json output"
     )
-    payload = _json.loads(result.output)
+    payload = _json.loads(result.stdout)
     assert "notify" in payload
     for entry in payload["notify"]:
         assert set(entry.keys()) <= {"kind", "delivered", "target_host"}

@@ -146,7 +146,12 @@ def test_a_library_that_cannot_be_written_warns_and_keeps_the_exit_code(project:
     out = json.loads(result.stdout)
     library = out["library"]
     assert library["status"] == "failed" and library["code"]
-    warnings = [line for line in result.stderr.splitlines() if "warning" in line]
+    # Only the library's own warning counts; a node without the companion also warns.
+    warnings = [
+        line
+        for line in result.stderr.splitlines()
+        if "warning" in line and "No compiled kernel ran" not in line
+    ]
     assert len(warnings) == 1 and library["code"] in warnings[0]
     assert all(Path(o["path"]).exists() for o in out["outputs"]) and out["outputs"]  # delivered
 

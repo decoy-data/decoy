@@ -199,7 +199,7 @@ Landing steps:
 4. EDGE-CASES.1: rebase after INTL-IDS.2, regenerate the same catalog pins and move the CHANGELOG entry
    to `changelog.d`. Then the cross-model gate and the full suite, which were not run.
 
-INTL-IDS.1 and the 1.0.x row FPE-CHECKSUM-NATIVE both touch `transforms/_fpe_checksum.py`. Whichever
+INTL-IDS.1 and the 1.0 row FPE-CHECKSUM-NATIVE both touch `transforms/_fpe_checksum.py`. Whichever
 lands second rebases.
 
 ### Masking options
@@ -487,14 +487,14 @@ How to read it:
 | Release | Theme | Headline rows and 1.x items | Size (slices) | Engine release |
 |---|---|---|---|---|
 | 1.0 | (not 1.x) | INTL-IDS.3 lands with FAKER-MIGRATE, before the freeze. The V2-to-V1 cut adds 1.0 rows NESTED-FREEZE and FIT-CODES-TEXT | 4 | yes, the launch engine |
-| 1.0.x | Fixes and byte-identical speed | Maintenance rows, patch entries of the corrective backlog; GEN-VECTOR-STREAMS, TEXT-REDACT-RUST-SPLICE, FPE-CHECKSUM-NATIVE | 1 to 4 each | only if a fix is in the engine |
-| 1.1 | Run in production pipelines | 64, 64b, 85, 41, BEHAVIOR-VERSION, PER-COLUMN-ROUTING with SEAM-REASONS; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 27 | yes |
-| 1.2 | Generate completeness and identifiers | 24r, the Later part of 24n, RUST-DATE-TEXT, FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE; INTL-IDS.2, EDGE-CASES.1 | about 16 | yes |
-| 1.3 | More ways to install | 90a, 38, 42, PIP-NATIVE-EXTRA; candidates PYPI, PY-VERSIONS; CHUNK-PARALLEL | about 13 | yes (CHUNK-PARALLEL only) |
+| 1.0.x | Fixes and byte-identical speed | Maintenance rows, patch entries of the corrective backlog; NONFK-OOM part (b) if its plan is not small | 1 to 4 each | only if a fix is in the engine |
+| 1.1 | Run in production pipelines | 64, 64b, 85, 41, BEHAVIOR-VERSION, SEAM-REASONS; scope cut: 36, then 29, 32c (opt-in model), LANG-SIDECAR; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 30 | yes |
+| 1.2 | Generate completeness and identifiers | 24r, the Later part of 24n, 24qb, RUST-DATE-TEXT, FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE, 79b; INTL-IDS.2, EDGE-CASES.1 | about 22 | yes |
+| 1.3 | More ways to install | 90a, 38, 42, PIP-NATIVE-EXTRA; candidates PYPI, PY-VERSIONS; CHUNK-PARALLEL; scope cut: 58b, 61b, 74b | about 18 | yes |
 | 1.4 | More file sources and formats | 87; AVRO-ORC.1, AVRO-ORC.2 | about 13 | yes |
 | 1.5 | More databases and a warehouse | DB-NEXT (MySQL or SQL Server), SNOWFLAKE; WAREHOUSE.1, WAREHOUSE.3 | not sized; needs plans | yes |
 | 1.6 | Joint-distribution synthesis | COPULA.1 to COPULA.3, COPULA.5, COPULA.6 (COPULA.4 not needed); candidate F48 | about 10 (COPULA.5 and .6 not sized) | yes |
-| 1.7 | Policy, secrets and masking options | 81 with 24zt, 83, the Later part of 79; MASK-KEEP.1 to .3, DATE-ENTITY.1 | about 20 | yes |
+| 1.7 | Policy, secrets and masking options | 81 with 24zt, 83; MASK-KEEP.1 to .3, DATE-ENTITY.1 | about 16 | yes |
 | 1.8 | Scan baselines and drift | 30, 31, 32, 80 | about 12 | yes |
 | 1.9 | Quality contracts and privacy risk | 69, 68; ANON.1 to ANON.9 | about 18 | yes |
 | 1.10 | Evidence you can hand to an auditor | 72, 78, 70 | about 11 | yes |
@@ -533,9 +533,9 @@ In order:
 1. A fix that a user reports and that breaks a function or loses data, in its own patch.
 2. Broken-today items from the inbox that miss 1.0, and row 24zr SETUP-NER-JSON ([release](groups/release.md)).
 3. The Maintenance rows and maintenance candidates in [health](groups/health.md).
-4. The 1.0.x speed slots: GEN-VECTOR-STREAMS ([generate](groups/generate.md)), TEXT-REDACT-RUST-SPLICE
-   and FPE-CHECKSUM-NATIVE ([mask](groups/mask.md)), plus FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and
-   UF-DOMAIN, and NONFK-OOM part (b) if they miss 1.0. Output bytes must not change.
+4. NONFK-OOM part (b) if its plan is not small. GEN-VECTOR-STREAMS, TEXT-REDACT-RUST-SPLICE,
+   FPE-CHECKSUM-NATIVE, PER-COLUMN-ROUTING, FAKER-NATIVE-WIDEN, LARGE-STRING-CAST and UF-DOMAIN are
+   1.0 rows (owner 2026-11-22, fast path), not 1.0.x. Output bytes must not change.
 5. The patch entries of the corrective backlog, by theme, when a builder is free.
 
 ### 1.1: run in production pipelines
@@ -549,7 +549,10 @@ storage or a database, and need a failed run to restart without redoing finished
 | 64b CLI-DB-SRC | [connect](groups/connect.md) | not started; includes a Postgres CI lane (moved from 1.4, owner 2026-11-22) | about 5 |
 | 85 F23 resume, CLI half | [run](groups/run.md) | engine release, then C0, C1, C2a, C2b, C3 | 5 |
 | 41 L5a-cli progress | [library](groups/library.md) | one slice, plan passed | 1 |
-| PER-COLUMN-ROUTING, SEAM-REASONS | [run](groups/run.md) | not planned | about 3 |
+| SEAM-REASONS | [run](groups/run.md) | not planned; PER-COLUMN-ROUTING moved to 1.0 and the first decline reason ships inside 1.0 row ROUTE-LABEL-TRUTH (owner 2026-11-22) | about 2 |
+| 36 L2-cli, then 29 SCAN-MULTI S3-cli | [library](groups/library.md), [scan](groups/scan.md) | moved from 1.0 (owner 2026-11-22); plans passed | about 2 |
+| 32c SCAN-ML-MD | [scan](groups/scan.md) | moved from 1.0: md as an opt-in model, the small model stays the default; M-2a3, M-2b re-cut, M-3 | about 3 |
+| LANG-SIDECAR | [config](groups/config.md) | DECOY-LANG S7, moved from 1.0 (owner 2026-11-22) | 1 |
 | BEHAVIOR-VERSION | this page | one behavior-version key for generation, detection and profiling (not three keys). No key means 1.0 behavior; `decoy init` writes the newest version. Additive, so not a 1.0 row. Not planned | about 2 |
 | 82-E3b (fill) | [connect](groups/connect.md) | port #684 | 1 |
 | INTL-IDS.1 (fill) | [mask](groups/mask.md) | merge #671 | 1 |
@@ -558,7 +561,7 @@ storage or a database, and need a failed run to restart without redoing finished
 Other fill: job-outcome notifications ([run](groups/run.md)); the corrective-backlog minors on chunked
 progress events and the subset signal in `decoy.mask()` and `decoy tokenize`.
 
-This minor is the largest. If it does not fit, PER-COLUMN-ROUTING with SEAM-REASONS moves to 1.2 as fill.
+This minor is the largest. If it does not fit, SEAM-REASONS moves to 1.2 as fill.
 
 TARGET-DUP-REFUSE is pending a check. Data loss is a V1 blocker under the V1 bar, so the orchestrator
 first checks whether main already refuses two tables written to one target (engine #589 added
@@ -575,6 +578,8 @@ Theme: synthetic and masked data that looks like the business, in more countries
 | 24r GEN-INHERIT | [generate](groups/generate.md) | plan passed; build | about 3 |
 | 24n GEN-REL, Later part | [generate](groups/generate.md) | parent-anchored date windows, per-parent aggregates, self-reference as a hierarchy | about 3 |
 | RUST-DATE-TEXT | [mask](groups/mask.md) | not planned | about 3 |
+| 24qb GEN-TYPES E1b | [generate](groups/generate.md) | the other `distribution` families; needs a portable-sampling design (moved from 1.0, owner 2026-11-22) | about 2 |
+| 79b F09 rotation and remap | [mask](groups/mask.md) | domain-version object, rotation, remap (moved from 1.0 to 1.2, owner 2026-11-22; was planned for 1.7) | about 4 |
 | FIT-DATE-SHAPE (backlog M3) | this page | fitted dates keep the month and weekday mix, not only the year mix (66.5% January became 8.4%). Opt-in through BEHAVIOR-VERSION | about 2 |
 | FIDELITY-ONE-INFERENCE (backlog M5) | this page | one column-kind inference for `run --fidelity` and `report fidelity`. Opt-in through BEHAVIOR-VERSION | about 2 |
 | INTL-IDS.2 | [mask](groups/mask.md) | port (INTL-IDS.3 is in 1.0) | 1 |
@@ -600,9 +605,12 @@ signed download. L3b and L5b ride here because their plans ask for three OS lane
 | PIP-NATIVE-EXTRA, PYPI, PY-VERSIONS | [release](groups/release.md) | publish on PyPI with companion wheels; add Python 3.13 | about 3 |
 | 38 L3b-cli, 42 L5b-cli | [library](groups/library.md) | plans passed | 2 |
 | CHUNK-PARALLEL | [run](groups/run.md) | not planned (owner tag 1.3, 2026-11-19) | about 5 |
+| 58b F25 quotas | [run](groups/run.md) | opt-in, no default quota (moved from 1.0, owner 2026-11-22) | about 1 |
+| 61b DELIV best-effort | [run](groups/run.md) | DELIV C3 and exit 6; lifts the 1.0 refusal (moved from 1.0, owner 2026-11-22) | 1 |
+| 74b F26 `decoy cleanup` | [run](groups/run.md) | stage half of E2b, C1a, C1b (moved from 1.0, owner 2026-11-22) | about 3 |
 
 L3b and L5b depend on how the release gate settles the `decoy library` commands (row EXPERIMENTAL-TIER).
-CHUNK-PARALLEL is the only engine work in this minor. #321 had none; the owner tagged it 1.3 a day later.
+CHUNK-PARALLEL, 58b, 61b and 74b are the engine work in this minor. #321 had none; the owner tagged CHUNK-PARALLEL 1.3 a day later and the 2026-11-22 scope cut added the other three.
 
 ### 1.4: more file sources and formats
 
@@ -651,15 +659,13 @@ Fill: F48 statistical synthesis; the certified DP stack candidate if COPULA.5 is
 
 ### 1.7: policy, secrets and masking options
 
-Theme: governance. A security team states rules once, keeps secrets in its own vault, rotates token
-domains, and picks masks that keep the parts of a value a test needs (an email domain, a card BIN, a
+Theme: governance. A security team states rules once, keeps secrets in its own vault and picks masks that keep the parts of a value a test needs (an email domain, a card BIN, a
 subnet, the intervals between one patient's dates).
 
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
 | 81 F16, with 24zt | [mask](groups/mask.md) | E2b (engine #642), E1, E3, release, C1, C2 | 5 |
 | 83 F13 external adapters | [mask](groups/mask.md) | not started | about 4 |
-| 79 F09, Later part | [mask](groups/mask.md) | domain-version object, rotation, remap | about 4 |
 | MASK-KEEP.1 to .3 | [mask](groups/mask.md) | port as one lane | about 4 |
 | DATE-ENTITY.1 | [mask](groups/mask.md) | port and re-review | about 3 |
 
@@ -667,7 +673,7 @@ This minor is the largest. If it does not fit the budget, DATE-ENTITY.1 moves to
 
 Fill: F17 portable disguise bundles.
 
-Depends on: the 1.0 part of row 79 (the vault header). The vault format is fixed for the life of 1.x.
+Depends on: the 1.0 part of row 79 (the vault header) and 79b (1.2). The vault format is fixed for the life of 1.x.
 
 ### 1.8: scan baselines and drift
 
@@ -680,7 +686,7 @@ Depends on: the 1.0 part of row 79 (the vault header). The vault format is fixed
 
 Fill: DETECT-PROFILES, X-09, trend and drift analytics, the detector set version field.
 
-Depends on: 1.0 rows 29 and 36.
+Depends on: rows 29 and 36 (1.1).
 
 ### 1.9: quality contracts and privacy risk
 

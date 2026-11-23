@@ -10,9 +10,7 @@ Rows keep their number from the pre-split track. A row number or section number 
 
 Blocks the 1.0 release.
 
-| # | Item | Repo | State | Branch, plan or handoff | After |
-|---|---|---|---|---|---|
-| 36 | L2-cli: scan snapshots on the library (~380 lines; replaces SCAN-MULTI S1d) | CLI | NOT STARTED. Plan passed 2026-11-06. L1c and L1d are merged (rows 34 and 35); it now waits only on SCAN-MULTI S1c | same | SCAN-MULTI S1c (L1c and L1d merged) |
+None. Row 36 moved to 1.1 (owner 2026-11-22).
 
 ## Later (1.x)
 
@@ -20,6 +18,7 @@ Additive. Not scheduled until a 1.x release picks it up.
 
 | # | Item | Repo | State | Branch, plan or handoff | After |
 |---|---|---|---|---|---|
+| 36 | 1.1. L2-cli: scan snapshots on the library (~380 lines; replaces SCAN-MULTI S1d) | CLI | NOT STARTED. Moved from 1.0 (owner 2026-11-22). Plan passed 2026-11-06. L1c and L1d are merged (rows 34 and 35); it now waits only on SCAN-MULTI S1c | same | SCAN-MULTI S1c (L1c and L1d merged) |
 | 38 | L3b-cli: sample-run records and scratch lifecycle (~450 lines); three OS lanes | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L1c; SAMPLE |
 | 41 | L5a-cli: wire the engine `ProgressSink` into `decoy run` (~380 lines) | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L1c |
 | 42 | L5b-cli: job logs (~500 lines); three OS lanes | CLI | Plan passed 2026-11-06; the CSV reader, REG-RENUMBER and L1a (engine 0.20.0, which the CLI pins since CLI #164) are in place; waits on the rows in After | same | L5a, L3a |

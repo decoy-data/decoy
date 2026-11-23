@@ -28,7 +28,7 @@ typed model and drift-tested byte for byte); a runnable example is
 | `schema_version` | required, exactly `decoy-ci/v1` |
 | `pipelines` | 1-32 `{id, path}`; repo-relative regular files; no absolute, `..`, NUL, symlink escape, or duplicate resolved paths |
 | `checks.validation` | `{enabled=true, mode=full\|config, pipelines=<all>, fail_on_warning=true}` |
-| `checks.drift` | 0-32 `{id, baseline, current, blocking=true}` saved STORM scan pairs |
+| `checks.drift` | 0-32 `{id, baseline, current, blocking=true}` saved scan JSON pairs |
 | `checks.evidence` | 0-32 `{id, manifest}` `cli-local-1` evidence manifests |
 | `checks.regression_suites` | 0-16 `{id, suite}`; **any entry is refused** until a public F12 runner exists (`ci.regression_runner_unavailable`) |
 | `staged_scan` | `{enabled=false, patterns[], limits}`; enabled needs 1-32 patterns |

@@ -51,6 +51,10 @@ Other merges:
 - **CLI #368 (`0da58741`):** roadmap rows PRE-SCAN-RUN and HANDLER-ROW-COUNT.
 - **Engine #684 (row 82, F07 E3b) not merged:** held as a draft until 1.1, because row 82 is a Later row.
 
+## 2026-11-22: engine 0.28.3 repin (CLI)
+
+- **CLI**: the engine repin to 0.28.3 (tag `v0.28.3`, `263e020b9`). `requirements-certified.txt` keeps its 70 pins; fingerprint is now `228ed71e...`, a certified row in the engine.
+
 ## 2026-11-21: engine 0.28.2 repin (CLI)
 
 - **CLI**: the engine repin to 0.28.2 (tag `v0.28.2`, engine #740, `2bee0c523`). `requirements-certified.txt` keeps its 70 pins; fingerprint is now `44aaa90f...`, a certified row in the engine.
@@ -119,7 +123,7 @@ git logs). Dates are the UTC merge dates from GitHub.
 
 ## 2026-11-19
 
-Engine 0.28.0 (tag `v0.28.0`, engine #698, `7dc9e30bd`) was cut at 00:45 UTC. The CLI pins 0.28.2 (CLI #327, then the 0.28.2 repin). Engine entries below 0.28.0 marked "after the tag" are in no release yet.
+Engine 0.28.0 (tag `v0.28.0`, engine #698, `7dc9e30bd`) was cut at 00:45 UTC. The CLI pins 0.28.3 (CLI #327, then the 0.28.2 and 0.28.3 repins). Engine entries below 0.28.0 marked "after the tag" are in no release yet.
 
 - **Engine** (`fa656aa23`, engine #700; `ce542ffaa`, engine #692, 2026-11-18): OUTPUT-METADATA-LEAK slices E0 and E1 (roadmap row OUTPUT-METADATA-LEAK, partly merged). E0 is the canary matrix across every output route. E1: published Parquet files carry only an allow-list of key/value metadata, through new `output_schema` and `output_table`. Extension-type columns are written as their storage type, except `arrow.uuid`, `arrow.bool8`, `arrow.json` and the pandas period and interval types. E2 (carrier sites) and C1 (CLI) are left.
 - **Engine** (`cc0149152`, engine #707): PROFILE-SAMPLE-LABELS slice E0 (partly merged). `ProfileSource.sample_frame(n)` returns n rows unless the source ended. Cloud CSV scans now profile the requested 10,000 rows, so their null counts, distinct counts and profile hash can change.

@@ -165,12 +165,6 @@ kind = "json"
 consumer = "tests/sentry/io_policy/test_config_load_choke_point.py"
 
 [[sentry]]
-id = "retired-name-pending"
-baseline = "tests/sentry/baselines/retired-name-pending.json"
-kind = "json"
-consumer = "tests/sentry/release/test_retired_name_residual.py"
-
-[[sentry]]
 id = "banned-text-allow"
 baseline = "tests/sentry/baselines/banned-text-allow.json"
 kind = "json"

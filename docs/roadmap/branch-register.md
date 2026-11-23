@@ -24,8 +24,7 @@ and is a cleanup candidate (`~/bin/branch-analysis`).
 | engine `plan/cdf-exact-arithmetic` (`f89f4ab7`) | built as #363 | retire |
 | engine `plan/slice0` (`3a49b782`) | slice 0 plans | retire after slice 0 merges |
 | engine `plan/route-coverage-ph2` (`864c2352`), `claude/optimistic-feynman-m5cfy5` (`2086fc73`), `claude/blissful-goldberg-mkwpdk` (`e1f96acb`) | route-coverage phase 2 (post-V1; Codex GO-WITH-FIXES with 5 HIGH) | keep; `blissful-goldberg` HIGH lost-work risk, do not delete |
-| CLI `claude/eager-clarke-14deh1` (`d697c6d8`) | stale STORM rename | retire after the STORM CLI half |
-| CLI `claude/storm-split-cli` (`a677d509`) | STORM CLI split | owner: compare with the re-cut CLI slices |
+| CLI `claude/eager-clarke-14deh1` (`7bdbdf97`) | stale rename branch, superseded by rows 16 and 56 | retire after the CLI half |
 | CLI `claude/vibrant-feynman-1khw1v` (`8fa00fb2`) | CLI pre-scan and post-scan work | owner: compare with the re-cut CLI slices |
 | CLI `feat/f26-local-cleanup`, PR #68 | F26 CLI half | parked until F22 |
 | CLI `plan/f43-ci-integration` | F43 plan; built as #69 | retire |

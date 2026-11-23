@@ -113,7 +113,7 @@ package it lands in. A gate that finds a plan missing either sends it back.
 
    Hot pairs: `_execute.py` (SUB-RUN, CLI delivery, SAMPLE, L5a, F23) and `_flow.py` (L3b, L5a,
    L5b, F30 C1b) stay single-writer. One branch at a time writes `C:src/decoy/cli/scan.py`: SCAN-MULTI
-   S1c and S3-cli, LIB L2, L5b, H-1 C3, NAME-REMOVAL CLI half. CLI-CLOUD's plan must say whether it
+   S1c, H-1 C3, NAME-REMOVAL CLI half; in 1.x also S3-cli, LIB L2 and L5b (owner 2026-11-22). CLI-CLOUD's plan must say whether it
    enters the `run.py` lane (after RUN-SPLIT: which `run/` modules it writes). The plan for each
    row names its modules; the module list above is the RUN-SPLIT plan's reading of the row titles.
 3. **Engine releases.** One release and one CLI repin open at a time. A CLI half that needs new
@@ -128,7 +128,7 @@ package it lands in. A gate that finds a plan missing either sends it back.
    overlap.
 6. **SCAN-MULTI.** S1a and S1b ship in one engine release. CLI-DIALECT lands before S1c, and S1c
    before LIB L2 (L2 replaces the plan's S1d). CONFIG-EXPLICIT lands before S3-engine; S3-engine is
-   released, then S3-cli.
+   released, then S3-cli. LIB L2 and S3-cli are 1.1 (owner 2026-11-22), so only S1c is in 1.0.
 7. **CLI-FMT.** DONE 2026-11-07: A, A2 and B merged in order (#101 to #103) after one T3 on B's head.
    ATOMIC-OUTPUT (row 21b) DONE 2026-11-07 (#105).
 8. **Publication chain.** F25 before F22 (owner, 2026-10-30); F22 and POSTSCAN-STREAM before CLI

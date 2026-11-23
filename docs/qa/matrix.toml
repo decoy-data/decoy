@@ -117,7 +117,7 @@ expect = "exit 1, a reason that says no column declares vault: true"
 id = "mask-native-vault-flag"
 kind = "refused"
 when = { native = "--native", vault = "--vault" }
-doc = "src/decoy/_native_gate.py:325"
+doc = "src/decoy/_native_gate.py:328"
 cites = ["vault_active"]
 expect = "exit 1 before any run, code native_require_vault_active"
 
@@ -125,7 +125,7 @@ expect = "exit 1 before any run, code native_require_vault_active"
 id = "mask-native-vault-column"
 kind = "refused_after_run"
 when = { native = "--native", strategy_mix = "redact with vault column" }
-doc = "src/decoy/_native_gate.py:247"
+doc = "src/decoy/_native_gate.py:250"
 cites = ["vault"]
 expect = "refusal before any output is written: a vault: true column never shows compiled-kernel evidence"
 
@@ -152,7 +152,7 @@ expect = "refusal before any output is written, as for an FK table (unconfirmed 
 id = "mask-native-bucketize-no-evidence"
 kind = "refused_after_run"
 when = { native = "--native", strategy_mix = "bucketize and truncate" }
-doc = "src/decoy/_native_gate.py:463"
+doc = "src/decoy/_native_gate.py:484"
 cites = ["native_require_no_evidence"]
 expect = "refusal before any output is written; bucketize has no native operator"
 
