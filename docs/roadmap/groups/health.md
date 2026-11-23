@@ -42,7 +42,7 @@ No user-visible change. Merges at any time and never gates a release.
 | 50 | H-1 E0r: F29 producer inventory regeneration | engine | handoff not written | none | F06 #338 (merged) |
 | 51 | H-1 E1.2, then E1.3 | engine | handoff not written | none | A-4 (merged) |
 | 52 | H-1 E2 and E4 | engine | handoff not written | none | E0r |
-| 53 | H-1 C3 | CLI | handoff not written | none | NAME-REMOVAL CLI half; CLI branches (an identifier kept in the pre-split snapshot), `claude/vibrant-feynman-1khw1v` settled |
+| 53 | H-1 C3 | CLI | handoff not written | none | NAME-REMOVAL CLI half (met, CLI #389); CLI branches (an identifier kept in the pre-split snapshot), `claude/vibrant-feynman-1khw1v` settled |
 | 54 | H-1 E7: split files as their blockers merge | engine | not planned in detail | none | per file |
 
 ### Maintenance candidates
