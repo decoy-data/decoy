@@ -30,6 +30,7 @@ from decoy.cli._sources import (
     read_source,
     resolve_path,
     resolved_source_config,
+    scan_prepared_sources,
     source_schema_and_chunks,
 )
 from decoy.cli.io._component import is_portable_component
@@ -301,6 +302,7 @@ __all__ = [
     "run_outputs",
     "run_report",
     "sample_target_format",
+    "scan_prepared_sources",
     "scan_set_from_data",
     "select_table",
     "shown_path",

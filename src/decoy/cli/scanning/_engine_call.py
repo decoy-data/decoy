@@ -16,7 +16,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
-    from decoy_engine import PreScanConfig
+    from decoy_engine import PreparedDeclaredSources, PreScanConfig
     from decoy_engine.profiling import ScanSet
 
 DEFAULT_SCAN_ROWS: Final = 10_000
@@ -53,22 +53,35 @@ def check_scan_options(rows: int | None, strategy: str) -> None:
 
 
 def scan_descriptors(
-    descriptors: Mapping[str, dict[str, Any]],
+    prepared: PreparedDeclaredSources,
     *,
     rows: int | None,
     strategy: str,
     pre_scan: PreScanConfig | None = None,
+    integrity: bool = True,
     on_stage: Callable[[], None] | None = None,
 ) -> ScanRun:
-    """Scan the declared sources and build the value-free `scan-set/v1` core."""
+    """Scan the declared sources of a scan capability and build the value-free `scan-set/v1` core.
+
+    `prepared` comes from `scan_prepared_sources`; the engine is fed only what the capability
+    holds (descriptors, selection, relationships and their positions), never a mapping the caller
+    built. G-ONE-DECLARED-READ checks both sides of that.
+    """
     # Resolved at call time so a test can replace the engine functions on `decoy_engine`.
-    from decoy_engine import scan_set_to_dict, scan_sources
+    from decoy_engine import PreparedDeclaredSources, scan_set_to_dict, scan_sources
 
     check_scan_options(rows, strategy)
+    if not isinstance(prepared, PreparedDeclaredSources):
+        raise TypeError("scan_descriptors needs the capability of scan_prepared_sources")
+    declaration = prepared.scan_declaration
     whole = not rows or strategy == "full"
     stage = on_stage or (lambda: None)
     result = scan_sources(
-        descriptors,
+        declaration.descriptors,
+        tables=declaration.tables,
+        relationships=declaration.relationships,
+        relationship_positions=declaration.relationship_positions,
+        integrity=integrity,
         sample_rows=None if whole else rows,
         strategy="full" if whole else strategy,  # type: ignore[arg-type]
         pre_scan=pre_scan,

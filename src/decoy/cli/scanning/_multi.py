@@ -21,7 +21,12 @@ from typing import Any
 import typer
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
-from decoy.cli._sources import csv_file_source
+from decoy.cli._sources import (
+    csv_file_source,
+    scan_gate_refusals,
+    scan_prepared_sources,
+    scan_refusal_fields,
+)
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
 from decoy.cli.scanning import _detectors
 from decoy.cli.scanning._engine_call import (
@@ -30,6 +35,7 @@ from decoy.cli.scanning._engine_call import (
     core_bytes,
     scan_descriptors,
 )
+from decoy.cli.scanning._layout import _check_layout_columns, _parse_layout
 from decoy.ui.card import render_card
 from decoy.ui.output import (
     OutputMode,
@@ -307,8 +313,6 @@ def _layout_columns(layout: Path | list[dict] | None, spelling: ScanSpelling) ->
         )
     if isinstance(layout, Path) and not layout.exists():
         raise ScanUsageError(f"Layout file not found: {layout}")
-    from decoy.cli.scan import _check_layout_columns, _parse_layout
-
     what = f"layout file {layout.name}" if isinstance(layout, Path) else "the layout list"
     columns: list[dict] | None = None
     try:
@@ -334,9 +338,13 @@ def _layout_columns(layout: Path | list[dict] | None, spelling: ScanSpelling) ->
 
 
 def _emit_error(
-    state: OutputState, where: dict[str, Any], message: str, hint_text: str | None
+    state: OutputState,
+    where: dict[str, Any],
+    message: str,
+    hint_text: str | None,
+    code: str | None = None,
 ) -> None:
-    emit_error(state, "scan", message, hint=hint_text, context=where)
+    emit_error(state, "scan", message, code=code, hint=hint_text, context=where)
 
 
 def _failure_message(exc: Exception) -> str:
@@ -562,6 +570,7 @@ def run_scan(
     given = [str(p) for p in sources]
     where: dict[str, Any] = {"source": given[0]} if len(given) == 1 else {"sources": given}
     streamed = out is not None and str(out) == "-"
+    gate_refusal: tuple[str, str | None] | None = None
     try:
         if streamed and state.mode is not OutputMode.default:
             flag = "json" if state.mode is OutputMode.json else "quiet"
@@ -575,9 +584,18 @@ def run_scan(
         )
         pre_scan = _detectors.resolve_pre_scan(detectors, ner_model)
         check_scan_options(rows, strategy)
+        prepared = scan_prepared_sources({"sources": descriptors}, base_dir=Path.cwd())
     except (ScanUsageError, _detectors.DetectorsUsageError) as exc:
         _emit_error(state, where, str(exc), getattr(exc, "hint_text", None))
         raise typer.Exit(code=EXIT_USAGE) from None
+    except scan_gate_refusals() as exc:
+        # The engine's coded refusal names a table or key, never a value. Emitted below, after the
+        # handler closes, so the exit carries no exception context. The gate opens no data file,
+        # so this is a usage-class refusal (exit 1) and not a scan failure (exit 3).
+        gate_refusal = scan_refusal_fields(exc)
+    if gate_refusal is not None:
+        _emit_error(state, where, gate_refusal[0], None, gate_refusal[1])
+        raise typer.Exit(code=EXIT_USAGE)
     # A model that cannot run refuses here, before the first table is read.
     _detectors.preflight(state, where, pre_scan)
 
@@ -588,7 +606,7 @@ def run_scan(
             scan_multistage(state, ["Load source", "Profile columns", "Summarize"]) as ms,
         ):
             run = scan_descriptors(
-                descriptors, rows=rows, strategy=strategy, pre_scan=pre_scan, on_stage=ms.complete
+                prepared, rows=rows, strategy=strategy, pre_scan=pre_scan, on_stage=ms.complete
             )
             core = run.core
             # PERSIST ONLY on --output (H7b). The file is the value-free core, written once

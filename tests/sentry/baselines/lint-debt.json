@@ -662,10 +662,6 @@
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 1
   },
-  "src/decoy/cli/scan.py::BLE001": {
-   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 1
-  },
   "src/decoy/cli/scan.py::C901": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 3
