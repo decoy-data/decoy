@@ -68,7 +68,7 @@ def test_a7_write_phase_memory_does_not_scale_with_rows(
 ) -> None:
     small = _delta(_N, tmp_path / "n.csv")
     large = _delta(4 * _N, tmp_path / "4n.csv")
-    print(f"A7 RSS delta N={small} 4N={large}")
+    record_property("measured", f"A7 RSS delta N={small} 4N={large}")
     assert large - small <= MAX_4X_RSS_GROWTH
 
 
@@ -89,7 +89,7 @@ def test_a9_generate_csv_is_within_parquet_plus_0_6_seconds(
     table = pa.table({"first_name": pa.array([f"name{i % 5000}" for i in range(rows)])})
     parquet = _time(lambda: write_table(table, "parquet", tmp_path / "t.parquet"))
     csv_time = _time(lambda: write_table(table, "csv", tmp_path / "t.csv"))
-    print(f"A9 generate parquet={parquet:.2f}s csv={csv_time:.2f}s")
+    record_property("measured", f"A9 generate parquet={parquet:.2f}s csv={csv_time:.2f}s")
     assert csv_time <= parquet + 0.6
 
 
@@ -105,5 +105,5 @@ def test_a9_gzip_csv_10m_rows_is_within_8_seconds(
         {"s": pa.array([f"name{i % 5000}" for i in range(rows)]), "i": pa.array(range(rows))}
     )
     took = _time(lambda: write_table(table, "csv", tmp_path / "t.csv.gz"))
-    print(f"A9 gzip csv={took:.2f}s")
+    record_property("measured", f"A9 gzip csv={took:.2f}s")
     assert took <= 8.0
