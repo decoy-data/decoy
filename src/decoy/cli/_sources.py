@@ -18,6 +18,7 @@ for CLI-written files lives with their writer, in `cli/io/_targets.py`.
 from __future__ import annotations
 
 import itertools
+import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -87,6 +88,10 @@ def remote_source_names(config_dict: dict[str, Any]) -> list[str]:
         for n, d in sources.items()
         if isinstance(d, dict) and d.get("type") in CLOUD_ENDPOINT_TYPES
     ]
+
+
+# An engine reason code: lowercase dotted words, the shape `emit_error` accepts.
+_CODE_SHAPE = re.compile(r"[a-z][a-z0-9_.]*")
 
 
 def refusal_message(exc: Exception) -> str:
@@ -187,16 +192,22 @@ def scan_gate_refusals() -> tuple[type[Exception], ...]:
     return (PipelineValidationError, PipelineConfigError, ConfigError)
 
 
-def scan_refusal_fields(exc: Exception) -> tuple[str, str]:
-    """The printable message and the engine reason code of a scan gate refusal.
+def scan_refusal_fields(exc: Exception) -> tuple[str, str | None]:
+    """The printable message and the reason code of a scan gate refusal, as the engine raised it.
 
-    The code comes from the engine's reason adapter, as for a run failure, so `--json` and the
-    `[code]` prefix of the human line agree. The message drops a leading `code: ` (the printer
-    shows the code itself) and, like every engine refusal here, names a table or key, never a value.
+    The code is the exception's own `code`, or its first config problem's code; a refusal the
+    engine leaves untagged (a descriptor that fails validation) has none, and prints without a
+    `[code]` prefix. The reason adapter is not asked: G-ONE-REASON keeps that call in `decoy run`'s
+    failure helper. The message drops a leading `code: ` (the printer shows the code itself) and,
+    like every engine refusal here, names a table or key, never a value.
     """
-    from decoy_engine import reason_adapter
-
-    return refusal_message(exc), reason_adapter.reason_from_exception(exc).code
+    code = getattr(exc, "code", None)
+    if not isinstance(code, str):
+        problems = getattr(exc, "problems", ())
+        code = getattr(problems[0], "code", None) if problems else None
+    if not isinstance(code, str) or _CODE_SHAPE.fullmatch(code) is None:
+        code = None
+    return refusal_message(exc), code
 
 
 def scan_prepared_sources(

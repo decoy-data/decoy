@@ -570,7 +570,7 @@ def run_scan(
     given = [str(p) for p in sources]
     where: dict[str, Any] = {"source": given[0]} if len(given) == 1 else {"sources": given}
     streamed = out is not None and str(out) == "-"
-    gate_refusal: tuple[str, str] | None = None
+    gate_refusal: tuple[str, str | None] | None = None
     try:
         if streamed and state.mode is not OutputMode.default:
             flag = "json" if state.mode is OutputMode.json else "quiet"
