@@ -148,7 +148,9 @@ def test_c1_2_null_timestamp_feeding_derived_writes_an_empty_cell(tmp_path: Path
 
 
 # AT-C1-3 (A15): `--chunked` runs a `when:` over a `large_string` parquet source.
-def test_c1_3_chunked_when_over_large_string_equals_the_whole_frame_run(tmp_path: Path) -> None:
+def test_c1_3_chunked_when_over_large_string_equals_the_whole_frame_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     src = tmp_path / "in.parquet"
     pq.write_table(
         pa.table(
@@ -192,13 +194,26 @@ def test_c1_3_chunked_when_over_large_string_equals_the_whole_frame_run(tmp_path
     assert result.exit_code == 0, result.output
 
     chunked = tmp_path / "chunked.csv"
+    import decoy_engine
+
+    sinks: list = []
+    real = decoy_engine.run_mask_chunked
+    monkeypatch.setattr(
+        decoy_engine,
+        "run_mask_chunked",
+        lambda *a, **k: sinks.append(k.get("route_evidence_sink")) or real(*a, **k),
+    )
     result = runner.invoke(
         app, ["run", str(config(chunked)), "--chunked", "--chunk-size", "2", "--json"]
     )
     assert result.exit_code == 0, result.output
     # The chunked route really ran: a silent whole-frame fallback would make the parity vacuous.
     route = json.loads(result.stdout)["native_route"]
-    assert route["label"].startswith("chunked stream")
+    assert route["label"] == "chunked stream (pandas)"
+    # The engine declines this table (a `when:` over a large_string source), not just
+    # "admitted without a kernel".
+    (sink,) = sinks
+    assert sink and all(item.native_admitted is False for item in sink)
     assert route["applicable"] is False
     assert chunked.read_bytes() == whole.read_bytes()
     # The `when:` really selected: rows where keep is B keep their source value.

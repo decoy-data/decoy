@@ -556,10 +556,15 @@ class TestValuesPandasRefuses:
         out = pq.read_table(_out(tmp_path, "parquet"))
         assert out.column("t").equals(src.column("t"))
         _out(tmp_path, "parquet").unlink()
-        # F6: the oracle leg raises a raw, uncoded pandas or pyarrow error (both subclass ValueError).
-        with pytest.raises(ValueError) as caught:
+        # The oracle leg's raw pandas or pyarrow error is replaced at the CLI by a coded,
+        # value-free one with no cause (the raw text quotes the cell).
+        from decoy_engine import ExecutionError
+
+        with pytest.raises(ExecutionError) as caught:
             _direct(tmp_path, cfg, pandas_only=True)
-        assert getattr(caught.value, "code", None) is None
+        assert caught.value.code == "chunked_passthrough_value_unrepresentable"
+        assert caught.value.__cause__ is None and caught.value.__context__ is None
+        assert not any(ch.isdigit() for ch in caught.value.message)
 
     @pytest.mark.parametrize("case", sorted(_REFUSED_SOURCES))
     def test_at_c14_a_read_refused_value_is_coded_and_value_free(
@@ -574,3 +579,67 @@ class TestValuesPandasRefuses:
         text = str(caught.value)
         for marker in ("987654321", "out of range", "nanoseconds", "-1000000"):
             assert marker not in text
+
+
+# A bad value past the 20,000-row preflight sample reaches the engine, so these cells run the
+# whole `decoy run` path, `--no-native` and `--verbose` included.
+_LATE_ROWS = 80_001
+_LATE = {
+    "time64_ns": (
+        pa.time64("ns"),
+        lambda i: i * 1000 if i < _LATE_ROWS - 1 else 3_600_987_654_321,
+        ("3600987654321", "987654321", "nanoseconds"),
+    ),
+    "date32_far": (
+        pa.date32(),
+        lambda i: i % 1000 if i < _LATE_ROWS - 1 else -1_000_000,
+        ("-1000000", "year -768", "out of range"),
+    ),
+}
+
+
+def _late_source(case: str) -> pa.Table:
+    typ, value, _ = _LATE[case]
+    return pa.table(
+        {
+            "t": pa.array([value(i) for i in range(_LATE_ROWS)], typ),
+            "email": [f"u{i}@x.com" for i in range(_LATE_ROWS)],
+        }
+    )
+
+
+def _late_run(tmp_path: Path, case: str, *flags: str, when: bool = False):
+    when_map = {"email": "t != 'q'"} if when else None
+    cfg = _typed_config(tmp_path, _late_source(case), when=when_map)
+    return _run_chunked(cfg, 20_000, *flags)
+
+
+@pytest.mark.parametrize("case", sorted(_LATE))
+class TestLateRefusedValue:
+    def test_default_run_publishes_the_value_exactly(self, tmp_path: Path, case: str) -> None:
+        result = _late_run(tmp_path, case)
+        assert result.exit_code == 0, result.output
+        out = pq.read_table(_out(tmp_path, "parquet"))
+        assert out.column("t").equals(_late_source(case).column("t"))
+
+    @pytest.mark.parametrize("flags", [("--json",), ("--verbose",)])
+    def test_a_read_column_is_coded_and_value_free(
+        self, tmp_path: Path, case: str, flags: tuple[str, ...]
+    ) -> None:
+        result = _late_run(tmp_path, case, *flags, when=True)
+        assert result.exit_code == 3, result.output
+        assert "chunked_passthrough_value_unrepresentable" in result.output
+        for marker in _LATE[case][2]:
+            assert marker not in result.output, marker
+        assert not _out(tmp_path, "parquet").exists()
+
+    @pytest.mark.parametrize("flags", [("--json",), ("--verbose",)])
+    def test_no_native_is_coded_and_value_free(
+        self, tmp_path: Path, case: str, flags: tuple[str, ...]
+    ) -> None:
+        result = _late_run(tmp_path, case, "--no-native", *flags)
+        assert result.exit_code == 3, result.output
+        assert "chunked_passthrough_value_unrepresentable" in result.output
+        for marker in _LATE[case][2]:
+            assert marker not in result.output, marker
+        assert not _out(tmp_path, "parquet").exists()

@@ -208,5 +208,7 @@ def test_chunked_text_says_chunked_can_run_compiled_kernels():
     substrate = _flat("explain", "substrate")
     assert "one execution adapter" not in substrate
     assert "A plain run uses the engine's unified slice" in substrate
+    assert "it can also run with no kernel" in substrate
+    assert "Being admitted is not running a kernel" in substrate
     assert "A --chunked run goes through run_mask_chunked with the same rule" in substrate
     assert "--no-native forces pandas on both" in substrate

@@ -212,15 +212,78 @@ def _masked_chunks(
     _source_schema, chunks = source_schema_and_chunks(
         name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
     )
-    return run_mask_chunked(
-        resolved_source_config(config_dict, base_dir),
-        chunks,
-        table=name,
-        engine_version=engine_version,
-        key_provider=key_provider,
-        route_evidence_sink=evidence,
-        adapter=_pandas_only_adapter_type()() if pandas_only else None,
-    )
+    failure: Exception | None = None
+    try:
+        # The first chunk is profiled when the engine is called, so it can fail right here.
+        stream = run_mask_chunked(
+            resolved_source_config(config_dict, base_dir),
+            chunks,
+            table=name,
+            engine_version=engine_version,
+            key_provider=key_provider,
+            route_evidence_sink=evidence,
+            adapter=_pandas_only_adapter_type()() if pandas_only else None,
+        )
+    except Exception as exc:
+        failure = _value_free_failure(exc)
+        if failure is None:
+            raise
+    if failure is not None:
+        raise failure
+    return _value_free(stream)
+
+
+_UNCONVERTIBLE_MESSAGE = (
+    "a source value cannot be converted by the pandas route. The text names no column or value, "
+    "because the library error quotes the cell. Drop --no-native, or fix the source value."
+)
+
+
+def _value_free_failure(exc: Exception) -> Exception | None:
+    """A value-free replacement for an engine failure that can quote a source cell, or None.
+
+    The pandas conversion error quotes the cell, and a coded engine error chains that error as
+    its cause, which `--verbose` prints. Both are replaced by a fresh error with no cause.
+    """
+    from decoy_engine import ExecutionError, reasons
+    from pyarrow import ArrowException
+
+    code = reasons.runtime.CHUNKED_PASSTHROUGH_VALUE_UNREPRESENTABLE
+    if isinstance(exc, ExecutionError):
+        if exc.code != code:
+            return None
+        return ExecutionError(code=code, message=exc.message)
+    if getattr(exc, "code", None) is None and isinstance(
+        exc, (ValueError, ArithmeticError, ArrowException)
+    ):
+        return ExecutionError(code=code, message=_UNCONVERTIBLE_MESSAGE)
+    return None
+
+
+def _value_free(stream: Iterator[Any]) -> Iterator[Any]:
+    """The engine stream with its cell-quoting failures replaced by `_value_free_failure`.
+
+    The replacement is raised after the `except` block, so it carries no `__cause__` or
+    `__context__`. The inner stream is closed with this one.
+    """
+    inner = iter(stream)
+    try:
+        while True:
+            failure: Exception | None = None
+            try:
+                chunk = next(inner)
+            except StopIteration:
+                return
+            except Exception as exc:
+                failure = _value_free_failure(exc)
+                if failure is None:
+                    raise
+            else:
+                yield chunk
+                continue
+            raise failure
+    finally:
+        getattr(inner, "close", _no_close)()
 
 
 _CHUNKED_INTEGRITY_MESSAGE = (

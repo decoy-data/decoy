@@ -373,13 +373,14 @@ _TOPICS: dict[str, _Topic] = {
         name="substrate",
         summary="Masking runs on pandas or compiled kernels; polars was removed.",
         body=(
-            "A plain run uses the engine's unified slice, and compiled kernels when\n"
-            "the decoy-engine-native companion is healthy (see decoy explain native),\n"
-            "else pandas. A --chunked run goes through run_mask_chunked with the same\n"
-            "rule: compiled kernels when the whole table admits, pandas otherwise. The\n"
-            "Route line shows which: `chunked stream (native)`, `(pandas)` or\n"
-            "`(mixed)` for --chunked. --no-native forces pandas on both. There is\n"
-            "nothing to select beyond that.\n\n"
+            "A plain run uses the engine's unified slice. It runs a compiled kernel\n"
+            "only when the decoy-engine-native companion is healthy and the table's\n"
+            "strategies have one; it can also run with no kernel, and otherwise falls\n"
+            "back to pandas (see decoy explain native). A --chunked run goes through\n"
+            "run_mask_chunked with the same rule. Being admitted is not running a\n"
+            "kernel: the Route line reports what executed, `chunked stream (native)`,\n"
+            "`(pandas)` or `(mixed)` for --chunked. --no-native forces pandas on both.\n"
+            "There is nothing to select beyond that.\n\n"
             "The polars masking substrate was removed from the engine: it was\n"
             "value-equal to pandas and not faster for the per-value keyed-crypto\n"
             "masking workload. (Polars is still used elsewhere in Decoy for FK\n"
