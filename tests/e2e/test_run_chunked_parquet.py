@@ -581,7 +581,7 @@ class TestValuesPandasRefuses:
             assert marker not in text
 
 
-# A bad value past the 20,000-row preflight sample reaches the engine, so these cells run the
+# A bad value past the 10,000-row preflight sample reaches the engine, so these cells run the
 # whole `decoy run` path, `--no-native` and `--verbose` included.
 _LATE_ROWS = 80_001
 _LATE = {
