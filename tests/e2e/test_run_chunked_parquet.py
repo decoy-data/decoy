@@ -547,12 +547,9 @@ class TestValuesPandasRefuses:
         out = pq.read_table(_out(tmp_path, "parquet"))
         assert out.column("t").equals(src.column("t"))
         _out(tmp_path, "parquet").unlink()
-        with pytest.raises(Exception) as caught:  # F6: raw, uncoded pandas or pyarrow error
+        # F6: the oracle leg raises a raw, uncoded pandas or pyarrow error (both subclass ValueError).
+        with pytest.raises(ValueError) as caught:
             _direct(tmp_path, cfg, pandas_only=True)
-        print(
-            f"AT-C12 refused-value {case}: {type(caught.value).__module__}."
-            f"{type(caught.value).__name__}"
-        )
         assert getattr(caught.value, "code", None) is None
 
     @pytest.mark.parametrize("case", sorted(_REFUSED_SOURCES))

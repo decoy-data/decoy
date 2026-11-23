@@ -422,7 +422,10 @@ def _chunked_route_label(evidence: list[Any] | None) -> str:
     the engine declined as `empty_input` ran nothing and is left out. The flags are read, not
     `native_admitted`, because admission is intent and a run can finish with nothing executed.
     """
-    ran = [e for e in evidence or [] if getattr(e, "reroute_reason", None) != "empty_input"]
+    from decoy_engine import reasons
+
+    empty = reasons.route.EMPTY_INPUT
+    ran = [e for e in evidence or [] if getattr(e, "reroute_reason", None) != empty]
     native = [bool(e.compiled_kernel_executed or e.pool_select_executed) for e in ran]
     if native and all(native):
         return "chunked stream (native)"
