@@ -47,13 +47,7 @@ def sample_csv(tmp_path: Path) -> Path:
         {
             "customer_id": ["C1", "C2", "C3", "C4", "C5"],
             "first_name": ["Alice", "Bob", "Carol", "Dave", "Eve"],
-            "email": [
-                "a@example.com",
-                "b@example.com",
-                "c@example.com",
-                "d@example.com",
-                "e@example.com",
-            ],
+            "email": ["a@example.com", "b@example.com", "c@example.com", "d@example.com", "e@example.com"],
             "ssn": [
                 "111-22-3333",
                 "222-33-4444",
@@ -155,9 +149,9 @@ def test_profile_show_fields_shows_dtype(sample_csv: Path) -> None:
     assert result.exit_code == 0, result.output
     # Some type information must be present
     lower = result.output.lower()
-    assert any(
-        t in lower for t in ("string", "int", "float", "object", "text", "numeric", "str")
-    ), "Expected dtype info in --show-fields output"
+    assert any(t in lower for t in ("string", "int", "float", "object", "text", "numeric", "str")), (
+        "Expected dtype info in --show-fields output"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -191,9 +185,7 @@ def test_profile_json_pii_framed_as_suggestion(sample_csv: Path) -> None:
 
     Must NOT have a field called 'pii_classification' or 'pii_detected' (authoritative).
     """
-    result = runner.invoke(
-        app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"]
-    )
+    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
 
@@ -239,9 +231,7 @@ def test_profile_no_raw_cell_values_in_output(sentinel_csv: Path) -> None:
 
 def test_profile_json_no_raw_cell_values(sentinel_csv: Path) -> None:
     """--json output must also not contain raw cell values."""
-    result = runner.invoke(
-        app, ["scan", str(sentinel_csv), "--has-header", "--show-fields", "--json"]
-    )
+    result = runner.invoke(app, ["scan", str(sentinel_csv), "--has-header", "--show-fields", "--json"])
     assert result.exit_code == 0, result.output
     payload_str = result.stdout
     assert _SENTINEL_EMAIL not in payload_str, (
@@ -268,9 +258,7 @@ def test_profile_json_structure(sample_csv: Path) -> None:
 
 
 def test_profile_json_show_fields_structure(sample_csv: Path) -> None:
-    result = runner.invoke(
-        app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"]
-    )
+    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
     assert "fields" in payload
@@ -388,9 +376,7 @@ def test_profile_numeric_column_reports_numeric_type(sample_csv: Path) -> None:
     With proper dtype inference (no dtype=str override), the scan must report
     inferred_type as 'integer', NOT 'string'.
     """
-    result = runner.invoke(
-        app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"]
-    )
+    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
 

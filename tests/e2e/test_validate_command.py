@@ -116,11 +116,7 @@ def test_validate_rejects_graph_mode_yaml(tmp_path: Path):
         "mode": "graph",
         "nodes": [
             {"id": "s", "kind": "source.file", "config": {"path": str(src)}},
-            {
-                "id": "t",
-                "kind": "target.file",
-                "config": {"output_filename": str(tmp_path / "o.csv")},
-            },
+            {"id": "t", "kind": "target.file", "config": {"output_filename": str(tmp_path / "o.csv")}},
         ],
         "edges": [{"from": "s", "to": "t"}],
     }

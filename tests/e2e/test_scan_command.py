@@ -127,9 +127,7 @@ def test_scan_output_dash_streams_to_stdout(sample_csv: Path) -> None:
 
 
 def test_scan_output_dash_with_json_is_rejected(sample_csv: Path) -> None:
-    result = runner.invoke(
-        app, ["scan", str(sample_csv), "--has-header", "--output", "-", "--json"]
-    )
+    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--output", "-", "--json"])
     assert result.exit_code == 1  # EXIT_USAGE: invalid flag combination
     payload = _json.loads(result.stdout)
     assert payload["status"] == "error"
@@ -152,9 +150,7 @@ def test_scan_output_dash_with_quiet_is_rejected(sample_csv: Path) -> None:
 
 
 def test_scan_show_fields_json_has_no_raw_aggregates(sample_csv: Path) -> None:
-    result = runner.invoke(
-        app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"]
-    )
+    result = runner.invoke(app, ["scan", str(sample_csv), "--has-header", "--show-fields", "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
     for f in payload["fields"]:
@@ -162,13 +158,8 @@ def test_scan_show_fields_json_has_no_raw_aggregates(sample_csv: Path) -> None:
             assert banned not in f, f"privacy leak: {banned} in field record {f['name']}"
         # The allowed privacy-safe keys.
         assert set(f) <= {
-            "name",
-            "dtype",
-            "null_rate",
-            "distinct_count",
-            "pii_score",
-            "pii_candidate",
-            "detector_hits",
+            "name", "dtype", "null_rate", "distinct_count",
+            "pii_score", "pii_candidate", "detector_hits",
         }
 
 

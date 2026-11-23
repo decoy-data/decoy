@@ -39,14 +39,10 @@ INSTALL_SH = REPO_ROOT / "packaging_tools" / "install" / "install.sh"
 @pytest.fixture
 def keypair():
     key = Ed25519PrivateKey.generate()
-    pub = (
-        key.public_key()
-        .public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        .decode()
-    )
+    pub = key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode()
     return key, pub
 
 
@@ -59,18 +55,15 @@ def _isolate_managed_paths(tmp_path, monkeypatch):
 def _signed_doc(key, serve: Path, latest: str, *, yanked=(), mutate=None):
     """A signed version document for ``latest`` (served from ``serve``) with ``yanked``."""
     url = _serve_bundle(serve, latest, key)
-    doc = vd.build_document(
-        serial=1,
+    doc = vd.build_document(serial=1, 
         latest=latest,
         min_supported="0.1.0",
         yanked=list(yanked),
-        artifacts={
-            "linux-x86_64": {
-                "url": url,
-                "sha256": hashlib.sha256(_file_download(url)).hexdigest(),
-                "sig": url + ".sig",
-            }
-        },
+        artifacts={"linux-x86_64": {
+            "url": url,
+            "sha256": hashlib.sha256(_file_download(url)).hexdigest(),
+            "sig": url + ".sig",
+        }},
     )
     if mutate:
         mutate(doc)
@@ -80,15 +73,9 @@ def _signed_doc(key, serve: Path, latest: str, *, yanked=(), mutate=None):
 
 def _install(doc_bytes, doc_sig, pub, serve, **kw):
     return installer.install_version(
-        version_doc_bytes=doc_bytes,
-        version_doc_sig_b64=doc_sig,
-        expected_public_pem=pub,
-        target="linux-x86_64",
-        home=layout.decoy_home(),
-        base_url=f"file://{serve}",
-        download=_file_download,
-        run_self_check=False,
-        **kw,
+        version_doc_bytes=doc_bytes, version_doc_sig_b64=doc_sig, expected_public_pem=pub,
+        target="linux-x86_64", home=layout.decoy_home(), base_url=f"file://{serve}",
+        download=_file_download, run_self_check=False, **kw,
     )
 
 
@@ -132,11 +119,8 @@ def _run_install_sh(tmp_path: Path, pub: str, version_json: Path, *args: str):
     pub_pem.write_text(pub)
     home = tmp_path / "sh_home"
     env = dict(
-        os.environ,
-        DECOY_HOME=str(home),
-        DECOY_BIN_DIR=str(tmp_path / "sh_bin"),
-        DECOY_RELEASE_PUBKEY_FILE=str(pub_pem),
-        DECOY_VERSION_URL=f"file://{version_json}",
+        os.environ, DECOY_HOME=str(home), DECOY_BIN_DIR=str(tmp_path / "sh_bin"),
+        DECOY_RELEASE_PUBKEY_FILE=str(pub_pem), DECOY_VERSION_URL=f"file://{version_json}",
     )
     env.pop("DECOY_LOCAL_BUNDLE", None)
     r = subprocess.run(["sh", str(INSTALL_SH), *args], env=env, capture_output=True, text=True)
@@ -184,9 +168,7 @@ def test_install_sh_yank_check_is_not_a_substring_match(tmp_path, keypair):
 @needs_shell_tools
 def test_install_sh_rejects_signed_document_of_wrong_schema(tmp_path, keypair):
     key, pub = keypair
-    doc, _ = _signed_doc(
-        key, tmp_path / "serve", "0.2.0", mutate=lambda d: d.update(schema_version="other/v9")
-    )
+    doc, _ = _signed_doc(key, tmp_path / "serve", "0.2.0", mutate=lambda d: d.update(schema_version="other/v9"))
     r, home = _run_install_sh(tmp_path, pub, _publish_doc(tmp_path, key, doc))
     assert r.returncode != 0 and "schema_version" in r.stderr
     assert not (home / "versions").exists()
@@ -241,20 +223,13 @@ def test_detached_verify_rejects_truncated_and_wrong_algorithm_key(keypair):
     good = _sign_b64(key, data)
     assert signing.verify_detached(data, good, expected_public_pem=pub)
     raw = base64.b64decode(good)
-    assert not signing.verify_detached(
-        data, base64.b64encode(raw[:-1]).decode(), expected_public_pem=pub
-    )
-    assert not signing.verify_detached(
-        data, base64.b64encode(raw + b"\0").decode(), expected_public_pem=pub
-    )
+    assert not signing.verify_detached(data, base64.b64encode(raw[:-1]).decode(), expected_public_pem=pub)
+    assert not signing.verify_detached(data, base64.b64encode(raw + b"\0").decode(), expected_public_pem=pub)
     from cryptography.hazmat.primitives.asymmetric import ec
 
-    ec_pub = (
-        ec.generate_private_key(ec.SECP256R1())
-        .public_key()
-        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
-        .decode()
-    )
+    ec_pub = ec.generate_private_key(ec.SECP256R1()).public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    ).decode()
     assert not signing.verify_detached(data, good, expected_public_pem=ec_pub)
 
 
@@ -266,11 +241,8 @@ def _tree_digest(root: Path) -> dict[str, str]:
         if rel == "trust_state.json":  # freshness bookkeeping, not part of any runtime
             continue
         out[rel] = (
-            "link:" + os.readlink(p)
-            if p.is_symlink()
-            else hashlib.sha256(p.read_bytes()).hexdigest()
-            if p.is_file()
-            else "dir"
+            "link:" + os.readlink(p) if p.is_symlink()
+            else hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else "dir"
         )
     return out
 
@@ -299,15 +271,9 @@ def test_wrong_identity_bundle_refused_before_selfcheck_and_retained_runtime_unt
     monkeypatch.setattr(installer, "_selfcheck", lambda py: ran.append(py))
     with pytest.raises(installer.InstallError, match=f"declares {kind}"):
         installer.install_version(
-            version_doc_bytes=doc,
-            version_doc_sig_b64=sig,
-            expected_public_pem=pub,
-            target="linux-x86_64",
-            home=home,
-            pin_version="0.3.0",
-            base_url=f"file://{serve}",
-            download=_file_download,
-            run_self_check=True,
+            version_doc_bytes=doc, version_doc_sig_b64=sig, expected_public_pem=pub,
+            target="linux-x86_64", home=home, pin_version="0.3.0", base_url=f"file://{serve}",
+            download=_file_download, run_self_check=True,
         )
     assert ran == [], "the mismatched bundle's interpreter must never be executed"
     assert _tree_digest(home) == before
@@ -324,9 +290,7 @@ class _Status:
 def _fake_probe(monkeypatch, status):
     import types
 
-    monkeypatch.setitem(
-        sys.modules, "decoy_engine", types.SimpleNamespace(native_companion_status=lambda: status)
-    )
+    monkeypatch.setitem(sys.modules, "decoy_engine", types.SimpleNamespace(native_companion_status=lambda: status))
 
 
 def _invoke(*args):
@@ -339,9 +303,7 @@ def _invoke(*args):
     "status",
     [
         _Status(False, False, "absent"),  # companion removed after install
-        _Status(
-            False, True, "abi-mismatch", abi_actual="decoy-native-abi-9"
-        ),  # swapped after install
+        _Status(False, True, "abi-mismatch", abi_actual="decoy-native-abi-9"),  # swapped after install
     ],
     ids=["removed-after-install", "abi-mismatch-after-install"],
 )
@@ -392,17 +354,12 @@ def test_placeholder_key_hard_refuses_upgrade_before_any_network(monkeypatch, tm
     assert release_key.PLACEHOLDER_MARKER in release_key._KEY_FILE.read_text(encoding="utf-8")
     monkeypatch.delenv("DECOY_RELEASE_PUBKEY_FILE", raising=False)
     monkeypatch.setattr(upg, "_managed_home", lambda: tmp_path)
-    monkeypatch.setattr(
-        upg, "_fetch", lambda url: (_ for _ in ()).throw(AssertionError("network touched"))
-    )
+    monkeypatch.setattr(upg, "_fetch", lambda url: (_ for _ in ()).throw(AssertionError("network touched")))
     for argv in (["upgrade"], ["upgrade", "--version", "0.1.0"], ["upgrade", "--force"]):
         _fake_probe(monkeypatch, _Status(True, True, "present-ok"))
         res = _invoke(*argv)
         assert res.exit_code == EXIT_USAGE, argv
-    assert (
-        "PINNED_PUBKEY=" in INSTALL_SH.read_text()
-        and "__DECOY_RELEASE_PUBLIC_KEY__" in INSTALL_SH.read_text()
-    )
+    assert 'PINNED_PUBKEY=' in INSTALL_SH.read_text() and "__DECOY_RELEASE_PUBLIC_KEY__" in INSTALL_SH.read_text()
 
 
 def _managed_python(tmp_path: Path) -> Path:
@@ -432,10 +389,7 @@ def _run_managed(py: Path, *args: str):
     env["DECOY_RELEASE_PUBKEY_FILE"] = os.devnull
     return subprocess.run(
         [str(py), "-I", "-B", "-m", "decoy", "--no-update-check", *args],
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=py.parents[3],
+        capture_output=True, text=True, env=env, cwd=py.parents[3],
     )
 
 
@@ -456,9 +410,7 @@ def test_real_managed_interpreter_refuses_absent_then_abi_mismatched_companion(t
     stub = site / "decoy_engine_native"
     stub.mkdir()
     (stub / "__init__.py").write_text("", encoding="utf-8")
-    (stub / "_kernel.py").write_text(
-        "def abi_version():\n    return 'decoy-native-abi-0'\n", encoding="utf-8"
-    )
+    (stub / "_kernel.py").write_text("def abi_version():\n    return 'decoy-native-abi-0'\n", encoding="utf-8")
     mismatch = _run_managed(py, "info")
     assert mismatch.returncode == EXIT_RUNTIME, mismatch.stdout + mismatch.stderr
     assert "abi-mismatch" in mismatch.stderr
@@ -479,9 +431,7 @@ def importlib_find(name: str) -> bool:
 
 def test_selfcheck_result_shape_is_what_the_guard_consumes():
     assert runtime_guard.refusal_message(selfcheck.SelfCheckResult(True, "present-ok", "x")) is None
-    msg = runtime_guard.refusal_message(
-        selfcheck.SelfCheckResult(False, "native-unavailable", "boom")
-    )
+    msg = runtime_guard.refusal_message(selfcheck.SelfCheckResult(False, "native-unavailable", "boom"))
     assert msg and "boom" in msg
 
 
@@ -515,17 +465,13 @@ def _invoke_with_update_check(*args):
     return CliRunner().invoke(app, list(args))
 
 
-def test_placeholder_key_refuses_through_root_callback_with_update_check_enabled(
-    monkeypatch, tmp_path
-):
+def test_placeholder_key_refuses_through_root_callback_with_update_check_enabled(monkeypatch, tmp_path):
     from decoy.cli import upgrade as upg
 
     touched = _enable_interactive_update_check(monkeypatch, tmp_path)
     monkeypatch.delenv("DECOY_RELEASE_PUBKEY_FILE", raising=False)
     monkeypatch.setattr(upg, "_managed_home", lambda: tmp_path)
-    monkeypatch.setattr(
-        upg, "_fetch", lambda url: touched.append(url) or (_ for _ in ()).throw(AssertionError(url))
-    )
+    monkeypatch.setattr(upg, "_fetch", lambda url: touched.append(url) or (_ for _ in ()).throw(AssertionError(url)))
     _fake_probe(monkeypatch, _Status(True, True, "present-ok"))
     res = _invoke_with_update_check("upgrade")
     assert res.exit_code == EXIT_USAGE
@@ -542,21 +488,13 @@ def test_local_rollback_through_root_callback_touches_no_network_first(monkeypat
     monkeypatch.setenv("DECOY_RELEASE_PUBKEY_FILE", str(tmp_path / "k.pem"))
     (tmp_path / "k.pem").write_text("pem", encoding="utf-8")
     monkeypatch.setattr(upg, "_managed_home", lambda: tmp_path)
-    monkeypatch.setattr(
-        upg, "_fetch", lambda url: touched.append(url) or (_ for _ in ()).throw(AssertionError(url))
-    )
+    monkeypatch.setattr(upg, "_fetch", lambda url: touched.append(url) or (_ for _ in ()).throw(AssertionError(url)))
     monkeypatch.setattr(installer, "local_version_present", lambda v, h: True)
     out = installer.InstallOutcome(
-        version="0.1.0",
-        target="linux-x86_64",
-        version_dir=tmp_path,
-        previous_version="0.2.0",
-        rolled_back=False,
-        rollback_version=None,
+        version="0.1.0", target="linux-x86_64", version_dir=tmp_path, previous_version="0.2.0",
+        rolled_back=False, rollback_version=None,
     )
-    monkeypatch.setattr(
-        installer, "activate_local_version", lambda *a, **k: order.append("LOCAL_ACTIVATION") or out
-    )
+    monkeypatch.setattr(installer, "activate_local_version", lambda *a, **k: order.append("LOCAL_ACTIVATION") or out)
     _fake_probe(monkeypatch, _Status(True, True, "present-ok"))
     res = _invoke_with_update_check("upgrade", "--version", "0.1.0")
     assert res.exit_code == 0, res.output

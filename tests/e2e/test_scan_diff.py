@@ -186,7 +186,9 @@ def test_scan_diff_strict_no_drift_exits_zero(baseline: Path, tmp_path: Path):
         quasi_identifier_groups=[["first_name", "email"]],
         reid_risk_score=50.0,
     )
-    result = runner.invoke(app, ["scan", "diff", str(baseline), str(copy), "--strict"])
+    result = runner.invoke(
+        app, ["scan", "diff", str(baseline), str(copy), "--strict"]
+    )
     assert result.exit_code == 0
 
 
@@ -196,7 +198,9 @@ def test_scan_diff_strict_pii_increase_exits_findings(baseline: Path, tmp_path: 
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.7)],
         quasi_identifier_groups=[["first_name", "email"]],
     )
-    result = runner.invoke(app, ["scan", "diff", str(baseline), str(new), "--strict"])
+    result = runner.invoke(
+        app, ["scan", "diff", str(baseline), str(new), "--strict"]
+    )
     assert result.exit_code == EXIT_FINDINGS
 
 
@@ -244,13 +248,17 @@ def test_scan_diff_non_strict_drift_exits_zero(baseline: Path, tmp_path: Path):
     assert result.exit_code == 0
 
 
-def test_scan_diff_strict_pii_decrease_alone_exits_zero(baseline: Path, tmp_path: Path):
+def test_scan_diff_strict_pii_decrease_alone_exits_zero(
+    baseline: Path, tmp_path: Path
+):
     new = _write_scan(
         tmp_path / "new.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.0)],
         quasi_identifier_groups=[["first_name", "email"]],
     )
-    result = runner.invoke(app, ["scan", "diff", str(baseline), str(new), "--strict"])
+    result = runner.invoke(
+        app, ["scan", "diff", str(baseline), str(new), "--strict"]
+    )
     # Decreases are an improvement, not drift.
     assert result.exit_code == 0
 
@@ -264,12 +272,16 @@ def test_scan_diff_quiet_produces_empty_stdout(baseline: Path, tmp_path: Path):
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],
         quasi_identifier_groups=[["first_name", "email"]],
     )
-    result = runner.invoke(app, ["scan", "diff", str(baseline), str(copy), "--quiet"])
+    result = runner.invoke(
+        app, ["scan", "diff", str(baseline), str(copy), "--quiet"]
+    )
     assert result.exit_code == 0
     assert result.stdout == ""
 
 
-def test_scan_diff_default_renders_card_and_change_tables(baseline: Path, tmp_path: Path):
+def test_scan_diff_default_renders_card_and_change_tables(
+    baseline: Path, tmp_path: Path
+):
     new = _write_scan(
         tmp_path / "new.json",
         [
@@ -291,7 +303,9 @@ def test_scan_diff_default_renders_card_and_change_tables(baseline: Path, tmp_pa
     assert "email" in result.stdout
 
 
-def test_scan_diff_no_changes_prints_no_drift_line(baseline: Path, tmp_path: Path):
+def test_scan_diff_no_changes_prints_no_drift_line(
+    baseline: Path, tmp_path: Path
+):
     copy = _write_scan(
         tmp_path / "copy.json",
         [_field("customer_id", 0.0), _field("first_name", 0.35), _field("email", 0.45)],
@@ -306,12 +320,16 @@ def test_scan_diff_no_changes_prints_no_drift_line(baseline: Path, tmp_path: Pat
 
 
 def test_scan_diff_missing_old_exits_user_error(baseline: Path, tmp_path: Path):
-    result = runner.invoke(app, ["scan", "diff", str(tmp_path / "nope.json"), str(baseline)])
+    result = runner.invoke(
+        app, ["scan", "diff", str(tmp_path / "nope.json"), str(baseline)]
+    )
     assert result.exit_code == 1
 
 
 def test_scan_diff_missing_new_exits_user_error(baseline: Path, tmp_path: Path):
-    result = runner.invoke(app, ["scan", "diff", str(baseline), str(tmp_path / "nope.json")])
+    result = runner.invoke(
+        app, ["scan", "diff", str(baseline), str(tmp_path / "nope.json")]
+    )
     assert result.exit_code == 1
 
 
@@ -335,19 +353,10 @@ def test_scan_diff_envelope_shape(baseline: Path, tmp_path: Path):
     assert payload["command"] == "scan diff"
     assert payload["status"] == "ok"
     assert set(payload["summary"]) == {
-        "added",
-        "removed",
-        "pii_increased",
-        "pii_decreased",
-        "qi_groups_added",
-        "qi_groups_removed",
-        "reid_risk_delta",
+        "added", "removed", "pii_increased", "pii_decreased",
+        "qi_groups_added", "qi_groups_removed", "reid_risk_delta",
     }
     assert set(payload["changes"]) == {
-        "added",
-        "removed",
-        "pii_increased",
-        "pii_decreased",
-        "qi_groups_added",
-        "qi_groups_removed",
+        "added", "removed", "pii_increased", "pii_decreased",
+        "qi_groups_added", "qi_groups_removed",
     }
