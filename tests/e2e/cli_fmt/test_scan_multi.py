@@ -329,3 +329,29 @@ def test_a_bad_layout_never_echoes_the_rejected_value(
     assert result.exit_code != 0
     assert "Could not parse layout file" in result.output
     assert "ZQCANARY" not in result.output
+
+
+# -- T2-positional-gate-exit (S1c.2a) ---------------------------------------------------------
+
+
+def test_a_refused_positional_descriptor_exits_1_before_the_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spy_engine: list[object]
+) -> None:
+    """The engine refuses a CLI-built descriptor at the gate (exit 1), not during the scan (3)."""
+    from decoy.cli.scanning import _multi
+
+    real = _multi.resolve_sources
+
+    def without_header(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        descriptors, shown = real(*args, **kwargs)  # type: ignore[arg-type]
+        for d in descriptors.values():
+            d.pop("has_header", None)
+        return descriptors, shown
+
+    monkeypatch.setattr(_multi, "resolve_sources", without_header)
+    a = _csv(tmp_path / "a.csv", "A")
+    result = runner.invoke(app, ["scan", str(a), "--has-header"])
+    assert result.exit_code == 1, result.output
+    assert "scan failed" not in result.output
+    assert "ZQCANARY" not in result.output
+    assert spy_engine == []

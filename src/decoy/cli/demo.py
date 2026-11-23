@@ -149,14 +149,15 @@ def _run_single_demo(state: OutputState, out_dir: Path) -> int:
 
     if state.mode is OutputMode.default:
         state.console.print(accent("[2/3]"), "Scanning...")
-    from decoy.cli._sources import csv_file_source
+    from decoy.cli._sources import csv_file_source, scan_prepared_sources
     from decoy.cli.scanning import core_bytes, scan_descriptors, table_name_from_path
 
     # The shape `decoy scan --output` saves: the value-free `scan-set/v1` core.
     descriptors = {
         table_name_from_path(sample_csv): csv_file_source(sample_csv.resolve(), has_header=True)
     }
-    run = scan_descriptors(descriptors, rows=None, strategy="full")
+    prepared = scan_prepared_sources({"sources": descriptors}, base_dir=out_dir)
+    run = scan_descriptors(prepared, rows=None, strategy="full")
     core = run.core
     scan_json.write_text(core_bytes(core).decode("utf-8"))
     scanned = core["tables"][0]

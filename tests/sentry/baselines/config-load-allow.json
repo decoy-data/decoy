@@ -32,11 +32,12 @@
   "cli/report.py::_fidelity::1": {
    "reason": "policy file: a different file kind where an empty file means no policy"
   },
-  "cli/scan.py::_parse_layout::1": {
+  "cli/scanning/_layout.py::_parse_layout::1": {
    "reason": "fixed-width layout file: YAML with a JSON fallback, not a pipeline config; scan.py is a hot lane"
   }
  },
  "moved_from": {
-  "_source_positions.py::YamlPositionIndex.from_text::1": "ci/locations.py::YamlSourceIndex.from_text::1"
+  "_source_positions.py::YamlPositionIndex.from_text::1": "ci/locations.py::YamlSourceIndex.from_text::1",
+  "cli/scanning/_layout.py::_parse_layout::1": "cli/scan.py::_parse_layout::1"
  }
 }

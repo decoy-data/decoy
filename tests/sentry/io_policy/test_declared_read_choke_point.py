@@ -88,8 +88,22 @@ READERS = _owner_readers() | EXTRA_READERS
 GATES = frozenset(
     f"{module}.{name}"
     for module in ("decoy.cli._sources", "decoy.cli.io")
-    for name in ("prepared_sources", "gate_report_source", "check_declared_before_acquire")
+    for name in (
+        "prepared_sources",
+        "gate_report_source",
+        "check_declared_before_acquire",
+        "scan_prepared_sources",
+    )
 )
+# The only gates whose capability `scan_descriptors` accepts (a `for_scan` request). Any other gate
+# builds a different capability, which `scan_declaration` refuses at run time.
+SCAN_GATES = frozenset(
+    f"{module}.scan_prepared_sources" for module in ("decoy.cli._sources", "decoy.cli.io")
+)
+SCAN_CALL = frozenset(
+    {"decoy.cli.scanning.scan_descriptors", "decoy.cli.scanning._engine_call.scan_descriptors"}
+)
+SCAN_OWNER = "cli/scanning/_engine_call.py"
 LOCAL_GATES = frozenset({("api.py", "_gate_in_memory_data")})
 ENGINE_ENTRIES = frozenset({"run_pipeline", "run_mask_pipeline_chunked", "profile_source"})
 
@@ -97,7 +111,10 @@ ENGINE_ENTRIES = frozenset({"run_pipeline", "run_mask_pipeline_chunked", "profil
 # pairs, each with its reason; any other call of a reader must follow a gate.
 CALLER_NAMED: dict[tuple[str, str], str] = {
     ("cli/init.py", "_load_dataframe"): "`decoy init` reads the one input file the caller named",
-    ("api.py", "scan"): "`decoy.scan()` stages the caller's own DataFrame; it declares no source",
+    (
+        "api.py",
+        "scan",
+    ): "`decoy.scan()` stages the caller's own DataFrame before the scan gate; the stager reads no declared source",
     ("cli/unmask.py", "unmask"): "reads the masked file the caller named, reversed from the vault",
     (
         "cli/tokenize.py",
@@ -111,6 +128,9 @@ REQUIRED: tuple[tuple[str, str], ...] = (
     ("cli/run/_execute.py", "_run_chunked_mask"),
     ("cli/run/_prepare.py", "prepare"),
     ("cli/demo.py", "_run_v2_mask"),
+    ("cli/demo.py", "_run_single_demo"),
+    ("cli/scanning/_multi.py", "run_scan"),
+    ("api.py", "scan"),
     ("cli/subset.py", "subset"),
     ("cli/report.py", "_fidelity"),
     ("cli/report.py", "_integrity"),
@@ -265,3 +285,350 @@ def test_seeded_bypasses_are_detected() -> None:
         "from decoy.cli._sources import read_source as rs\ndef f(c):\n    return rs('t', c, b)\n"
     )
     assert ordering_violations(aliased) == ["f"]
+
+
+# ---------------------------------------------------------------------------
+# AT-C8 (S1c.2a): `scan_descriptors` takes a scan capability and every caller gets it from a gate
+# ---------------------------------------------------------------------------
+
+_SCAN_KEYWORDS = ("tables", "relationships", "relationship_positions")
+_Scope = ast.Module | ast.FunctionDef | ast.AsyncFunctionDef
+
+
+def _own_nodes(scope: _Scope) -> list[ast.AST]:
+    """Every node of a function body (or module body) outside nested functions and classes."""
+    found: list[ast.AST] = []
+    stack = list(ast.iter_child_nodes(scope))
+    while stack:
+        node = stack.pop()
+        found.append(node)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            continue
+        stack.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def _binders(scope: _Scope) -> dict[str, list[ast.AST | None]]:
+    """Each local name to what binds it: the assigned value, or None for any other binding."""
+    bound: dict[str, list[ast.AST | None]] = {}
+
+    def add(target: ast.AST, value: ast.AST | None) -> None:
+        if isinstance(target, ast.Name):
+            bound.setdefault(target.id, []).append(value)
+        elif isinstance(target, (ast.Tuple, ast.List, ast.Starred)):
+            for inner in ast.iter_child_nodes(target):
+                add(inner, None)
+
+    if not isinstance(scope, ast.Module):
+        a = scope.args
+        for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs, a.vararg, a.kwarg):
+            if arg is not None:
+                bound.setdefault(arg.arg, []).append(None)
+    for node in _own_nodes(scope):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                add(t, node.value if isinstance(t, ast.Name) else None)
+        elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+            add(node.target, None)
+        elif isinstance(node, ast.NamedExpr):
+            add(node.target, None)
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)):
+            add(node.target, None)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            for item in node.items:
+                if item.optional_vars is not None:
+                    add(item.optional_vars, None)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound.setdefault(node.name, []).append(None)
+    return bound
+
+
+def _scopes(tree: ast.Module) -> list[tuple[str, _Scope, dict[str, str]]]:
+    """(qualified name, scope node, import bindings in force) for the module and every function."""
+    out: list[tuple[str, _Scope, dict[str, str]]] = []
+
+    def visit(node: ast.AST, prefix: str, bound: dict[str, str]) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                name = child.name if not prefix else f"{prefix}.{child.name}"
+                merged = {**bound, **bindings(child)}
+                out.append((name, child, merged))
+                visit(child, name, merged)
+            elif isinstance(child, ast.ClassDef):
+                name = child.name if not prefix else f"{prefix}.{child.name}"
+                visit(child, name, {**bound, **bindings(child)})
+            else:
+                visit(child, prefix, bound)
+
+    module_bound = bindings(tree)
+    out.append(("<module>", tree, module_bound))
+    visit(tree, "", module_bound)
+    return out
+
+
+def _chain_root(node: ast.AST | None) -> str | None:
+    """The root name of an attribute chain with at least one attribute (`d.relationships`)."""
+    if not isinstance(node, ast.Attribute):
+        return None
+    while isinstance(node, ast.Attribute):
+        node = node.value
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _is_declaration_of(value: ast.AST | None, param: str) -> bool:
+    return (
+        isinstance(value, ast.Attribute)
+        and value.attr == "scan_declaration"
+        and isinstance(value.value, ast.Name)
+        and value.value.id == param
+    )
+
+
+def scan_call_violations(source: str) -> list[str]:
+    """Check A: the one `scan_sources` call in `scan_descriptors` is fed only by its capability."""
+    tree = ast.parse(source)
+    found = [s for s in _scopes(tree) if s[0] == "scan_descriptors"]
+    if len(found) != 1:
+        return ["no scan_descriptors function"]
+    _name, fn, bound = found[0]
+    assert not isinstance(fn, ast.Module)
+    calls = [
+        n
+        for n in _own_nodes(fn)
+        if isinstance(n, ast.Call) and qualified(n, bound) == "decoy_engine.scan_sources"
+    ]
+    if len(calls) != 1:
+        return [f"expected one scan_sources call, found {len(calls)}"]
+    if not fn.args.args:
+        return ["scan_descriptors takes no capability parameter"]
+    param = fn.args.args[0].arg
+    binders = _binders(fn)
+    problems = []
+    if len(binders.get(param, [])) != 1:
+        problems.append("the capability parameter is reassigned")
+    allowed = {param} | {
+        name
+        for name, values in binders.items()
+        if name != param and values and all(_is_declaration_of(v, param) for v in values)
+    }
+    call = calls[0]
+    given = {kw.arg: kw.value for kw in call.keywords if kw.arg}
+    given["<first>"] = call.args[0] if call.args else None  # type: ignore[assignment]
+    for slot in ("<first>", *_SCAN_KEYWORDS):
+        if _chain_root(given.get(slot)) not in allowed:
+            problems.append(f"{slot} is not read from the capability")
+    return problems
+
+
+def _resolves_to(node: ast.AST, bound: dict[str, str], names: frozenset[str]) -> bool:
+    return isinstance(node, (ast.Name, ast.Attribute, ast.Call)) and qualified(node, bound) in names  # type: ignore[arg-type]
+
+
+def _gate_result(arg: ast.AST | None, scope: _Scope, bound: dict[str, str]) -> bool:
+    """True for an inline scan gate call, or a local whose every binding is one."""
+    if isinstance(arg, ast.Call):
+        return _resolves_to(arg, bound, SCAN_GATES)
+    if not isinstance(arg, ast.Name):
+        return False
+    values = _binders(scope).get(arg.id, [])
+    return bool(values) and all(
+        isinstance(v, ast.Call) and _resolves_to(v, bound, SCAN_GATES) for v in values
+    )
+
+
+def scan_caller_violations(source: str) -> list[str]:
+    """Check B: every call of `scan_descriptors` passes a scan gate result bound in the same function."""
+    tree = ast.parse(source)
+    problems = []
+    for name, scope, bound in _scopes(tree):
+        for node in _own_nodes(scope):
+            if not (isinstance(node, ast.Call) and _resolves_to(node, bound, SCAN_CALL)):
+                continue
+            by_keyword = next((k.value for k in node.keywords if k.arg == "prepared"), None)
+            arg = node.args[0] if node.args else by_keyword
+            if not _gate_result(arg, scope, bound):
+                problems.append(f"{name}:{node.lineno}")
+    return problems
+
+
+def scan_value_references(source: str) -> list[int]:
+    """Check C: lines where `scan_descriptors` is named without being called."""
+    tree = ast.parse(source)
+    called = {id(s.node.func) for s in sites(tree) if isinstance(s.node, ast.Call)}
+    return [
+        s.lineno
+        for s in sites(tree)
+        if isinstance(s.node, (ast.Name, ast.Attribute))
+        and id(s.node) not in called
+        and qualified(s.node, s.bound) in SCAN_CALL
+    ]
+
+
+def test_scan_call_is_fed_only_from_the_capability() -> None:
+    source = (SRC / SCAN_OWNER).read_text(encoding="utf-8")
+    assert scan_call_violations(source) == []
+
+
+def test_every_scan_caller_passes_a_scan_gate_result() -> None:
+    bad = [
+        f"{rel}:{p}"
+        for rel, text in _modules()
+        if rel != SCAN_OWNER
+        for p in scan_caller_violations(text)
+    ]
+    assert bad == []
+
+
+def test_scan_descriptors_is_never_passed_as_a_value() -> None:
+    bad = [
+        f"{rel}:{line}"
+        for rel, text in _modules()
+        if rel != SCAN_OWNER
+        for line in scan_value_references(text)
+    ]
+    assert bad == []
+
+
+_OWNER_OK = (
+    "def scan_descriptors(prepared, *, rows):\n"
+    "    from decoy_engine import scan_sources\n"
+    "    declaration = prepared.scan_declaration\n"
+    "    return scan_sources(declaration.descriptors, tables=declaration.tables,\n"
+    "        relationships=declaration.relationships,\n"
+    "        relationship_positions=declaration.relationship_positions)\n"
+)
+_CALLER_IMPORT = (
+    "from decoy.cli._sources import scan_prepared_sources\n"
+    "from decoy.cli.scanning import scan_descriptors\n"
+)
+
+
+def _caller(body: str, imports: str = _CALLER_IMPORT) -> str:
+    return imports + "def run(cfg, base):\n" + body
+
+
+def test_seeded_scan_bypasses_are_detected() -> None:
+    assert scan_call_violations(_OWNER_OK) == []
+    good = _caller(
+        "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+        "    return scan_descriptors(prepared, rows=1)\n"
+    )
+    inline = _caller(
+        "    return scan_descriptors(scan_prepared_sources(cfg, base_dir=base), rows=1)\n"
+    )
+    keyword = _caller(
+        "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+        "    return scan_descriptors(prepared=prepared, rows=1)\n"
+    )
+    for ok in (good, inline, keyword):
+        assert scan_caller_violations(ok) == []
+    # (1) the raw mapping
+    assert scan_caller_violations(
+        _caller("    return scan_descriptors({'sources': cfg}, rows=1)\n")
+    )
+    # (2) the wrong gate: a `for_descriptors` capability
+    wrong = _caller(
+        "    prepared = prepared_sources(cfg, base_dir=base)\n"
+        "    return scan_descriptors(prepared, rows=1)\n",
+        _CALLER_IMPORT + "from decoy.cli._sources import prepared_sources\n",
+    )
+    assert scan_caller_violations(wrong)
+    # (2b) a local function that only shares the gate's name
+    local = (
+        "from decoy.cli.scanning import scan_descriptors\n"
+        "def scan_prepared_sources(c, base_dir):\n    return c\n"
+        "def run(cfg, base):\n"
+        "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+        "    return scan_descriptors(prepared, rows=1)\n"
+    )
+    assert scan_caller_violations(local)
+    # (3) the gate call deleted: `prepared` becomes a parameter
+    assert scan_caller_violations(
+        _CALLER_IMPORT + "def run(prepared):\n    return scan_descriptors(prepared, rows=1)\n"
+    )
+    # (4) reassigned from a dict after the gate
+    assert scan_caller_violations(
+        _caller(
+            "    prepared = scan_prepared_sources(cfg, base_dir=base)\n"
+            "    prepared = {'sources': cfg}\n"
+            "    return scan_descriptors(prepared, rows=1)\n"
+        )
+    )
+    # a gate result from another function is not accepted
+    assert scan_caller_violations(
+        _CALLER_IMPORT
+        + "def helper(c):\n    return scan_prepared_sources(c, base_dir=None)\n"
+        + "def run(cfg):\n    prepared = helper(cfg)\n    return scan_descriptors(prepared, rows=1)\n"
+    )
+    # a name bound by a loop
+    assert scan_caller_violations(
+        _caller("    for prepared in cfg:\n        scan_descriptors(prepared, rows=1)\n")
+    )
+    # (5) the aliased import
+    assert scan_caller_violations(
+        _caller(
+            "    return sd(cfg, rows=1)\n",
+            "from decoy.cli.scanning import scan_descriptors as sd\n",
+        )
+    )
+    # the private module spelling
+    assert scan_caller_violations(
+        _caller(
+            "    return scan_descriptors(cfg, rows=1)\n",
+            "from decoy.cli.scanning._engine_call import scan_descriptors\n",
+        )
+    )
+    # (6) the attribute forms
+    assert scan_caller_violations(
+        _caller(
+            "    return scanning.scan_descriptors(cfg, rows=1)\n",
+            "from decoy.cli import scanning\n",
+        )
+    )
+    assert scan_caller_violations(
+        _caller(
+            "    return decoy.cli.scanning.scan_descriptors(cfg, rows=1)\n",
+            "import decoy.cli.scanning\n",
+        )
+    )
+    # (7) passed as a value, or stored
+    assert scan_value_references(_caller("    return pool.submit(scan_descriptors, cfg)\n"))
+    assert scan_value_references(_caller("    f = scan_descriptors\n    return f(cfg)\n"))
+    assert scan_value_references(good) == []
+    # (8) fed from a copied mapping, not the capability
+    assert scan_call_violations(
+        _OWNER_OK.replace(
+            "    declaration = prepared.scan_declaration\n",
+            "    declaration = prepared.scan_declaration\n    descriptors = dict(declaration.descriptors)\n",
+        ).replace("scan_sources(declaration.descriptors", "scan_sources(descriptors")
+    )
+    # (9) relationships from a literal
+    assert scan_call_violations(
+        _OWNER_OK.replace("relationships=declaration.relationships", "relationships=()")
+    )
+    # the parameter reassigned, a keyword missing, a second call, no call
+    assert scan_call_violations(
+        _OWNER_OK.replace("    declaration =", "    prepared = {}\n    declaration =")
+    )
+    assert scan_call_violations(
+        _OWNER_OK.replace(
+            ",\n        relationship_positions=declaration.relationship_positions", ""
+        )
+    )
+    assert scan_call_violations(
+        _OWNER_OK.replace(
+            "    return scan_sources",
+            "    scan_sources(declaration.descriptors)\n    return scan_sources",
+        )
+    )
+    assert scan_call_violations("def scan_descriptors(prepared):\n    return 1\n")
+
+
+def test_a_scan_caller_in_api_py_is_not_exempt() -> None:
+    # (10) `("api.py", "scan")` is in CALLER_NAMED for check 1 only; checks A to C never read it.
+    raw = (
+        "from decoy.cli.scanning import scan_descriptors\n"
+        "def scan(data):\n    return scan_descriptors({'t': data}, rows=1)\n"
+    )
+    assert ("api.py", "scan") in CALLER_NAMED
+    assert scan_caller_violations(raw)
