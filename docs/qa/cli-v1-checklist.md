@@ -251,8 +251,8 @@ What it covers: `decoy scan SOURCES...`, `scan fields`, `scan show`, `scan diff`
 | SCAN-05 | `decoy scan data/raw.csv --no-header --column-names a,b,c`; then `decoy scan data/raw.csv --has-header --column-names a,b,c` | 0, 1 | Named columns; the second is refused | 27 | |
 | SCAN-06 | `decoy scan data/rec.fwf --layout data/layout.yaml`; then `decoy scan data/rec.fwf` without `--layout` | 0, 1 | Scans; the second is refused | 27 | |
 | SCAN-07 | `decoy scan diff old.json new.json --strict` where `new` adds a high-PII field; then `decoy scan diff old.json old.json --strict` with no drift; then `decoy scan diff - -` | 4, 0, 1 | Drift is a finding; no drift is clean; both inputs from stdin is refused | 27 | |
-| SCAN-08 | `decoy scan data/t1.csv --has-header --emit-config`; `--compare <baseline>` | tbd | **1.x.** **Not built.** A starter pipeline YAML; a drift report against the baseline | 29 | |
-| SCAN-09 | Save a scan snapshot to the library, reference it as the pipeline's baseline, run | tbd | **1.x.** **Not built.** The run's evidence carries the snapshot hash | 30, 36 | |
+| SCAN-08 | `decoy scan data/t1.csv --has-header --emit-config`; `--compare <baseline>` | tbd | **Not built.** **1.x.** A starter pipeline YAML; a drift report against the baseline | 29 | |
+| SCAN-09 | Save a scan snapshot to the library, reference it as the pipeline's baseline, run | tbd | **Not built.** **1.x.** The run's evidence carries the snapshot hash | 30, 36 | |
 | SCAN-10 | Opt-in distribution capture, then a run whose output drifts past the set percentage, in strict mode | tbd | **Not built.** The breach blocks publication; outside strict mode it warns | 31 | |
 | SCAN-11 | `on_drift: fail` with a source that drifted from the baseline; then `on_drift: warn` | tbd | **Not built.** The run refuses at start; with `warn` it warns and runs | 32 | |
 | SCAN-12 | Scan with defaults; enable the classifier, then NER, per pipeline; remove spaCy and scan with NER on | tbd | **Not built.** Default is regex only and says so; the scan report and run result name each detector, model and version; without spaCy, an install line for the `ner` extra and a non-zero exit | 32a | |
@@ -307,7 +307,7 @@ Today the CLI runs with `delivery_mode="in_place"` (`src/decoy/cli/exit_codes.py
 |---|---|---|---|---|---|
 | DLV-01 | `mask-fk` in strict delivery, with the child table's delivery forced to fail | tbd | **Not built.** No target is published; staged files removed; non-zero exit | 61 | |
 | DLV-02 | `decoy validate` and `decoy run` on `mask-fk` with `delivery: best_effort`, in YAML and in `.decoy` | 1, 1 | **Not built.** V1: refused at validate with a coded error, before any read, in both file kinds. 1.x (row 61b): the parent is delivered and the child withheld; exit 6; the run result lists both | 61, 61b, 62 | |
-| DLV-03 | `decoy run --all` where one child exits 6 | tbd | **1.x.** **Not built.** The summary counts it as 6, not 3 (CLI #270 keeps a child's 6); a child that exits 6 needs row 61 | 24t, 61 | |
+| DLV-03 | `decoy run --all` where one child exits 6 | tbd | **Not built.** **1.x.** The summary counts it as 6, not 3 (CLI #270 keeps a child's 6); a child that exits 6 needs row 61 | 24t, 61 | |
 | DLV-04 | `decoy run mask-fk` with targets under two different roots in one run | 1 | Refused under the local single-root rule | 61 | |
 | DLV-05 | `decoy run mask-basic --json`; read the run result document | tbd | **Not built.** `decoy-run-result/v1`: status, exit code, reason codes, tables; value-free; the shape matches the REL-GATE snapshot | 62, 66 | |
 | DLV-06 | `decoy run mask-big` where a worker runs out of memory | 5 | Reported as a capacity failure, not a crash (capacity widening) | 62 | |
@@ -414,7 +414,7 @@ the frozen surfaces REL-GATE snapshots.
 | Id | Command | Exit | Expected | Rows | Pass/fail |
 |---|---|---|---|---|---|
 | EXIT-01 | **RC.** `decoy explain exit-codes`; README "Exit codes"; `decoy.cli.exit_codes`; the crash handler | 0 | All agree: 0 to 6 as named, 130 for Ctrl-C, and the crash exit EXIT-03 observes. Since CLI #270 both docs list 130 and name 1 for an internal error, and `tests/sentry/cli_text/test_exit_code_docs.py` pins them to `decoy.cli.exit_codes` | 93 | |
-| EXIT-02 | One trigger per code: `decoy run mask-basic` (clean), `decoy validate mask-basic` on a bad config, `decoy validate mask-abs --fail-on-warning`, `decoy run mask-basic` with an unwritable output mid-run, `decoy report integrity <copy>` with a finding, `decoy run mask-big` refused for capacity, Ctrl-C during `decoy run mask-big`; 1.x only: `decoy run mask-fk` with best-effort partial delivery (row 61b) | 0, 1, 2, 3, 4, 5, 130 (6 in 1.x) | Each exits with its code; 6 stays reserved in the freeze | 61, 62 | |
+| EXIT-02 | One trigger per code: `decoy run mask-basic` (clean), `decoy validate mask-basic` on a bad config, `decoy validate mask-abs --fail-on-warning`, `decoy run mask-basic` with an unwritable output mid-run, `decoy report integrity <copy>` with a finding, `decoy run mask-big` refused for capacity, Ctrl-C during `decoy run mask-big` | 0, 1, 2, 3, 4, 5, 130 | Each exits with its code. Exit 6 stays reserved in the freeze; its trigger (a best-effort partial delivery of mask-fk, row 61b) is 1.x QA | 61, 62 | |
 | EXIT-03 | `decoy validate mask-basic` with an uncaught exception forced (an engine module that raises on import, in a scratch runtime) | 1 | `error: internal error (<Type>)` and the `--verbose` hint; no traceback, as `tests/sentry/cli_text/test_no_traceback_escape.py` pins | 24zf | |
 | EXIT-04 | Every leaf command with `--json`, on success and on a refusal. Exempt: the `ci check` command (no `--json`; its `--format json` report is checked in CI-03) | none | stdout is exactly one JSON object; refusals use the one error shape; progress only on stderr | 24zf | |
 | EXIT-05 | Every leaf command with `--quiet`. Exempt: `ci check -o -`, which still writes its report to stdout | none | stdout empty; the exit code still carries the result | 24zf | |
@@ -441,7 +441,7 @@ of the surface is **Not built.** Command names come from the LIB plan.
 | LIB-01 | Write records while killing the process mid-write | none | No torn record; the store opens | 34 | |
 | LIB-02 | After any run, list scratch under `.decoy/` | none | Scratch removed on every exit path, on each OS lane | 34, 38 | |
 | LIB-03 | Corrupt one record, then run the library check | tbd | **Not built.** The check names the record; the library lists the rest in degraded mode | 35 | |
-| LIB-04 | Save two scans to the library | tbd | **1.x.** **Not built.** Both stored as scan snapshots and listed | 30, 36 | |
+| LIB-04 | Save two scans to the library | tbd | **Not built.** **1.x.** Both stored as scan snapshots and listed | 30, 36 | |
 | LIB-05 | A run with evidence | tbd | **Not built.** An evidence record and a run-result record are stored | 37 | |
 | LIB-06 | A sample run | tbd | **Not built.** A sample-run record; its scratch is removed | 38 | |
 | LIB-07 | `decoy library list`, `show`, `diff`, `ref`, `export` | tbd | **Not built.** Each works on the records from LIB-04 to LIB-06; sweep clean | 39 | |
