@@ -1,10 +1,12 @@
-# V2 and V3 expansion candidates: new data, new masks, new generators
+# Expansion candidates: new data, new masks, new generators
 
-Status: proposal (for the V2/V3 planning discussion; nothing here is scheduled)
+Status: proposal (for 1.x planning; nothing here is scheduled except the built work in [releases-1x.md](releases-1x.md))
 
 Part of the roadmap: [ROADMAP.md](../ROADMAP.md). Path shorthand (`E:`, `C:`, `P:`, vault) is defined there.
-Indexed from [post-1.0-plan.md](post-1.0-plan.md). The placement tags below (V1+, V2, V3) say how big a candidate is and in what
-order to build it. The release bucket (1.x minor, 1.x patch, 2.0) is in that page.
+Indexed from [post-1.0-plan.md](post-1.0-plan.md). The placement tags below (Near, Mid, Far; called V1+, V2 and V3 before 2026-11-22) say how big a candidate is and in what
+order to build it. They are not release buckets. The bucket (1.x minor, 1.x patch, 2.0) is in that page.
+Where work on a candidate is built on a branch, the "1.x program" column of the summary names its 1.x id and release
+in [releases-1x.md](releases-1x.md). The file keeps its old name so that existing links stay valid; the rename is a follow-up.
 
 This document proposes features that widen Decoy's core: more kinds of input and output, more mask
 and privacy techniques, more generators, documents, and media (images, video, audio). Each entry
@@ -18,9 +20,9 @@ says so; the entry then adds detail to that item rather than starting a second o
 
 | Tag | Meaning |
 |---|---|
-| V1+ | Small, self-contained; fits a point release after CLI V1 without new architecture |
-| V2 | Builds on code we already have; needs a plan and some new engine surface |
-| V3 | New subsystem, new dependency class (ML models, streaming) or a weaker guarantee model |
+| Near | Small, self-contained; fits a 1.x minor without new architecture (was V1+) |
+| Mid | Builds on code we already have; needs a plan and some new engine surface (was V2) |
+| Far | New subsystem, new dependency class (ML models, streaming) or a weaker guarantee model (was V3) |
 
 **Difficulty**
 
@@ -53,35 +55,35 @@ column-level strategy set.
 
 ## Summary
 
-| ID | Feature | Area | Difficulty | Placement | Related |
-|---|---|---|---|---|---|
-| X-01 | Avro and ORC files | I/O | S | V1+ | none |
-| X-02 | JSON and JSONL with nested path masking | I/O | L | V2 | F07, F03 |
-| X-03 | Excel workbooks | I/O | M | V2 | none |
-| X-04 | XML with path masking | I/O | M | V2 | X-02 |
-| X-05 | Delta Lake and Apache Iceberg tables | I/O | M | V2 | F22 |
-| X-06 | More databases (MySQL, SQL Server, Snowflake, BigQuery; MongoDB later) | I/O | L each | V2 (MongoDB V3) | F01, row 64b |
-| X-07 | Streaming and change-data-capture masking | I/O | XL | V3 | F42 |
-| X-08 | International identifiers, generators and region disguises | Mask | M | V1+ (detectors), V2 (disguises) | F47, DETECT-PROFILES |
-| X-09 | Secrets detection | Mask | S | V1+ | none |
-| X-10 | Meaning-preserving masks | Mask | S each | V1+ | none |
-| X-11 | Better free-text detection | Mask | L | V2 | F08, DETECT-PROFILES |
-| X-12 | Formal anonymity enforcement | Privacy | L | V2 | F37 |
-| X-13 | Time-series and event masking | Mask | M | V2 | none |
-| X-14 | Joint-distribution synthesis (Gaussian copula) | Generate | L | V2 | F48, DPS |
-| X-15 | Multi-table synthesis | Generate | XL | late V2 | F48, X-14 |
-| X-16 | Generate from a schema | Generate | M | V2 | none |
-| X-17 | Edge-case test data | Generate | M | V2 | F46 |
-| X-18 | Sequential and event data synthesis | Generate | XL | V3 | X-14 |
-| X-19 | File metadata scrubbing | Documents | S | V2 | F38 |
-| X-20 | Document redaction (PDF, DOCX, email) | Documents | L | V3 (DOCX and email may move to V2) | X-11 |
-| X-21 | DICOM medical imaging de-identification | Media | L | V2 | F47 |
-| X-22 | Text in images and scans (OCR redaction) | Media | L | V3 | X-20, X-21 |
-| X-23 | Faces and licence plates in images and video | Media | XL | V3 | X-22 |
-| X-24 | Audio redaction | Media | XL | V3 or later | X-11 |
-| X-25 | Plugin SDK as the home for heavy extras | Enabler | M | V2 | F40 |
+| ID | Feature | Area | Difficulty | Placement | Related | 1.x program |
+|---|---|---|---|---|---|---|
+| X-01 | Avro and ORC files | I/O | S | Near | none | AVRO-ORC (1.4) |
+| X-02 | JSON and JSONL with nested path masking | I/O | L | Mid | F07, F03 | 82-E3b (1.1), NESTED-FREEZE (1.0), NESTED-NATIVE (1.11) |
+| X-03 | Excel workbooks | I/O | M | Mid | none | none |
+| X-04 | XML with path masking | I/O | M | Mid | X-02 | none |
+| X-05 | Delta Lake and Apache Iceberg tables | I/O | M | Mid | F22 | none |
+| X-06 | More databases (MySQL, SQL Server, Snowflake, BigQuery; MongoDB later) | I/O | L each | Mid (MongoDB Far) | F01, row 64b | WAREHOUSE (1.5), 86-E0 (1.11) |
+| X-07 | Streaming and change-data-capture masking | I/O | XL | Far | F42 | none |
+| X-08 | International identifiers, generators and region disguises | Mask | M | Near (detectors), Mid (disguises) | F47, DETECT-PROFILES | INTL-IDS (1.1, 1.2) |
+| X-09 | Secrets detection | Mask | S | Near | none | none |
+| X-10 | Meaning-preserving masks | Mask | S each | Near | none | MASK-KEEP (1.7) |
+| X-11 | Better free-text detection | Mask | L | Mid | F08, DETECT-PROFILES | none |
+| X-12 | Formal anonymity enforcement | Privacy | L | Mid | F37 | ANON (1.9) |
+| X-13 | Time-series and event masking | Mask | M | Mid | none | DATE-ENTITY (1.7) |
+| X-14 | Joint-distribution synthesis (Gaussian copula) | Generate | L | Mid | F48, DPS | COPULA (1.6) |
+| X-15 | Multi-table synthesis | Generate | XL | late Mid | F48, X-14 | none |
+| X-16 | Generate from a schema | Generate | M | Mid | none | none |
+| X-17 | Edge-case test data | Generate | M | Mid | F46 | EDGE-CASES (1.2) |
+| X-18 | Sequential and event data synthesis | Generate | XL | Far | X-14 | none |
+| X-19 | File metadata scrubbing | Documents | S | Mid | F38 | none |
+| X-20 | Document redaction (PDF, DOCX, email) | Documents | L | Far (DOCX and email may move to Mid) | X-11 | none |
+| X-21 | DICOM medical imaging de-identification | Media | L | Mid | F47 | none |
+| X-22 | Text in images and scans (OCR redaction) | Media | L | Far | X-20, X-21 | none |
+| X-23 | Faces and licence plates in images and video | Media | XL | Far | X-22 | none |
+| X-24 | Audio redaction | Media | XL | Far or later | X-11 | none |
+| X-25 | Plugin SDK as the home for heavy extras | Enabler | M | Mid | F40 | none |
 
-Recommended V2 core: X-02, X-08, X-12, X-14, X-21, with X-25 first because the media and model
+Recommended Mid core: X-02, X-08, X-12, X-14, X-21, with X-25 first because the media and model
 features depend on it.
 
 ---
@@ -89,6 +91,8 @@ features depend on it.
 ## 1. Inputs and outputs
 
 ### X-01 Avro and ORC files
+
+**1.x program.** The engine half is built (AVRO-ORC.1, release 1.4); the CLI half is not. See [releases-1x.md](releases-1x.md).
 
 **What.** Read and write Avro and ORC as file sources and targets, beside CSV, Parquet and fixed
 width.
@@ -105,10 +109,12 @@ which loses Avro schema evolution and adds a copy of the raw data.
 **Difficulty.** S. The readers exist; the work is format declaration, the CLI-FMT target path
 (row 20) and round-trip tests.
 
-**Placement.** V1+. Small, no new architecture, and it rides the CLI-FMT single target module once
+**Placement.** Near. Small, no new architecture, and it rides the CLI-FMT single target module once
 that lands.
 
 ### X-02 JSON and JSONL with nested path masking
+
+**1.x program.** Several rules per nested column is built (82-E3b, engine #684, release 1.1). Native struct, list and map columns are candidate NESTED-NATIVE (1.11); its refusal half is 1.0 row NESTED-FREEZE. See [releases-1x.md](releases-1x.md).
 
 **What.** JSON documents and JSON Lines files as sources and targets, with masking addressed by
 path: `$.customer.email`, `$.items[*].card_number`. The same path selector applies to a JSON column
@@ -134,7 +140,7 @@ masking it by flattening by hand loses structure.
 **Difficulty.** L. The selector, two execution modes, scan support, chunked JSONL, and the
 round-trip guarantee (key order, number formatting) all need care.
 
-**Placement.** V2. It is the most-asked-for missing format, and it shares the path work F07
+**Placement.** Mid. It is the most-asked-for missing format, and it shares the path work F07
 already needs, so it should be planned together with F07.
 
 ### X-03 Excel workbooks
@@ -153,7 +159,7 @@ non-engineering users.
 **Difficulty.** M. Type inference, merged cells, formulas and multi-sheet output are the hard
 parts; reading is easy.
 
-**Placement.** V2. Useful, but the users it brings are better served once the CLI journey is
+**Placement.** Mid. Useful, but the users it brings are better served once the CLI journey is
 settled.
 
 ### X-04 XML with path masking
@@ -170,7 +176,7 @@ and older enterprise integrations, where XML is still the exchange format.
 
 **Difficulty.** M once X-02 exists.
 
-**Placement.** V2, after X-02.
+**Placement.** Mid, after X-02.
 
 ### X-05 Delta Lake and Apache Iceberg tables
 
@@ -188,9 +194,11 @@ production analytical data now lives.
 
 **Difficulty.** M. Partitioning, schema evolution and cloud credentials are the work.
 
-**Placement.** V2, after F22 and CLI-CLOUD, which it depends on.
+**Placement.** Mid, after F22 and CLI-CLOUD, which it depends on.
 
 ### X-06 More databases
+
+**1.x program.** A DuckDB attach and catalog source is built on an old branch (WAREHOUSE, release 1.5 with one more database and Snowflake, needs a fresh plan). The F01 Postgres write spike is 86-E0. See [releases-1x.md](releases-1x.md).
 
 **What.** Database sources and application-ready targets beyond Postgres: MySQL and MariaDB, SQL
 Server, Snowflake and BigQuery; MongoDB later.
@@ -200,7 +208,7 @@ out of it: snapshot-consistent read, type mapping report, staging, constraint, i
 restore, atomic publish. Each new database implements the contract. Use each vendor's bulk paths
 (MySQL `LOAD DATA`, SQL Server bulk copy, Snowflake `COPY INTO` via staged Parquet, BigQuery load
 jobs) and ADBC drivers where they exist, so data moves as Arrow. MongoDB needs X-02's path masking
-and is V3.
+and is Far.
 
 **Who and why.** Teams that refresh development, QA and staging databases from production. The
 "masked copy of prod" job is the main reason people buy masking tools, and most estates are not
@@ -208,7 +216,7 @@ only Postgres.
 
 **Difficulty.** L per database for an application-ready target; M for a read-only source.
 
-**Placement.** V2 for MySQL, SQL Server, Snowflake and BigQuery (order by customer pull). V3 for
+**Placement.** Mid for MySQL, SQL Server, Snowflake and BigQuery (order by customer pull). Far for
 MongoDB.
 
 ### X-07 Streaming and change-data-capture masking
@@ -229,13 +237,15 @@ in batch and stream, so this sets Decoy apart.
 **Difficulty.** XL. It is a service, not a job: offsets, back-pressure, restarts, monitoring, and
 a strategy subset whose limits must be checked at plan time.
 
-**Placement.** V3. It needs a runtime model the CLI does not have, and it fits the platform.
+**Placement.** Far. It needs a runtime model the CLI does not have, and it fits the platform.
 
 ---
 
 ## 2. Masking and privacy
 
 ### X-08 International identifiers, generators and region disguises
+
+**1.x program.** Check digits, national-id generators and Faker locale rows are built (INTL-IDS.1 to .3, releases 1.1 and 1.2). Region disguises are not. See [releases-1x.md](releases-1x.md).
 
 **What.** Detectors, checksum-valid generators and FPE-safe formats for non-US identifiers: UK
 NINO and NHS number, Canadian SIN, Indian Aadhaar and PAN, Australian TFN and Medicare, EU national
@@ -256,7 +266,7 @@ the systems that consume the masked data.
 
 **Difficulty.** M overall; S per identifier. The disguises need careful legal reading.
 
-**Placement.** V1+ for detectors and generators (small, independent, high value). V2 for region
+**Placement.** Near for detectors and generators (small, independent, high value). Mid for region
 disguises, alongside DETECT-PROFILES and F47's packs.
 
 ### X-09 Secrets detection
@@ -276,9 +286,11 @@ credential is worse than a leaked email address.
 **Difficulty.** S. Pattern sets are established; the work is the detector entries and tests
 against false positives.
 
-**Placement.** V1+. High value, low risk, no architecture.
+**Placement.** Near. High value, low risk, no architecture.
 
 ### X-10 Meaning-preserving masks
+
+**1.x program.** Email domain, card BIN and IP prefix are built (MASK-KEEP.1 to .3, release 1.7). See [releases-1x.md](releases-1x.md).
 
 **What.** Small strategies or options that keep the property a test or analysis depends on:
 
@@ -299,7 +311,7 @@ breaks tests (a routing rule on country code), dashboards (email domain mix) and
 
 **Difficulty.** S each.
 
-**Placement.** V1+, one at a time as customers ask. Some (email domain, card BIN) may already be
+**Placement.** Near, one at a time as customers ask. Some (email domain, card BIN) may already be
 reachable with `derived` or `formula`; a named option is still clearer.
 
 ### X-11 Better free-text detection
@@ -321,9 +333,11 @@ free text) needs good spans to work.
 **Difficulty.** L. The model work is easy to start; measuring recall and false positives on a
 labelled corpus, and keeping it deterministic, is the bulk.
 
-**Placement.** V2, with DETECT-PROFILES and before F08.
+**Placement.** Mid, with DETECT-PROFILES and before F08.
 
 ### X-12 Formal anonymity enforcement
+
+**1.x program.** Hierarchies, metrics, models, search, microaggregation and the risk report are built as a library (ANON.1 to .6, release 1.9); config and CLI wiring is not. See [releases-1x.md](releases-1x.md).
 
 **What.** Go from measuring k-anonymity (which `decoy scan` does today) to enforcing it, and add
 the stronger models: l-diversity and t-closeness. The user states a target ("k at least 5,
@@ -335,7 +349,7 @@ result.
 - Generalization hierarchies per quasi-identifier (age bands, ZIP prefixes, date to month or
   year), reusing `bucketize`, `geo_generalize` and `truncate`.
 - A search over hierarchy levels for the least-information-loss solution that meets the target
-  (ARX's Flash algorithm, or a simpler bottom-up search for V2).
+  (ARX's Flash algorithm, or a simpler bottom-up search for Mid).
 - Microaggregation for numeric quasi-identifiers (MDAV, Domingo-Ferrer and Mateo-Sanz 2002).
 - Record suppression with a budget.
 - Cite Sweeney 2002 (k-anonymity), Machanavajjhala et al. 2007 (l-diversity), Li et al. 2007
@@ -352,9 +366,11 @@ only "we masked the identifiers".
 **Difficulty.** L. The search needs the whole table (not streaming), and the report must be
 honest about what it proves (`E:docs/what-we-cannot-prove.md`).
 
-**Placement.** V2, as the delivery of F37.
+**Placement.** Mid, as the delivery of F37.
 
 ### X-13 Time-series and event masking
+
+**1.x program.** The per-entity date offset is built (DATE-ENTITY.1, release 1.7). Series noise is not. See [releases-1x.md](releases-1x.md).
 
 **What.** Masks that keep the shape of time data for one entity: shift all of a patient's or
 customer's dates by the same per-entity offset (keeping intervals and order), keep day of week or
@@ -371,13 +387,15 @@ analysis.
 
 **Difficulty.** M.
 
-**Placement.** V2.
+**Placement.** Mid.
 
 ---
 
 ## 3. Data generation
 
 ### X-14 Joint-distribution synthesis (Gaussian copula)
+
+**1.x program.** Model, fit, sample and the quality report are built as a library (COPULA.1 to .3, release 1.6). DP and wiring are not; the snapshot extension is not needed (owner 2026-11-22: standalone model kept). See [releases-1x.md](releases-1x.md).
 
 **What.** Synthetic tables that keep correlations between columns, not only each column's own
 distribution. Today `statistical` samples each column on its own, apart from the fixed composite
@@ -398,7 +416,7 @@ columns but nonsense rows (a 5-year-old with a mortgage).
 **Difficulty.** L. The method is standard; categorical handling, the snapshot schema and the
 quality report extensions are the work.
 
-**Placement.** V2, as the heart of F48.
+**Placement.** Mid, as the heart of F48.
 
 ### X-15 Multi-table synthesis
 
@@ -416,7 +434,7 @@ joins that work and realistic fan-out (orders per customer, claims per policy).
 **Difficulty.** XL. HMA1 does not scale well to deep or wide schemas; it needs bounded memory
 work like the chunked routes.
 
-**Placement.** Late V2, after X-14.
+**Placement.** Late Mid, after X-14.
 
 ### X-16 Generate from a schema
 
@@ -434,10 +452,12 @@ open-source and demo users. It is a quick first-run experience: point Decoy at a
 
 **Difficulty.** M.
 
-**Placement.** V2. Strong adoption feature for the CLI; it could be pulled earlier as a CLI
+**Placement.** Mid. Strong adoption feature for the CLI; it could be pulled earlier as a CLI
 growth lever.
 
 ### X-17 Edge-case test data
+
+**1.x program.** The providers are built (EDGE-CASES.1, release 1.2). See [releases-1x.md](releases-1x.md).
 
 **What.** Generate deliberately awkward values to find bugs: boundary numbers, empty and maximum
 length strings, Unicode (combining marks, emoji, right-to-left, zero-width), SQL and HTML special
@@ -454,7 +474,7 @@ cases are valid. Deterministic by seed so a failing case reproduces.
 
 **Difficulty.** M.
 
-**Placement.** V2, inside F46.
+**Placement.** Mid, inside F46.
 
 ### X-18 Sequential and event data synthesis
 
@@ -470,7 +490,7 @@ logic.
 
 **Difficulty.** XL for a learned model; L for the Markov version.
 
-**Placement.** V3.
+**Placement.** Far.
 
 ---
 
@@ -491,7 +511,7 @@ teams. Metadata leaks are common and easy to miss.
 
 **Difficulty.** S.
 
-**Placement.** V2, with F38.
+**Placement.** Mid, with F38.
 
 ### X-20 Document redaction (PDF, DOCX, email)
 
@@ -513,7 +533,7 @@ requests. These users have documents, not tables, and they are a large market.
 
 **Difficulty.** L. Faithful layout and true PDF redaction are the hard parts.
 
-**Placement.** V3 for PDF. DOCX and email are simpler and could move to late V2 if a customer
+**Placement.** Far for PDF. DOCX and email are simpler and could move to late Mid if a customer
 asks.
 
 ---
@@ -547,7 +567,7 @@ and F47's healthcare packs.
 
 **Difficulty.** L. The profile is long and exact; pixel data handling waits for X-22.
 
-**Placement.** V2. It is the media feature that matches Decoy's architecture: structured fields,
+**Placement.** Mid. It is the media feature that matches Decoy's architecture: structured fields,
 determinism and keys all still apply.
 
 ### X-22 Text in images and scans (OCR redaction)
@@ -565,7 +585,7 @@ healthcare (scanned records, DICOM burn-in).
 
 **Difficulty.** L. OCR quality on poor scans and measured recall are the hard parts.
 
-**Placement.** V3.
+**Placement.** Far.
 
 ### X-23 Faces and licence plates in images and video
 
@@ -584,7 +604,7 @@ camera analytics, media companies, and research groups publishing video data und
 **Difficulty.** XL. Model accuracy, video throughput, tracking and measured recall make this a
 program.
 
-**Placement.** V3.
+**Placement.** Far.
 
 ### X-24 Audio redaction
 
@@ -602,7 +622,7 @@ speech datasets, healthcare (dictation).
 **Difficulty.** XL. Transcription errors become missed redactions, so recall has to be measured
 and stated clearly.
 
-**Placement.** V3 or later. Do only with a customer pulling for it.
+**Placement.** Far or later. Do only with a customer pulling for it.
 
 ---
 
@@ -625,7 +645,7 @@ type.
 
 **Difficulty.** M. The hard part is a plugin interface stable enough to freeze at GA.
 
-**Placement.** V2, before the media and model features.
+**Placement.** Mid, before the media and model features.
 
 ---
 
@@ -646,11 +666,11 @@ type.
   as today.
 - **Module size.** New subsystems are packages, not single files, under the 600-line target.
 
-## Questions for the V2/V3 discussion
+## Questions for 1.x planning
 
-1. Which of the five recommended V2 core items has a customer pulling today?
-2. Do the V1+ items (X-01, X-08 detectors, X-09, X-10) go into a post-CLI-V1 point release or wait
-   for V2?
+1. Which of the five recommended Mid core items has a customer pulling today?
+2. Do the Near items (X-01, X-08 detectors, X-09, X-10) go into an early 1.x minor or later? The built parts of
+   X-01, X-08 and X-10 are slotted in [releases-1x.md](releases-1x.md).
 3. Is media (X-21 to X-24) in Decoy's product scope at all, or a separate product on the same
    engine?
 4. Should X-16 (generate from a schema) be pulled earlier as a CLI adoption feature?
