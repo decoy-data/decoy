@@ -29,6 +29,8 @@ pytest.importorskip("cryptography")
 
 runner = CliRunner()
 
+# `new_run_id` in decoy/cli/io/_layout.py: `<YYYYMMDDTHHMMSSffffffZ>-<8 hex>` plus 4 hex per clash.
+_RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}(?:[0-9a-f]{4}){0,6}")
 CANARY = "canary-7f3e9a1c-cell-value"
 _CODES = (
     "keyed_strategy_requires_secret",
@@ -130,9 +132,13 @@ def _expected(surface: str, code: str) -> str:
 def _assert_value_free(result, tmp_path: Path) -> None:
     for needle in (CANARY, TEST_MASK_SECRET, TEST_MASK_SECRET_REF, "Traceback"):
         assert needle not in result.output, (needle, result.output)
-    # A file mode, matched as a whole number: a timestamp such as 08:40:21.080644Z holds the same
-    # digits and made this check fail by chance.
-    assert not re.search(r"(?<![0-9])0?644(?![0-9])", result.output), result.output
+    # A file mode, matched as a whole number. The run id is cut out first: its 8 hex digits come
+    # from a random UUID, so `ab0644cd` or a timestamp such as 08:40:21.080644Z held the same
+    # digits and made this check fail by chance. Only the run id is removed; the rest of the
+    # output is checked as before.
+    assert not re.search(r"(?<![0-9])0?644(?![0-9])", _RUN_ID.sub("<run-id>", result.output)), (
+        result.output
+    )
     assert not (tmp_path / "fresh.bin").exists() and not (tmp_path / "bad" / "out.csv").exists()
 
 
