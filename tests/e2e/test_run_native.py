@@ -496,8 +496,8 @@ def test_route_indicator_not_applicable_for_generate_only(tmp_path: Path):
     assert payload["native_route"]["state"] is None
 
 
-def _declined_table(name: str, src: Path, out: Path) -> tuple[dict, dict, dict]:
-    """A table the native chunked route declines (`text_redact` has no compiled kernel)."""
+def _no_kernel_table(name: str, src: Path, out: Path) -> tuple[dict, dict, dict]:
+    """A table the engine admits natively but that runs no kernel (`text_redact` has none)."""
     pd.DataFrame({"note": [f"call {i}" for i in range(6)]}).to_parquet(src, index=False)
     table = {"name": name, "columns": [{"name": "note", "strategy": "text_redact"}]}
     source = {"type": "file", "format": "parquet", "path": str(src)}
@@ -505,14 +505,14 @@ def _declined_table(name: str, src: Path, out: Path) -> tuple[dict, dict, dict]:
     return table, source, target
 
 
-def _chunked_labels(tmp_path: Path, *, native: bool, declined: bool) -> dict:
+def _chunked_labels(tmp_path: Path, *, native: bool, no_kernel: bool) -> dict:
     """Run a one- or two-table `--chunked` job and return its `--json` document."""
     cfg = _json.loads(_json.dumps(yaml.safe_load(_hash_eligible_config(tmp_path).read_text())))
-    if declined:
-        table, source, target = _declined_table(
+    if no_kernel:
+        table, source, target = _no_kernel_table(
             "notes", tmp_path / "note.parquet", tmp_path / "note_out.csv"
         )
-        if native:  # one native table beside the declined one
+        if native:  # one native table beside the no-kernel one
             cfg["tables"].append(table)
             cfg["sources"]["notes"] = source
             cfg["targets"]["notes"] = target
@@ -527,30 +527,71 @@ def _chunked_labels(tmp_path: Path, *, native: bool, declined: bool) -> dict:
     return _json.loads(result.stdout)
 
 
-def test_chunked_label_is_pandas_when_the_native_route_declines(tmp_path: Path):
-    payload = _chunked_labels(tmp_path, native=False, declined=True)
+def test_chunked_label_is_pandas_for_an_admitted_table_with_no_kernel(tmp_path: Path):
+    payload = _chunked_labels(tmp_path, native=False, no_kernel=True)
     assert payload["native_route"]["applicable"] is False
     assert payload["native_route"]["state"] is None
     assert payload["native_route"]["label"] == "chunked stream (pandas)"
 
 
 def test_chunked_label_is_pandas_without_a_companion(tmp_path: Path, force_absent_companion: None):
-    payload = _chunked_labels(tmp_path, native=True, declined=False)
+    payload = _chunked_labels(tmp_path, native=True, no_kernel=False)
     assert payload["native_route"]["label"] == "chunked stream (pandas)"
 
 
 @_requires_real_companion
 def test_chunked_label_is_native_with_a_companion(tmp_path: Path):
-    payload = _chunked_labels(tmp_path, native=True, declined=False)
+    payload = _chunked_labels(tmp_path, native=True, no_kernel=False)
     assert payload["native_route"]["applicable"] is False
     assert payload["native_route"]["state"] is None
     assert payload["native_route"]["label"] == "chunked stream (native)"
 
 
 @_requires_real_companion
-def test_chunked_label_is_mixed_for_one_native_and_one_declined_table(tmp_path: Path):
-    payload = _chunked_labels(tmp_path, native=True, declined=True)
+def test_chunked_label_is_mixed_for_one_native_and_one_no_kernel_table(tmp_path: Path):
+    payload = _chunked_labels(tmp_path, native=True, no_kernel=True)
     assert payload["native_route"]["label"] == "chunked stream (mixed)"
+
+
+def test_chunked_label_is_pandas_for_a_table_the_engine_declines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A non-deterministic categorical with a `when:` is declined by the engine, so the
+    evidence says `native_admitted` False (unlike the admitted no-kernel table above)."""
+    src = tmp_path / "cat.parquet"
+    pd.DataFrame({"c": ["a", "b", "a", "c"], "keep": ["A", "B", "A", "B"]}).to_parquet(
+        src, index=False
+    )
+    config = {
+        "version": 2,
+        "global_settings": {"seed": 42, "mask_secret_ref": TEST_MASK_SECRET_REF},
+        "sources": {"t": {"type": "file", "format": "parquet", "path": str(src)}},
+        "tables": [
+            {
+                "name": "t",
+                "columns": [
+                    {
+                        "name": "c",
+                        "strategy": "categorical",
+                        "namespace": "ns_c",
+                        "provider_config": {"categories": ["x", "y", "z"]},
+                        "when": "keep == 'A'",
+                    },
+                    {"name": "keep", "strategy": "passthrough"},
+                ],
+            }
+        ],
+        "targets": {"t": {"type": "file", "format": "csv", "path": str(tmp_path / "o.csv")}},
+    }
+    path = tmp_path / "cat.yaml"
+    path.write_text(yaml.dump(config))
+    sinks = _capture_evidence(monkeypatch)
+    result = runner.invoke(app, ["run", str(path), "--chunked", "--json"])
+    assert result.exit_code == 0, result.output
+    (sink,) = sinks
+    assert sink
+    assert all(item.native_admitted is False for item in sink)
+    assert _json.loads(result.stdout)["native_route"]["label"] == "chunked stream (pandas)"
 
 
 def test_native_with_chunked_says_the_chunked_text(tmp_path: Path):

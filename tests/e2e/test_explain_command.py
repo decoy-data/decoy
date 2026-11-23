@@ -205,3 +205,8 @@ def test_chunked_text_says_chunked_can_run_compiled_kernels():
         assert "only substrate for both plain and --chunked" not in text, argv
         assert "byte-identical to a plain run" not in text, argv
     assert "chunked stream (pandas)" in _flat("explain", "native")
+    substrate = _flat("explain", "substrate")
+    assert "one execution adapter" not in substrate
+    assert "A plain run uses the engine's unified slice" in substrate
+    assert "A --chunked run goes through run_mask_chunked with the same rule" in substrate
+    assert "--no-native forces pandas on both" in substrate

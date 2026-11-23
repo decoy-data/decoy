@@ -293,6 +293,15 @@ def _out(tmp_path: Path, fmt: str, name: str = "t") -> Path:
     return tmp_path / f"{name}.{fmt}"
 
 
+def _same_values(got: pa.ChunkedArray, want: pa.ChunkedArray) -> bool:
+    """Equal value lists, with NaN equal to NaN."""
+    a, b = got.to_pylist(), want.to_pylist()
+    return len(a) == len(b) and all(
+        x == y or (x != x and y != y)  # NaN is the only value unequal to itself
+        for x, y in zip(a, b, strict=True)
+    )
+
+
 def _digests() -> dict[str, str]:
     out = {}
     for line in (FIXTURES / "chunked_parquet_digests.txt").read_text().splitlines():
@@ -431,7 +440,7 @@ class TestChunkedKeepsSourceTypes:
         assert _sha(out_path) == _digests()["M"]
         for col in src.column_names:
             if col != "email":
-                assert out.column(col).to_pylist() == src.column(col).to_pylist() or col == "f"
+                assert _same_values(out.column(col), src.column(col)), col
         assert out.schema.metadata is None or b"pandas" not in out.schema.metadata
         assert all(not f.metadata for f in out.schema)
         assert out.schema.field("req").nullable is False
