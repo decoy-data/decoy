@@ -156,6 +156,7 @@ from decoy.cli.io._small_file import UnsafeFileError, read_small_file
 from decoy.cli.io._targets import (
     TARGET_SUFFIX,
     TargetFormatError,
+    check_csv_types,
     check_output_path,
     check_target_formats,
     declared_format,
@@ -221,6 +222,7 @@ __all__ = [
     "acquire_relation",
     "bare_report_config",
     "blocked_run",
+    "check_csv_types",
     "check_declared_before_acquire",
     "check_output_path",
     "check_path_budget",

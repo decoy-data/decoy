@@ -1,5 +1,7 @@
 """How `decoy run` executes: the chunked and plain branches, and the source and target I/O."""
 
+from collections.abc import Iterator
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,7 @@ from decoy.cli.extras import check_cloud_endpoints, check_cloud_endpoints_suppor
 from decoy.cli.io import (
     DuckDBSourceError,
     RunLayout,
+    check_csv_types,
     check_target_formats,
     duckdb_probe_config,
     iter_source_chunks,
@@ -111,12 +114,9 @@ def _run_chunked_mask(
     # No reader or iterator exists until every source column is declared.
     prepared_sources(config_dict, base_dir=base_dir)
 
-    from decoy_engine import __version__ as engine_version
-    from decoy_engine import run_mask_pipeline_chunked
-
     sources = config_dict.get("sources") or {}
     targets = config_dict.get("targets") or {}
-    published: dict[str, Path | None] = {}
+    prepared: list[_ChunkedTarget] = []
     for table_entry in config_dict.get("tables") or []:
         if not isinstance(table_entry, dict) or not table_entry.get("columns"):
             continue
@@ -126,33 +126,89 @@ def _run_chunked_mask(
         tgt_spec = targets.get(name) if isinstance(targets, dict) else None
         if not isinstance(src_spec, dict) or not isinstance(src_spec.get("path"), str):
             continue
-        src_path = _resolve_path(src_spec["path"], base_dir)
         if not isinstance(tgt_spec, dict) or not isinstance(tgt_spec.get("path"), str):
             continue
+        target = _ChunkedTarget(name, src_spec, tgt_spec, resolve_target_format(name, tgt_spec))
+        if target.fmt == "csv":
+            # Drain the whole no-publication stream first, so a column type or schema change in
+            # any later chunk refuses the run before any target is placed or staged.
+            _validate_csv_stream(target, config_dict, base_dir, chunk_size, key_provider)
+        prepared.append(target)
 
-        source_schema, chunks = source_schema_and_chunks(
-            name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
-        )
-        masked_iter = run_mask_pipeline_chunked(
-            resolved_source_config(config_dict, base_dir),
-            chunks,
-            table=name,
-            engine_version=engine_version,
-            key_provider=key_provider,
-            source_schema=source_schema,
-        )
-        published[name] = write_chunked_output(
-            masked_iter,
-            resolve_target_format(name, tgt_spec),
-            tgt_spec["path"],
+    published: dict[str, Path | None] = {}
+    for target in prepared:
+        published[target.name] = write_chunked_output(
+            _masked_chunks(target, config_dict, base_dir, chunk_size, key_provider),
+            target.fmt,
+            target.tgt_spec["path"],
             layout,
             empty_schema=(
-                partial(parquet_schema, src_path) if src_spec.get("format") == "parquet" else None
+                partial(parquet_schema, _resolve_path(target.src_spec["path"], base_dir))
+                if target.src_spec.get("format") == "parquet"
+                else None
             ),
             ledger=ledger,
-            name=name,
+            name=target.name,
         )
     return published
+
+
+@dataclass(frozen=True)
+class _ChunkedTarget:
+    """One selected chunked target: its structural specs only, never a table or an iterator."""
+
+    name: str
+    src_spec: dict
+    tgt_spec: dict
+    fmt: str
+
+
+def _masked_chunks(
+    target: _ChunkedTarget,
+    config_dict: dict,
+    base_dir: Path,
+    chunk_size: int,
+    key_provider,
+) -> Iterator[Any]:
+    """The one factory of a chunked target's masked stream, for validation and publication."""
+    from decoy_engine import __version__ as engine_version
+    from decoy_engine import run_mask_pipeline_chunked
+
+    source_schema, chunks = source_schema_and_chunks(
+        target.name,
+        target.src_spec,
+        base_dir,
+        iter_source_chunks(target.name, target.src_spec, base_dir, chunk_size),
+    )
+    return run_mask_pipeline_chunked(
+        resolved_source_config(config_dict, base_dir),
+        chunks,
+        table=target.name,
+        engine_version=engine_version,
+        key_provider=key_provider,
+        source_schema=source_schema,
+    )
+
+
+def _validate_csv_stream(
+    target: _ChunkedTarget, config_dict: dict, base_dir: Path, chunk_size: int, key_provider
+) -> None:
+    """Check every masked chunk of a CSV target against the shared type and schema policy.
+
+    Holds at most one source chunk and one masked chunk, and closes the stream before it
+    returns; nothing it reads is kept for the publication pass.
+    """
+    stream = _masked_chunks(target, config_dict, base_dir, chunk_size, key_provider)
+    try:
+        expected = None
+        for masked in stream:
+            if expected is None:
+                expected = masked.schema
+            check_csv_types(target.name, masked.schema, expected_schema=expected)
+    finally:
+        close = getattr(stream, "close", None)
+        if close is not None:
+            close()
 
 
 _CHUNKED_INTEGRITY_MESSAGE = (

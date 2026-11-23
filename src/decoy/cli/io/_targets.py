@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import pyarrow as pa
+import pyarrow.csv as pacsv
 
 from decoy._atomic import (
     ATOMIC_SYNC_FAILED,
@@ -36,7 +37,12 @@ from decoy._atomic import (
     staged_private_target,
 )
 from decoy.cli._sources import resolve_path
-from decoy.cli.io._compression import csv_compression, is_archive_csv, split_compression
+from decoy.cli.io._compression import (
+    csv_compression,
+    is_archive_csv,
+    open_csv_sink,
+    split_compression,
+)
 from decoy.cli.io._layout import RunLayout, owning_run, placed_path, same_path
 
 if TYPE_CHECKING:
@@ -46,10 +52,16 @@ SUFFIX_MISMATCH = "target_format_suffix_mismatch"
 STREAMING_UNSUPPORTED = "target_format_streaming_unsupported"
 FORMAT_UNKNOWN = "target_format_unknown"
 UNREADABLE = "target_format_unreadable"
+CSV_UNSUPPORTED_TYPE = "target.csv_unsupported_type"
+CSV_SCHEMA_DRIFT = "target.csv_schema_drift"
 
 # The supported target formats and the file suffix a sample gives each: the one registry.
 TARGET_SUFFIX = {"csv": ".csv", "parquet": ".parquet", "fixed_width": ".txt"}
 _SUFFIX_FORMAT = {".csv": "csv", ".parquet": "parquet", ".pq": "parquet"}
+# The most rows one `CSVWriter.write_batch` call gets, so write-phase memory does not grow with
+# the table or the chunk.
+_CSV_WRITE_BATCH_ROWS = 65_536
+_CSV_WRITE_OPTIONS = pacsv.WriteOptions(include_header=True, delimiter=",", quoting_style="needed")
 _EXHAUSTED = object()  # a yielded chunk is never mistaken for the end
 _INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
 _CANONICAL_INT = re.compile(r"0|-?[1-9][0-9]*")
@@ -387,17 +399,113 @@ def _coerce_int_columns(frame: pd.DataFrame, layout: Mapping[str, Any]) -> pd.Da
     return out
 
 
-def _csv_frame(table: pa.Table) -> pd.DataFrame:
-    """The one Arrow-to-pandas step before a CSV write.
+def _csv_type_allowed(arrow_type: pa.DataType) -> bool:
+    """True for an Arrow type the CSV writer has a frozen text form for (plan section 4).
 
-    `Table.to_pandas()` turns an integer column that holds a null into float64, which prints
-    `23.0` and loses `uint64` values above 2**53. The engine converter keeps each integer type
-    as its pandas nullable dtype, so the cell text is the integer. Unlike `_coerce_int_columns`
-    this never reads a layout: it keeps the type the table already has.
+    Named predicates only: a family check (`is_floating`, `is_decimal`) would admit float16 or
+    decimal256, and a new Arrow type must be refused until it is added here with a row.
     """
-    from decoy_engine import generated_table_to_pandas
+    types = pa.types
+    if types.is_dictionary(arrow_type):
+        return types.is_string(arrow_type.value_type) or types.is_large_string(
+            arrow_type.value_type
+        )
+    return bool(
+        types.is_string(arrow_type)
+        or types.is_large_string(arrow_type)
+        or types.is_integer(arrow_type)
+        or types.is_float32(arrow_type)
+        or types.is_float64(arrow_type)
+        or types.is_boolean(arrow_type)
+        or types.is_date32(arrow_type)
+        or types.is_date64(arrow_type)
+        or types.is_timestamp(arrow_type)
+        or types.is_decimal128(arrow_type)
+        or types.is_null(arrow_type)
+    )
 
-    return generated_table_to_pandas(table)
+
+def check_csv_types(
+    table_name: str, schema: pa.Schema, *, expected_schema: pa.Schema | None = None
+) -> None:
+    """Refuse an Arrow schema a CSV target cannot write, and a schema that drifted.
+
+    The one rule for every Arrow CSV write: each column type must be in the allowlist, and
+    when `expected_schema` is given (the first chunk's schema) the schema must equal it. Both
+    refusals are `TargetFormatError` and name only the table, columns and Arrow type names,
+    never a value. The chunked coordinator calls this on every masked chunk before any target
+    is staged, and `write_chunked_output` calls it again on every chunk it writes.
+    """
+    for field in schema:
+        if not _csv_type_allowed(field.type):
+            raise TargetFormatError(
+                CSV_UNSUPPORTED_TYPE,
+                f"table {table_name!r} column {field.name!r} has Arrow type {field.type}, "
+                "which a CSV target cannot write; write a Parquet target instead",
+            )
+    if expected_schema is not None and not schema.equals(expected_schema, check_metadata=False):
+        detail = "the column set changed"
+        if schema.names == expected_schema.names:
+            changed = next(
+                (a, b) for a, b in zip(schema, expected_schema, strict=True) if not a.equals(b)
+            )
+            detail = (
+                f"column {changed[0].name!r} changed from {changed[1].type} to {changed[0].type}"
+            )
+        raise TargetFormatError(
+            CSV_SCHEMA_DRIFT,
+            f"table {table_name!r} changed its output schema between chunks: {detail}",
+        )
+
+
+def _utc_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
+    """`batch` with every zoned timestamp column recast to the same unit in UTC.
+
+    Arrow writes a zoned timestamp as local wall clock plus offset. Recasting changes only the
+    zone metadata, so the instant and the unit are kept, and the text is the UTC instant with
+    a `Z` suffix whatever the source zone. Naive timestamps are left alone.
+    """
+    columns = list(batch.columns)
+    changed = False
+    for i, field in enumerate(batch.schema):
+        if pa.types.is_timestamp(field.type) and field.type.tz not in (None, "UTC"):
+            columns[i] = columns[i].cast(pa.timestamp(field.type.unit, tz="UTC"))
+            changed = True
+    if not changed:
+        return batch
+    fields = [
+        pa.field(f.name, c.type, f.nullable) for f, c in zip(batch.schema, columns, strict=True)
+    ]
+    return pa.RecordBatch.from_arrays(columns, schema=pa.schema(fields))
+
+
+def _write_csv(table: pa.Table, writer: pacsv.CSVWriter) -> None:
+    """Feed `table` to `writer` in batches of at most `_CSV_WRITE_BATCH_ROWS` rows.
+
+    The writer must have been built with `_csv_schema` of the table's schema, because
+    `_utc_batch` recasts the zoned columns.
+    """
+    for batch in table.to_batches(max_chunksize=_CSV_WRITE_BATCH_ROWS):
+        writer.write_batch(_utc_batch(batch))
+
+
+def _csv_schema(schema: pa.Schema) -> pa.Schema:
+    """The schema a CSV writer is built with: `schema` with zoned timestamps in UTC."""
+    return pa.schema(
+        [
+            pa.field(f.name, pa.timestamp(f.type.unit, tz="UTC"), f.nullable)
+            if pa.types.is_timestamp(f.type) and f.type.tz is not None
+            else f
+            for f in schema
+        ]
+    )
+
+
+def _preflight_csv_targets(config_dict: dict, outputs: Mapping[str, pa.Table]) -> None:
+    """Refuse an unsupported CSV column type in any resident target before any is written."""
+    for table_name, entry, _raw_path, table in _file_targets(config_dict, outputs):
+        if isinstance(table, pa.Table) and resolve_target_format(str(table_name), entry) == "csv":
+            check_csv_types(str(table_name), table.schema)
 
 
 def _write_fixed_width(table: pa.Table, layout: Mapping[str, Any] | None, path: Path) -> None:
@@ -431,10 +539,19 @@ def _write_table(
         return
     if fmt not in ("csv", "parquet"):
         raise TargetFormatError(FORMAT_UNKNOWN, "unsupported target format")
-    compression = csv_compression(path)
+    if fmt == "csv" and not isinstance(data, pd.DataFrame):
+        check_csv_types("output", data.schema)
     with stage(path) as tmp:
-        if fmt == "csv":
-            (data if frame else _csv_frame(data)).to_csv(tmp, index=False, compression=compression)
+        if isinstance(data, pd.DataFrame) and fmt == "csv":
+            data.to_csv(tmp, index=False, compression=csv_compression(path))
+        elif fmt == "csv":
+            with (
+                open_csv_sink(tmp, path) as sink,
+                pacsv.CSVWriter(
+                    sink, _csv_schema(data.schema), write_options=_CSV_WRITE_OPTIONS
+                ) as writer,
+            ):
+                _write_csv(data, writer)
         else:
             # One rule for every Parquet target: only the engine's allow-listed metadata is
             # written, never the source's. A DataFrame goes through Arrow first so pandas does
@@ -492,6 +609,26 @@ def _publication(ledger: dict[str, Path] | None, key: str, path: Path) -> Iterat
         ledger[key] = path
 
 
+def _file_targets(
+    config_dict: dict, outputs: Mapping[str, pa.Table]
+) -> Iterator[tuple[Any, dict, str, pa.Table]]:
+    """Each declared file target that has an output: (name, entry, declared path, table)."""
+    targets = config_dict.get("targets") or {}
+    if not isinstance(targets, dict):
+        return
+    for table_name, entry in targets.items():
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type", "file") not in ("file", None):
+            continue
+        raw_path = entry.get("path")
+        if not isinstance(raw_path, str):
+            continue
+        table = outputs.get(table_name)
+        if table is not None:
+            yield table_name, entry, raw_path, table
+
+
 def write_targets(
     config_dict: dict,
     outputs: Mapping[str, pa.Table],
@@ -507,20 +644,8 @@ def write_targets(
     a later failure keeps the earlier entries, and it is the mapping that comes back.
     """
     published = {} if published is None else published
-    targets = config_dict.get("targets") or {}
-    if not isinstance(targets, dict):
-        return published
-    for table_name, entry in targets.items():
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("type", "file") not in ("file", None):
-            continue
-        raw_path = entry.get("path")
-        if not isinstance(raw_path, str):
-            continue
-        table = outputs.get(table_name)
-        if table is None:
-            continue
+    _preflight_csv_targets(config_dict, outputs)
+    for table_name, entry, raw_path, table in _file_targets(config_dict, outputs):
         fmt = resolve_target_format(str(table_name), entry)
         path = layout.place_target(raw_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -567,6 +692,8 @@ def write_chunked_output(
         schema = empty_schema()
     elif fmt == "parquet":
         schema = cast("pa.Table", first).schema
+    else:
+        check_csv_types(name or "output", cast("pa.Table", first).schema)
     if schema is not None:
         schema = output_schema(schema)
     with _publication(ledger, name, out_path), staged_local_target(out_path) as tmp:
@@ -575,15 +702,16 @@ def write_chunked_output(
                 for masked in () if first is _EXHAUSTED else itertools.chain((first,), chunks):
                     writer.write_table(output_table(masked))
         else:
-            compression = csv_compression(out_path)
-            for index, masked in enumerate(itertools.chain((first,), chunks)):
-                _csv_frame(masked).to_csv(
-                    tmp,
-                    index=False,
-                    header=index == 0,
-                    mode="a" if index else "w",
-                    compression=compression,
-                )
+            first_schema = cast("pa.Table", first).schema
+            with (
+                open_csv_sink(tmp, out_path) as sink,
+                pacsv.CSVWriter(
+                    sink, _csv_schema(first_schema), write_options=_CSV_WRITE_OPTIONS
+                ) as writer,
+            ):
+                for masked in itertools.chain((first,), chunks):
+                    check_csv_types(name or "output", masked.schema, expected_schema=first_schema)
+                    _write_csv(masked, writer)
     # Reached only after the staging context published the file.
     return out_path
 

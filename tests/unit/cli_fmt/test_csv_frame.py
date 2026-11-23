@@ -1,8 +1,9 @@
 """GEN-FIT-SHAPE C1: both CSV writers print Arrow integers with nulls as integers.
 
 `pyarrow.Table.to_pandas()` widens an integer column that holds a null to float64, so the cell
-text becomes `23.0`. `_csv_frame` is the one Arrow-to-pandas step before either CSV writer and
-keeps each integer type, signed or unsigned, as its matching pandas nullable dtype.
+text becomes `23.0`. Both CSV writers now hand the Arrow table to `pyarrow.csv` (CSV-WRITE-FAST),
+which prints each integer type, signed or unsigned, as its integer. The `_csv_frame` dtype checks
+became read-back checks: a typed read of the written file gives the same nullable integer values.
 """
 
 from __future__ import annotations
@@ -10,11 +11,12 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 
 from decoy.cli.io._layout import RunLayout
-from decoy.cli.io._targets import _csv_frame, write_chunked_output, write_table
+from decoy.cli.io._targets import write_chunked_output, write_table
 
 _BIG = 2**64 - 1
 
@@ -47,15 +49,23 @@ def _cells(path: Path, column: str) -> list[str]:
         ("u64", "UInt64"),
     ],
 )
-def test_csv_frame_keeps_each_integer_type(column: str, expected: str) -> None:
-    assert str(_csv_frame(_table())[column].dtype) == expected
+def test_written_csv_reads_back_as_each_integer_type(
+    tmp_path: Path, column: str, expected: str
+) -> None:
+    out = tmp_path / "t.csv"
+    write_table(_table(), "csv", out)
+    got = pd.read_csv(out, dtype={column: expected})[column]
+    assert str(got.dtype) == expected
+    assert got.tolist() == _table().column(column).to_pandas(types_mapper=pd.ArrowDtype).tolist()
 
 
-def test_csv_frame_leaves_non_integer_types_alone() -> None:
-    plain = _table().to_pandas()
-    frame = _csv_frame(_table())
-    for column in ("flag", "price", "name"):
-        assert frame[column].dtype == plain[column].dtype
+def test_written_csv_keeps_non_integer_values(tmp_path: Path) -> None:
+    out = tmp_path / "t.csv"
+    write_table(_table(), "csv", out)
+    got = pd.read_csv(out, dtype={"flag": "boolean"})
+    assert got["flag"].tolist() == [True, pd.NA, False]
+    assert got["price"].tolist()[0::2] == [1.5, 2.0]
+    assert got["name"].tolist()[0::2] == ["a", "c"]
 
 
 def test_whole_table_write_prints_nullable_integers_without_a_decimal(tmp_path: Path) -> None:
@@ -64,7 +74,7 @@ def test_whole_table_write_prints_nullable_integers_without_a_decimal(tmp_path: 
     assert _cells(out, "i64") == ["23", "", "-7"]
     assert _cells(out, "i8") == ["1", "", "-3"]
     assert _cells(out, "u8") == ["1", "", "255"]
-    assert _cells(out, "price") == ["1.5", "", "2.0"]
+    assert _cells(out, "price") == ["1.5", "", "2"]
 
 
 def test_whole_table_write_keeps_uint64_above_int64_exact(tmp_path: Path) -> None:
