@@ -212,10 +212,10 @@ def test_headerless_misfit_fails_closed(
     reached: list[Any] = []
     import decoy_engine
 
-    real = decoy_engine.run_mask_pipeline_chunked
+    real = decoy_engine.run_mask_chunked
     monkeypatch.setattr(
         decoy_engine,
-        "run_mask_pipeline_chunked",
+        "run_mask_chunked",
         lambda *a, **k: reached.append(1) or real(*a, **k),
     )
     args = ["run", str(cfg)] + (["--chunked", "--chunk-size", "2"] if chunked else [])

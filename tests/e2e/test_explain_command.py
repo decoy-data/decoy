@@ -179,3 +179,28 @@ def test_explain_retired_topic_is_a_usage_error_and_never_suggested():
     human = runner.invoke(app, ["explain", RETIRED_NAME])
     assert human.exit_code == 1
     assert "unknown topic" in human.stderr.lower()
+
+
+def _flat(*argv: str) -> str:
+    result = runner.invoke(app, list(argv))
+    assert result.exit_code == 0, result.output
+    return " ".join(result.output.split())
+
+
+def test_chunked_text_says_chunked_can_run_compiled_kernels():
+    """PARQUET-CHUNKED-NULLABLE-INT S2 (AT-C15): after `--chunked` moved to the engine entry
+    that can run compiled kernels, no text may call pandas its only substrate."""
+    for argv in (
+        ("explain", "chunked"),
+        ("explain", "native"),
+        ("explain", "substrate"),
+        ("run", "--help"),
+    ):
+        text = _flat(*argv)
+        assert "compiled kernel" in text, argv
+        assert "chunked stream (native)" in text or "chunked stream" in text, argv
+        assert "pandas chunked path" not in text, argv
+        assert "pandas is the only masking substrate" not in text, argv
+        assert "only substrate for both plain and --chunked" not in text, argv
+        assert "byte-identical to a plain run" not in text, argv
+    assert "chunked stream (pandas)" in _flat("explain", "native")

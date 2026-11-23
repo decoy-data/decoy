@@ -118,7 +118,7 @@ def _instrument(monkeypatch: pytest.MonkeyPatch, mutate: Mutate) -> list[tuple]:
     import decoy_engine
 
     events: list[tuple] = []
-    real = decoy_engine.run_mask_pipeline_chunked
+    real = decoy_engine.run_mask_chunked
 
     def wrapped(*args: object, table: str, **kwargs: object) -> Iterator[pa.Table]:
         stream = real(*args, table=table, **kwargs)
@@ -134,7 +134,7 @@ def _instrument(monkeypatch: pytest.MonkeyPatch, mutate: Mutate) -> list[tuple]:
 
         return gen()
 
-    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", wrapped)
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", wrapped)
     return events
 
 
@@ -205,14 +205,14 @@ def test_a_published_target_does_not_appear_before_the_last_target_is_staged(
     at_open_b: list[list[str]] = []
     import decoy_engine
 
-    real = decoy_engine.run_mask_pipeline_chunked
+    real = decoy_engine.run_mask_chunked
 
     def wrapped(*args: object, table: str, **kwargs: object) -> Iterator[pa.Table]:
         if table == "b":
             at_open_b.append(sorted(p.name for p in out.iterdir() if not p.name.startswith(".")))
         return real(*args, table=table, **kwargs)
 
-    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", wrapped)
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", wrapped)
     result = _run(tmp_path)
     assert result.exit_code == 0, result.output
     assert at_open_b == [[]]  # a is staged, not yet published, when b starts

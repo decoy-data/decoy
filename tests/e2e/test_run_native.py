@@ -441,9 +441,9 @@ def test_native_require_refuses_a_live_vault_writer(tmp_path: Path):
 
 def test_native_chunked_rejected_before_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     def _boom(*args, **kwargs):
-        raise AssertionError("run_mask_pipeline_chunked must not be called")
+        raise AssertionError("run_mask_chunked must not be called")
 
-    monkeypatch.setattr("decoy_engine.run_mask_pipeline_chunked", _boom)
+    monkeypatch.setattr("decoy_engine.run_mask_chunked", _boom)
     config = _hash_eligible_config(tmp_path)
     result = runner.invoke(app, ["run", str(config), "--native", "--chunked"])
     assert result.exit_code == EXIT_USAGE
@@ -496,13 +496,137 @@ def test_route_indicator_not_applicable_for_generate_only(tmp_path: Path):
     assert payload["native_route"]["state"] is None
 
 
-def test_route_indicator_reports_resolved_substrate_for_chunked(tmp_path: Path):
+def _declined_table(name: str, src: Path, out: Path) -> tuple[dict, dict, dict]:
+    """A table the native chunked route declines (`text_redact` has no compiled kernel)."""
+    pd.DataFrame({"note": [f"call {i}" for i in range(6)]}).to_parquet(src, index=False)
+    table = {"name": name, "columns": [{"name": "note", "strategy": "text_redact"}]}
+    source = {"type": "file", "format": "parquet", "path": str(src)}
+    target = {"type": "file", "format": "csv", "path": str(out)}
+    return table, source, target
+
+
+def _chunked_labels(tmp_path: Path, *, native: bool, declined: bool) -> dict:
+    """Run a one- or two-table `--chunked` job and return its `--json` document."""
+    cfg = _json.loads(_json.dumps(yaml.safe_load(_hash_eligible_config(tmp_path).read_text())))
+    if declined:
+        table, source, target = _declined_table(
+            "notes", tmp_path / "note.parquet", tmp_path / "note_out.csv"
+        )
+        if native:  # one native table beside the declined one
+            cfg["tables"].append(table)
+            cfg["sources"]["notes"] = source
+            cfg["targets"]["notes"] = target
+        else:
+            cfg["tables"] = [table]
+            cfg["sources"] = {"notes": source}
+            cfg["targets"] = {"notes": target}
+    path = tmp_path / "chunked.yaml"
+    path.write_text(yaml.dump(cfg))
+    result = runner.invoke(app, ["run", str(path), "--chunked", "--json"])
+    assert result.exit_code == 0, result.output
+    return _json.loads(result.stdout)
+
+
+def test_chunked_label_is_pandas_when_the_native_route_declines(tmp_path: Path):
+    payload = _chunked_labels(tmp_path, native=False, declined=True)
+    assert payload["native_route"]["applicable"] is False
+    assert payload["native_route"]["state"] is None
+    assert payload["native_route"]["label"] == "chunked stream (pandas)"
+
+
+def test_chunked_label_is_pandas_without_a_companion(tmp_path: Path, force_absent_companion: None):
+    payload = _chunked_labels(tmp_path, native=True, declined=False)
+    assert payload["native_route"]["label"] == "chunked stream (pandas)"
+
+
+@_requires_real_companion
+def test_chunked_label_is_native_with_a_companion(tmp_path: Path):
+    payload = _chunked_labels(tmp_path, native=True, declined=False)
+    assert payload["native_route"]["applicable"] is False
+    assert payload["native_route"]["state"] is None
+    assert payload["native_route"]["label"] == "chunked stream (native)"
+
+
+@_requires_real_companion
+def test_chunked_label_is_mixed_for_one_native_and_one_declined_table(tmp_path: Path):
+    payload = _chunked_labels(tmp_path, native=True, declined=True)
+    assert payload["native_route"]["label"] == "chunked stream (mixed)"
+
+
+def test_native_with_chunked_says_the_chunked_text(tmp_path: Path):
+    """AT-C11: the refusal keeps its code and exit; the old 'could never' text is gone."""
     config = _hash_eligible_config(tmp_path)
+    result = runner.invoke(app, ["run", str(config), "--native", "--chunked", "--json"])
+    assert result.exit_code == EXIT_USAGE
+    payload = _json.loads(result.stdout)
+    assert payload["code"] == "native_require_not_a_candidate"
+    assert "--native is not supported with --chunked" in payload["error"]
+    assert "could never show" not in payload["error"]
+    assert not (tmp_path / "out.csv").exists()
+
+
+def _capture_evidence(monkeypatch: pytest.MonkeyPatch) -> list:
+    import decoy_engine
+
+    sinks: list = []
+    real = decoy_engine.run_mask_chunked
+
+    def spy(*args, **kwargs):
+        sinks.append(kwargs.get("route_evidence_sink"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", spy)
+    return sinks
+
+
+def test_no_native_chunked_runs_the_oracle_leg_and_matches_the_default_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """AT-C12 companion cell (M-C6): `--no-native` reroutes every table with a recorded
+    reason, runs no kernel, and changes no output byte."""
+    config = _hash_eligible_config(tmp_path)
+    out = tmp_path / "out.csv"
+    sinks = _capture_evidence(monkeypatch)
+    default = runner.invoke(app, ["run", str(config), "--chunked", "--json"])
+    assert default.exit_code == 0, default.output
+    default_bytes = out.read_bytes()
+    out.unlink()
+    sinks.clear()
+    result = runner.invoke(app, ["run", str(config), "--chunked", "--no-native", "--json"])
+    assert result.exit_code == 0, result.output
+    (sink,) = sinks
+    assert sink, "the engine recorded no route evidence"
+    for item in sink:
+        assert item.native_admitted is False
+        assert item.reroute_reason == "adapter_requested"
+        assert item.compiled_kernel_executed is False
+        assert item.pool_select_executed is False
+    assert _json.loads(result.stdout)["native_route"]["label"] == "chunked stream (pandas)"
+    assert out.read_bytes() == default_bytes
+
+
+def test_broken_companion_does_not_refuse_a_chunked_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """AT-C16: the gate does not classify the companion for a chunked run, and the engine
+    falls back to pandas, so the label says so."""
+    from decoy_engine.execution.native import _dispatch
+
+    def _fails_to_load():
+        raise _dispatch.CryptoExtensionUnavailableError("kernel failed to load")
+
+    _patch_status(monkeypatch, _status("kat-corrupt", present=True, ok=False, abi_actual=_ABI))
+    monkeypatch.setattr(_dispatch, "load_compiled_crypto_kernel", _fails_to_load)
+    config = _hash_eligible_config(tmp_path)
+    out = tmp_path / "out.csv"
     result = runner.invoke(app, ["run", str(config), "--chunked", "--json"])
     assert result.exit_code == 0, result.output
-    payload = _json.loads(result.stdout)
-    assert payload["native_route"]["applicable"] is False
-    assert payload["native_route"]["label"] == "pandas chunked stream"
+    assert _json.loads(result.stdout)["native_route"]["label"] == "chunked stream (pandas)"
+    chunked_bytes = out.read_bytes()
+    out.unlink()
+    result = runner.invoke(app, ["run", str(config), "--chunked", "--no-native", "--json"])
+    assert result.exit_code == 0, result.output
+    assert out.read_bytes() == chunked_bytes
 
 
 # ---------------------------------------------------------------------------

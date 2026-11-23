@@ -4,8 +4,8 @@ CLI.1 commit 3 (2026-06-01): rewired against the V2 engine spine.
 Non-chunked runs (the default) go through `run_pipeline`, the engine's
 unified entry point that profiles, compiles, and executes mask + generate
 tables in one call, using the engine's internal `PandasExecutionAdapter`.
-`--chunked` is a separate streaming path (`run_mask_pipeline_chunked`),
-mask-only, on the engine's one execution adapter (pandas). `graph` and
+`--chunked` is a separate streaming path (`run_mask_chunked`), mask-only: compiled
+kernels when the whole table admits, the pandas oracle otherwise. `graph` and
 `convert` are V1-only and have no engine; the choke-point validator
 rejects them with a typed error before this module sees them.
 
@@ -69,8 +69,9 @@ Examples:
     they can be recovered later with `decoy unmask`. (See: decoy explain vault.)
 
   decoy run pipeline.yaml --chunked
-    Stream a large single-table mask in bounded memory (pandas chunked path).
-    (Masking uses the pandas substrate. See: decoy explain substrate.)
+    Stream a large single-table mask in bounded memory. It can run compiled
+    kernels; the Route line says chunked stream (native), (pandas) or (mixed).
+    (See: decoy explain substrate.)
 
   decoy run pipeline.yaml --notify webhook:https://hooks.example.com/x
     Notify a webhook after the run reaches its terminal state. Repeatable;
@@ -191,7 +192,7 @@ def run(
             "strategy is value-keyed (hash, fpe, redact, truncate, "
             "text_redact, date_shift, bucketize), plus faker/categorical "
             "when deterministic with an explicit pool_size / categories "
-            "declared in config; output is byte-identical to a plain run. "
+            "declared in config; output is identical to a plain run for CSV sources. "
             "Sources and targets use their declared format (csv or parquet; fixed_width "
             "and CSV in a zip or tar archive are not supported with --chunked). "
             "See: decoy explain chunked."

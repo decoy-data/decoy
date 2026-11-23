@@ -508,7 +508,7 @@ def mask(
             cannot use the unified slice, on an absent/broken companion, or
             on a job that finished without compiled-kernel evidence.
 
-    Does NOT support `--chunked` streaming (`run_mask_pipeline_chunked`);
+    Does NOT support `--chunked` streaming (`run_mask_chunked`);
     that path exists for datasets too large to load into memory, which is
     orthogonal to an in-memory one-liner. Use the CLI directly for that.
     """

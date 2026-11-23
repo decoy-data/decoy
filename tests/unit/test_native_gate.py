@@ -399,11 +399,53 @@ def test_candidate_requires_non_chunked_and_mask_only():
 # ---------------------------------------------------------------------------
 
 
-def test_classify_route_chunked_is_not_applicable_and_labels_the_one_adapter():
-    route = classify_route(chunked=True, any_generate=False, quality_metrics=None)
+def _evidence(*, ran: bool = False, pool: bool = False, admitted: bool = True, reason=None):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        native_admitted=admitted,
+        reroute_reason=reason,
+        compiled_kernel_executed=ran,
+        pool_select_executed=pool,
+    )
+
+
+def _chunked_label(*evidence) -> str:
+    route = classify_route(
+        chunked=True, any_generate=False, quality_metrics=None, chunked_evidence=list(evidence)
+    )
     assert route.applicable is False
     assert route.state is None
-    assert route.label == "pandas chunked stream"
+    return route.label
+
+
+def test_classify_route_chunked_without_evidence_is_pandas():
+    assert _chunked_label() == "chunked stream (pandas)"
+    route = classify_route(chunked=True, any_generate=False, quality_metrics=None)
+    assert route.label == "chunked stream (pandas)"
+
+
+def test_classify_route_chunked_reads_executed_flags_not_admission():
+    # admitted but nothing executed is pandas (M-C5)
+    assert _chunked_label(_evidence(admitted=True)) == "chunked stream (pandas)"
+    assert _chunked_label(_evidence(ran=True)) == "chunked stream (native)"
+    assert _chunked_label(_evidence(pool=True)) == "chunked stream (native)"
+
+
+def test_classify_route_chunked_mixed_reads_every_table():
+    native = _evidence(ran=True)
+    pandas = _evidence(admitted=False, reason="adapter_requested")
+    assert _chunked_label(native, pandas) == "chunked stream (mixed)"
+    assert _chunked_label(pandas, native) == "chunked stream (mixed)"  # M-C9: not first only
+    assert _chunked_label(native, native) == "chunked stream (native)"
+    assert _chunked_label(pandas, pandas) == "chunked stream (pandas)"
+
+
+def test_classify_route_chunked_leaves_empty_input_tables_out():
+    empty = _evidence(admitted=False, reason="empty_input")
+    assert _chunked_label(empty, _evidence(ran=True)) == "chunked stream (native)"  # M-C12
+    assert _chunked_label(empty) == "chunked stream (pandas)"
+    assert _chunked_label(empty, empty) == "chunked stream (pandas)"
 
 
 def test_classify_route_generate_only_reports_execution_mode():
@@ -502,6 +544,22 @@ def test_require_rejects_chunked_before_dispatch():
             intent="require", chunked=True, any_generate=False, config_dict={}, status=_ABSENT
         )
     assert exc_info.value.code == "native_require_not_a_candidate"
+    text = str(exc_info.value)
+    assert "--native is not supported with --chunked" in text
+    assert "could never" not in text
+
+
+def test_chunked_default_gate_does_not_check_the_companion():
+    """A broken companion does not refuse a chunked run: the engine downgrades a table whose
+    kernel fails to load, and the label says pandas (AT-C16, M-C11)."""
+    result = pre_execution_gate(
+        intent="default",
+        chunked=True,
+        any_generate=False,
+        config_dict=_eligible_config(),
+        status=_KAT_CORRUPT,
+    )
+    assert result.unified_slice_enabled is True
 
 
 def test_require_rejects_generate_config_before_dispatch():

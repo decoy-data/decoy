@@ -120,7 +120,7 @@ class TestCloudEndpointUnsupportedByRun:
     SDK is missing.
 
     Every test here also proves the refusal happens BEFORE the engine runs:
-    a typed error raised after `run_pipeline` / `run_mask_pipeline_chunked`
+    a typed error raised after `run_pipeline` / `run_mask_chunked`
     had already masked the data would still exit EXIT_USAGE, so the exit
     code alone cannot tell the two apart."""
 
@@ -136,9 +136,7 @@ class TestCloudEndpointUnsupportedByRun:
             return _called
 
         monkeypatch.setattr("decoy_engine.run_pipeline", _spy("run_pipeline"))
-        monkeypatch.setattr(
-            "decoy_engine.run_mask_pipeline_chunked", _spy("run_mask_pipeline_chunked")
-        )
+        monkeypatch.setattr("decoy_engine.run_mask_chunked", _spy("run_mask_chunked"))
         yield calls
         assert calls == [], f"engine entry points were invoked: {calls}"
 

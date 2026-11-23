@@ -91,7 +91,13 @@ GATES = frozenset(
     for name in ("prepared_sources", "gate_report_source", "check_declared_before_acquire")
 )
 LOCAL_GATES = frozenset({("api.py", "_gate_in_memory_data")})
-ENGINE_ENTRIES = frozenset({"run_pipeline", "run_mask_pipeline_chunked", "profile_source"})
+ENGINE_ENTRIES = frozenset(
+    {"run_pipeline", "run_mask_chunked", "run_mask_pipeline_chunked", "profile_source"}
+)
+# The CLI streams through `run_mask_chunked`, which fixes one Arrow type per column for the whole
+# call. The public oracle types each chunk alone, so a CLI call of it, or a test stub of it that
+# the CLI never calls, is refused.
+ORACLE = "run_mask_pipeline_chunked"
 
 # Callers that read a file the caller named, not a declared source. Exact (module, function)
 # pairs, each with its reason; any other call of a reader must follow a gate.
@@ -178,6 +184,38 @@ def _name_of(call: ast.Call) -> str | None:
     return fn.attr if isinstance(fn, ast.Attribute) else None
 
 
+def oracle_uses(source: str) -> list[int]:
+    """Lines that import, name or call the chunked oracle in CLI source."""
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.ImportFrom) and any(a.name == ORACLE for a in node.names):
+            lines.append(node.lineno)
+        elif isinstance(node, ast.Attribute) and node.attr == ORACLE:
+            lines.append(node.lineno)
+        elif isinstance(node, ast.Name) and node.id == ORACLE:
+            lines.append(node.lineno)
+    return sorted(set(lines))
+
+
+def oracle_patches(source: str) -> list[int]:
+    """Lines of a test that patches or assigns the oracle, so a stub cannot go silent."""
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call):
+            for arg in [*node.args, *(k.value for k in node.keywords)]:
+                if (
+                    isinstance(arg, ast.Constant)
+                    and isinstance(arg.value, str)
+                    and (arg.value == ORACLE or arg.value.endswith("." + ORACLE))
+                ):
+                    lines.append(node.lineno)
+        elif isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Attribute) and target.attr == ORACLE:
+                    lines.append(node.lineno)
+    return sorted(set(lines))
+
+
 def dialect_constructions(source: str) -> list[int]:
     return [line for _fn, name, line, _n in _calls(source) if name == "CsvDialect"]
 
@@ -211,6 +249,49 @@ def test_required_commands_hold_a_gate() -> None:
 def test_engine_entries_get_the_reader_side_copy() -> None:
     bad = [f"{rel}:{line}" for rel, text in _modules() for line in unresolved_engine_calls(text)]
     assert bad == []
+
+
+def test_no_cli_source_calls_the_chunked_oracle() -> None:
+    bad = [f"{rel}:{line}" for rel, text in _modules() for line in oracle_uses(text)]
+    assert bad == []
+
+
+def test_no_cli_test_patches_the_chunked_oracle() -> None:
+    tests = ROOT / "tests"
+    this = Path(__file__).resolve()
+    bad = []
+    for path in sorted(tests.rglob("*.py")):
+        if path.resolve() == this:
+            continue
+        for line in oracle_patches(path.read_text(encoding="utf-8")):
+            bad.append(f"{path.relative_to(ROOT)}:{line}")
+    assert bad == []
+
+
+def test_seeded_oracle_spellings_are_detected() -> None:
+    spellings = (
+        "from decoy_engine import run_mask_pipeline_chunked\n",
+        "import decoy_engine\ndef f():\n    return decoy_engine.run_mask_pipeline_chunked(1)\n",
+        "from decoy_engine.execution import run_mask_pipeline_chunked\n",
+    )
+    for seed in spellings:
+        assert oracle_uses(seed), seed
+    assert oracle_uses("from decoy_engine import run_mask_chunked\n") == []
+    patched = (
+        "def t(monkeypatch):\n"
+        "    monkeypatch.setattr(decoy_engine, 'run_mask_pipeline_chunked', lambda *a: iter(()))\n"
+    )
+    dotted = "def t(monkeypatch):\n    monkeypatch.setattr('decoy_engine.run_mask_pipeline_chunked', 1)\n"
+    assigned = "def t():\n    decoy_engine.run_mask_pipeline_chunked = lambda *a: iter(())\n"
+    for seed in (patched, dotted, assigned):
+        assert oracle_patches(seed), seed
+    assert oracle_patches("def t(m):\n    m.setattr(decoy_engine, 'run_mask_chunked', 1)\n") == []
+
+
+def test_a_seeded_run_mask_chunked_call_outside_the_gate_is_refused() -> None:
+    assert unresolved_engine_calls("def f(c):\n    run_mask_chunked(c, [])\n") == [2]
+    ok = "def f(c):\n    run_mask_chunked(resolved_source_config(c, d), [])\n"
+    assert unresolved_engine_calls(ok) == []
 
 
 def test_no_module_builds_its_own_csv_dialect() -> None:

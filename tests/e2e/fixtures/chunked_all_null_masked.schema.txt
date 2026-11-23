@@ -1,0 +1,4 @@
+h: string
+t: string
+r: string
+c: string

@@ -23,7 +23,7 @@ FACTORY_CALLS = {
     "iter_source_chunks",
     "source_schema_and_chunks",
     "resolved_source_config",
-    "run_mask_pipeline_chunked",
+    "run_mask_chunked",
 }
 
 
@@ -110,7 +110,7 @@ def test_chunked_seeds_are_red() -> None:
     live = EXECUTE.read_text(encoding="utf-8")
     direct = live.replace(
         "            src_path = _resolve_path(",
-        "            run_mask_pipeline_chunked(1)\n            src_path = _resolve_path(",
+        "            run_mask_chunked(1)\n            src_path = _resolve_path(",
         1,
     )
     assert any("outside _masked_chunks" in f for f in chunked_findings(direct))

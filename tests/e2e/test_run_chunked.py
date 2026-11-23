@@ -175,7 +175,7 @@ def test_chunked_with_vault_is_refused_before_any_output(
 
         return _called
 
-    for name in ("run_mask_pipeline_chunked", "run_pipeline", "vault_writer_for_config"):
+    for name in ("run_mask_chunked", "run_pipeline", "vault_writer_for_config"):
         monkeypatch.setattr(decoy_engine, name, _spy(name))
     monkeypatch.setattr(decoy_engine.secret_providers, "admit_mask_key", _spy("admit_mask_key"))
 

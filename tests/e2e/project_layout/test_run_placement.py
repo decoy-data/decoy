@@ -269,7 +269,7 @@ def test_evidence_for_an_unwritten_target_names_the_run_folder_not_the_cwd(
     """A chunked CSV whose stream yields nothing publishes nothing; a cwd file must not stand in."""
     import decoy_engine
 
-    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", lambda *a, **k: iter(()))
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", lambda *a, **k: iter(()))
     root = _project(tmp_path)
     cfg = _write(root, "pipelines/orders/pipeline.yaml", _config(root))
     elsewhere = tmp_path / "elsewhere"

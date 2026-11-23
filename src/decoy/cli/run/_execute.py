@@ -2,7 +2,7 @@
 
 from collections.abc import Iterator
 from contextlib import ExitStack
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +53,7 @@ class _ChunkedFixedWidthError(Exception):
 class _ChunkedQuarantineError(Exception):
     """--chunked with quarantine enabled; user error (exits EXIT_USAGE).
 
-    The chunked path streams through `run_mask_pipeline_chunked`, which takes no quarantine
+    The chunked path streams through `run_mask_chunked`, which takes no quarantine
     path, so the rows quarantine would hold are never written there. Refused before any
     source is read rather than run without the quarantine the config asks for.
     """
@@ -85,19 +85,28 @@ def _run_chunked_mask(
     layout: RunLayout,
     key_provider=None,
     ledger: dict[str, Path] | None = None,
+    *,
+    evidence: list | None = None,
+    pandas_only: bool = False,
 ) -> dict[str, Path | None]:
     """WS4 chunked mask path: stream each mask table's source through
-    `decoy_engine.run_mask_pipeline_chunked`, writing output per chunk, on
-    the engine's one execution adapter (pandas; the chunked path has no
-    `ExecutionResult`, so the caller labels the route itself).
+    `decoy_engine.run_mask_chunked`, writing output per chunk. The engine runs compiled
+    kernels when the whole table admits and a companion is installed, and the pandas
+    oracle otherwise; it fixes one Arrow type per column for the whole call and carries
+    passthrough columns from the source, so a column keeps its source type in every chunk.
+
+    `evidence` receives one `NativeRouteEvidence` per table, which `classify_route` reads
+    after the streams are exhausted to label what ran. `pandas_only` (`--no-native`) runs
+    every table on the oracle leg with no carry.
 
     The engine's `check_chunked_compatibility` rejects anything that is
     not value-keyed (PlanCompileError -> EXIT_USAGE via the H10 typed
-    dispatch), so a chunked run that starts is guaranteed byte-identical
-    to a plain run of the same config for CSV targets. Parquet targets
-    are VALUE-equal to a plain run; their file bytes are stable for a
-    fixed (chunk_size, pyarrow version) but not across chunk sizes,
-    because each chunk writes one row group.
+    dispatch). A CSV source reads every column as a string, so a chunked run on one is
+    byte-identical to a plain run for CSV targets. A Parquet source keeps its types in
+    full on a chunked run; a plain run keeps them once the CLI pins an engine with the
+    untouched-column fix (engine #770), and before that widens a nullable integer. A
+    Parquet target's file bytes are stable for a fixed (chunk_size, pyarrow version) but
+    not across chunk sizes, because each chunk writes one row group.
 
     Formats: CSV and parquet, on either side independently. The source
     reader and the writer follow the declared `format` of the source and the
@@ -134,7 +143,16 @@ def _run_chunked_mask(
             empty = (
                 partial(parquet_schema, src_path) if src_spec.get("format") == "parquet" else None
             )
-            stream = _masked_chunks(name, src_spec, config_dict, base_dir, chunk_size, key_provider)
+            stream = _masked_chunks(
+                name,
+                src_spec,
+                config_dict,
+                base_dir,
+                chunk_size,
+                key_provider,
+                evidence=evidence,
+                pandas_only=pandas_only,
+            )
             # A refusal unwinds this stack, so every stream it opened is closed with it.
             staged.callback(getattr(stream, "close", _no_close))
             published[name] = write_chunked_output(
@@ -154,6 +172,23 @@ def _no_close() -> None:
     """The close of a stream that has none (a plain iterator)."""
 
 
+@cache
+def _pandas_only_adapter_type() -> type:
+    """The pandas adapter as a subclass, built on first use so the engine import stays lazy.
+
+    `run_mask_chunked` runs a table on the oracle leg with no carry when the adapter is not
+    exactly `PandasExecutionAdapter` (engine `_dispatch.py` and `_chunked_carry.py`), which is
+    how `--no-native` turns every compiled kernel off. The engine pins that rule in its
+    compatibility contract.
+    """
+    from decoy_engine import PandasExecutionAdapter
+
+    class _PandasOnlyAdapter(PandasExecutionAdapter):
+        pass
+
+    return _PandasOnlyAdapter
+
+
 def _masked_chunks(
     name: str,
     src_spec: dict,
@@ -161,24 +196,30 @@ def _masked_chunks(
     base_dir: Path,
     chunk_size: int,
     key_provider,
+    *,
+    evidence: list | None = None,
+    pandas_only: bool = False,
 ) -> Iterator[Any]:
     """The one factory of a chunked table's masked stream."""
     from decoy_engine import __version__ as engine_version
-    from decoy_engine import run_mask_pipeline_chunked
+    from decoy_engine import run_mask_chunked
 
     # The factory is the one place a chunked source is opened, so it carries its own gate: no
     # reader exists until every declared source column is checked (G-ONE-DECLARED-READ).
     prepared_sources(config_dict, base_dir=base_dir)
-    source_schema, chunks = source_schema_and_chunks(
+    # `run_mask_chunked` takes no source schema; the reader gives the chunks and the empty
+    # Parquet schema, so the call stays.
+    _source_schema, chunks = source_schema_and_chunks(
         name, src_spec, base_dir, iter_source_chunks(name, src_spec, base_dir, chunk_size)
     )
-    return run_mask_pipeline_chunked(
+    return run_mask_chunked(
         resolved_source_config(config_dict, base_dir),
         chunks,
         table=name,
         engine_version=engine_version,
         key_provider=key_provider,
-        source_schema=source_schema,
+        route_evidence_sink=evidence,
+        adapter=_pandas_only_adapter_type()() if pandas_only else None,
     )
 
 
@@ -362,6 +403,7 @@ def execute(ctx: RunContext) -> None:
     layout = ctx.layout
     ctx.execution_started = True
     if ctx.chunked:
+        chunked_evidence: list = []
         _chunk_paths = _run_chunked_mask(
             ctx.config_dict,
             ctx.config.parent,
@@ -369,12 +411,16 @@ def execute(ctx: RunContext) -> None:
             layout,
             ctx.key_provider,
             ctx._published,
+            evidence=chunked_evidence,
+            pandas_only=not ctx.gate_result.unified_slice_enabled,
         )
         ctx._table_records = table_records(dict.fromkeys(_chunk_paths), _chunk_paths)
+        # Every stream is exhausted here, so the engine's executed flags are final.
         ctx._native_route = _native_gate.classify_route(
             chunked=True,
             any_generate=ctx.any_generate,
             quality_metrics=None,
+            chunked_evidence=chunked_evidence,
         )
     else:
         from decoy_engine import run_pipeline
