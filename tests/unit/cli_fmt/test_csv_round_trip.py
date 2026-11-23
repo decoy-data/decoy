@@ -110,3 +110,38 @@ def test_float_negative_zero_and_nan_read_back_typed(tmp_path: Path) -> None:
     assert str(values[0]) == "-0.0"
     assert values[1] is None  # `nan` is in Arrow's default null vocabulary, as `NaN` was
     assert values[2] == 1e20
+
+
+_WHOLE = datetime(2024, 1, 2, 3, 4, 5)
+
+
+@pytest.mark.parametrize(
+    ("unit", "frac_new", "whole_new"),
+    [
+        ("us", "2024-01-02 03:04:05.000006", "2024-01-02 03:04:05.000000"),
+        ("ns", "2024-01-02 03:04:05.000006000", "2024-01-02 03:04:05.000000000"),
+    ],
+)
+def test_naive_timestamp_text_differs_only_as_listed(
+    tmp_path: Path, unit: str, frac_new: str, whole_new: str
+) -> None:
+    """A1.7: a whole-second `us` gains `.000000`; `ns` gains nine digits; a `us` fraction is equal."""
+    table = pa.table({"k": [1, 2], "c": pa.array([_TS, _WHOLE], pa.timestamp(unit))})
+    new, old = tmp_path / "new.csv", tmp_path / "old.csv"
+    write_table(table, "csv", new)
+    _old_text(table, old)
+    got, was = _all_text(new)["c"].tolist(), _all_text(old)["c"].tolist()
+    assert got == [frac_new, whole_new]
+    if unit == "us":
+        assert was[0] == got[0]  # nonzero fraction: unchanged text
+    assert was[1] == "2024-01-02 03:04:05"  # pandas wrote no fraction for a whole second
+    assert got[1] != was[1]
+
+
+@pytest.mark.parametrize("unit", ["us", "ns"])
+def test_naive_timestamp_typed_read_is_equal(tmp_path: Path, unit: str) -> None:
+    table = pa.table({"k": [1, 2], "c": pa.array([_TS, _WHOLE], pa.timestamp(unit))})
+    out = tmp_path / "new.csv"
+    write_table(table, "csv", out)
+    options = pacsv.ConvertOptions(column_types={"c": pa.timestamp(unit)})
+    assert pacsv.read_csv(out, convert_options=options).column("c").equals(table.column("c"))

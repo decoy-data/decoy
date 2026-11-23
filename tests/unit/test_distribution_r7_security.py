@@ -29,9 +29,11 @@ _PAST = "2001-01-01T00:00:00Z"
 @pytest.fixture
 def keypair():
     key = Ed25519PrivateKey.generate()
-    pub = key.public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
-    ).decode()
+    pub = (
+        key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
     return key, pub
 
 
@@ -93,11 +95,13 @@ def test_recorded_serial_survives_a_refused_lower_document(tmp_path, keypair):
     installer.check_document_freshness(vd.parse_document(new), layout.decoy_home())
     with pytest.raises(installer.InstallError):
         installer.check_document_freshness(
-            vd.parse_document(_doc(key, serve, "0.2.0", serial=3, expires=_FUTURE)[0]), layout.decoy_home()
+            vd.parse_document(_doc(key, serve, "0.2.0", serial=3, expires=_FUTURE)[0]),
+            layout.decoy_home(),
         )
     with pytest.raises(installer.InstallError):
         installer.check_document_freshness(
-            vd.parse_document(_doc(key, serve, "0.2.0", serial=9, expires=_FUTURE)[0]), layout.decoy_home()
+            vd.parse_document(_doc(key, serve, "0.2.0", serial=9, expires=_FUTURE)[0]),
+            layout.decoy_home(),
         )
 
 
@@ -214,7 +218,10 @@ def test_first_install_refuses_an_expired_document_under_the_lock(tmp_path, keyp
 
     key, _ = keypair
     expired, _ = _doc(key, tmp_path / "serve", serial=5, expires=_PAST)
-    assert _first_install(monkeypatch, tmp_path, expired, tmp_path / "no-bundle") == first_install.EXIT_STALE
+    assert (
+        _first_install(monkeypatch, tmp_path, expired, tmp_path / "no-bundle")
+        == first_install.EXIT_STALE
+    )
     assert not (tmp_path / "fi_home" / "trust_state.json").exists()
 
 
@@ -247,30 +254,42 @@ def _tar(members) -> bytes:
     return raw.getvalue()
 
 
-@pytest.mark.parametrize(
-    "linkname", ["../outside", "/etc/passwd", "b/../../outside"]
-)
+@pytest.mark.parametrize("linkname", ["../outside", "/etc/passwd", "b/../../outside"])
 def test_hardlink_with_escaping_name_is_rejected(tmp_path, linkname):
-    data = _tar([
-        ("b", "dir", None),
-        ("b/ok", "file", b"x"),
-        ("b/h", "hard", linkname),
-    ])
+    data = _tar(
+        [
+            ("b", "dir", None),
+            ("b/ok", "file", b"x"),
+            ("b/h", "hard", linkname),
+        ]
+    )
     with pytest.raises(installer.InstallError, match="hardlink"):
         installer._extract_bundle(data, tmp_path / "out")
     assert not (tmp_path / "outside").exists()
 
 
 def test_member_written_through_an_earlier_symlink_is_rejected(tmp_path):
-    data = _tar([("b", "dir", None), ("b/lnk", "sym", "sub"), ("b/sub", "dir", None), ("b/lnk/f", "file", b"x")])
+    data = _tar(
+        [
+            ("b", "dir", None),
+            ("b/lnk", "sym", "sub"),
+            ("b/sub", "dir", None),
+            ("b/lnk/f", "file", b"x"),
+        ]
+    )
     with pytest.raises(installer.InstallError, match="through a symlink"):
         installer._extract_bundle(data, tmp_path / "out")
 
 
 def test_internal_hardlink_and_symlink_still_extract(tmp_path):
-    data = _tar([
-        ("b", "dir", None), ("b/real", "file", b"x"), ("b/h", "hard", "b/real"), ("b/s", "sym", "real"),
-    ])
+    data = _tar(
+        [
+            ("b", "dir", None),
+            ("b/real", "file", b"x"),
+            ("b/h", "hard", "b/real"),
+            ("b/s", "sym", "real"),
+        ]
+    )
     root = installer._extract_bundle(data, tmp_path / "out")
     assert (root / "h").read_bytes() == b"x"
 
@@ -311,8 +330,12 @@ def test_override_warns_loudly_on_a_placeholder_dev_build(tmp_path, monkeypatch,
 
 def test_override_is_ignored_when_the_build_pins_a_real_key(tmp_path, monkeypatch, keypair, capsys):
     pinned = tmp_path / "pinned.pem"
-    pinned.write_text(Ed25519PrivateKey.generate().public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode())
+    pinned.write_text(
+        Ed25519PrivateKey.generate()
+        .public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
     monkeypatch.setattr(release_key, "_KEY_FILE", pinned)
     monkeypatch.setenv("DECOY_RELEASE_PUBKEY_FILE", str(_write_key(tmp_path, keypair[1])))
     assert release_key.pinned_public_pem() == pinned.read_text()
@@ -326,8 +349,11 @@ def test_install_sh_ignores_override_when_key_is_pinned(tmp_path, keypair):
     from tests.unit.test_distribution import REPO_ROOT
 
     real_key, real_pub = Ed25519PrivateKey.generate(), None
-    real_pub = real_key.public_key().public_bytes(
-        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    real_pub = (
+        real_key.public_key()
+        .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+        .decode()
+    )
     body = "".join(real_pub.splitlines()[1:-1])
     script = (REPO_ROOT / "packaging_tools/install/install.sh").read_text()
     injected = script.replace("__DECOY_RELEASE_PUBLIC_KEY__", body)
@@ -339,9 +365,13 @@ def test_install_sh_ignores_override_when_key_is_pinned(tmp_path, keypair):
     import subprocess
 
     pk = _write_key(tmp_path, attacker_pub)
-    env = dict(os.environ, DECOY_HOME=str(tmp_path / "h"), DECOY_BIN_DIR=str(tmp_path / "b"),
-               DECOY_RELEASE_PUBKEY_FILE=str(pk),
-               DECOY_VERSION_URL=f"file://{_publish_doc(tmp_path, attacker, doc)}")
+    env = dict(
+        os.environ,
+        DECOY_HOME=str(tmp_path / "h"),
+        DECOY_BIN_DIR=str(tmp_path / "b"),
+        DECOY_RELEASE_PUBKEY_FILE=str(pk),
+        DECOY_VERSION_URL=f"file://{_publish_doc(tmp_path, attacker, doc)}",
+    )
     r = subprocess.run(["sh", str(sh)], env=env, capture_output=True, text=True)
     assert r.returncode != 0
     assert "IGNORED" in r.stderr and "signature INVALID" in r.stderr

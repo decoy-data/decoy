@@ -15,6 +15,7 @@ from decoy.cli.io import (
     check_csv_types,
     check_target_formats,
     duckdb_probe_config,
+    is_csv_format,
     iter_source_chunks,
     lazy_sources,
     open_run_layout,
@@ -129,7 +130,7 @@ def _run_chunked_mask(
         if not isinstance(tgt_spec, dict) or not isinstance(tgt_spec.get("path"), str):
             continue
         target = _ChunkedTarget(name, src_spec, tgt_spec, resolve_target_format(name, tgt_spec))
-        if target.fmt == "csv":
+        if is_csv_format(target.fmt):
             # Drain the whole no-publication stream first, so a column type or schema change in
             # any later chunk refuses the run before any target is placed or staged.
             _validate_csv_stream(target, config_dict, base_dir, chunk_size, key_provider)
@@ -137,15 +138,15 @@ def _run_chunked_mask(
 
     published: dict[str, Path | None] = {}
     for target in prepared:
+        src_spec = target.src_spec
+        src_path = _resolve_path(src_spec["path"], base_dir)
         published[target.name] = write_chunked_output(
             _masked_chunks(target, config_dict, base_dir, chunk_size, key_provider),
             target.fmt,
             target.tgt_spec["path"],
             layout,
             empty_schema=(
-                partial(parquet_schema, _resolve_path(target.src_spec["path"], base_dir))
-                if target.src_spec.get("format") == "parquet"
-                else None
+                partial(parquet_schema, src_path) if src_spec.get("format") == "parquet" else None
             ),
             ledger=ledger,
             name=target.name,
@@ -174,6 +175,9 @@ def _masked_chunks(
     from decoy_engine import __version__ as engine_version
     from decoy_engine import run_mask_pipeline_chunked
 
+    # The factory is the one place a chunked source is opened, so it carries its own gate: no
+    # reader exists until every declared source column is checked (G-ONE-DECLARED-READ).
+    prepared_sources(config_dict, base_dir=base_dir)
     source_schema, chunks = source_schema_and_chunks(
         target.name,
         target.src_spec,

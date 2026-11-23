@@ -176,10 +176,10 @@ def test_send_webhook_signs_with_hmac_when_secret_given():
         return _FakeResponse()
 
     event = {"kind": "run_completed", "status": "success"}
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
-        delivered, detail = send_webhook(
-            "https://hooks.example.com/x", event, secret_key="s3cr3t"
-        )
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
+        delivered, detail = send_webhook("https://hooks.example.com/x", event, secret_key="s3cr3t")
 
     assert delivered is True
     assert detail is None
@@ -206,7 +206,9 @@ def test_send_webhook_unsigned_when_no_secret():
         captured["headers"] = dict(req.header_items())
         return _FakeResponse()
 
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         delivered, detail = send_webhook(
             "https://hooks.example.com/x", {"kind": "run_completed"}, secret_key=None
         )
@@ -233,7 +235,9 @@ def test_send_webhook_4xx_is_not_retried():
         calls["n"] += 1
         return _FakeResponse()
 
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         delivered, _detail = send_webhook(
             "https://hooks.example.com/x",
             {"kind": "run_completed"},
@@ -261,7 +265,9 @@ def test_send_webhook_5xx_is_retried_up_to_max_retries():
         calls["n"] += 1
         return _FakeResponse()
 
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         delivered, _detail = send_webhook(
             "https://hooks.example.com/x",
             {"kind": "run_completed"},
@@ -294,7 +300,9 @@ def test_send_webhook_retries_then_succeeds():
             raise urllib.error.URLError("connection refused")
         return _FakeResponse()
 
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         delivered, _detail = send_webhook(
             "https://hooks.example.com/x",
             {"kind": "run_completed"},
@@ -330,7 +338,9 @@ def test_send_webhook_delivery_id_stable_across_retries():
             raise urllib.error.URLError("boom")
         return _FakeResponse()
 
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         send_webhook(
             "https://hooks.example.com/x",
             {"kind": "run_completed"},
@@ -364,9 +374,15 @@ def test_send_slack_posts_text_and_blocks():
         return _FakeResponse()
 
     event = build_run_event(
-        status="success", config_path="pipeline.yaml", row_count=5, started_at=None, finished_at=None
+        status="success",
+        config_path="pipeline.yaml",
+        row_count=5,
+        started_at=None,
+        finished_at=None,
     )
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         delivered, _detail = send_slack("https://hooks.slack.com/services/x", event)
 
     assert delivered is True
@@ -380,7 +396,9 @@ def test_send_slack_unreachable_returns_false():
     def _fake_urlopen(req, timeout=None):
         raise urllib.error.URLError("nope")
 
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         delivered, _detail = send_slack("https://hooks.slack.com/services/x", {"kind": "x"})
 
     assert delivered is False
@@ -430,7 +448,11 @@ def test_send_email_sends_via_smtp_with_starttls_when_supported():
         host="smtp.example.com", port=587, user="u", password="p", from_addr="from@example.com"
     )
     event = build_run_event(
-        status="success", config_path="pipeline.yaml", row_count=3, started_at=None, finished_at=None
+        status="success",
+        config_path="pipeline.yaml",
+        row_count=3,
+        started_at=None,
+        finished_at=None,
     )
     with mock.patch("smtplib.SMTP", _FakeSmtp):
         delivered, _detail = send_email("ops@example.com", event, smtp=smtp_cfg)
@@ -471,7 +493,11 @@ def test_send_email_skips_starttls_when_server_does_not_support_it():
 
     smtp_cfg = SmtpConfig(host="localhost", port=1025, from_addr="from@example.com")
     event = build_run_event(
-        status="success", config_path="pipeline.yaml", row_count=1, started_at=None, finished_at=None
+        status="success",
+        config_path="pipeline.yaml",
+        row_count=1,
+        started_at=None,
+        finished_at=None,
     )
     with mock.patch("smtplib.SMTP", _FakeSmtpNoTls):
         delivered, _detail = send_email("ops@example.com", event, smtp=smtp_cfg)
@@ -493,9 +519,7 @@ def test_send_email_smtp_failure_is_best_effort():
 
     smtp_cfg = SmtpConfig(host="smtp.example.com", from_addr="from@example.com")
     with mock.patch("smtplib.SMTP", _FakeSmtp):
-        delivered, _detail = send_email(
-            "ops@example.com", {"kind": "run_completed"}, smtp=smtp_cfg
-        )
+        delivered, _detail = send_email("ops@example.com", {"kind": "run_completed"}, smtp=smtp_cfg)
     assert delivered is False
 
 
@@ -522,7 +546,9 @@ def test_dispatch_fans_out_to_multiple_channels():
         NotifyChannel(kind="slack", target="https://hooks.slack.com/services/T/B/xyz"),
     ]
     event = {"kind": "run_completed", "status": "success"}
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         results = dispatch(event, channels, webhook_secret="k")
 
     assert len(results) == 2
@@ -565,7 +591,9 @@ def test_dispatch_target_host_never_leaks_full_url_or_token():
 
     secret_path = "https://hooks.example.com/T00/B00/verysecrettoken?auth=SECRET"
     channels = [NotifyChannel(kind="webhook", target=secret_path)]
-    with mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)):
+    with mock.patch(
+        "decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)
+    ):
         results = dispatch({"kind": "run_completed"}, channels, webhook_secret="k")
 
     assert results[0].target_host == "hooks.example.com"

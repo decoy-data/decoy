@@ -54,9 +54,7 @@ def test_scan_fields_lists_all_fields_by_default(scan_file: Path):
 
 
 def test_scan_fields_pii_high_filters_correctly(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "fields", str(scan_file), "--pii", "high", "--json"]
-    )
+    result = runner.invoke(app, ["scan", "fields", str(scan_file), "--pii", "high", "--json"])
     assert result.exit_code == 0
     payload = _json.loads(result.stdout)
     names = sorted(f["name"] for f in payload["fields"])
@@ -66,9 +64,7 @@ def test_scan_fields_pii_high_filters_correctly(scan_file: Path):
 
 
 def test_scan_fields_quasi_filter_returns_qi_members(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "fields", str(scan_file), "--quasi", "--json"]
-    )
+    result = runner.invoke(app, ["scan", "fields", str(scan_file), "--quasi", "--json"])
     assert result.exit_code == 0
     payload = _json.loads(result.stdout)
     names = sorted(f["name"] for f in payload["fields"])
@@ -108,23 +104,17 @@ def test_scan_fields_json_envelope_shape(scan_file: Path):
 
 
 def test_scan_fields_invalid_pii_value_exits_user_error(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "fields", str(scan_file), "--pii", "extreme"]
-    )
+    result = runner.invoke(app, ["scan", "fields", str(scan_file), "--pii", "extreme"])
     assert result.exit_code != 0
 
 
 def test_scan_fields_missing_scan_exits_user_error(tmp_path: Path):
-    result = runner.invoke(
-        app, ["scan", "fields", str(tmp_path / "nope.json")]
-    )
+    result = runner.invoke(app, ["scan", "fields", str(tmp_path / "nope.json")])
     assert result.exit_code == 1
 
 
 def test_scan_fields_no_match_prints_friendly_hint(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "fields", str(scan_file), "--pii", "none", "--quasi"]
-    )
+    result = runner.invoke(app, ["scan", "fields", str(scan_file), "--pii", "none", "--quasi"])
     assert result.exit_code == 0
     assert "No fields match" in result.stdout
 
@@ -201,9 +191,7 @@ def test_scan_show_unknown_field_exits_with_did_you_mean(scan_file: Path):
 
 
 def test_scan_show_json_envelope_shape(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "show", str(scan_file), "ssn", "--json"]
-    )
+    result = runner.invoke(app, ["scan", "show", str(scan_file), "ssn", "--json"])
     assert result.exit_code == 0
     payload = _json.loads(result.stdout)
     assert payload["command"] == "scan show"
@@ -214,17 +202,13 @@ def test_scan_show_json_envelope_shape(scan_file: Path):
 
 
 def test_scan_show_quiet_produces_empty_stdout(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "show", str(scan_file), "ssn", "--quiet"]
-    )
+    result = runner.invoke(app, ["scan", "show", str(scan_file), "ssn", "--quiet"])
     assert result.exit_code == 0
     assert result.stdout == ""
 
 
 def test_scan_show_unknown_field_json_emits_error_envelope(scan_file: Path):
-    result = runner.invoke(
-        app, ["scan", "show", str(scan_file), "wat", "--json"]
-    )
+    result = runner.invoke(app, ["scan", "show", str(scan_file), "wat", "--json"])
     assert result.exit_code == 1
     payload = _json.loads(result.stdout)
     assert payload["command"] == "scan show"

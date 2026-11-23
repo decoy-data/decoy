@@ -399,6 +399,11 @@ def _coerce_int_columns(frame: pd.DataFrame, layout: Mapping[str, Any]) -> pd.Da
     return out
 
 
+def is_csv_format(fmt: str) -> bool:
+    """True for the declared target format that `check_csv_types` governs."""
+    return fmt == "csv"
+
+
 def _csv_type_allowed(arrow_type: pa.DataType) -> bool:
     """True for an Arrow type the CSV writer has a frozen text form for (plan section 4).
 

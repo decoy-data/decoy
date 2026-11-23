@@ -69,9 +69,7 @@ class TestTopLevelYamlKeyLabelIsRejected:
         cfg = _generate_pipeline(tmp_path, top_level_key_label="customers_q4")
         result = runner.invoke(app, ["run", str(cfg)])
 
-        assert result.exit_code != 0, (
-            "a top-level YAML key_label: must not silently succeed"
-        )
+        assert result.exit_code != 0, "a top-level YAML key_label: must not silently succeed"
         assert "key_label" in result.output
         assert not (tmp_path / "employees.csv").exists(), (
             "a rejected config must not produce output"
@@ -103,9 +101,7 @@ class TestTopLevelYamlKeyLabelIsRejected:
         assert "forbid" in result.output.lower() or "not permitted" in result.output.lower()
         assert not (tmp_path / "employees.csv").exists()
 
-    def test_top_level_key_label_error_does_not_claim_yaml_support(
-        self, tmp_path: Path
-    ) -> None:
+    def test_top_level_key_label_error_does_not_claim_yaml_support(self, tmp_path: Path) -> None:
         """Regression guard for the doc/config mismatch itself: no CLI-owned
         message may claim a top-level YAML key_label: works. Uses both flags
         so the run reaches (and is rejected by) the schema."""

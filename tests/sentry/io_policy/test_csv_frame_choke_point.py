@@ -1,9 +1,12 @@
 """G-ONE-CSV-FRAME and G-ONE-NULL-RATE: two GEN-FIT-SHAPE choke points, checked on the syntax tree.
 
-1. Arrow to CSV goes through `io/_targets.py::_csv_frame`. A bare `to_pandas()` widens an integer
-   column that holds a null to float64, so a CSV cell prints `23.0`. The scan flags a `to_csv`
-   call whose receiver is a `to_pandas(...)` call, and a `to_csv` on a local name that the same
-   function bound from a `to_pandas(...)` call, plain or annotated.
+1. No Arrow-to-pandas-to-CSV conversion anywhere in `src/decoy/` (CSV-WRITE-FAST). An Arrow table
+   goes to CSV through `pyarrow.csv`; a bare `to_pandas()` widens an integer column that holds a
+   null to float64, so a CSV cell would print `23.0`. The scan flags a `to_csv` call whose
+   receiver is a `to_pandas(...)` call, and a `to_csv` on a local name that the same function
+   bound from a `to_pandas(...)` call, plain or annotated. The one remaining target `to_csv`
+   call is `_write_table`'s DataFrame branch, pinned behind an `isinstance(data, pd.DataFrame)`
+   guard.
 2. A null rate comes from the engine's `snapshot_null_fraction`. The scan flags a division in a
    statement that reads `null_count` or `non_null_count`, so the CLI never keeps a second ratio
    (and its own zero-row rule).
@@ -107,16 +110,60 @@ def test_no_direct_null_rate_division() -> None:
     assert _sites(null_rate_division_lines) == []
 
 
-def test_csv_frame_is_the_conversion_both_writers_use() -> None:
+def _guarded_to_csv(source: str, function: str) -> tuple[int, int]:
+    """(`to_csv` calls in the whole module, those in `function` under an `isinstance` guard)."""
+    tree = ast.parse(source)
+    total = sum(
+        1
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "to_csv"
+    )
+    guarded = 0
+    for func in ast.walk(tree):
+        if not (isinstance(func, ast.FunctionDef) and func.name == function):
+            continue
+        for branch in ast.walk(func):
+            if not isinstance(branch, ast.If):
+                continue
+            tests_dataframe = any(
+                isinstance(c, ast.Call)
+                and isinstance(c.func, ast.Name)
+                and c.func.id == "isinstance"
+                and "DataFrame" in ast.dump(c.args[1])
+                for c in ast.walk(branch.test)
+            )
+            if tests_dataframe:
+                guarded += sum(
+                    1
+                    for n in ast.walk(ast.Module(body=branch.body, type_ignores=[]))
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == "to_csv"
+                )
+    return total, guarded
+
+
+def test_the_one_dataframe_to_csv_target_call_is_guarded_in_write_table() -> None:
     text = (SRC / "cli" / "io" / "_targets.py").read_text(encoding="utf-8")
-    assert text.count("_csv_frame(") >= 3  # the definition and both writers
+    assert _guarded_to_csv(text, "_write_table") == (1, 1)
+
+
+def test_a_second_or_unguarded_target_to_csv_call_is_detected() -> None:
+    second = (
+        "def _write_table(data, p):\n"
+        "    if isinstance(data, pd.DataFrame):\n        data.to_csv(p)\n"
+        "def other(data, p):\n    data.to_csv(p)\n"
+    )
+    unguarded = "def _write_table(data, p):\n    data.to_csv(p)\n"
+    assert _guarded_to_csv(second, "_write_table") == (2, 1)
+    assert _guarded_to_csv(unguarded, "_write_table") == (1, 0)
 
 
 def test_seeded_direct_arrow_to_csv_is_detected() -> None:
     direct = "def w(t, p):\n    t.to_pandas().to_csv(p)\n"
     by_name = "def w(t, p):\n    frame = t.to_pandas()\n    frame.to_csv(p)\n"
     annotated = "def w(t, p):\n    frame: object = t.to_pandas()\n    frame.to_csv(p)\n"
-    clean = "def w(t, p):\n    _csv_frame(t).to_csv(p)\n    pd_frame.to_csv(p)\n"
+    clean = "def w(t, p):\n    write_csv(t, p)\n    pd_frame.to_csv(p)\n"
     assert csv_bypass_lines(direct) == [2]
     assert csv_bypass_lines(by_name) == [3]
     assert csv_bypass_lines(annotated) == [3]

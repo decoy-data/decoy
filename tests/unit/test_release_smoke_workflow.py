@@ -41,10 +41,7 @@ from decoy.distribution.release_key import PLACEHOLDER_MARKER
 from decoy.distribution.targets import SUPPORTED_TARGETS, detect_target
 
 WORKFLOW = (
-    Path(__file__).resolve().parent.parent.parent
-    / ".github"
-    / "workflows"
-    / "release-smoke.yml"
+    Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "release-smoke.yml"
 )
 
 
@@ -104,13 +101,8 @@ def test_release_smoke_workflow_does_not_publish() -> None:
     data = yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
     job = data["jobs"]["fresh-install"]
     run_bodies = "\n".join(s.get("run", "") for s in job["steps"]).lower()
-    uses_entries = [
-        (s.get("uses", "") or "").lower()
-        for s in job["steps"]
-    ]
-    assert "twine upload" not in run_bodies, (
-        "OSS.1 must not publish; twine upload belongs to OSS.7"
-    )
+    uses_entries = [(s.get("uses", "") or "").lower() for s in job["steps"]]
+    assert "twine upload" not in run_bodies, "OSS.1 must not publish; twine upload belongs to OSS.7"
     assert "upload-pypi" not in run_bodies, (
         "OSS.1 must not publish; the trusted-publish action belongs to OSS.7"
     )
@@ -124,7 +116,6 @@ def test_release_smoke_workflow_does_not_publish() -> None:
                 f"OSS.1 must not publish; step uses {uses!r} matches "
                 f"publish-action pattern {substring!r} (belongs to OSS.7)"
             )
-
 
 
 # --- canonical smoke: candidate mode (REL-GATE 5.4) ------------------------------------------

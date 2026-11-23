@@ -26,7 +26,7 @@ import tempfile
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
-from typing import IO, Any
+from typing import IO, cast
 
 # Longest suffix first, so `.tar.gz` is matched before `.gz`. Same set pandas infers.
 COMPRESSION = (
@@ -86,23 +86,29 @@ def _archive_name(path: Path) -> str:
     return name
 
 
-def _stream_codec(stack: contextlib.ExitStack, method: str | None, raw: IO[bytes]) -> Any:
+def _stream_codec(stack: contextlib.ExitStack, method: str | None, raw: IO[bytes]) -> IO[bytes]:
     """`raw` wrapped in the frozen stream codec for `method`, closed with `stack`."""
     if method == "gzip":
         # `filename=""` and `mtime=0` leave FNAME and MTIME empty; level 6 gives XFL 0.
-        return stack.enter_context(
-            gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, filename="", mtime=0)
+        return cast(
+            "IO[bytes]",
+            stack.enter_context(
+                gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, filename="", mtime=0)
+            ),
         )
     if method == "bz2":
-        return stack.enter_context(bz2.BZ2File(raw, "wb", compresslevel=9))
+        return cast("IO[bytes]", stack.enter_context(bz2.BZ2File(raw, "wb", compresslevel=9)))
     if method == "xz":
-        return stack.enter_context(
-            lzma.LZMAFile(raw, "wb", format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=6)
+        return cast(
+            "IO[bytes]",
+            stack.enter_context(
+                lzma.LZMAFile(raw, "wb", format=lzma.FORMAT_XZ, check=lzma.CHECK_CRC64, preset=6)
+            ),
         )
     if method == "zstd":
         import pyarrow as pa
 
-        return stack.enter_context(pa.CompressedOutputStream(raw, "zstd"))
+        return cast("IO[bytes]", stack.enter_context(pa.CompressedOutputStream(raw, "zstd")))
     return raw
 
 
