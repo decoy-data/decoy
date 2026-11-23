@@ -15,6 +15,7 @@ import subprocess
 import sys
 import textwrap
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -62,7 +63,9 @@ def _delta(rows: int, out: Path) -> int:
     return int(json.loads(proc.stdout.splitlines()[-1])["delta"])
 
 
-def test_a7_write_phase_memory_does_not_scale_with_rows(tmp_path: Path) -> None:
+def test_a7_write_phase_memory_does_not_scale_with_rows(
+    tmp_path: Path, record_property: Callable[[str, object], None]
+) -> None:
     small = _delta(_N, tmp_path / "n.csv")
     large = _delta(4 * _N, tmp_path / "4n.csv")
     print(f"A7 RSS delta N={small} 4N={large}")
@@ -75,7 +78,9 @@ def _time(fn) -> float:  # type: ignore[no-untyped-def]
     return time.perf_counter() - start
 
 
-def test_a9_generate_csv_is_within_parquet_plus_0_6_seconds(tmp_path: Path) -> None:
+def test_a9_generate_csv_is_within_parquet_plus_0_6_seconds(
+    tmp_path: Path, record_property: Callable[[str, object], None]
+) -> None:
     import pyarrow as pa
 
     from decoy.cli.io import write_table
@@ -88,7 +93,9 @@ def test_a9_generate_csv_is_within_parquet_plus_0_6_seconds(tmp_path: Path) -> N
     assert csv_time <= parquet + 0.6
 
 
-def test_a9_gzip_csv_10m_rows_is_within_8_seconds(tmp_path: Path) -> None:
+def test_a9_gzip_csv_10m_rows_is_within_8_seconds(
+    tmp_path: Path, record_property: Callable[[str, object], None]
+) -> None:
     import pyarrow as pa
 
     from decoy.cli.io import write_table

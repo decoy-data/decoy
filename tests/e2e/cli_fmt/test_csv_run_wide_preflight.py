@@ -8,6 +8,7 @@ chunk of the second target, and record when each stream opens, yields and closes
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 import yaml
+from click.testing import Result
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -109,16 +111,19 @@ def _chunked_config(tmp_path: Path) -> Path:
     return path
 
 
-def _instrument(monkeypatch: pytest.MonkeyPatch, mutate: Any) -> list[tuple]:
+Mutate = Callable[[str, int, pa.Table], pa.Table]
+
+
+def _instrument(monkeypatch: pytest.MonkeyPatch, mutate: Mutate) -> list[tuple]:
     import decoy_engine
 
     events: list[tuple] = []
     real = decoy_engine.run_mask_pipeline_chunked
 
-    def wrapped(*args: Any, table: str, **kwargs: Any) -> Any:
+    def wrapped(*args: object, table: str, **kwargs: object) -> Iterator[pa.Table]:
         stream = real(*args, table=table, **kwargs)
 
-        def gen() -> Any:
+        def gen() -> Iterator[pa.Table]:
             events.append(("open", table))
             try:
                 for index, chunk in enumerate(stream):
@@ -133,7 +138,7 @@ def _instrument(monkeypatch: pytest.MonkeyPatch, mutate: Any) -> list[tuple]:
     return events
 
 
-def _run(tmp_path: Path) -> Any:
+def _run(tmp_path: Path) -> Result:
     return runner.invoke(
         app, ["run", str(_chunked_config(tmp_path)), "--chunked", "--chunk-size", "2"]
     )
@@ -161,7 +166,7 @@ def _assert_nothing_placed(tmp_path: Path) -> None:
     ids=["unsupported-type", "drift"],
 )
 def test_chunked_run_refuses_before_any_target_is_placed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutate: Any, message: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutate: Mutate, message: str
 ) -> None:
     events = _instrument(monkeypatch, mutate)
     result = _run(tmp_path)
@@ -210,7 +215,7 @@ def test_validation_keeps_no_masked_chunk_between_checks(monkeypatch: pytest.Mon
     refs: list[Any] = []
     closed: list[bool] = []
 
-    def stream() -> Any:
+    def stream() -> Iterator[pa.Table]:
         try:
             for i in range(4):
                 chunk = pa.table({"a": [i]})
@@ -223,7 +228,7 @@ def test_validation_keeps_no_masked_chunk_between_checks(monkeypatch: pytest.Mon
     seen_alive: list[int] = []
     real_check = _execute.check_csv_types
 
-    def spying(*args: Any, **kwargs: Any) -> Any:
+    def spying(*args: object, **kwargs: object) -> pa.Schema:
         gc.collect()
         seen_alive.append(sum(1 for r in refs if r() is not None))
         return real_check(*args, **kwargs)
@@ -231,7 +236,7 @@ def test_validation_keeps_no_masked_chunk_between_checks(monkeypatch: pytest.Mon
     monkeypatch.setattr(_execute, "_masked_chunks", lambda *_a, **_k: stream())
     monkeypatch.setattr(_execute, "check_csv_types", spying)
     target = _execute._ChunkedTarget("t", {}, {}, "csv")
-    schema = _execute._validate_csv_stream(target, {}, Path("."), 1, None)
+    schema = _execute._validate_csv_stream(target, {}, Path(), 1, None)
     assert schema.names == ["a"]
     assert seen_alive == [1, 1, 1, 1]
     assert closed == [True]

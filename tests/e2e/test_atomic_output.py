@@ -15,6 +15,8 @@ from typing import Any
 
 import decoy_engine
 import pandas as pd
+import pyarrow as pa
+import pyarrow.csv as pacsv
 import pyarrow.parquet as pq
 import pytest
 import yaml
@@ -166,7 +168,7 @@ def test_whole_table_write_failure_keeps_the_prior_state(
     if prior is not None:
         target.write_bytes(prior)
 
-    def half_then_raise(table: Any, writer: Any) -> None:
+    def half_then_raise(table: pa.Table, writer: pacsv.CSVWriter) -> None:
         writer.write_batch(table.slice(0, 1).to_batches()[0])  # half the file, then the disk fills
         raise OSError(errno.ENOSPC, "no space")
 
