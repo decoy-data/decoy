@@ -234,12 +234,21 @@ _TOPICS: dict[str, _Topic] = {
             "re-identify every vaulted value. Needs the engine's vault extra\n"
             "(cryptography). FPE columns are reversible on their own and do not use\n"
             "the vault.\n\n"
+            "The file is `decoy-vault/v3`. Its header (format, key version, entry\n"
+            "count) is bound into every encrypted segment, so editing the header, or\n"
+            "reordering, dropping or splicing segments, is refused with exit 3 and\n"
+            "`vault_tampered`. A wrong secret is refused first, with\n"
+            "`vault_key_mismatch`. See what a vault holds, without any values, with:\n\n"
+            "  decoy report vault vault.bin --config pipeline.yaml\n\n"
+            "An older `decoy-vault/v2` file still opens, read-only, but its header is\n"
+            "not authenticated; re-mask to get a v3 vault.\n\n"
             "This is not the token vault that `decoy tokenize` writes; that one is a\n"
             "plaintext SQLite file (see `decoy explain tokenize`)."
         ),
         see_also=(
             "decoy run --help",
             "decoy unmask --help",
+            "decoy report vault --help",
             "decoy explain keys",
             "decoy explain tokenize",
         ),

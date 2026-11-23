@@ -160,6 +160,22 @@ def run_exit_code(category: str | None = None, *, blocking_failed: bool = False)
     ).exit_code
 
 
+def _vault_input_codes() -> frozenset[str]:
+    """The vault refusals the caller causes: the wrong secret, file or format, or a missing extra."""
+    from decoy_engine.reasons import runtime as reasons_runtime
+
+    return frozenset(
+        {
+            reasons_runtime.VAULT_CRYPTO_NOT_INSTALLED,
+            reasons_runtime.VAULT_KEY_MISMATCH,
+            reasons_runtime.WEAK_MASK_SECRET,
+            reasons_runtime.VAULT_UNREADABLE,
+            reasons_runtime.VAULT_FORMAT_UNSUPPORTED,
+            reasons_runtime.VAULT_PROTOCOL_VERSION_MISMATCH,
+        }
+    )
+
+
 def exit_code_for(exc: BaseException) -> int:
     """The exit integer a command gives `exc`: the one exception-to-exit map.
 
@@ -199,6 +215,7 @@ def exit_code_for(exc: BaseException) -> int:
     from decoy_engine.quality.dp import DpError
     from decoy_engine.quality.dp_budget import DpBudgetError
     from decoy_engine.quality.dp_provenance import ProvenanceError
+    from decoy_engine.reasons import runtime as reasons_runtime
     from decoy_engine.reasons.quality import DP_SCHEDULE_MISMATCH
     from decoy_engine.reasons.runtime import VAULT_EXISTS
     from decoy_engine.verification.postmask import PostScanBlockedError
@@ -226,6 +243,14 @@ def exit_code_for(exc: BaseException) -> int:
         return EXIT_FINDINGS
     # An existing vault is the caller's to resolve.
     if isinstance(exc, VaultError) and exc.code == VAULT_EXISTS:
+        return EXIT_USAGE
+    # A vault that fails its own authentication was changed or damaged after it was written:
+    # a run-time failure. `unmask` meets it as an `ExecutionError` carrying the same code, so
+    # the match is on the code. The other refusals of a vault the caller named (wrong secret,
+    # not a vault, another format or protocol version) are the caller's input.
+    if getattr(exc, "code", None) == reasons_runtime.VAULT_TAMPERED:
+        return EXIT_RUNTIME
+    if isinstance(exc, VaultError) and exc.code in _vault_input_codes():
         return EXIT_USAGE
     if isinstance(exc, usage_error_types()):
         return EXIT_USAGE

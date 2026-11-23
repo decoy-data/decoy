@@ -33,6 +33,7 @@ from decoy.cli.io import (
     side_file_default,
     write_private_table,
 )
+from decoy.cli.reports import is_vault_code, vault_hint
 from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.theme import code, success, warn
 
@@ -181,7 +182,7 @@ def unmask(
         raise typer.Exit(code=EXIT_USAGE)
 
     import pyarrow as pa
-    from decoy_engine import VaultError, unmask_pipeline
+    from decoy_engine import VaultError, reasons, unmask_pipeline
     from decoy_engine.errors import ConfigError
     from decoy_engine.execution import ExecutionError
     from decoy_engine.keyprovider import MaskSecretError
@@ -242,24 +243,20 @@ def unmask(
         err_code, message = plan_compile_error_fields(exc)
         _emit_error(f"{err_code}: {message}")
         raise typer.Exit(code=EXIT_USAGE)
-    except (ExecutionError, ConfigError) as exc:
+    except (ExecutionError, ConfigError, VaultError) as exc:
+        # The engine re-raises a vault's failure as an ExecutionError with the vault's own code.
+        failure_code = getattr(exc, "code", None)
+        if is_vault_code(failure_code):
+            _emit_error(
+                str(getattr(exc, "message", "")),
+                code=failure_code,
+                hint_text=vault_hint(failure_code),
+            )
+            # A vault that fails authentication is a run-time failure; the rest is the input.
+            if failure_code == reasons.runtime.VAULT_TAMPERED:
+                raise typer.Exit(code=exit_code_for(exc))
+            raise typer.Exit(code=EXIT_USAGE)
         _emit_error(f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}")
-        raise typer.Exit(code=EXIT_USAGE)
-    except VaultError as exc:
-        # A bad or mismatched vault is an input problem, not a CLI crash.
-        if getattr(exc, "code", None) == "vault_protocol_version_mismatch":
-            _emit_error(
-                f"{exc.code}: {exc.message}",
-                hint_text=(
-                    "the vault was written under a different engine protocol version; "
-                    "re-mask under the current engine, or unmask with the engine "
-                    "version that wrote the vault."
-                ),
-            )
-        else:
-            _emit_error(
-                f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}"
-            )
         raise typer.Exit(code=EXIT_USAGE)
     except Exception as exc:  # runtime failure, not a usage problem
         # The type only: a runtime error's text can quote a source or masked cell.

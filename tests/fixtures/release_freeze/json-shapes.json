@@ -391,11 +391,15 @@
   "report vault": {
     "paths": {
       "/ambiguous_dropped": "integer",
+      "/authenticated": "boolean",
       "/command": "string",
       "/entries": "integer",
+      "/format": "string",
+      "/key_version": "string",
       "/namespaces[]": "string",
       "/status": "string",
-      "/vault": "string"
+      "/vault": "string",
+      "/vault_id": "string"
     }
   },
   "report verify": {

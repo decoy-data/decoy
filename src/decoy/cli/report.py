@@ -43,7 +43,6 @@ from typing import Any
 
 import typer
 
-from decoy import _mask_secret
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
 from decoy._yaml_errors import sanitize_yaml_error
@@ -62,6 +61,7 @@ from decoy.cli.evidence import (
 )
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_RUNTIME, EXIT_USAGE, exit_code_for
 from decoy.cli.io import ReportTarget, entry_format, pipeline_option, report_dest, resolve_pipeline
+from decoy.cli.reports import VAULT_EPILOG, vault_command
 from decoy.ui.output import (
     OutputMode,
     OutputState,
@@ -2098,157 +2098,6 @@ def _integrity(
 
 
 # ---------------------------------------------------------------------------
-# CLI: report vault VAULT --config CONFIG  (relocated from `vault info`)
-# ---------------------------------------------------------------------------
-
-_VAULT_EPILOG = """\
-Examples:
-
-  decoy report vault vault.bin --config pipeline.yaml
-    Show entry count, namespaces, and ambiguous-dropped count.
-
-  decoy report vault vault.bin --config pipeline.yaml --json
-    Same data as a JSON envelope for scripting.
-
-  decoy report vault vault.bin --config pipeline.yaml --quiet
-    Silent mode; exit code 0 = vault opened successfully.
-
-The vault opens only under the mask secret that the `decoy run --vault`
-call used. Pass the same secret with --mask-secret, or name it in the
-config's global_settings.mask_secret_ref. The seed is not key material.
-A missing or wrong secret exits 1.
-
-See also: decoy run --vault, decoy unmask --vault.
-"""
-
-
-def _vault(
-    vault: Path = typer.Argument(
-        ...,
-        exists=True,
-        dir_okay=False,
-        readable=True,
-        help="The vault file written by `decoy run --vault`.",
-    ),
-    config: str = pipeline_option(
-        ...,
-        "--config",
-        help=(
-            "The pipeline file (.yaml or .decoy) the mask run used. The vault opens only under "
-            "the mask secret that run used (--mask-secret or global_settings.mask_secret_ref)."
-        ),
-    ),
-    mask_secret: str | None = typer.Option(None, "--mask-secret", help=_mask_secret.FLAG_HELP),
-    json_: bool = typer.Option(
-        False,
-        "--json",
-        help="Emit a structured JSON result on stdout. Errors still go to stderr.",
-    ),
-    quiet: bool = typer.Option(
-        False,
-        "--quiet",
-        "-q",
-        help="Suppress stdout. Errors still go to stderr; exit code carries the result.",
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="Enable debug-level CLI logs on stderr.",
-    ),
-) -> None:
-    """Inspect a vault file: report entry count, namespaces, and dropped-ambiguous count.
-
-    Opens the vault with the mask secret that --mask-secret or
-    global_settings.mask_secret_ref in the pipeline config names, the secret the `decoy run --vault` call
-    used; the seed is not key material. A missing or wrong secret exits 1.
-    Exits 0 on success, 1 on a config/vault/usage error.
-    """
-    state = setup_output(json_, quiet, verbose)
-    config_path = resolve_pipeline(config, state, "report vault").yaml
-
-    def _emit_error(message: str, *, hint_text: str | None = None, code: str | None = None) -> None:
-        emit_error(
-            state, "report vault", message, code=code, hint=hint_text, context={"vault": str(vault)}
-        )
-
-    try:
-        raw = load_config_mapping(config_path)
-    except (ConfigFileError, OSError) as exc:
-        _emit_error(**config_refusal(exc))
-        raise typer.Exit(code=exit_code_for(exc))
-    try:
-        _mask_secret.apply_mask_secret(raw, mask_secret)
-    except _mask_secret.MaskSecretFlagError as exc:
-        _emit_error(str(exc))
-        raise typer.Exit(code=EXIT_USAGE)
-
-    from decoy_engine import VaultError, load_vault
-    from decoy_engine.keyprovider import MaskSecretError
-
-    from decoy import _mask_secret_guidance
-
-    # The engine's own admission path (the one `decoy unmask` reaches through
-    # unmask_pipeline); the scope closes the admitted secret on every exit.
-    try:
-        with _mask_secret.admitted_key_provider(raw) as provider:
-            if provider is None:
-                # A vault is always keyed; there is no seed fallback to open it with.
-                _emit_error(_mask_secret_guidance.REPORT_VAULT)
-                raise typer.Exit(code=EXIT_USAGE)
-            mapping, ambiguous_dropped = load_vault(str(vault), provider.mask_key())
-    except MaskSecretError as exc:
-        _emit_error(
-            _mask_secret_guidance.secret_error_text(exc, _mask_secret_guidance.REPORT_VAULT)
-        )
-        raise typer.Exit(code=EXIT_USAGE)
-    except VaultError as exc:
-        if getattr(exc, "code", None) == "vault_protocol_version_mismatch":
-            _emit_error(
-                f"{exc.code}: {exc.message}",
-                hint_text=(
-                    "the vault was written under a different engine protocol version; "
-                    "re-mask under the current engine, or use the engine "
-                    "version that wrote the vault."
-                ),
-            )
-        else:
-            _emit_error(
-                f"{getattr(exc, 'code', type(exc).__name__)}: {getattr(exc, 'message', exc)}",
-                hint_text=(
-                    "use the mask secret (--mask-secret or global_settings.mask_secret_ref) "
-                    "of the `decoy run --vault` call that wrote this vault."
-                ),
-            )
-        raise typer.Exit(code=EXIT_USAGE)
-
-    entries = len(mapping)
-    namespaces = sorted({ns for (ns, _) in mapping})
-
-    if state.mode is OutputMode.json:
-        emit_json(
-            state,
-            {
-                "command": "report vault",
-                "status": "ok",
-                "vault": str(vault),
-                "entries": entries,
-                "namespaces": namespaces,
-                "ambiguous_dropped": ambiguous_dropped,
-            },
-        )
-        return
-
-    if state.mode is OutputMode.quiet:
-        return
-
-    state.console.print(success("OK"), code(str(vault)))
-    state.console.print(f"  entries:           {entries}")
-    state.console.print(f"  namespaces ({len(namespaces)}):   {', '.join(namespaces) or '(none)'}")
-    state.console.print(f"  ambiguous dropped: {ambiguous_dropped}")
-
-
-# ---------------------------------------------------------------------------
 # Command registration (continued)
 # ---------------------------------------------------------------------------
 
@@ -2258,7 +2107,7 @@ report_app.command(name="verify", epilog=_VERIFY_EPILOG)(_verify)
 report_app.command(name="fidelity", epilog=_FIDELITY_EPILOG)(_fidelity)
 report_app.command(name="integrity", epilog=_INTEGRITY_EPILOG)(_integrity)
 report_app.command(name="diff", epilog=_DIFF_EPILOG)(_diff)
-report_app.command(name="vault", epilog=_VAULT_EPILOG)(_vault)
+report_app.command(name="vault", epilog=VAULT_EPILOG)(vault_command)
 
 # Public exports
 __all__ = [

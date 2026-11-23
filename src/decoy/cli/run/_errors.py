@@ -186,8 +186,9 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
             raise RuntimeError("pre-run check carried an exit code with no category")
     elif capacity_code is not None or out_of_memory:
         _category = "capacity"
-    elif isinstance(exc, VaultError) and exc.code == reasons.runtime.VAULT_EXISTS:
-        # An existing vault is refused, never overwritten: the operator picks a new path.
+    elif isinstance(exc, VaultError) and _exit_codes.exit_code_for(exc) == EXIT_USAGE:
+        # A vault the caller causes: an existing one is never overwritten (pick a new path), and
+        # the other input refusals have the same owner, `exit_code_for`.
         _category = "usage"
     elif isinstance(exc, PostScanBlockedError):
         # The post-scan gate withheld the output on a verdict about the data, the same

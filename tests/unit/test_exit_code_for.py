@@ -161,3 +161,29 @@ def test_a_blocking_post_scan_is_findings_and_an_existing_vault_is_usage() -> No
     assert exit_code_for(PostScanBlockedError({})) == EXIT_FINDINGS
     assert exit_code_for(VaultError(code="vault_exists", message="m")) == EXIT_USAGE
     assert exit_code_for(VaultError(code="vault_other", message="m")) == EXIT_RUNTIME
+
+
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        ("vault_tampered", EXIT_RUNTIME),
+        ("vault_key_mismatch", EXIT_USAGE),
+        ("vault_crypto_not_installed", EXIT_USAGE),
+        ("vault_unreadable", EXIT_USAGE),
+        ("vault_format_unsupported", EXIT_USAGE),
+        ("vault_protocol_version_mismatch", EXIT_USAGE),
+    ],
+)
+def test_a_vault_that_fails_authentication_is_runtime_and_a_wrong_input_is_usage(
+    code: str, expected: int
+) -> None:
+    """F09: a damaged vault is exit 3; the wrong secret, file or format is the caller's (exit 1).
+
+    `decoy unmask` meets the engine's vault failure re-raised as an `ExecutionError` with the same
+    code, so the tampered match holds for that type too."""
+    from decoy_engine import VaultError
+    from decoy_engine.execution import ExecutionError
+
+    assert exit_code_for(VaultError(code=code, message="m")) == expected
+    if code == "vault_tampered":
+        assert exit_code_for(ExecutionError(code=code, message="m")) == EXIT_RUNTIME
