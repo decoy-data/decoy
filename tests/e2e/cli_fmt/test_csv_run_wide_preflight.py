@@ -150,9 +150,9 @@ def _add_list(table: str, index: int, chunk: pa.Table) -> pa.Table:
     return chunk
 
 
-def _retype(table: str, index: int, chunk: pa.Table) -> pa.Table:
+def _rename(table: str, index: int, chunk: pa.Table) -> pa.Table:
     if table == "b" and index == 1:
-        return chunk.set_column(1, "v", chunk.column("v").cast(pa.large_string()))
+        return chunk.rename_columns(["id", "w"])
     return chunk
 
 
@@ -162,7 +162,7 @@ def _assert_nothing_placed(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     ("mutate", "message"),
-    [(_add_list, "cannot write"), (_retype, "changed its output schema")],
+    [(_add_list, "cannot write"), (_rename, "changed its columns")],
     ids=["unsupported-type", "drift"],
 )
 def test_chunked_run_refuses_before_any_target_is_placed(
@@ -180,6 +180,8 @@ def test_chunked_run_refuses_before_any_target_is_placed(
         ("chunk", "a", i) for i in range(3)
     ]
     assert events.count(("open", "a")) == 1  # nothing reached the publication pass
+    # The refusal unwinds with b's stream still open; it is closed, not left to the collector.
+    assert events[-1] == ("close", "b")
 
 
 def test_chunked_run_masks_each_table_once_and_publishes_after_all_are_staged(

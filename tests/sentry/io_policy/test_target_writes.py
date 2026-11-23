@@ -56,8 +56,6 @@ STAGED_WRITERS = ("_write_table", "write_chunked_output")
 # name too; `test_open_csv_sink_wraps_only_the_stagers_temp` checks that its first argument is.
 # `_staged_chunked` is the chunked writer's staging wrapper; `test_staged_chunked_only_stages`
 # checks that it opens nothing but `staged_local_target`.
-# `_staged_chunked` is the chunked writer's staging wrapper; `test_staged_chunked_only_stages`
-# checks that it opens nothing but `staged_local_target`.
 STAGE_CALLS = frozenset(
     {"stage", "staged_local_target", "staged_private_target", "open_csv_sink", "_staged_chunked"}
 )

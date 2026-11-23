@@ -89,22 +89,23 @@ def test_the_error_never_holds_a_cell_value(tmp_path: Path) -> None:
     _no_context(caught.value)
 
 
-def test_a_changed_schema_is_coded_drift() -> None:
+def test_changed_column_names_or_order_are_coded_drift() -> None:
     first = pa.schema([("a", pa.int64()), ("b", pa.string())])
-    retyped = pa.schema([("a", pa.int64()), ("b", pa.int64())])
     renamed = pa.schema([("a", pa.int64()), ("z", pa.string())])
+    swapped = pa.schema([("b", pa.string()), ("a", pa.int64())])
     fewer = pa.schema([("a", pa.int64())])
     check_csv_types("t", first, expected_schema=first)
-    for later in (retyped, renamed, fewer):
+    for later in (renamed, swapped, fewer):
         with pytest.raises(TargetFormatError) as caught:
             check_csv_types("t", later, expected_schema=first)
         assert caught.value.code == "target.csv_schema_drift"
         _no_context(caught.value)
-    with pytest.raises(TargetFormatError) as caught:
-        check_csv_types("t", retyped, expected_schema=first)
-    assert "'b'" in str(caught.value)
-    assert "string" in str(caught.value)
-    assert "int64" in str(caught.value)
+
+
+def test_a_changed_type_is_not_drift() -> None:
+    first = pa.schema([("a", pa.int64()), ("b", pa.string())])
+    check_csv_types("t", pa.schema([("a", pa.float64()), ("b", pa.int64())]), expected_schema=first)
+    check_csv_types("t", pa.schema([("a", pa.null()), ("b", pa.date32())]), expected_schema=first)
 
 
 def test_schema_metadata_is_not_drift() -> None:
@@ -129,7 +130,7 @@ def test_chunked_writer_refuses_drift_before_the_chunk_reaches_the_writer(tmp_pa
     out = tmp_path / "out.csv"
     out.write_bytes(b"old\n")
     good = pa.table({"a": [1, 2], "b": ["x", "y"]})
-    drifted = pa.table({"a": [3], "b": [4]})
+    drifted = pa.table({"a": [3], "z": ["w"]})
     with pytest.raises(TargetFormatError) as caught:
         _chunks(tmp_path, [good, drifted])
     assert caught.value.code == "target.csv_schema_drift"
@@ -151,21 +152,14 @@ def test_one_schema_publishes_one_file_with_one_header(tmp_path: Path) -> None:
     assert out.read_bytes() == b'"a"\n"1"\n"2"\n"3"\n'
 
 
-def test_a_null_column_matches_any_type_either_way() -> None:
-    nulls = pa.schema([("a", pa.int64()), ("b", pa.null())])
-    typed = pa.schema([("a", pa.int64()), ("b", pa.string())])
-    check_csv_types("t", typed, expected_schema=nulls)
-    check_csv_types("t", nulls, expected_schema=typed)
-
-
-def test_chunked_writer_casts_a_later_null_chunk_to_the_first_type(tmp_path: Path) -> None:
+def test_chunked_writer_writes_a_later_null_chunk(tmp_path: Path) -> None:
     first = pa.table({"a": [1], "b": ["x"]})
     later = pa.table({"a": [2], "b": pa.nulls(1)})
     out = _chunks(tmp_path, [first, later])
     assert out.read_bytes() == b'"a","b"\n1,"x"\n2,\n'
 
 
-def test_chunked_writer_takes_text_for_a_column_that_is_all_null_in_the_first_chunk(
+def test_chunked_writer_takes_a_column_that_is_all_null_in_the_first_chunk(
     tmp_path: Path,
 ) -> None:
     first = pa.table({"a": [1], "b": pa.nulls(1)})
@@ -174,12 +168,17 @@ def test_chunked_writer_takes_text_for_a_column_that_is_all_null_in_the_first_ch
     assert out.read_bytes() == b'"a","b"\n1,\n2,"x"\n'
 
 
-def test_chunked_writer_refuses_a_non_text_type_after_an_all_null_first_chunk(
+def test_chunked_writer_accepts_a_non_text_type_after_an_all_null_first_chunk(
     tmp_path: Path,
 ) -> None:
     first = pa.table({"a": [1], "b": pa.nulls(1)})
     later = pa.table({"a": [2], "b": [5]})
-    with pytest.raises(TargetFormatError) as caught:
-        _chunks(tmp_path, [first, later])
-    assert caught.value.code == "target.csv_schema_drift"
-    assert list(tmp_path.iterdir()) == []
+    out = _chunks(tmp_path, [first, later])
+    assert out.read_bytes() == b'"a","b"\n1,\n2,5\n'
+
+
+def test_chunked_writer_writes_each_chunk_on_its_own_types(tmp_path: Path) -> None:
+    first = pa.table({"a": [1, 2], "b": pa.array([1, 2], pa.int64())})
+    later = pa.table({"a": [3, 4], "b": pa.array([3.0, None], pa.float64())})
+    out = _chunks(tmp_path, [first, later])
+    assert out.read_bytes() == b'"a","b"\n1,1\n2,2\n3,3\n4,\n'

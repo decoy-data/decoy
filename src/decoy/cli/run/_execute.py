@@ -134,8 +134,11 @@ def _run_chunked_mask(
             empty = (
                 partial(parquet_schema, src_path) if src_spec.get("format") == "parquet" else None
             )
+            stream = _masked_chunks(name, src_spec, config_dict, base_dir, chunk_size, key_provider)
+            # A refusal unwinds this stack, so every stream it opened is closed with it.
+            staged.callback(getattr(stream, "close", _no_close))
             published[name] = write_chunked_output(
-                _masked_chunks(name, src_spec, config_dict, base_dir, chunk_size, key_provider),
+                stream,
                 resolve_target_format(name, tgt_spec),
                 tgt_spec["path"],
                 layout,
@@ -145,6 +148,10 @@ def _run_chunked_mask(
                 defer=staged,
             )
     return published
+
+
+def _no_close() -> None:
+    """The close of a stream that has none (a plain iterator)."""
 
 
 def _masked_chunks(

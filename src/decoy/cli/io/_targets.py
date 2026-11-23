@@ -63,6 +63,8 @@ _SUFFIX_FORMAT = {".csv": "csv", ".parquet": "parquet", ".pq": "parquet"}
 # the table or the chunk.
 _CSV_WRITE_BATCH_ROWS = 65_536
 _CSV_WRITE_OPTIONS = pacsv.WriteOptions(include_header=True, delimiter=",", quoting_style="needed")
+# The same, for every chunk after the first of one chunked file: its header is already written.
+_CSV_BODY_OPTIONS = pacsv.WriteOptions(include_header=False, delimiter=",", quoting_style="needed")
 _EXHAUSTED = object()  # a yielded chunk is never mistaken for the end
 _INT64_MIN, _INT64_MAX = -(2**63), 2**63 - 1
 _CANONICAL_INT = re.compile(r"0|-?[1-9][0-9]*")
@@ -431,14 +433,15 @@ def _csv_type_allowed(arrow_type: pa.DataType) -> bool:
 def check_csv_types(
     table_name: str, schema: pa.Schema, *, expected_schema: pa.Schema | None = None
 ) -> None:
-    """Refuse an Arrow schema a CSV target cannot write, and a schema that drifted.
+    """Refuse an Arrow schema a CSV target cannot write, and a chunk whose columns changed.
 
-    The one rule for every Arrow CSV write: each column type must be in the allowlist, and
-    when `expected_schema` is given (the schema the writer was built with) the column names and
-    types must equal it. A `null`-typed column carries no values, so it matches any type: the
-    engine reports a chunk whose masked column is all null as `null`. Both refusals are
-    `TargetFormatError` and name only the table, columns and Arrow type names, never a value.
-    `write_chunked_output` calls this on every chunk, before the chunk reaches the writer.
+    The one rule for every Arrow CSV write: each column type must be in the allowlist. CSV
+    carries no types, so a column may change type between chunks (the engine's adapter makes a
+    nullable int64 chunk float64 and reports an all-null chunk as `null`). When
+    `expected_schema` is given (the first chunk's schema) only the column names and their order
+    must equal it. Both refusals are `TargetFormatError` and name only the table, columns and
+    Arrow type names, never a value. `write_chunked_output` calls this on every chunk, before
+    the chunk reaches the writer.
     """
     for field in schema:
         if not _csv_type_allowed(field.type):
@@ -447,20 +450,12 @@ def check_csv_types(
                 f"table {table_name!r} column {field.name!r} has Arrow type {field.type}, "
                 "which a CSV target cannot write; write a Parquet target instead",
             )
-    if expected_schema is None:
-        return
-    drift = "the column set changed"
-    if schema.names == expected_schema.names:
-        for new, old in zip(schema, expected_schema, strict=True):
-            if new.type == old.type or pa.types.is_null(new.type) or pa.types.is_null(old.type):
-                continue
-            drift = f"column {new.name!r} changed from {old.type} to {new.type}"
-            break
-        else:
-            return
-    raise TargetFormatError(
-        CSV_SCHEMA_DRIFT, f"table {table_name!r} changed its output schema between chunks: {drift}"
-    )
+    if expected_schema is not None and schema.names != expected_schema.names:
+        raise TargetFormatError(
+            CSV_SCHEMA_DRIFT,
+            f"table {table_name!r} changed its columns between chunks: "
+            f"{expected_schema.names} became {schema.names}",
+        )
 
 
 def _utc(arrow_type: pa.DataType) -> pa.DataType:
@@ -499,18 +494,25 @@ def _csv_schema(schema: pa.Schema) -> pa.Schema:
     return pa.schema([pa.field(f.name, _csv_type(f.type, single), f.nullable) for f in schema])
 
 
+def _csv_column(column: pa.Array, field: pa.Field, single: bool) -> pa.Array:
+    """`column` as the writer's `field`: dictionary decoded, zoned timestamps in UTC."""
+    if column.type != field.type:
+        if pa.types.is_dictionary(column.type):
+            column = column.dictionary_decode()
+        # Text of a zoned timestamp must be the UTC one, so recast the zone before the text cast.
+        column = column.cast(_utc(column.type))
+        column = column.cast(field.type) if column.type != field.type else column
+    return pc.fill_null(column, pa.scalar("", field.type)) if single else column
+
+
 def _csv_batch(batch: pa.RecordBatch) -> pa.RecordBatch:
     """`batch` converted to the writer's schema (`_csv_schema`)."""
     single = batch.num_columns == 1
     target = _csv_schema(batch.schema)
-    columns = []
-    for column, field in zip(batch.columns, target, strict=True):
-        if column.type != field.type:
-            if pa.types.is_dictionary(column.type):
-                column = column.dictionary_decode()
-            column = column.cast(_utc(column.type)) if column.type != field.type else column
-            column = column.cast(field.type) if column.type != field.type else column
-        columns.append(pc.fill_null(column, pa.scalar("", field.type)) if single else column)
+    columns = [
+        _csv_column(column, field, single)
+        for column, field in zip(batch.columns, target, strict=True)
+    ]
     return pa.RecordBatch.from_arrays(columns, schema=target)
 
 
@@ -676,16 +678,6 @@ def write_targets(
     return published
 
 
-def _widen_null(schema: pa.Schema) -> pa.Schema:
-    """`schema` with each `null`-typed column made text, so later chunks of it can hold values."""
-    return pa.schema(
-        [
-            pa.field(f.name, pa.string(), f.nullable) if pa.types.is_null(f.type) else f
-            for f in schema
-        ]
-    )
-
-
 @contextlib.contextmanager
 def _staged_chunked(
     out_path: Path, ledger: dict[str, Path] | None, name: str, defer: contextlib.ExitStack | None
@@ -757,16 +749,17 @@ def write_chunked_output(
                 for masked in () if first is _EXHAUSTED else itertools.chain((first,), chunks):
                     writer.write_table(output_table(masked))
         else:
-            writer_schema = _widen_null(cast("pa.Table", first).schema)
-            with (
-                open_csv_sink(tmp, out_path) as sink,
-                pacsv.CSVWriter(
-                    sink, _csv_schema(writer_schema), write_options=_CSV_WRITE_OPTIONS
-                ) as writer,
-            ):
-                for masked in itertools.chain((first,), chunks):
-                    check_csv_types(name or "output", masked.schema, expected_schema=writer_schema)
-                    _write_csv(masked.cast(writer_schema), writer)
+            first_schema = cast("pa.Table", first).schema
+            with open_csv_sink(tmp, out_path) as sink:
+                # One sink and one header. Each chunk gets a writer on its own types, because
+                # CSV carries none and the adapter may change a column's type between chunks.
+                for index, masked in enumerate(itertools.chain((first,), chunks)):
+                    check_csv_types(name or "output", masked.schema, expected_schema=first_schema)
+                    options = _CSV_WRITE_OPTIONS if index == 0 else _CSV_BODY_OPTIONS
+                    with pacsv.CSVWriter(
+                        sink, _csv_schema(masked.schema), write_options=options
+                    ) as writer:
+                        _write_csv(masked, writer)
     # Reached only after the staging context published the file (or, with `defer`, is staged).
     return out_path
 
