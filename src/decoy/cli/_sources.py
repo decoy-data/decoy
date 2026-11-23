@@ -18,7 +18,6 @@ for CLI-written files lives with their writer, in `cli/io/_targets.py`.
 from __future__ import annotations
 
 import itertools
-import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -88,10 +87,6 @@ def remote_source_names(config_dict: dict[str, Any]) -> list[str]:
         for n, d in sources.items()
         if isinstance(d, dict) and d.get("type") in CLOUD_ENDPOINT_TYPES
     ]
-
-
-# An engine reason code: lowercase dotted words, the shape `emit_error` accepts.
-_CODE_SHAPE = re.compile(r"[a-z][a-z0-9_.]*")
 
 
 def refusal_message(exc: Exception) -> str:
@@ -201,11 +196,13 @@ def scan_refusal_fields(exc: Exception) -> tuple[str, str | None]:
     failure helper. The message drops a leading `code: ` (the printer shows the code itself) and,
     like every engine refusal here, names a table or key, never a value.
     """
+    from decoy.ui.output import is_reason_code
+
     code = getattr(exc, "code", None)
     if not isinstance(code, str):
         problems = getattr(exc, "problems", ())
         code = getattr(problems[0], "code", None) if problems else None
-    if not isinstance(code, str) or _CODE_SHAPE.fullmatch(code) is None:
+    if not is_reason_code(code):
         code = None
     return refusal_message(exc), code
 

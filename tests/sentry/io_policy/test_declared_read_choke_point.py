@@ -157,13 +157,17 @@ def _calls(source: str) -> list[tuple[str, str, int, ast.Call]]:
 
 
 def _gate_lines(source: str, rel: str, gates: frozenset[str] = GATES) -> dict[str, int]:
-    """The first line of each function's gate call, matched on the resolved qualified name."""
+    """The first line of each function's gate call, matched on the resolved qualified name.
+
+    `LOCAL_GATES` are ordinary gates, so they count only when the caller asks for the ordinary
+    set; a scan requirement is met by a scan gate alone.
+    """
     first: dict[str, int] = {}
     for s in sites(ast.parse(source)):
         if not isinstance(s.node, ast.Call):
             continue
         resolved = qualified(s.node, s.bound)
-        local = resolved is None and (rel, _name_of(s.node)) in LOCAL_GATES
+        local = gates is GATES and resolved is None and (rel, _name_of(s.node)) in LOCAL_GATES
         if resolved in gates or local:
             fn = _top(s.scope)
             first[fn] = min(s.lineno, first.get(fn, s.lineno))
@@ -233,14 +237,17 @@ def test_required_commands_hold_a_gate() -> None:
     assert missing == []
 
 
-def test_scan_commands_hold_a_scan_gate() -> None:
-    modules = dict(_modules())
-    missing = [
+def missing_scan_gates(modules: dict[str, str]) -> list[tuple[str, str]]:
+    """Scan commands whose source holds no scan gate call."""
+    return [
         (rel, fn)
         for rel, fn in REQUIRED_SCAN
         if fn not in _gate_lines(modules[rel], rel, SCAN_GATES)
     ]
-    assert missing == []
+
+
+def test_scan_commands_hold_a_scan_gate() -> None:
+    assert missing_scan_gates(dict(_modules())) == []
 
 
 def test_engine_entries_get_the_reader_side_copy() -> None:
@@ -668,6 +675,18 @@ def test_seeded_owner_bypasses_are_detected() -> None:
         )
     )
     assert scan_call_violations("def scan_descriptors(prepared):\n    return 1\n")
+
+
+def test_seeded_ordinary_gate_does_not_satisfy_the_scan_requirement() -> None:
+    # The reverse substitution: an ordinary gate on a scan command leaves it without a scan gate.
+    modules = {rel: "" for rel, _fn in REQUIRED_SCAN}
+    modules["api.py"] = "def scan(raw, items):\n    _gate_in_memory_data(raw, items)\n"
+    modules["cli/demo.py"] = (
+        "from decoy.cli._sources import prepared_sources\n"
+        "def _run_single_demo(c, b):\n    prepared_sources(c, base_dir=b)\n"
+    )
+    assert ("api.py", "scan") in missing_scan_gates(modules)
+    assert ("cli/demo.py", "_run_single_demo") in missing_scan_gates(modules)
 
 
 def test_seeded_scan_gate_substitution_and_hidden_calls_are_detected() -> None:
