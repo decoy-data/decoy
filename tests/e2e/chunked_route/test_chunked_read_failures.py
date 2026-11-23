@@ -49,6 +49,14 @@ def _csv_config(tmp_path: Path, rows: list[bytes]) -> Path:
     return path
 
 
+def _source_config(tmp_path: Path, src: Path, fmt: str) -> Path:
+    path = _csv_config(tmp_path, [b"1,a@x.com\n"])
+    cfg = yaml.safe_load(path.read_text(encoding="utf-8"))
+    cfg["sources"] = {"t": file_source(src, fmt)}
+    path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    return path
+
+
 def _run(cfg: Path, *flags: str):
     return runner.invoke(app, ["run", str(cfg), "--chunked", *flags])
 
@@ -79,6 +87,47 @@ class TestAt1BadCsvByteIsValueFree:
         assert payload.get("error_kind") != "capacity"
 
 
+class TestAt3DecoderFailureIsValueFree:
+    """AT-B3: a decoder error mid-stream is the coded refusal, never the decoder's own text."""
+
+    @pytest.mark.parametrize("flag", ["--json", "--verbose"])
+    def test_gzip_tail_that_is_plaintext(self, tmp_path: Path, flag: str) -> None:
+        import gzip
+
+        good = b"id,email\n" + b"".join(f"{i},user{i}@x.com\n".encode() for i in range(80_000))
+        src = tmp_path / "in.csv.gz"
+        src.write_bytes(gzip.compress(good) + b"LEAKCELL,secret@x.com\n")
+        cfg = _source_config(tmp_path, src, "csv")
+        result = _run(cfg, flag)
+        assert result.exit_code == 3, result.output
+        assert "chunked_passthrough_value_unrepresentable" in result.output
+        for marker in ("LEAKCELL", "b'LE'", "gzipped", "secret@x.com"):
+            assert marker not in result.output, marker
+
+    @pytest.mark.parametrize("flag", ["--json", "--verbose"])
+    def test_corrupt_second_snappy_row_group(self, tmp_path: Path, flag: str) -> None:
+        import pyarrow.parquet as pq
+
+        n = 150_000
+        table = pa.table({"id": list(range(n)), "email": [f"user{i}@x.com" for i in range(n)]})
+        src = tmp_path / "in.parquet"
+        pq.write_table(table, src, compression="snappy", row_group_size=50_000)
+        meta = pq.ParquetFile(src).metadata
+        assert meta.num_row_groups == 3
+        raw = bytearray(src.read_bytes())
+        col = meta.row_group(1).column(1)
+        start = col.dictionary_page_offset or col.data_page_offset
+        end = start + col.total_compressed_size
+        raw[start + 20 : end - 20] = b"\xff" * (end - start - 40)
+        src.write_bytes(bytes(raw))
+        cfg = _source_config(tmp_path, src, "parquet")
+        result = _run(cfg, flag)
+        assert result.exit_code == 3, result.output
+        assert "chunked_passthrough_value_unrepresentable" in result.output
+        assert "unexpected_error" not in result.output
+        assert "decompression" not in result.output.lower()
+
+
 def _patched_engine(monkeypatch: pytest.MonkeyPatch, *, at: str, exc: Exception) -> None:
     import decoy_engine
 
@@ -96,7 +145,11 @@ def _patched_engine(monkeypatch: pytest.MonkeyPatch, *, at: str, exc: Exception)
 
 
 @pytest.mark.parametrize("at", ["creation", "iteration"])
-@pytest.mark.parametrize("make", [pa.ArrowMemoryError, MemoryError], ids=["arrow", "python"])
+@pytest.mark.parametrize(
+    "make",
+    [pa.ArrowMemoryError, pa.ArrowCapacityError, MemoryError],
+    ids=["arrow", "arrow-capacity", "python"],
+)
 class TestAt2OutOfMemoryIsCapacity:
     def test_exit_5_and_capacity_kind(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, at: str, make: type

@@ -1,5 +1,6 @@
 """How `decoy run` executes: the chunked and plain branches, and the source and target I/O."""
 
+import zlib
 from collections.abc import Iterator
 from contextlib import ExitStack
 from functools import cache, partial
@@ -8,6 +9,7 @@ from typing import Any
 
 from decoy import _native_gate, _resources
 from decoy.cli import gen
+from decoy.cli.exit_codes import is_out_of_memory
 from decoy.cli.extras import check_cloud_endpoints, check_cloud_endpoints_supported
 from decoy.cli.io import (
     DuckDBSourceError,
@@ -266,7 +268,7 @@ def _value_free_failure(exc: Exception, *, reading: bool = False) -> Exception |
     from decoy_engine import ExecutionError, reasons
 
     code = reasons.runtime.CHUNKED_PASSTHROUGH_VALUE_UNREPRESENTABLE
-    if isinstance(exc, (MemoryError, pa.ArrowCapacityError)):
+    if is_out_of_memory(exc):
         return None
     if isinstance(exc, ExecutionError):
         if exc.code != code:
@@ -281,8 +283,13 @@ def _value_free_failure(exc: Exception, *, reading: bool = False) -> Exception |
             pa.ArrowInvalid,
             pa.ArrowTypeError,
             pa.ArrowNotImplementedError,
+            EOFError,
+            zlib.error,
         )
-        if isinstance(exc, read_types):
+        # A decoder failure (a corrupt gzip member or Snappy page) is an OSError with no errno
+        # and its text can quote source bytes. A missing or unreadable file has an errno.
+        decoder_oserror = isinstance(exc, OSError) and exc.errno is None
+        if decoder_oserror or isinstance(exc, read_types):
             return ExecutionError(code=code, message=_UNREADABLE_MESSAGE)
         return None
     if isinstance(exc, (ValueError, ArithmeticError, pa.ArrowException)):

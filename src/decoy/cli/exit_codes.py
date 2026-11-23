@@ -269,6 +269,17 @@ def exit_code_for(exc: BaseException) -> int:
     return EXIT_RUNTIME
 
 
+def is_out_of_memory(exc: BaseException) -> bool:
+    """True when `exc` is the host or Arrow running out of memory (the capacity exit).
+
+    The one classification for the chunked read boundary and the run error exit.
+    `ArrowMemoryError` is a `MemoryError`; `ArrowCapacityError` is not, so it is named.
+    """
+    import pyarrow as pa
+
+    return isinstance(exc, (MemoryError, pa.ArrowCapacityError))
+
+
 def usage_error_types() -> tuple[type, ...]:
     """The exception types that exit 1: the operator's request or environment is wrong.
 
@@ -351,4 +362,5 @@ __all__ = [
     "EXIT_WARNINGS",
     "PRECEDENCE",
     "RUN_EXIT_MAP",
+    "is_out_of_memory",
 ]
