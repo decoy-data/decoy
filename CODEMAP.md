@@ -2,7 +2,7 @@
 
 ## One-Line Project Summary
 
-Installable Typer/Rich CLI that wraps `decoy-engine` for local validation, runs, STORM/FORECAST, templates, examples, and terminal UX.
+Installable Typer/Rich CLI that wraps `decoy-engine` for local validation, runs, scans, reports, templates, examples, and terminal UX.
 
 ## Tech Stack
 
@@ -26,7 +26,7 @@ Installable Typer/Rich CLI that wraps `decoy-engine` for local validation, runs,
 
 | Path | What Lives Here |
 |---|---|
-| `src/decoy/cli/` | `run`, `validate`, `plan`, `storm`, `init`, `demo`, `explain`, `info`, `upgrade`, `templates`, `tokenize`/`detokenize` commands |
+| `src/decoy/cli/` | `run`, `validate`, `plan`, `scan`, `report`, `ci`, `init`, `demo`, `explain`, `info`, `upgrade`, `templates`, `tokenize`/`unmask` commands |
 | `src/decoy/cli/ci.py` | `decoy ci check`: flags and report file I/O only (F43) |
 | `src/decoy/cli/models/` | `decoy models list` and `decoy models install ner` (SCAN-ML C1): `_install.py` (pip or uv, constraints, verify), `_source.py` (`--from` check and private copy), `_private.py` (its only file writes), `_status.py` (rows, hints, `decoy doctor` model and DP rows), `_errors.py` (the `models.*` codes); the `decoy setup` models step is `src/decoy/cli/setup/_models.py` and the gate's `post_scan` model check `src/decoy/cli/gate/_models.py` |
 | `src/decoy/ci/` | CI integration layer: `contracts` (manifest + value-free finding boundary), `manifest` (strict loader/schema), `adapters` (thin wrappers over existing checks), `staged` + `_git` (bounded Git-index scan), `reporting` (JSON/SARIF/Markdown), `runner`, `debug` |
@@ -97,7 +97,7 @@ One row per kind of module. Path cells are checked by `tests/sentry/layout/test_
 | Validate command | `src/decoy/cli/validate.py` (gate: `src/decoy/cli/gate/`) |
 | CI checks / SARIF / pre-commit | `src/decoy/ci/`, `src/decoy/cli/ci.py`, `docs/ci-contracts.md`, `.pre-commit-hooks.yaml`, `integrations/` |
 | Hosted CI installs (lock-env, setup-uv, install policy, scanner) | `.github/actions/`, `ci/install-policy.toml`, `scripts/dev/lock_version.sh`, `tests/sentry/_ci_lock_scan.py` |
-| STORM command | `src/decoy/cli/storm.py` |
+| Scan command | `src/decoy/cli/scan.py`, `src/decoy/cli/scanning/` |
 | Plan command | `src/decoy/cli/plan.py` |
 | Output formatting | `src/decoy/ui/` |
 | Templates | `src/decoy/templates/` |

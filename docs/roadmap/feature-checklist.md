@@ -44,7 +44,7 @@ the CLI V1 track; platform halves are parked.
 F04's remaining contract (no standalone unmasked subset artifact; platform materialization) rides
 F22, F25 and SUB-RUN.
 
-Legacy items: A-4 and B-5 become F45; A-5 is the STORM rename; A-7 and D2 merged; A-8, B-6 and B-1
+Legacy items: A-4 and B-5 become F45; A-5 is the retired-name removal (rows 16 and 56); A-7 and D2 merged; A-8, B-6 and B-1
 become F09 and F14; B-2 becomes F44; B-9 becomes F35 and F36; B-10 becomes F24; route-coverage phase 2
 is post-V1; GEN-API go-live merged (#153); B-11 and A-2 are R2 validation; B-12 scheduler is F27
 (council V2), and the dormant scheduler code is to be finished and activated on the platform

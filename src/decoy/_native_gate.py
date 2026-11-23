@@ -46,7 +46,10 @@ design decision to hide.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from decoy_engine import ExecutionResult
 
 NativeIntent = Literal["default", "require", "disable"]
 
@@ -366,13 +369,9 @@ def pre_execution_gate(
     if status is None:
         status = _probe_status()
     if status.reason == "absent":
-        return PreGateResult(
-            unified_slice_enabled=True,
-            info_message=(
-                "native acceleration is not installed; run `decoy explain native` "
-                "for current install status. Running on the Python fallback."
-            ),
-        )
+        # Normal portable operation. The engine reports a run that needed a
+        # kernel and ran without one (`fallback_notice`), so no pre-run hint.
+        return PreGateResult(unified_slice_enabled=True)
     if not status.ok:
         # Present but broken (abi-mismatch / kat-corrupt / load-error): a
         # deployment defect, not portable-package operation -- fail closed by
@@ -384,6 +383,28 @@ def pre_execution_gate(
             code=f"native_companion_{status.reason}",
         )
     return PreGateResult(unified_slice_enabled=True)
+
+
+FALLBACK_HINT = (
+    "Compiled kernels come with the signed bundle; run `decoy explain native` "
+    "to see what is missing."
+)
+
+
+def fallback_notice(result: ExecutionResult, *, intent: NativeIntent) -> str | None:
+    """The line to print after a run, or None. Only the default intent prints.
+
+    The text is the engine's registered summary plus one fixed hint; an
+    unregistered code (a newer engine) prints nothing.
+    """
+    if intent != "default":
+        return None
+    from decoy_engine import reasons
+
+    spec = reasons.find("warning", result.native_fallback_code)
+    if spec is None:
+        return None
+    return f"{spec.summary} {FALLBACK_HINT}"
 
 
 def classify_route(

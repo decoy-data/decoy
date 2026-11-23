@@ -69,7 +69,6 @@ CREATED_IN = {
     "json-stdout-writes": "CL2",
     "exit-code-owner": "CL3",
     "config-load-allow": "CL3",
-    "retired-name-pending": "NAME-REMOVAL-C1",
     "banned-text-allow": "PROP-C-G1",
     "outbound-network-owners": "FREEZE-S6",
     "old-org-refs": "CLI-REL-S0id",

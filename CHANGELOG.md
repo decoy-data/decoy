@@ -13,6 +13,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 - **`decoy report vault` shows the authenticated header, and a damaged vault is refused by name (F09, roadmap row 79).** The report adds the vault format, the key version and a short vault id (the first 12 characters; never the key check value) to the console output and to the `--json` document (`format`, `key_version`, `vault_id`, `authenticated`; the `entries` count now comes from the header), and every vault refusal now sets the `code` member. A vault whose header, segments, order or count were changed after it was written (a file cut inside its header is `vault_unreadable`, exit 1) now exits 3 with `vault_tampered` from `decoy report vault` and `decoy unmask --vault`, with a message that names no path or value. A wrong secret still exits 1 with `vault_key_mismatch`, and a file that is not a vault still exits 1. `decoy explain vault` describes the v3 file. An older `decoy-vault/v2` file still opens read-only; `report vault` says its header is not authenticated.
 
+- The retired product name is gone from the CLI, its docs and its sdist. The residual sentry is now absolute: no pending list.
 - **The flags and `--json` documents of `decoy scan SOURCES` and `decoy validate CONFIG` are frozen (FREEZE-SURFACE C-HIDDEN).** Both run through hidden default commands (`scan _scan`, `validate _gate`) that the frozen-surface map listed as `internal`. They are now `frozen-hidden`, so `--has-header/--no-header`, `--column-names`, `--rows`, `--strategy`, `--format`, `--layout`, `--detectors`, `--ner-model`, `--show-fields` and `--fail-on-warning` cannot be removed or renamed without a major version. `decoy scan --help` and `decoy validate --help` (and `docs/cli-reference.md`) now list these options, and `json-shapes.json` gains the `scan` and `validate` `--json` documents. No flag, output or exit code changes.
 - **A `lintdebt` step in `scripts/dev/gates.sh` blocks new lint debt (LINTDEBT-A1).** It runs ruff in report mode with extra rules (`BLE001`, `PGH003`, `ANN401`, `PTH`, `PLW1514`, `ERA001`, `C901`, `PLR0912`, `PLR0915`, and `T20` everywhere except `ui/output.py`) and compares the count per file and rule with the shrink-only baseline `tests/sentry/baselines/lint-debt.json`. A new hit, or a count above the baseline, fails and names the file and rule, never the code. A count below the baseline passes and says to run `python scripts/dev/lintdebt.py --shrink`. The baseline is registered like every other sentry baseline, so `ratchet_check.py` refuses a raised count or a new key. The extra rules apply to this step only; the `ruff check` that CI runs is unchanged. Developer tooling only: no CLI flag, exit code or output change.
 
@@ -22,6 +23,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Changed
 
+- **`decoy run` prints one line when a native kernel was needed and masking ran in Python (NATIVE-MISSING-WARN C1).** The engine reports it; the CLI prints the engine's summary and a pointer to `decoy explain native` on stderr, for a plain run without `--quiet`, `--native`, `--no-native`, `--chunked` or `--rows`. `--json` stdout, exit codes and files are the same. The old pre-run `native:` hint for an absent companion is removed.
 - **Engine repin to `decoy-engine==0.28.3` (`v0.28.3`).** The pin moves from 0.28.2; `requirements-certified.txt` keeps its 70 pins and records fingerprint `228ed71e...`, which engine 0.28.3 lists as a certified row (only the hashed engine version moved). Engine changes you see through the CLI: `date_shift` on a number, boolean or decimal column is refused at compile (write the column as text first), while a typed date or zoned timestamp column from Parquet or a database now shifts and keeps its type; `bucket_perturb` no longer passes source values through, so a run with no `date_format` that the engine cannot detect stops with `bucket_perturb_requires_date_format`, and a cell that does not parse is a `format_error` row error; a vault written now is `decoy-vault/v3`, which an older engine cannot open; a stored plan from an older engine must be compiled again; `windowed_date` gives different dates for the same seed. No CLI flag or verb changes.
 
 - **The one-folder batch publish moves to its own module (DELIV C0, roadmap row 61).** `publish_local_targets` and `LocalTarget` now live in `src/decoy/_atomic_batch.py` so `_atomic.py` stays under its size cap; `decoy._atomic_batch` now exports both; `decoy._atomic` no longer does. The order of steps, the folder lock and the error codes are the same, with three fixes in the move. A target held open by another program on Windows now reports `atomic_target_busy` instead of `atomic_write_failed`. An interrupt (Ctrl-C) during a publish now restores every target already replaced, and an interrupt during that restore keeps the old bytes of every target not yet restored; before, either could lose them. One ledger now owns every backup: a backup name belongs to the batch only after its hard link succeeds, so a link that fails because the name is taken never deletes the file already there, and cleanup re-checks that a target is unchanged before it deletes the backup, so an interrupt at any point leaves no stray hidden `.bak` file beside an unchanged target. No flag, output or exit code changes.
@@ -234,7 +236,7 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 - **Mask-secret refusals print fixed text chosen by their code** on `decoy run`, `decoy tokenize`, `decoy unmask` and `decoy report vault` (exit 1): `weak_mask_secret`, `missing_mask_secret`, `bad_secret_ref`, `secret_provider_unknown` and `secret_file_permissions_unsafe` (which says the file must be owner-only) each have one constant remedy, and the keyed refusal keeps each surface's own text (`decoy tokenize` now has its own). The engine's message is never printed. `decoy unmask` checks the secret code before its other error classes, and its CSV-read and runtime failures print the error type only (a parse error can quote a cell).
 - **`decoy unmask` and `decoy report vault` take `--mask-secret REF`** (`env:NAME`, `file:/PATH`), the same flag `decoy run` has; it fills `global_settings.mask_secret_ref`, and setting both is a usage error (exit 1). `decoy run --vault` (and a `--chunked` multi-table run) reads the mask secret once and hands that one key to the vault writer and every table, instead of reading it again per engine call. A `vault://` ref now reaches the engine, which refuses it with `secret_provider_unknown` (the CLI registers no Vault provider). The `unmask` and `report vault` remedies and `decoy explain keys` name the flag and an owner-only `file:` recipe. There is still no implicit source: no auto-read variable, default key file or generated key.
 - **`decoy run --chunked --vault` is refused (exit 1) before any work.** A chunked run writes each output chunk before the vault that re-identifies it exists, and the engine refuses a chunked entry with a vault writer. The CLI now stops first with one fixed message naming both flags; no output, no vault and no secret read. Run without `--chunked` to write a vault.
-- **Engine repin to `decoy-engine==0.17.0` (R-a, `v0.17.0` / `1132d29e`), crossing 0.16.0.** Every engine call uses the new names: `run_storm` -> `profile_columns`, `decoy_engine.storm.postmask.run_storm_post_mask` -> `decoy_engine.verification.postmask.run_post_mask` (report schema `post-scan-integrity/v2`), `decoy_engine.storm.ner` -> `decoy_engine.detection.ner`. Generated and bundled pipelines (`decoy init`, `decoy demo`, `report integrity`, the five templates, `examples/`) declare `version: 2`, which the engine now requires. The native eligibility hint declines `post_scan: {integrity: true}` (was `run_storm`). The local token vault's `put` returns the stored token (engine 0.16.0 `TokenVaultWriter` contract). `decoy explain keys` states that a keyed strategy with no mask secret is rejected (`keyed_strategy_requires_secret`); the pre-GA `job_seed` fallback is gone. `requirements-certified.txt` records fingerprint `a7b40d54...` for engine 0.17.0. CLI verbs are not renamed.
+- **Engine repin to `decoy-engine==0.17.0` (R-a, `v0.17.0` / `1132d29e`), crossing 0.16.0.** Every engine call uses the renamed profiling and verification names (`profile_columns`, `decoy_engine.verification.postmask.run_post_mask`, report schema `post-scan-integrity/v2`, `decoy_engine.detection.ner`). Generated and bundled pipelines (`decoy init`, `decoy demo`, `report integrity`, the five templates, `examples/`) declare `version: 2`, which the engine now requires. The native eligibility hint declines `post_scan: {integrity: true}` (it was tied to the old profiling entry point). The local token vault's `put` returns the stored token (engine 0.16.0 `TokenVaultWriter` contract). `decoy explain keys` states that a keyed strategy with no mask secret is rejected (`keyed_strategy_requires_secret`); the pre-GA `job_seed` fallback is gone. `requirements-certified.txt` records fingerprint `a7b40d54...` for engine 0.17.0. CLI verbs are not renamed.
 - **A keyed pipeline with no mask secret now gets a CLI remedy, not the engine's.** `decoy run` (plain and `--chunked`) prints one fixed `keyed_strategy_requires_secret` message naming `--mask-secret env:NAME|file:/PATH` and `global_settings.mask_secret_ref` (exit 1); `decoy unmask` names `global_settings.mask_secret_ref` and now exits 1 instead of 3 for every mask-secret error (`missing_mask_secret`, `weak_mask_secret`, the keyed refusal), matching `run` and `tokenize`; `decoy.mask()` raises its documented `MaskSecretConfigError` naming `mask_secret=`. The gdpr, hipaa and pci templates, `decoy init` scaffolds of keyed files, the init next steps, `decoy explain keys`, `decoy explain vault` and `decoy unmask --help` say a secret is required and how to supply one; none still says the seed is the key.
 - **`decoy report vault` opens the vault with the mask secret, not the seed.** It admits `global_settings.mask_secret_ref` through the engine's `secret_providers.admit_mask_key` (the path `decoy unmask` reaches) and refuses with a fixed `keyed_strategy_requires_secret` message when no secret is set; the `job_seed` key path is gone. Missing, wrong or malformed secrets exit 1. There is no `--mask-secret` flag on `unmask` or `report vault`.
 - **`decoy ci` rule codes: the engine half of the allowlist is derived from the engine's reason registry** (`decoy_engine.reasons.manifest()`, SARIF-safe tokens only) on first use, plus 14 literal codes the engine raises outside the registry, instead of a hand-written list. The pydantic, CLI-gate, evidence and templated sets are unchanged.
@@ -367,12 +369,12 @@ migration shims. Highlights:
   `validate config` folded into `decoy validate <config>`, which compiles,
   preflights, and reports the plan. `--fail-on-warning` returns exit code 2
   (`EXIT_WARNINGS`).
-- **`scan` replaces `storm`/`profile`/`fit`** as the one "look at my data" verb.
+- **`scan` replaces the old scan group, `profile` and `fit`** as the one "look at my data" verb.
 - **One reference vocabulary, `list` / `show`.** `decoy list <kind>` and `decoy
   show <kind> [name]` replace the per-registry sub-apps (strategies, providers,
   templates, validators).
 - **One post-run noun, `report`.** `evidence`, the old `report` verbs, `validate
-  distribution`, and `storm integrity` folded into `report`
+  distribution`, and the old integrity verb folded into `report`
   (`summarize`/`diff`/`integrity`/`verify`/`show`/`fidelity`/`vault`). The CLI is
   now stateless and file-first: `project`, `catalog`, and `jobs` are removed; a
   `report` verb takes manifest/output file paths, not catalog run-ids.
@@ -383,7 +385,7 @@ migration shims. Highlights:
 - **One flag vocabulary.** `--out` renamed to `--output`/`-o` everywhere; a
   uniform `--json` (stable machine envelope) / `--quiet,-q` / `--verbose,-v`
   trio on every command; `plan`'s former off-meaning `--json` removed.
-- **Deletions.** `storm test`, the deprecated `storm scan` alias, `jobs watch`,
+- **Deletions.** The old scan group's `test` verb, its deprecated `scan` alias, `jobs watch`,
   and the `forge` compatibility shim (and its exit code) are gone. The exit-code
   contract is the six documented codes (0/1/2/3/4/5).
 - **Anti-drift.** The README "Common commands" table and root help are generated
@@ -641,7 +643,7 @@ It returns once the engine validator is hardened and released.
   (names each column's strategy so intentional loss is not flagged as
   accidental drift), `--policy` / `--mode` / `--min-grade` / `--min-score`,
   `--report-out`. A `fail` policy verdict exits `EXIT_FINDINGS` (4), matching
-  `decoy storm integrity`'s data-audit exit-code contract.
+  the old integrity verb's data-audit exit-code contract.
 
 - **`decoy run --notify <kind:target>`** (repeatable) + **`--notify-on
   {success,failure,always}`**: send a best-effort notification after a run
@@ -694,16 +696,16 @@ It returns once the engine validator is hardened and released.
   them at once. Backward-compatible: the top-level `error` string key is
   preserved for error responses.
 
-- **`decoy storm analyze --format parquet|fixed-width|delimited`**: explicit
-  format selector for the STORM analyzer. Format is also inferred from file
+- **`decoy scan --format parquet|fixed-width|delimited`**: explicit
+  format selector for the analyzer. Format is also inferred from file
   extension (`.parquet`/`.pq` -> parquet; `.fwf`/`.dat`/`.fixed`/`.fw` ->
   fixed-width; everything else -> delimited/CSV).
 
-- **`decoy storm analyze` Parquet support**: `.parquet` files are now read via
+- **`decoy scan` Parquet support**: `.parquet` files are now read via
   `pd.read_parquet` (pyarrow is a core engine dependency). Sampling
   strategies (`--rows`, `--strategy`) apply after load.
 
-- **`decoy storm analyze --layout <layout.yaml>`**: fixed-width input support
+- **`decoy scan --layout <layout.yaml>`**: fixed-width input support
   behind an explicit layout spec (column name + start offset + width). Layout
   can be YAML or JSON. Fixed-width without `--layout` fails closed with a
   clear, actionable error -- column boundaries are ambiguous without a spec.
@@ -760,7 +762,7 @@ Findings from the 2026-06-11 full-codebase audit.
   EXIT_RUNTIME(3).
 - **Mixed mask+generate configs rejected** (audit H11): previously they
   exited 0 while silently writing no output for the generate tables.
-- **`storm integrity` exit 4 is reachable** (engine audit C1/H6): a
+- **The integrity report's exit 4 is reachable** (engine audit C1/H6): a
   masked file identical to its source now fails with a residual_pii
   'fail'; E2E locks both directions.
 - **Config parsed once per `decoy run`** (audit L3; was up to 4 parses).
@@ -781,8 +783,8 @@ Findings from the 2026-06-11 full-codebase audit.
 
 ### Changed
 
-- Help-text accuracy pass: root and `storm test` help no longer reference the
-  old `storm scan` verb (now `storm analyze`); the `templates` help example no
+- Help-text accuracy pass: root and the scan test help no longer reference the
+  old scan verb (now the analyzer); the `templates` help example no
   longer shows the removed `graph` template; `explain modes` help no longer
   lists the removed `convert`/`graph` modes; `explain transforms` notes the full
   12-strategy set instead of claiming "eight"; `CODEMAP.md` drops the removed
@@ -824,7 +826,7 @@ index; first publish lands with OSS.7.
 ### Fixed (from QA review docs/qa/review-2026-06-02-cli-v2-migration.md)
 
 - F2: stale `FORECAST` mention in `demo.py` module docstring (the
-  legacy recommender was retired under storm-reframe-C).
+  legacy recommender was retired in the scan reframe).
 - F3: `plan.py::_empty_profile_for_no_profile` now uses POSIX epoch as
   a "no real profile" sentinel instead of a hardcoded slice date.
 - F5: orphan V1-shape YAML builders in `demo.py` carry per-function

@@ -91,7 +91,7 @@ def test_run_without_notify_unaffected(tmp_path: Path):
     cfg = _write_mask_config(tmp_path)
     result = runner.invoke(app, ["run", str(cfg), "--json"])
     assert result.exit_code == 0, result.output
-    payload = _json.loads(result.output)
+    payload = _json.loads(result.stdout)
     assert "notify" not in payload
 
 
@@ -124,7 +124,9 @@ def test_a_bad_notify_spec_is_refused_without_quoting_it(tmp_path: Path):
     assert "tail" not in result.stderr and _LONG not in result.stderr, result.stderr
 
 
-@pytest.mark.parametrize("spec", ["webhook:file:///x", "slack:http://hooks.example.com/SECRETTOKEN"])
+@pytest.mark.parametrize(
+    "spec", ["webhook:file:///x", "slack:http://hooks.example.com/SECRETTOKEN"]
+)
 def test_a_refused_notify_scheme_exits_usage_with_a_code(tmp_path: Path, spec: str):
     cfg = _write_mask_config(tmp_path)
     result = runner.invoke(app, ["run", str(cfg), "--notify", spec, "--json"])
@@ -181,7 +183,7 @@ def test_run_notify_on_success_fires_on_success(tmp_path: Path):
         )
     assert result.exit_code == 0, result.output
     assert spy.call_count == 1
-    payload = _json.loads(result.output)
+    payload = _json.loads(result.stdout)
     assert payload["notify"] == [
         {"kind": "webhook", "delivered": True, "target_host": "hooks.example.com"}
     ]
@@ -223,7 +225,7 @@ def test_run_notify_on_failure_fires_on_failure(tmp_path: Path):
         )
     assert result.exit_code != 0
     assert spy.call_count == 1
-    payload = _json.loads(result.output)
+    payload = _json.loads(result.stdout)
     assert payload["notify"][0]["delivered"] is True
 
 
@@ -301,7 +303,7 @@ def test_run_notify_multiple_channels_all_reported(tmp_path: Path):
             ],
         )
     assert result.exit_code == 0, result.output
-    payload = _json.loads(result.output)
+    payload = _json.loads(result.stdout)
     kinds = {entry["kind"] for entry in payload["notify"]}
     assert kinds == {"webhook", "slack"}
 

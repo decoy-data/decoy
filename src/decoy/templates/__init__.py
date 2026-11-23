@@ -57,7 +57,7 @@ _REGISTRY: tuple[tuple[str, str], ...] = (
         "Synthetic HR data: departments, employees and payroll, linked by foreign keys.",
     ),
     # CLI.3 (2026-06-02): graph template removed. V1 `mode: graph` was
-    # retired under storm-reframe-C / S22-CL-V1GRAPHRUNNER; the V2 graph
+    # retired; the V2 graph
     # builder UI emits a `version: 2` PipelineConfig from node settings
     # instead of authoring graph-mode YAML by hand.
 )
