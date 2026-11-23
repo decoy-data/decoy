@@ -11,6 +11,18 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-23: rows 79 and NATIVE-MISSING-WARN closed
+
+Rows closed (each leaves its group file):
+
+- Row 79 (F09, 1.0 part): CLI #390 (2026-11-23) shows the v3 vault header and refuses a tampered vault, on engine 0.28.3. Every 1.0 part is merged. Rotation and remap stay in row 79b (1.2).
+- NATIVE-MISSING-WARN: C1 is CLI #384 (2026-11-22): the CLI prints the engine's native fallback notice after a run. E1 was engine #758.
+
+Other merges:
+
+- **Engine #765 (FIT-CODES-TEXT, 2026-11-23):** `decoy fit` keeps zero-padded codes as text. The CLI picks it up with the engine 0.28.4 pin bump.
+- **Engine #753 (COLUMN-SHAPE-RULE E3, 2026-11-23):** the column-shape rule for numeric strategies.
+
 ## 2026-11-22: roadmap catch-up for merges of 2026-11-21 to 2026-11-22
 
 Rows closed (each leaves its group file):
