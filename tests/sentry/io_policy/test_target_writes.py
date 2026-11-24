@@ -479,13 +479,18 @@ _EXPECTED_PASSED = [("write_private_table", "PRIVATE_TARGET"), ("write_table", "
 
 
 def _stage_calls(source: str) -> list[tuple[str, str]]:
-    """(receiver, argument) of each `.stage(...)` call in `_write_table`; `<other>` if not a name."""
+    """(receiver, argument) of each `.stage(...)` call in `_write_table`, plus any direct stager call."""
     found = []
     for func in ast.parse(source).body:
         if not (isinstance(func, ast.FunctionDef) and func.name == "_write_table"):
             continue
         for node in ast.walk(func):
-            if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "stage":
+            if not isinstance(node, ast.Call):
+                continue
+            called = node.func.id if isinstance(node.func, ast.Name) else ""
+            if called in STAGERS or getattr(node.func, "attr", "") in STAGERS:
+                found.append(("<direct stager>", called))  # a branch bypassing `target.stage`
+            elif getattr(node.func, "attr", "") == "stage":
                 recv = getattr(node.func, "value", None)
                 arg = node.args[0] if len(node.args) == 1 and not node.keywords else None
                 found.append(
@@ -533,11 +538,21 @@ def test_the_public_whole_table_writers_pass_a_real_stager() -> None:
             "_write_table(data, fmt, path, layout, PUBLIC_TARGET)",
             "_write_table(data, fmt, path, layout, _TargetPrivacy(open, 0o644))",
         ),
-        # One format picks the other descriptor; the other call stays right.
+        # Two same-depth branches: the wrong descriptor first, the right one last.
         lambda s: s.replace(
-            "    _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n",
-            "    _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n"
-            "    if fmt == 'csv':\n        _write_table(data, fmt, path, layout, PUBLIC_TARGET)\n",
+            "    _write_table(data, fmt, path, layout, PUBLIC_TARGET)\n",
+            "    if fmt == 'csv':\n"
+            "        _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n"
+            "    else:\n"
+            "        _write_table(data, fmt, path, layout, PUBLIC_TARGET)\n",
+        ),
+        # A Parquet branch stages with the stager directly instead of `target.stage(path)`.
+        lambda s: s.replace(
+            "    frame = isinstance(data, pd.DataFrame)\n",
+            "    frame = isinstance(data, pd.DataFrame)\n"
+            "    if fmt == 'parquet':\n"
+            "        with staged_local_target(path):\n"
+            "            pass\n",
         ),
         lambda s: s.replace(
             "    _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n",
@@ -550,7 +565,8 @@ def test_the_public_whole_table_writers_pass_a_real_stager() -> None:
         "swapped-mode",
         "swapped-writers",
         "inline-descriptor",
-        "extra-call-other-descriptor",
+        "wrong-descriptor-first-branch",
+        "direct-stager-branch",
         "format-conditional-descriptor",
         "stage-on-other-name",
     ],
