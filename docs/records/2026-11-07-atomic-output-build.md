@@ -45,7 +45,7 @@ Each mutation turned the named test red; the full table is in the builder report
 
 ## V2-LOG
 
-- `.gz` header can store the staging basename.
+- (Resolved by FREEZE-OUTPUT O2: DataFrame CSV targets go through the codec opener, so the `.gz` header stores no name.)
 - ACLs and xattrs of an old output are not copied.
 - (Resolved in round 2: `write_atomic` and `CREATE_ONCE` now share `_create_temp` through `_staged`.)
 - `_atomic.py` over 400 lines (462 after round 2): split staging from the record writer.

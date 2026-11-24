@@ -21,6 +21,7 @@ import bz2
 import contextlib
 import gzip
 import lzma
+import os
 import shutil
 import tarfile
 import tempfile
@@ -57,33 +58,14 @@ def is_archive_csv(fmt: str, path: Path) -> bool:
     return fmt == "csv" and split_compression(path)[1] in ARCHIVES
 
 
-def csv_compression(path: Path) -> str | dict[str, str] | None:
-    """The `to_csv(compression=...)` option the real target name implies, else None.
-
-    A stream codec is a method string. An archive (zip, tar) also names its one member after
-    the real file with the archive suffix cut (`out.csv.zip` holds `out.csv`), never after the
-    staging name. A compressed tar says its tar mode, because pandas reads that from the
-    written file's own suffix and the staging file has none.
-    """
-    name = path.name
-    for suffix, method in COMPRESSION:
-        if not name.lower().endswith(suffix):
-            continue
-        if method not in ARCHIVES:
-            return method
-        option = {"method": method, "archive_name": name[: -len(suffix)]}
-        if method == "tar":
-            option["mode"] = "w:" + suffix.rsplit(".", 1)[1] if suffix != ".tar" else "w"
-        return option
-    return None
-
-
 def _archive_name(path: Path) -> str:
     """The member name inside an archive target: the real file name with the suffix cut."""
-    name = path.name
+    # The filesystem bytes, read as UTF-8, so the locale (C or UTF-8 mode) cannot change the name.
+    name = os.fsencode(path.name).decode("utf-8", "surrogateescape")
     for suffix, method in COMPRESSION:
         if method in ARCHIVES and name.lower().endswith(suffix):
-            return name[: -len(suffix)]
+            # A suffix-only target (`.zip`) cuts to nothing, and an empty member cannot be extracted.
+            return name[: -len(suffix)] or FALLBACK_MEMBER_NAME
     return name
 
 
@@ -117,21 +99,30 @@ def _stream_codec(stack: contextlib.ExitStack, method: str | None, raw: IO[bytes
 _USTAR_MAX_SIZE = 8**11 - 1
 
 
-def _tar_member(name: str, size: int) -> tarfile.TarInfo:
+# Archive member modes: restored original values (`unmask`, `detokenize`) must not extract
+# world-readable.
+PUBLIC_MEMBER_MODE = 0o644
+PRIVATE_MEMBER_MODE = 0o600
+FALLBACK_MEMBER_NAME = "data.csv"
+
+
+def _tar_member(name: str, size: int, member_mode: int) -> tarfile.TarInfo:
     info = tarfile.TarInfo(name)
     info.size = size
-    info.mode = 0o644
+    info.mode = member_mode
     info.uid = info.gid = 0
     info.uname = info.gname = ""
     info.mtime = 0
     return info
 
 
-def _zip_member(name: str, size: int) -> zipfile.ZipInfo:
+def _zip_member(name: str, size: int, member_mode: int) -> zipfile.ZipInfo:
     info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    if not name.isascii():
+        info.flag_bits |= 0x800  # the zip UTF-8 name flag, set here so no locale decides it
     info.compress_type = zipfile.ZIP_DEFLATED  # level: zlib's default, which is 6
     info.create_system = 3
-    info.external_attr = 0o100644 << 16
+    info.external_attr = (0o100000 | member_mode) << 16
     info.file_size = size  # known up front, so a member over the limit gets a zip64 header
     return info
 
@@ -143,13 +134,14 @@ def _spooled_size(spool: IO[bytes]) -> int:
 
 
 @contextlib.contextmanager
-def open_csv_sink(tmp: Path, out_path: Path) -> Iterator[IO[bytes]]:
+def open_csv_sink(tmp: Path, out_path: Path, *, member_mode: int) -> Iterator[IO[bytes]]:
     """A writable byte stream into the staged `tmp` for the codec `out_path`'s suffix names.
 
     The caller writes the CSV bytes and leaves the block; the codec trailer, zip central
     directory or tar blocks are written on the way out. A zip or tar archive needs the member
     size first (zip64 for a large zip member, PAX for a large tar member), so its CSV goes to an
-    anonymous spool file and the archive is built on exit.
+    anonymous spool file and the archive is built on exit. `member_mode` is the archive
+    member's permission bits (`PRIVATE_MEMBER_MODE` for restored original values).
     """
     method = split_compression(out_path)[1]
     with contextlib.ExitStack() as stack:
@@ -160,16 +152,30 @@ def open_csv_sink(tmp: Path, out_path: Path) -> Iterator[IO[bytes]]:
             size = _spooled_size(spool)
             name = _archive_name(out_path)
             if method == "zip":
+                # A zip name must be valid text; a raw byte becomes U+FFFD (tar keeps the byte).
+                zip_name = name.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
                 with zipfile.ZipFile(raw, "w") as archive:
-                    with archive.open(_zip_member(name, size), "w") as member:
+                    with archive.open(_zip_member(zip_name, size, member_mode), "w") as member:
                         shutil.copyfileobj(spool, member)
             else:
                 outer = _suffix_codec(out_path)
-                fmt = tarfile.USTAR_FORMAT if size <= _USTAR_MAX_SIZE else tarfile.PAX_FORMAT
+                # USTAR cannot hold a name over 100 bytes; PAX keeps its header deterministic here.
+                long_name = len(name.encode("utf-8", "surrogateescape")) > tarfile.LENGTH_NAME
+                fmt = (
+                    tarfile.PAX_FORMAT
+                    if size > _USTAR_MAX_SIZE or long_name
+                    else tarfile.USTAR_FORMAT
+                )
                 with contextlib.ExitStack() as inner:
                     wrapped = _stream_codec(inner, outer, raw)
-                    with tarfile.open(fileobj=wrapped, mode="w", format=fmt) as tf:
-                        tf.addfile(_tar_member(name, size), spool)
+                    with tarfile.open(
+                        fileobj=wrapped,
+                        mode="w",
+                        format=fmt,
+                        encoding="utf-8",
+                        errors="surrogateescape",
+                    ) as tf:
+                        tf.addfile(_tar_member(name, size, member_mode), spool)
         else:
             yield _stream_codec(stack, method, raw)
 
