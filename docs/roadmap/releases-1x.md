@@ -488,7 +488,7 @@ How to read it:
 |---|---|---|---|---|
 | 1.0 | (not 1.x) | INTL-IDS.3 lands with FAKER-MIGRATE, before the freeze. The V2-to-V1 cut adds 1.0 rows NESTED-FREEZE and FIT-CODES-TEXT | 4 | yes, the launch engine |
 | 1.0.x | Fixes and byte-identical speed | Maintenance rows, patch entries of the corrective backlog; NONFK-OOM part (b) if its plan is not small | 1 to 4 each | only if a fix is in the engine |
-| 1.1 | Run in production pipelines | 64, F03, 87, 64b, 85, 41, BEHAVIOR-VERSION, SEAM-REASONS; scope cut: 36, then 29, 32c (opt-in model), LANG-SIDECAR; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 52 | yes |
+| 1.1 | Run in production pipelines | 64, F03, 87, 64b, 85, 41, BEHAVIOR-VERSION, SEAM-REASONS; scope cut: 36, then 29, 32c (opt-in model), LANG-SIDECAR; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 56 | yes |
 | 1.2 | Generate completeness and identifiers | 24r, the Later part of 24n, 24qb, RUST-DATE-TEXT, FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE, 79b; INTL-IDS.2, EDGE-CASES.1 | about 22 | yes |
 | 1.3 | More ways to install | 90a, 38, 42, PIP-NATIVE-EXTRA; candidates PYPI, PY-VERSIONS; CHUNK-PARALLEL; scope cut: 58b, 61b, 74b | about 18 | yes |
 | 1.4 | More file sources and formats | AVRO-ORC.1, AVRO-ORC.2 (87 moved to 1.1) | about 4 | yes |
@@ -546,7 +546,7 @@ storage or a database, and need a failed run to restart without redoing finished
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
 | 64 CLI-CLOUD | [connect](groups/connect.md) | EC2b to EC5, REL-C, CC1 to CC5 | about 9 |
-| F03 file unions plus pattern selection | [connect](groups/connect.md) | owner 2026-11-24: first in 1.x with cloud sources; V1 stays small local files. Plan `C:plan/f03-file-unions`; plan gate not run | about 13 |
+| F03 file unions plus pattern selection | [connect](groups/connect.md) | owner 2026-11-24: first in 1.x with cloud sources; V1 stays small local files. Plan `C:plan/f03-file-unions`; plan gate not run | about 17 |
 | 87 F02 | [connect](groups/connect.md) | E2 to E5, release, C1 to C4. Moved from 1.4 with F03 (owner 2026-11-24: first in 1.x with cloud sources; V1 stays small local files); F03 on GCS needs F02-E2 | about 9 |
 | 64b CLI-DB-SRC | [connect](groups/connect.md) | not started; includes a Postgres CI lane (moved from 1.4, owner 2026-11-22) | about 5 |
 | 85 F23 resume, CLI half | [run](groups/run.md) | engine release, then C0, C1, C2a, C2b, C3 | 5 |
@@ -563,7 +563,7 @@ storage or a database, and need a failed run to restart without redoing finished
 Other fill: job-outcome notifications ([run](groups/run.md)); the corrective-backlog minors on chunked
 progress events and the subset signal in `decoy.mask()` and `decoy tokenize`.
 
-This minor is the largest, about 52 slices after F03 and 87 joined it (owner 2026-11-24). It needs a split when it is planned: cloud and file sources (64, F03, 87) first. That split is an owner call. If it does not fit, SEAM-REASONS moves to 1.2 as fill.
+This minor is the largest, about 56 slices after F03 and 87 joined it (owner 2026-11-24). It needs a split when it is planned: cloud and file sources (64, F03, 87) first. That split is an owner call. If it does not fit, SEAM-REASONS moves to 1.2 as fill.
 
 TARGET-DUP-REFUSE is pending a check. Data loss is a V1 blocker under the V1 bar, so the orchestrator
 first checks whether main already refuses two tables written to one target (engine #589 added
