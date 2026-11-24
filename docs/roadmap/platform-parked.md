@@ -73,7 +73,7 @@ Restart order (preserved from the 2026-11-04 sequence):
 | F14 wrapping-key rotation (crypto tier): `MultiFernet` with `key_version`, rewrap across all custody targets, SMTP password wrapped (G14), fail closed on a missing key (G23) | F14 | NOT STARTED | Phase 2 |
 | F45 finish: claim-time re-authorization (the one item the spec forbids omitting), SAML, MFA; SMTP password encrypted, auth cookie `Secure`; login limit, password policy, CORS (G15); single-process guard (G17) | F45 | NOT STARTED | Phase 3 |
 | B-10 estimator S1b onward and an API route for the estimate | F24 | S0, S1m, S1a, S1b MERGED | wave P-2 |
-| F31 E0b and the platform slices (moved from CLI row 65, owner 2026-11-12) | F31 | NOT STARTED; plan `E:plan/f31-safe-output` `2340a45b` | on restart |
+| F31 E0b and the platform slices (moved from CLI row 65, owner 2026-11-12) | F31 | NOT STARTED; plan `E:plan/f31-safe-output` `2340a45b`. The engine and CLI half is back in 1.0 as row F31-AUDIT (owner 2026-11-24) | on restart |
 
 **Live platform bugs recorded for the restart** (not exposed; the platform is unreleased): SSO can
 resolve to the wrong account and does not bind the issuer (X3a fixes it); OUT-PATH.

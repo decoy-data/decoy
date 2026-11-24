@@ -31,7 +31,8 @@ work; the plan decides.
 `P:docs/plans/2026-11-04-cross-cutting-v1-foundations.md` (Codex GO `04b92412`). Engine and CLI
 slices merged: X0a ratchet and manifest (engine #378, #379), X0a self-hosted gate (engine #380), X4d
 (engine #384, #385), X7b (engine #382), CLI X0a (CLI #81, #82). Open here: X7c (row 24). X0a-h E1,
-E2, C1, C2 (row 9) are deferred off the V1 path. Test trust (owner, 2026-11-05): a green suite counts only when each test was seen
+E2, C1, C2 (row 9) were deferred off the V1 path; owner 2026-11-24 brought them back to 1.0 as row
+RATCHET-GROWTH ([health](groups/health.md)). Test trust (owner, 2026-11-05): a green suite counts only when each test was seen
 red under a named mutation; the platform test-trust slices are parked; the CLI journey row is 75.
 The dev-rule `cross-cutting-concerns.md` is the standing rule (ROADMAP section 4).
 
@@ -58,7 +59,8 @@ findings: `str(exc)`-style sites route through one exception-capture policy; phy
 stack. Owner 2026-11-02 O1 to O3: no ban on except-bound text inside `raise`, but a ratchet so the
 count cannot grow; no debug opt-out, only frame locals are cleared. Owner 2026-11-12 (F31 Q1 and Q2):
 the row closes for CLI V1; E0b and the platform slices move to Platform V1 (ROADMAP section 6.3);
-V2-LOG: the `decoy run` error text capped at 500 characters is not a V1 fix.
+V2-LOG: the `decoy run` error text capped at 500 characters is not a V1 fix. Owner 2026-11-24: the engine and CLI half
+returns to 1.0 as row F31-AUDIT ([health](groups/health.md)), audit first; E0b and the platform slices stay parked.
 
 **F29 (rows 62, 66).** Engine half MERGED (engine #336: versioned registry, `RetryClass`, bytes,
 retry and checkpoint progress); C0 record MERGED (engine #367). FRAME findings: the CLI maps
@@ -92,12 +94,13 @@ strict mode a post-scan `fail` finding (F34) or a failed contract (F35) blocks d
 
 **RESULT and SAMPLE (rows 62, 63).** UX map section 5.4: one result document per run and an
 additive exit code 6 for partial delivery (Q5). SAMPLE runs the first N rows through the subset so FKs
-link; Q9 and Q19 apply.
+link; Q9 and Q19 apply. Owner 2026-11-24: G6 and G7 are on row 58's acceptance list.
 
 **F34 (row 67).** A canary-driven text-span scanner (bounded canary set, shared scanner,
 normalized-span rules, safe match-mode, location and count report). FRAME finding: the post-mask
 identity helper tells "no signal" from "comparison failed", and a failed comparison is a finding
-(G8). The F34 release must precede the F32 release.
+(G8). The F34 release must precede the F32 release. Owner 2026-11-24: G8 is 1.0 row POSTMASK-FAIL-CLOSED
+([trust](groups/trust.md)).
 
 **F36 (row 68).** `pk_uniqueness` exists (`validation/post/_checks/_pk_uniqueness.py`); add a bounded
 invariant language (equality, inequality, ordering, null), a join-cardinality-change metric, stable

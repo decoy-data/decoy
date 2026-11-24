@@ -27,12 +27,12 @@ means unverified until that item's FRAME):
 | G3 | No recorded smoke runs; release docs are templates | R1 gate | OPEN |
 | G4 | CLI chunked output bypasses `TransactionalSink` | CLI delivery | verified by reading 2026-10-30 |
 | G5 | CLI scan parses fixed width with `pd.read_fwf` | H-1 FRAME; after V1 | verified by reading |
-| G6 | Plaintext spill under three temp roots | F25, F26 FRAME | UNVERIFIED |
-| G7 | Cloud sources read the whole object into RAM | F25 FRAME | UNVERIFIED |
-| G8 | Post-mask leak helper fails open | F34 FRAME | UNVERIFIED |
-| G9 | CLI token vault cleartext, unauthenticated (11.8) | F09 FRAME; R2 11.8 | UNVERIFIED |
+| G6 | Plaintext spill under three temp roots | row 58 (F25) acceptance; F26 FRAME | verified 2026-11-24: the out-of-core temp root (`E:execution/out_of_core/_spill_estimate.py:512-521`) still derives from `tempfile.gettempdir()`; OPEN on row 58 |
+| G7 | Cloud sources read the whole object into RAM | row 58 (F25) acceptance | verified 2026-11-24: GCS and SFTP read the whole object, S3 already streams, the isolated route has no materialization cap; OPEN on row 58 |
+| G8 | Post-mask leak helper fails open | row POSTMASK-FAIL-CLOSED (1.0); from F34 FRAME | verified 2026-11-24: `_source_identity` (`E:verification/postmask/residual_pii.py:240-274`) returns None on any exception; OPEN |
+| G9 | CLI token vault cleartext, unauthenticated (11.8) | row TOKEN-VAULT-MAC (1.x); R2 11.8 | verified 2026-11-24: cleartext at rest by design (0600 file, 0700 dir) with no tamper check; V1 known limitation on the row |
 | G10 | License placeholders; per-repo licenses | R1-c | OPEN |
-| G11 | Native kernels fall back silently | F29 FRAME (if free) | UNVERIFIED |
+| G11 | Native kernels fall back silently | F29 FRAME (if free) | CLOSED, verified fixed 2026-11-24: `E:execution/pipeline/_native_notice.py`, test `E:tests/unit/execution/pipeline/test_native_fallback_notice.py`. The `any()` versus `all()` gap is in [inbox.md](inbox.md) (V2-LOG, NATIVE-MISSING-WARN) |
 | G12 | Engine dependency floors too wide | F10 FRAME; D-4 | UNVERIFIED |
 | G13 | Startup DDL beside Alembic in production | F44 platform FRAME | UNVERIFIED |
 | G14 | SMTP password in plaintext | F45 criterion; F14 FRAME | verified by reading |
