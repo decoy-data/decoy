@@ -2,7 +2,8 @@ Status: plan
 
 # F03: several files as one logical table, and pattern selection of input files
 
-Owner: Cam. Author: Opus plan agent. Date: 2026-11-24. Revision 3 (plan rev 2: Dennis R1 folded in).
+Owner: Cam. Author: Opus plan agent. Date: 2026-11-24. Plan revision 3 (history entry R4: Codex
+plan-gate round 1 NO-GO folded in; owner decisions of 2026-11-24 applied).
 
 Rules consulted: dev-rules `README.md`, `00-universal.md`, `risk-and-exceptions.md`, `development-loop.md` (PLAN: established solutions, choke point, placement, size, pinned guarantee), `feature-dev.md`, `api-and-compatibility.md`, `reuse-first.md`, `cross-cutting-concerns.md`, `security.md`, `architecture.md`, `testing.md` (test depth), `catalogs/recurring-defects.md`; vault `Decoy-Plan-Contract-and-Defect-Catalog.md`.
 
@@ -36,6 +37,31 @@ Revision history:
   rule is "not older than" (H5); the Parquet schema rule ignores RangeIndex bounds (H6); a
   route-by-test matrix and new ATs close the enumeration gaps (H7); 17 slices became 20, about 39
   builder-days (M13).
+- R4 (2026-11-24, plan rev 3): Codex plan gate round 1 `NO-GO` (4 blockers, 7 highs, 2 V2-LOG
+  notes), checked against CLI `f2af5d42` and engine `9f7bb1f4a`. All 11 are folded in; see
+  "Changes in revision 3". Owner decisions of 2026-11-24 are applied (section 8): 1.1 splits into
+  1.1a local file sources and 1.1b S3 and GCS; OQ-1 to OQ-5 take the recommended options.
+  23 slices, about 44 builder-days.
+
+## Changes in revision 3
+
+Every finding was checked against the cited code before the change was written. None is disputed.
+
+| Finding | Class | Checked | Change in this revision | Sections |
+|---|---|---|---|---|
+| R1-1 acquisition too late for `mask()`, never for standalone subset | V1 | `C:api.py:602` loads sources before `run_pipeline`; `C:cli/subset.py:223` calls `subset_inputs_from_config` directly | Every public entry point acquires before its first source-dependent step: `decoy run`, `decoy.mask()` (before the native gate and `_load_sources_from_config`), `decoy subset` dry run and execution, and library `run_pipeline`. One CLI wrapper, `C:cli/io/_acquire.py`, serves the three CLI callers. By construction every single-file reader refuses a selector descriptor (`build_profile_source`, `subset_inputs_from_config`, the CLI source loader), so a missed entry point fails with a code instead of reading a directory. The member and output collision check runs inside the acquisition, after listing and before staging, against the caller's planned publication paths, so library calls are covered too. New AT-27 | 5.2, 5.8, 10, 12, 15, 16 |
+| R1-2 no working reclaim of a killed run's scratch | V1 | `E:fileaccess/_reclaim.py:47-60` covers publication stages only and raises `NotImplementedError` for `apply=True`; `ScratchArena.reclaim()` is opener-only (`E:fileaccess/_scratch.py:352`) | New engine slice E2r builds `reclaim_dead_arenas(base)`. An arena is dead when its marker proves it and `LOCK_EX\|LOCK_NB` succeeds on its root (a live opener holds `LOCK_SH`, `E:fileaccess/_scratch.py:169`). A proved-dead arena is removed at once, with no age floor: the kernel drops the lock when the process dies, so the lock is the liveness proof. Only an unproved pending directory waits out the grace period, and admission counts its bytes as used. AT-18 kills a real child process beside a live run | 4 (N15), 5.2, 9, 10, 12, 15 |
+| R1-3 identity `batch_fn` fails; Arrow reads do not hash the stored bytes | V1 | `E:declared_casting/_stream.py:101-172`: `batch_fn` returns a `pa.Table` that goes to `write_table`; Codex PyArrow probe | `batch_fn` is a batch-to-`Table` adapter, `pa.Table.from_batches([batch], schema=agreed)`, where `agreed` is the 5.4 schema without the `pandas` key. The hash is a separate sequential SHA-256 of the pinned stored bytes. Local: hash from the held handle, decode from the same held (seekable) handle, check identity again at the end. Cloud: stream the member under its pin into a scratch member copy, hashed as written and charged to the budget, and decode the copy. AT-14 compares the sidecar hash with `hashlib.sha256` of the original fixture bytes, computed by the test. AT-10 adds a nonempty multi-row-group member | 5.2, 10, 13 |
+| R1-4 verify and `ci check` print member names on drift | V1 | `C:cli/evidence.py:662-680`: issue text carries the recorded path | Member verification moves to `C:cli/member_evidence/_verify.py`. It opens members by the private sidecar path and reports by table and ordinal only (`input_member_missing`, `input_member_changed`). New AT-28: write valid evidence, then change one canary-named member and remove another; both codes appear, and no name appears in text or `--json` from `report verify` and `ci check` | 5.7, 10, 12, 16 |
+| R1-5 C1 accepts `files:` before C3 can run it | V1 | `C:cli/run/_execute.py:371` reads locators before engine execution | No slice admits syntax that cannot run: it is refused before I/O. Engine E0 adds an acquisition format table; a union descriptor whose format has no acquisition yet is refused with `source_set.format_unavailable` (Parquet opens at E2a, CSV and fixed-width at E3, S3 at E4, GCS at E5). CLI C1 makes `run`, `mask()` and `subset` refuse a union source with `run.union_unavailable` before any open; C3 removes that refusal in the same diff that wires the acquisition. New AT-29 | 5.2, 10, 15 |
+| R1-6 matrix passes on a fallback route | V1 | `E:execution/native/_dispatch.py:254-267` declines FK tables; `E:execution/out_of_core/_compat.py:504-519` declines self FK; `E:execution/_chunked_fk_edge_checks.py:417-436`; `C:cli/run/_execute.py:282` | Matrix rewritten: composite FK and self FK are separate rows; native dispatch and native kernels on a fallback route are separate columns; forced sequential execution and the standalone CSV refusal are cells. Every cell asserts the route the engine recorded (`RouteEvent` and native dispatch evidence) or the exact refusal or decline code, besides the output | 10.1, 12 |
+| R1-7 red-first scaffolds do not prove the exit and integrity guarantees | V1 | design | The two scaffolds are replaced by a fault-per-assertion table (10.2). Each assertion has its own fault or mutation, run on its slice head. The table includes marker removal during staging, a real budget refusal with cleanup, a fixed-width record-boundary failure, quarantine ordinal and row at a member boundary, and failure to publish evidence after staging. Each privacy test first asserts that the expected error or artifact exists | 10, 10.2, 18 |
+| R1-8 two version tags, not one | V1 | `E:records/_kinds.py:106-114` `payload_schema="cli-local-1"`; `E:records/_grammar.py:30-43` integer major only; `E:records/_export.py:179-185` exact match | The envelope tag and the manifest version are two decisions. Manifest `schema_version` is `cli-local-1.1`. The library envelope `payload_schema` of those records is `cli-local-2` (an integer major, as the grammar needs). The evidence kind keeps a reader and an export rule for `cli-local-1`; default export picks the rule by the record's own tag. The export rule strips `input_fingerprints/*/base`, `bucket` and `key` as well as `path`. New engine slice E-rec. AT-31 runs `store_evidence`, `get` and default export for old and new records | 5.7, 14, 15 |
+| R1-9 `sidecar_digest` lets a recipient test candidate names | V1 | design | The sidecar holds a fresh 256-bit random `nonce`, so `sidecar_digest` cannot be recomputed without the private sidecar. `members_digest` (no names, no nonce) stays the stable content-set digest for comparisons and `report diff`. AT-32: two runs over the same members give equal `members_digest` and different `sidecar_digest` | 5.7, 10 |
+| R1-10 debris rule in the shared grammar breaks CI contracts | V1 | `C:ci/contracts.py:484` accepts `.github/**` and `_fixtures/*.csv` | `path_glob` stays the common grammar, with no debris rule. The debris rule runs only in union-selector validation (the `config` selector validator). AT-30 is a paired test: both patterns are accepted by the CI contract validator and refused as union selectors with `source_set.selector_names_debris` | 4, 5.1, 11, 15 |
+| R1-11 two placements break boundaries | DESIGN | `E:execution/out_of_core/__init__.py:4` exports `check_temp_disk_budget`; `tests/sentry/baselines/package-fanout.json` freezes `src/decoy/cli` at 29 | `source_sets` imports `check_temp_disk_budget` from `decoy_engine.execution.out_of_core`, never from `_budget`. The sidecar model goes in a new mapped sub-package, `src/decoy/cli/member_evidence/`, with a CODEMAP row; the flat `cli` package stays at 29. `store_evidence` keeps its one caller, and sidecar bytes go through the library `_fs` module | 13, 16 |
+| V2-LOG chain note | V2-LOG | design | Class 1 now says: record the reason inside the handler and raise the `source_set.*` error after the handler exits, so `__context__` is None as well as `__cause__` | 11, V2-LOG |
+| V2-LOG follow-ups | V2-LOG | design | DuckDB and Postgres staging consolidation (L1), the installer glob (L2) and broader alias normalization (L4) stay on the follow-up list | V2-LOG |
 
 ## Dennis R1 resolutions
 
@@ -44,7 +70,7 @@ the fix; nothing was disputed.
 
 | Finding | Verified against code | Resolution | Section |
 |---|---|---|---|
-| H1 second staging writer | `E:declared_casting/_stream.py:101` `stage_typed_sources` ("the one staging writer"; `open_fn`, `max_bytes`, `ScratchArena`, opaque `s0000` names, 0600); `ET:tests/sentry/test_staging_writer_choke_point.py:19` `CALLERS` has two files | Folded. Parquet members are staged by `stage_typed_sources` with an `open_fn` that reads the pinned members in order and an identity `batch_fn`; `source_sets/_acquire.py` joins `CALLERS`. The CSV and fixed-width record joiner is a second writer kind with its own guard. `--duckdb-source` and `postgres_snapshot` onto the acquisition: V2-LOG | 5.2, 13, 16, V2-LOG |
+| H1 second staging writer | `E:declared_casting/_stream.py:101` `stage_typed_sources` ("the one staging writer"; `open_fn`, `max_bytes`, `ScratchArena`, opaque `s0000` names, 0600); `ET:tests/sentry/test_staging_writer_choke_point.py:19` `CALLERS` has two files | Folded. Parquet members are staged by `stage_typed_sources` with an `open_fn` that reads the pinned members in order and a batch-to-`Table` `batch_fn` (rev 3, R1-3); `source_sets/_acquire.py` joins `CALLERS`. The CSV and fixed-width record joiner is a second writer kind with its own guard. `--duckdb-source` and `postgres_snapshot` onto the acquisition: V2-LOG | 5.2, 13, 16, V2-LOG |
 | H2 import tier | engine `.importlinter`: `exhaustive = true`; config and sdk in tier 4, declared_casting tier 3, execution tier 2; policy-direction contract forbids `config -> connectors, fileaccess`. Engine root has 25 `.py` modules (at cap), so the grammar must be a sub-package | Folded. New package `path_glob/` (pure, no I/O) in the bottom tier; `source_sets/` in the `execution` tier. `.importlinter` lines, layout snapshot and file-access registry entries named | 16 |
 | H3 first cut | `C:cli/evidence.py:286-303` reads `src.get("path")`; `C:cli/run/_evidence.py:35-38` turns off evidence for `--duckdb-source` | Folded. (a) C3 refuses evidence for union tables until C2 lifts it. (b) D1 depends on C2 only; C4 writes its own docs. (c) all `${var}` work in C4. (d) "local, plus S3 when row 64 is merged" | 15 |
 | H4 evidence version | `E:records/_payloads.py`: `schema_version: Literal["cli-local-1"]`, `fingerprint_method: Literal["full"] \| None`, `extra="forbid"`; `C:cli/evidence.py:459-460` refuses any other version | Folded. Bump to `cli-local-1.1`; old readers refuse it cleanly by exact match. Sidecar carries `schema_version: "decoy-members-1"`, one writer model, reader derived from it, strict types | 5.7, 11, 14 |
@@ -54,10 +80,10 @@ the fix; nothing was disputed.
 | M8 red first | every AT fails on the base because `files:` is unknown | Folded. Each AT must fail on its own assertion against the slice's scaffolding (first-member-only stager) | 10 |
 | M9 disk admission | listed sizes undercount gzip and re-encoded Parquet | Folded. Up-front check stays; per-batch `max_bytes` budget from H1 added | 5.2 |
 | M10 placement phase | member collisions need the listing | Folded. Static base check at validate; member collisions after listing, before staging | 5.8, 12 |
-| M11 acquisition owner | `E:execution/_pipeline.py:116` `run_pipeline` takes raw sources | Folded. `source_sets.acquire` is the one entry; `run_pipeline` calls it for library callers; C3 calls the same function | 5.2, 16 |
-| M12 CLI placement | `C:cli/evidence.py` 792 lines; `C:cli/library/_run_records.py:109` `store_evidence`; `C:cli/library/_export.py` exists; `C:lang/` has no vars module | Folded. Sidecar model in `C:cli/evidence_members.py`; stored via `store_evidence`; export flag in `library/_export.py`; `${var}` in `C:lang/_vars.py` | 16 |
+| M11 acquisition owner | `E:execution/_pipeline.py:116` `run_pipeline` takes raw sources | Folded; rev 3 (R1-1) adds `decoy.mask()` and `decoy subset` as acquiring entry points. `source_sets.acquire` is the one entry; `run_pipeline` calls it for library callers; C3 calls the same function | 5.2, 16 |
+| M12 CLI placement | `C:cli/evidence.py` 792 lines; `C:cli/library/_run_records.py:109` `store_evidence`; `C:cli/library/_export.py` exists; `C:lang/` has no vars module | Folded; rev 3 (R1-11) moves the sidecar model to the sub-package `C:cli/member_evidence/`; stored via `store_evidence`; export flag in `library/_export.py`; `${var}` in `C:lang/_vars.py` | 16 |
 | M13 sizing | E1, E2 overloaded; cloud listing unassigned | Folded. E0 split off E1; E2 split into E2a and E2b; cloud listing in E4; 20 slices, about 39 days | 15 |
-| M14 debris versus selector | design rule | Folded. Debris applies per segment below the base; a selector whose literal segment starts with `_` or `.` is refused (`source_set.selector_names_debris`); move the base instead | 5.1, 10 |
+| M14 debris versus selector | design rule | Folded. Debris applies per segment below the base; a selector whose literal segment starts with `_` or `.` is refused (`source_set.selector_names_debris`) by union-selector validation only, not by the shared grammar (rev 3, R1-10); move the base instead | 5.1, 10 |
 | M15 cloud ATs skip | engine S3 tests use `moto` (`ET:tests/connectors/test_object_store.py`) | Folded. S3 and GCS ATs run on fixtures in CI, never skip markers | 10, 17 |
 | L1 older stage paths | as H1 | V2-LOG | V2-LOG |
 | L2 installer glob | `C:distribution/installer.py:174` | V2-LOG | V2-LOG |
@@ -66,7 +92,7 @@ the fix; nothing was disputed.
 | L5 mutation head | design | Folded. Section 18 records the head each mutation ran on | 18 |
 | L6 guarantee wording | design | Folded. "During acquisition"; guarantee 2 operations match section 1 and AT-13 | 9, 10 |
 | L7 1.1 split | section 7 had no recommendation | Folded as OQ-6 | 7, 8 |
-| QA name clash `_members.py` | engine and CLI both planned one | Folded. Engine module is `_member_facts.py`; CLI module is `evidence_members.py` | 16 |
+| QA name clash `_members.py` | engine and CLI both planned one | Folded. Engine module is `_member_facts.py`; CLI sub-package is `member_evidence/` (rev 3) | 16 |
 
 ## 1. The problem
 
@@ -214,6 +240,8 @@ Codex review. Each line names the slice that closes it (section 15).
    `/`. Count skips by reason; do not list skipped names (N4). The base itself is literal and never
    filtered. A selector whose literal (wildcard-free) segment starts with `_` or `.` is refused at
    validate with `source_set.selector_names_debris` (M14); a user with `.snap/` puts it in the base.
+   This rule belongs to union-selector validation only; the shared `path_glob` grammar has no
+   debris rule, so `decoy ci` contracts such as `.github/**` keep working (R1-10, AT-30).
 4. **Empty parts** (E2a, E3). A zero-row Parquet member with the right schema and a header-only CSV
    member are valid members. A zero-byte or malformed matched Parquet member is a refusal, not
    debris. A zero-byte member of a headerless CSV or fixed-width source is valid.
@@ -242,8 +270,8 @@ Codex review. Each line names the slice that closes it (section 15).
     provider, bucket and exact key (N3, N14).
 21. **Value-free messages** (E0 to E6, C1 to C3). Messages name table and ordinal only (N16).
 22. **Output names leak partition values** (E8). Parts named by ordinal only.
-23. **Scratch disk** (E2a). `ScratchArena` stage with reclaim (N15), up-front admission plus the
-    per-batch budget (N9, M9).
+23. **Scratch disk** (E2r, E2a). `ScratchArena` stage, reclaim of dead arenas (N15, E2r),
+    up-front admission plus the per-batch budget (N9, M9).
 24. **Wrong-kind members** (E1, E3). Refuse by content, not suffix (N6).
 25. **Resume** (E6, C3). Bind the snapshot before the first resumable effect (N13).
 26. **Sampling bias** (E2b). Profiling runs on the staged file, so it equals the consolidated
@@ -303,9 +331,23 @@ Codex review. Each line names the slice that closes it (section 15).
 - N14. **Every publication path is a collision candidate** (C1, C3). Extend the placement check
   (C:cli/io/_placement.py:128-179) to compare inputs with every planned output path: outputs,
   delivery run folders, evidence, vaults, quarantine, scratch. Split by phase in 5.8.
-- N15. **Scratch ownership after a kill** (E2a). Use the `ScratchArena` stage; reclaim abandoned
-  stages with the existing owner and age checks (E:fileaccess/_reclaim.py:47, :129-159); never
-  sweep a live run's stage.
+- N15. **Scratch ownership after a kill** (E2r, E2a). The existing reclaim cannot do this:
+  `reclaim_stages` (E:fileaccess/_reclaim.py:47-60) knows only publication stage names and
+  raises `NotImplementedError` for `apply=True`, and `ScratchArena.reclaim()` works only for the
+  opener (E:fileaccess/_scratch.py:352), which a kill removes. Slice E2r builds
+  `fileaccess.reclaim_dead_arenas(base)` from the same parts as `reclaim_stages`
+  (`systemd-tmpfiles` pattern: exact-name match, `fstatat` without following, owner check,
+  marker proof, `LOCK_EX|LOCK_NB`, every check repeated after the lock). Liveness is the lock: a
+  live arena's root holds `LOCK_SH` for the opener's life (E:fileaccess/_scratch.py:169), and the
+  kernel drops it when the process dies. So, inside the grace period:
+  - an arena whose marker is proved and whose exclusive lock succeeds is dead and is removed at
+    once, with no age floor (an immediate restart reclaims the killed run's arena);
+  - an arena whose lock is held is live and is never touched;
+  - a pending directory with no valid marker (a crash inside `open`, the L4 limit) is removed only
+    when empty, or after `DEFAULT_GRACE_S`; until then admission counts its bytes as used, so
+    repeated kills end in the existing spool-capacity refusal, never in a full disk mid-run.
+  The acquisition calls `reclaim_dead_arenas` on its scratch base before admission. The report
+  holds counts only.
 - N16. **Diagnostic and evidence surfaces** (E0 to E6, C2). The shareable manifest, run result,
   reports, notifications, `report diff`, quarantine files and logs carry table, ordinal, count,
   size, pin and digests only. Member relative names go to a private sidecar. A canary in a member
@@ -324,7 +366,7 @@ Codex review. Each line names the slice that closes it (section 15).
 |---|---|---|
 | A. Glob in the existing locator | `parquet("exports/orders/*.parquet")` | rejected: changes literal paths that contain `*`, `?` or `[` |
 | **B. Base plus `files:`** | `parquet("exports/orders/", files: "part-*.parquet")`; `s3("bucket", "exports/orders/", format: parquet, files: "**/*.parquet")` | **chosen**: additive, the base is a literal listing root |
-| C. Manifest file | `files_from: "manifest.json"` | later candidate (OQ-3) |
+| C. Manifest file | `files_from: "manifest.json"` | waits for a customer ask (owner decision OQ-3) |
 | D. Delta or Iceberg | read table metadata | out of scope; refused as a root (N6) |
 
 Rules (D2):
@@ -332,8 +374,12 @@ Rules (D2):
 - A selector key makes the source a **union source**. The mode is a typed field on the engine
   model, so it survives local path resolution that strips a trailing `/`.
 - `files:` uses the one path-glob grammar (D1) from `path_glob/`: `*`, `**`, `?`; refused: `[`,
-  `]`, `{`, `}`, `!`, backslash, empty, absolute, drive prefix, `..` segments, control characters,
-  and a literal segment starting `_` or `.` (M14).
+  `]`, `{`, `}`, `!`, backslash, empty, absolute, drive prefix, `..` segments, control characters.
+  The grammar is shared with `decoy ci` and has no debris rule (R1-10).
+- Union-selector validation (the selector validator on the `config` source models, E0) adds one
+  rule on top of the grammar: a literal segment starting `_` or `.` is refused with
+  `source_set.selector_names_debris` (M14). The CI contract validator does not call it, so
+  `.github/**` and `_fixtures/*.csv` stay valid CI patterns. AT-30 pins both sides.
 - `files_regex:` (slice E9) is a full match on the relative name, compiled with a linear-time
   engine (google-re2), at most 256 characters. It waits for the dependency call (OQ-4).
 - Selector-only keys on a single-file source, a selector on a target, and contradictory counts are
@@ -351,22 +397,52 @@ Rules (D2):
 | **Y. Stage and consolidate** | **chosen** |
 | Z. Virtual union reader | later optimization, only after a benchmark |
 
-One run-owned **acquisition**, `source_sets.acquire(...)`, turns each union descriptor into an
-execution binding: a local descriptor over a staged file in a `ScratchArena` stage, the ordered
-member facts, and a cleanup lifetime. It is a context manager and the only entry point (M11).
-`run_pipeline` (E:execution/_pipeline.py:116) calls it for library callers (`decoy.mask()`, the
-SDK) when a config holds a union source and no staged binding was passed; the CLI (C3) calls the
-same function before preflight and hands the staged binding to `run_pipeline`, which then does not
-acquire again. It runs once, before preflight. Declarations, capacity, profile, native admission,
-subset and execution all receive the execution binding; evidence receives the logical binding plus
+One run-owned **acquisition**, `source_sets.acquire(config, *, planned_paths, scratch)`, turns
+each union descriptor into an execution binding: a local descriptor over a staged file in a
+`ScratchArena` stage, the ordered member facts, and a cleanup lifetime. It is a context manager and
+the only entry point (M11). Its order is fixed: reclaim dead arenas (N15), list, debris filter,
+match, count and marker checks, **member collision check against `planned_paths`** (5.8), admission,
+stage, return the binding. It runs once per run, before the first source-dependent step of the
+caller, and every later phase (declarations, capacity, profile, native gate and admission,
+subset, execution) receives the execution binding; evidence receives the logical binding plus
 member facts (N8). Single-file sources do not pass through it and keep today's route.
 
-- **Parquet (D5, H1).** Read every pinned footer first (ranged reads on cloud) and apply the schema
-  rule (5.4). Then stage through the existing writer, `stage_typed_sources`
+Entry points (R1-1). Every public caller that can be handed a union config acquires first:
+
+| Caller | Where it acquires | First source-dependent step it precedes |
+|---|---|---|
+| `decoy run` (C3) | `C:cli/io/_acquire.py` called from the run phases | the native gate and `_load_sources_from_config` (C:cli/run/_execute.py:371) |
+| `decoy.mask()` (C3) | the same wrapper, called after `_refuse_output_collisions` with the `RunLayout.fixed` paths | `_native_gate` and `_load_sources_from_config` (C:api.py:602) |
+| `decoy subset`, dry run and execution (C3) | the same wrapper, around `subset_inputs_from_config` | `subset_inputs_from_config` (C:cli/subset.py:223), `plan_subset`, `run_subset` |
+| library `run_pipeline` (E2b) | inside `run_pipeline` when the config holds a union source and no binding was passed | preflight (E:execution/_pipeline.py:116) |
+
+`run_pipeline` given a binding does not acquire again. `planned_paths` is the caller's full set of
+publication paths (outputs, delivery run folder, evidence, vault, quarantine, scratch); the library
+`run_pipeline` path passes its quarantine and output paths. The CLI wrapper `C:cli/io/_acquire.py`
+is one function used by all three CLI callers, so the order cannot drift between them.
+
+By construction, nothing else can read a union descriptor: `build_profile_source`
+(E:profile/_readers.py:520), the engine's `subset_inputs_from_config` and the CLI source loader
+(`_load_sources_from_config`) each refuse a selector descriptor with `source_set.not_acquired`
+before any open. A caller that forgets to acquire gets that code, never a directory read.
+
+Admission before execution exists (R1-5). E0 adds `source_sets.ACQUIRABLE`, one table of the
+(location, format) pairs that have a working acquisition. Each slice that builds one adds its row in
+the same diff: local Parquet at E2a, local CSV and fixed-width at E3, S3 at E4, GCS at E5. Every
+entry point refuses a union descriptor whose pair is not in the table with
+`source_set.format_unavailable`, before any I/O. In the CLI, C1 accepts and validates the syntax,
+and `run`, `mask()` and `subset` refuse a union source with `run.union_unavailable` before any
+open; C3 deletes that refusal in the diff that wires the acquisition.
+
+- **Parquet (D5, H1, R1-3).** Read every pinned footer first (ranged reads on cloud) and apply
+  the schema rule (5.4), which yields `agreed`: the agreed Arrow schema with the `pandas` metadata
+  key dropped. Then stage through the existing writer, `stage_typed_sources`
   (E:declared_casting/_stream.py:101), with: `root` the run's `ScratchArena`; `stem="union"`;
-  `open_fn` a pinned member reader that yields each member's record batches in ordinal order under
-  its pin and hashes the stored bytes as it reads; an identity `batch_fn`; `empty_fn` the typed
-  empty table from the agreed footer schema; `max_bytes` the scratch budget. `stage_typed_sources`
+  `open_fn` a pinned member reader that yields each member's record batches in ordinal order;
+  `batch_fn` the adapter `lambda _t, batch, _o: pa.Table.from_batches([batch], schema=agreed)`
+  (the writer takes the returned table's schema and calls `write_table`, which refuses a
+  `RecordBatch`, and `agreed` carries no per-file `pandas` metadata); `empty_fn` the typed empty
+  table `agreed.empty_table()`; `max_bytes` the scratch budget. `stage_typed_sources`
   streams only `LazySource` values, so the acquisition passes a small `LazySource` per union table
   whose only reader is `open_fn` (its own `iter_batches` refuses). No new parameter is added to
   `stage_typed_sources` (10 already; Dennis QA note). `source_sets/_acquire.py` joins `CALLERS` in
@@ -382,10 +458,24 @@ member facts (N8). Single-file sources do not pass through it and keep today's r
   dialect fields to cloud models is a non-goal. It has its own guard (16).
 - **Fixed-width.** Same joiner. No header. Copy records, check record length and terminator per
   member.
-- **Pins and hashes (N2, F3).** Each member is read under its pin from the first byte; its SHA-256
-  is computed on the stored bytes in the same pass; its identity is checked again at the end.
-- **Disk (N9, M9).** Before staging, admission sums the listed sizes of all union tables and
-  refuses with the existing spool-capacity error when scratch space is short. During staging the
+- **Pins and hashes (N2, F3, R1-3).** The recorded SHA-256 is always a sequential hash of the
+  stored bytes, never of what Arrow reads: Arrow reads a Parquet file out of order (footer first,
+  then column chunks by offset), so a hash over its reads differs from the file's hash.
+  - Local member: open under the held directory, compare the listed identity with `fstat`, hash
+    the held handle sequentially from offset 0 to the listed size, decode from the same held
+    (seekable) handle, then compare `fstat` (size, inode, `mtime_ns`, `ctime_ns`) again. A change
+    between the hash and the end is `source_set.member_changed`.
+  - Cloud Parquet member: stream the object under its pin into a member copy in the arena
+    (create-private, 0600), hashing as it is written and charging it to the budget; check
+    `Content-Range` and the total; decode the copy; remove the copy once its batches are staged.
+    Peak scratch is the staged table plus one member copy.
+  - CSV and fixed-width members (local or cloud): the joiner reads them sequentially, so the hash
+    is taken on the stored bytes in the same pass, before decompression.
+- **Disk (N9, M9).** Before staging, admission sums the listed sizes of all union tables (plus the
+  largest cloud Parquet member, for its copy, and the bytes of unproved pending directories, N15)
+  and refuses with the existing spool-capacity error when scratch space is short. The budget check
+  is `check_temp_disk_budget` imported from `decoy_engine.execution.out_of_core` (its public
+  export), never from `_budget` (R1-11). During staging the
   per-batch `max_bytes` check (and the joiner's per-member check) catches growth the listing cannot
   predict (gzip, re-encoded Parquet).
 
@@ -447,37 +537,68 @@ in C4; before C4 a `${` in a locator is an ordinary character and C1 does not pa
 
 ### 5.7 Evidence and sidecar (slice C2, H4, L3)
 
-- The manifest version moves from `cli-local-1` to **`cli-local-1.1`** (a minor bump: a superset).
-  The CLI writes `cli-local-1.1` for every run after C2. The CLI verifier, `report diff` and the
-  engine records model accept `cli-local-1` and `cli-local-1.1`. Older readers refuse `1.1` cleanly
-  because they match the version exactly (C:cli/evidence.py:459-460; the engine model is
-  `Literal["cli-local-1"]`).
+- Two version tags, two decisions (R1-8).
+  - The manifest's own `schema_version` moves from `cli-local-1` to **`cli-local-1.1`** (a minor
+    bump: a superset). The CLI writes `cli-local-1.1` for every run after C2. The CLI verifier,
+    `report diff` and the engine records model accept `cli-local-1` and `cli-local-1.1`. Older
+    readers refuse `1.1` cleanly because they match the version exactly (C:cli/evidence.py:459-460;
+    the engine model is `Literal["cli-local-1"]`).
+  - The library record envelope's `payload_schema` for those records is **`cli-local-2`**. The
+    records tag grammar takes an integer major only (`family-N`, E:records/_grammar.py:30-43), so
+    `cli-local-1.1` cannot be an envelope tag, and export withholds a record whose tag differs
+    from the kind's (E:records/_export.py:179-185). Engine slice E-rec makes the evidence kind
+    hold one reader and one export rule per tag, `cli-local-1` and `cli-local-2`; `get` and
+    default export pick the rule by the record's own `payload_schema`, so records written before
+    F03 keep exporting. A third tag is refused with the existing unknown-schema code.
+  - The `cli-local-2` export rule strips `input_fingerprints/*/path` as today and also
+    `input_fingerprints/*/base`, `*/bucket` and `*/key`, so the default export holds no source
+    location. AT-31 pins both rules.
 - `input_fingerprints[table]` becomes a union discriminated by `fingerprint_method`: the existing
   `FileFingerprint` (`"full"` or `None`), `MemberSetFingerprint` (`"member_set"`: `base`,
   `members_count`, `members_digest`, `sidecar_digest`) and `ObjectFingerprint` (`"object_pin"`:
   cloud single object, provider, bucket, key, pin, size, SHA-256). Each model is strict
   (`extra="forbid"`, strict types). Free text in `fingerprint_method` is refused.
 - `members_digest` is SHA-256 over canonical JSON of `[ordinal, size, pin, sha256]` per member.
-  It holds no names, so a short list of partition values cannot be tested against it (L3). Names
-  are bound only by `sidecar_digest`, the SHA-256 of the canonical sidecar bytes.
-- Sidecar: `schema_version: "decoy-members-1"`, one pydantic writer model (`MemberSidecar`) in
-  `C:cli/evidence_members.py`; the reader is `MemberSidecar.model_validate_json` on the same model.
+  It holds no names and no nonce, so a short list of partition values cannot be tested against it
+  (L3), and it is the stable content-set digest: two runs over the same members give the same
+  value, which `report diff` and comparisons use.
+- `sidecar_digest` is the SHA-256 of the canonical sidecar bytes, which include a fresh 256-bit
+  random `nonce` (`secrets.token_bytes(32)`, hex) per run (R1-9). It binds the names to the run,
+  but a recipient of the manifest alone cannot recompute it from guessed names, because the nonce
+  is only in the private sidecar. It is never used for comparison across runs. AT-32 pins both
+  properties.
+- Sidecar: `schema_version: "decoy-members-1"`, `nonce`, then the members. One pydantic writer
+  model (`MemberSidecar`) in `C:cli/member_evidence/_sidecar.py`; the reader is
+  `MemberSidecar.model_validate_json` on the same model.
   Per member: `ordinal`, `name`, `size`, `etag` or `generation` or local identity, `sha256`, `rows`.
   Byte limit 8 MiB, enough for the 10,000 `max_files` default with names up to 512 bytes.
   Tests: a `decoy-members-2` sidecar, a missing tag and an unknown method value are each refused
   with a coded error.
-- Stored with the run through `store_evidence` (C:cli/library/_run_records.py:109); the library
-  export leaves it out unless `--include-member-names` is given (C:cli/library/_export.py).
+- Stored with the run through `store_evidence` (C:cli/library/_run_records.py:109), which keeps
+  its one caller; the sidecar bytes are written and read through the library `_fs` module. The
+  library export leaves the sidecar out unless `--include-member-names` is given
+  (C:cli/library/_export.py).
+- Verification (R1-4). `report verify` and `ci check` today print the recorded path in
+  `input_missing` and `input_fingerprint_changed` (C:cli/evidence.py:662-680). For a member-set
+  fingerprint, the evidence verifier hands the entry to `C:cli/member_evidence/_verify.py`, which
+  loads the private sidecar, opens each member by its sidecar path, re-hashes it, and reports
+  `input_member_missing` or `input_member_changed` with the table and ordinal only. Both are
+  literal issue kinds added to the `decoy ci` rule codes (C:ci/rule_codes.py:253), so a user can allow them as
+  today. A missing sidecar is `input_member_sidecar_missing`. The verifier never formats a
+  sidecar field into a message. AT-28.
 
 ### 5.8 Placement checks by phase (M10)
 
 - **Validate (no I/O):** a target, evidence, vault, quarantine or scratch path under a union base
   whose relative remainder matches the selector; a selector on a target; two sources with the same
   base and overlapping selectors. Static only.
-- **After listing, before staging (C3):** member collisions with every planned publication path,
-  one member in two tables (file identity locally, including hard links and case aliases on a
-  case-insensitive file system; provider, bucket and exact key on cloud). Refused before any member
-  byte is read.
+- **After listing, before staging (inside the acquisition, E2b; R1-1):** member collisions with
+  every path in the caller's `planned_paths`, one member in two tables (file identity locally,
+  including hard links and case aliases on a case-insensitive file system; provider, bucket and
+  exact key on cloud). Refused before any member byte is read. The check is a step of
+  `source_sets.acquire`, not of a CLI caller, so `decoy run`, `decoy.mask()`, `decoy subset` and
+  library `run_pipeline` all get it; a caller cannot acquire without passing `planned_paths`
+  (keyword-only, no default).
 
 ## 6. Combined with S3 and GCS sources
 
@@ -496,30 +617,30 @@ in C4; before C4 a `${` in a locator is an ordinary character and C1 does not pa
 
 ## 7. Slotting in 1.x
 
-- Row F03 in 1.1 beside 64 CLI-CLOUD; 87 F02 moved from 1.4 to 1.1 (owner 2026-11-24: first in 1.x
-  with cloud sources; V1 stays small local files). Alternative if the owner reads it differently:
-  only F02-E2 moves to 1.1.
-- F03 is 20 slices, about 39 builder-days (section 15). With 87 at about 9 slices, 1.1 grows to
-  about 59 slices. The first cut works on local files alone and adds S3 when row 64 merges, so the
-  owner question OQ-6 recommends splitting 1.1 into a local file-sources part and a cloud part.
+Owner decision (2026-11-24): F03 ships first in 1.x, and 1.1 splits in two.
+
+- **1.1a local file sources.** F03 on local files: E0, E1, E2r, E2a, E2b, E3, E6, E-rec, E-rel1,
+  then C1, C3, C2, D1, then C4 and C5. No cloud dependency.
+- **1.1b S3 and GCS.** Row 64 CLI-CLOUD, row 87 F02 (moved from 1.4) with F02-E2, F03 E4 (S3)
+  and E5 (GCS, after F02-E2), E-rel2, and the CLI S3 and GCS cells of the ATs.
+- **Later 1.x.** E7 (hive partition columns), E8 and C6 (directory targets with parts), E9 (regex,
+  after the `google-re2` call, OQ-4), E-rel3.
+- F03 is 23 slices, about 44 builder-days (section 15).
 - The WAREHOUSE.1 multi-part Parquet reader is replaced by F03 staging.
 
-## 8. Open questions for the owner
+## 8. Owner decisions (2026-11-24)
 
-- OQ-1. Default for a union source with a directory target: refuse until `parts:` or
-  `rows_per_part:` is given (recommended), or mirror by default.
-- OQ-2. `max_files` default 10,000 and `max_listed` default 1,000,000: right for the SQL Server
-  case? Recommended: yes.
-- OQ-3. Manifest input (option C) in 1.x after F03, or wait for a customer ask? Recommended: wait.
-- OQ-4. `files_regex:` needs a linear-time regex engine. Add `google-re2` (wheels for Linux, macOS,
-  Windows) as a dependency, or ship glob only? Recommended: glob only in the first cut; E9 after the
-  dependency call.
-- OQ-5. Member names in a private sidecar, not in the shareable manifest (N16). Recommended: yes.
-- OQ-6. How to slot 1.1 (L7): one 1.1 with F03, row 64 and F02 together; or split into **1.1a
-  local file sources** (F03 first cut on local files: E0 to E3, E6, E-rel1, C1, C3, C2, D1) and
-  **1.1b cloud** (row 64, F02 with F02-E2, F03 E4 and E5, the S3 and GCS cells of the ATs). The
-  first cut's S3 part depends on row 64 either way. Recommended: split, so local unions ship
-  without waiting on cloud wiring.
+These were open questions in plan rev 2. The owner took the recommended option on each; they are
+fixed for this plan.
+
+- OQ-1. A union source with a directory target is refused until `parts:` or `rows_per_part:` is
+  given (refused at validate). Mirroring is not a default.
+- OQ-2. `max_files` defaults to 10,000 and `max_listed` to 1,000,000.
+- OQ-3. Manifest input (option C) waits for a customer ask. It is not in 1.x.
+- OQ-4. Glob only in the first cut. `files_regex:` (E9) waits for the `google-re2` dependency
+  decision; until then the key is unknown and refused.
+- OQ-5. Member names go in a private sidecar, never in the shareable manifest (N16, 5.7).
+- OQ-6. 1.1 splits into 1.1a local file sources and 1.1b S3 and GCS (section 7).
 
 ## 9. Pinned guarantee and non-goals
 
@@ -534,8 +655,13 @@ F02-E2):
    order (L6; matches section 1 and AT-13).
 3. Evidence binds the run to the ordered member set (ordinal, size, pin, SHA-256), and messages,
    exception chains, logs and the shareable manifest hold no member name or data value.
-4. The scratch stage is private to the run and removed on every exit path a process can run;
-   abandoned stages are reclaimed by the next run.
+4. The scratch stage is private to the run and removed on every exit path a process can run. A
+   killed run's arena is removed by the next acquisition on the same scratch base as soon as its
+   lock proves the owner dead (E2r); a live run's arena is never touched. Pending directories
+   with no marker are removed after the grace period and count against admission until then.
+5. Every public entry point (`decoy run`, `decoy.mask()`, `decoy subset`, library
+   `run_pipeline`) acquires before its first source-dependent step, and every single-file reader
+   refuses an unacquired union descriptor with a code (R1-1).
 
 Non-goals: cross-table export consistency without a producer contract (N1); incremental runs and
 cross-run FK; Delta, Iceberg, CDC replay; schema widening across members; a virtual union reader;
@@ -544,12 +670,14 @@ sources; parallel FK components; the platform.
 
 ## 10. Acceptance tests (hostile corpus, red first)
 
-**Red first, on the assertion (M8).** Every AT fails on the base simply because `files:` is an
-unknown key, which proves nothing. So each AT must also fail on its own assertion against the
-slice's scaffolding: the builder first lands a scaffold stager that reads only the first member
-(the class 5 mutation) and a scaffold listing that does not filter debris, runs the ATs, and
-records that each one fails on its named assertion, not on config parsing. The gate checks that
-record.
+**Red first, on the assertion (M8, R1-7).** Every AT fails on the base simply because `files:` is
+an unknown key, which proves nothing, and two shared scaffolds (first-member stager, no debris
+filter) cannot make the exit-path and integrity assertions fail. So red-first is per assertion:
+each AT and each row of the fault table in 10.2 names its own fault or mutation, the builder runs
+it on the slice head and records the assertion that turned red, and the gate re-runs the risk
+cells it is assigned. A test whose assertion stays green under its named fault is rewritten, not
+kept. Every privacy assertion (no name, no value, no canary) first asserts that the expected
+artifact or error exists, so an absent artifact cannot pass as a clean one.
 
 "Oracle" means the same pipeline run on one consolidated file built by the test from the members
 in sorted order (plain Arrow concat for Parquet, with the `pandas` key dropped; byte
@@ -570,16 +698,16 @@ skipped tests.
 | AT-6 | Member changed between list and read (local rewrite, S3 overwrite, GCS new generation), and a vanished member | `source_set.member_changed` or `source_set.member_missing`; no output |
 | AT-7 | Zero match; match below `min_files`; not equal `expect_files`; above `max_files`; listing above `max_listed` with ten matches (local and S3) | coded refusal each, listing stops at the bound |
 | AT-8 | Debris: `_SUCCESS`, `.crc`, `_temporary/` subtree, hidden file, `/`-terminated key; selector `".snap/*.csv"` | skipped, counted by reason, no names in output; the selector is refused with `source_set.selector_names_debris` at validate |
-| AT-9 | Missing marker; a marker older than a member (late part, reused marker); a marker with the same timestamp as the newest member | `source_set.marker_missing`; `source_set.marker_stale`; the equal-timestamp case passes |
-| AT-10 | Zero-byte Parquet member; header-only CSV member; zero-row Parquet member; all members zero rows | refusal; valid; valid; empty table recorded |
+| AT-9 | Missing marker; a marker older than a member (late part, reused marker); a marker with the same timestamp as the newest member; the marker removed after listing, during staging | `source_set.marker_missing`; `source_set.marker_stale`; the equal-timestamp case passes; removal during staging is `source_set.marker_missing` at the end-of-staging re-check, stage released |
+| AT-10 | Zero-byte Parquet member; header-only CSV member; zero-row Parquet member; all members zero rows; a nonempty Parquet member with several row groups beside a one-group member | refusal; valid; valid; empty table recorded; the multi-group member stages through the batch-to-`Table` adapter and equals the oracle |
 | AT-11 | CSV: headerless members; quoted header spanning lines; BOM on one member; member without final newline; CRLF and LF mixed; member ending inside a quote; gzip members | staged data equals the oracle records byte for byte; the open quote is refused |
 | AT-12 | Bounded memory: 200 members, 2M rows, peak RSS under 1.5x the single-file run on the oracle | holds; scratch peak about table size plus one member |
 | AT-13 | Equivalence: CSV output byte-equal to the oracle run; Parquet output equal in schema, rows, order and seeded masked values | holds for mask, column shuffle, subset, dedupe and limit, on every route in 10.1 |
-| AT-14 | Evidence lists every member: ordinal, size, pin, SHA-256 in sidecar order; digests in manifest; verify re-hashes local members; report diff shows member changes; `cli-local-1` manifest still verifies; `decoy-members-2`, missing tag, unknown method refused | holds; tampered sidecar fails verify |
-| AT-15 | Value-free canary in a member name, a partition value and a cell, through parser, gzip, schema, pyarrow and botocore errors | canary absent from `str(exc)`, logs, stdout, `--json`, notifications, `report diff` output, quarantine files, manifest, run result and the default library export; the default export holds no sidecar; every `source_set.*` error has `__cause__` and `__context__` equal to None (recurring defect 3) |
+| AT-14 | Evidence lists every member: ordinal, size, pin, SHA-256 in sidecar order; digests in manifest; verify re-hashes local members; report diff shows member changes; `cli-local-1` manifest still verifies; `decoy-members-2`, missing tag, unknown method refused | holds; each recorded SHA-256 equals `hashlib.sha256` of that fixture file's bytes, computed by the test (local Parquet, local CSV, S3 Parquet on `moto`); tampered sidecar fails verify |
+| AT-15 | Value-free canary in a member name, a partition value and a cell, through parser, gzip, schema, pyarrow and botocore errors | each case first asserts the expected `source_set.*` error or output exists; then the canary is absent from `str(exc)`, logs, stdout, `--json`, notifications, `report diff` output, quarantine files, manifest, run result and the default library export; the default export holds no sidecar; every `source_set.*` error has `__cause__` and `__context__` equal to None (recurring defect 3) |
 | AT-16 | Static: target, evidence, vault or quarantine path under a source base and matching the selector. After listing: a member that is also a planned output; one object matched by two tables (also via hard link and case alias on a case-insensitive file system) | static cases refused at validate with no I/O; member cases refused after listing with no member byte read and no stage created |
 | AT-17 | Explicit `--chunked` with a union table in a declared FK | refused, not run without the check |
-| AT-18 | Kill the run during staging, start a second run | first stage reclaimed, live stages of a parallel run untouched |
+| AT-18 | A real child process runs a union acquisition and is killed with SIGKILL during staging, while a second live run holds its own arena on the same base; then a third run starts at once | the killed run's arena is removed by the third run's acquisition with no wait; the live run's arena and files are untouched; a pending directory without a marker is kept until the grace period and its bytes count in admission |
 | AT-19 | Resume after interruption with an extra member added | refused with the resume mismatch code |
 | AT-20 | Delta `_delta_log/` or Iceberg `metadata/` under the base | `source_set.table_format_root` |
 | AT-21 | Symlink or junction out of the base, special file, non-UTF-8 name | refused |
@@ -588,64 +716,128 @@ skipped tests.
 | AT-24 | FK shapes not covered above: null child keys across members; single-file parent with union child; union parent with single-file child | equal to the oracle on every route in 10.1 |
 | AT-25 | Profiling: the profile plan (full mode, and seeded random mode with a fixed seed) on a union table | equal to the profile plan on the oracle file |
 | AT-26 | Exit paths: (a) listing refusal; (b) injected failure after staging, during execution; (c) success; (d) listing over the time bound; (e) a listing page error mid-listing (local `scandir` error, S3 page error) | (a) no stage created (scratch root unchanged); (b) and (c) stage released; (d) `source_set.listing_timeout`; (e) `source_set.listing_incomplete`, no stage |
+| AT-27 | Entry points: a union config through `decoy run`, `decoy.mask()`, `decoy subset` (dry run and execution) and library `run_pipeline`; a member that is also a planned output through each; a single-file reader (`build_profile_source`, engine and CLI subset input, CLI loader) handed an unacquired selector | each entry lists once (listing call count 1) and acquires before its first source-dependent step, gives oracle output, and leaves no stage after a refusal; the collision is refused after listing with no member byte read through every entry; each reader refuses with `source_set.not_acquired` before any open |
+| AT-28 | Write valid evidence for a union run, then change one member whose name holds a canary and remove another; run `report verify` and `ci check`, text and `--json` | first asserts `input_member_changed` and `input_member_missing` are reported with table and ordinal; then the canary and both member names are absent from stdout, stderr and `--json`; a removed sidecar gives `input_member_sidecar_missing` |
+| AT-29 | Before support exists: a union source in a (location, format) pair not in `ACQUIRABLE`; on the CLI after C1 and before C3, `run`, `mask()` and `subset` with a union source | `source_set.format_unavailable` before any I/O; `run.union_unavailable` before any open, no output, no scratch created |
+| AT-30 | Paired glob test: `.github/**` and `_fixtures/*.csv` | accepted by the CI contract validator and matching as before; refused as union selectors with `source_set.selector_names_debris` |
+| AT-31 | `store_evidence`, `get` and default export for a stored `cli-local-1` record and a new `cli-local-2` record with member-set and object fingerprints | both read back; both export; the `cli-local-2` export holds no `path`, `base`, `bucket` or `key`; an unknown tag is refused with the existing code |
+| AT-32 | Two runs over the same unchanged members | equal `members_digest`; different `sidecar_digest` and `nonce`; `report diff` shows no member change |
 
-### 10.1 Route-by-test matrix (H7)
+### 10.1 Route-by-test matrix (H7, R1-6)
 
-Routes from section 12. "N" cells need the native companion and run in the companion venv
-(`venv-native-lock`); the gate venvs skip `NEEDS_COMPANION` tests, so the gate records that every
-N cell ran and none was skipped. "R" means the route refuses the case and the AT asserts the
-refusal code.
+Routes from section 12. Every cell asserts two things: the output (equal to the oracle, or the
+same finding as the oracle) and the route. The route assertion reads what the engine recorded:
+`RouteEvent.route` and `lane` for the table, and the native dispatch evidence (admitted, or the
+decline code). A cell whose run lands on another route fails, even when the output matches.
 
-| AT | Full frame | Stream | Native companion | Out-of-core FK | Engine chunked FK | CLI `--chunked` | Subset stage | Standalone subset |
-|---|---|---|---|---|---|---|---|---|
-| AT-1 | yes | yes | N | yes | yes (single-column) | R | yes | yes (Parquet) |
-| AT-2 | yes | yes | N | yes | same outcome as one file (composite is outside its single-column limit) | R | yes | yes (Parquet) |
-| AT-3 | yes | yes | N | yes | yes | R | yes | n/a |
-| AT-4 | yes | yes | N | yes | n/a | R (uniqueness) | n/a | n/a |
-| AT-13 | yes | yes | N | yes | yes | yes when no FK or uniqueness on the table, else R | yes | yes (Parquet) |
-| AT-24 | yes | yes | N | yes | yes (single-column) | R | yes | yes (Parquet) |
+Legend. "yes" admitted, route asserted. "N" needs the native companion and runs in
+`venv-native-lock`; the gate venvs skip `NEEDS_COMPANION` tests, so the gate records that every N
+cell ran and none was skipped. "D:code" means the route declines with that code and the cell
+asserts the decline and the fallback route the engine then took. "R:code" means the route refuses
+and the cell asserts the refusal code. "n/a" means the route does not apply to the case.
 
-Standalone subset admits a union table on the same terms as one file of that format: its preflight
-needs Parquet (E:subset/_api.py:351-377), so a CSV union is refused there as a single CSV file is.
+Columns:
+
+- Full: full frame. Stream: streaming route. Seq: forced sequential execution.
+- NatD: native dispatch of the table. NatK: native kernels on the fallback route a declined table
+  runs on.
+- OOC: out-of-core FK. EChk: engine chunked FK. CChk: CLI `--chunked`.
+- SubS: subset stage in a run. SubP: standalone `decoy subset` on Parquet. SubC: standalone
+  `decoy subset` on CSV.
+
+| AT | Full | Stream | Seq | NatD | NatK | OOC | EChk | CChk | SubS | SubP | SubC |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| AT-1 single-column cross-part FK | yes | yes | yes | N, D:`fk_relationship_not_native_route` | N | yes | yes | R:`run.chunked_union_check` | yes | yes | R: Parquet-only preflight |
+| AT-2a composite FK across parts | yes | yes | yes | N, D:`fk_relationship_not_native_route` | N | yes | D: its single-column limit, as for one file | R:`run.chunked_union_check` | yes | yes | R: Parquet-only preflight |
+| AT-2b self FK, parent in a later part | yes | yes | yes | N, D:`fk_relationship_not_native_route` | N | R:`out_of_core_self_referential_fk_unsupported` | as for one file | R:`run.chunked_union_check` | yes | yes | R: Parquet-only preflight |
+| AT-3 duplicate parents, orphan | yes | yes | yes | N, D:`fk_relationship_not_native_route` | N | yes | yes | R:`run.chunked_union_check` | yes | n/a | n/a |
+| AT-4 uniqueness across a boundary | yes | yes | yes | N | N | yes | n/a | R:`run.chunked_union_check` | n/a | n/a | n/a |
+| AT-13 equivalence, no FK or uniqueness | yes | yes | yes | N, admitted | n/a | yes | yes | yes; with subset R:`config.subset_run_unsupported` | yes | yes | R: Parquet-only preflight |
+| AT-24 other FK shapes | yes | yes | yes | N, D:`fk_relationship_not_native_route` | N | yes | yes | R:`run.chunked_union_check` | yes | yes | R: Parquet-only preflight |
+
+The CLI `--chunked` refusal code is the one E6 and C3 add for a union table in a declared FK or
+uniqueness check (`run.chunked_union_check`; its exact name is fixed in E6 and copied here). The
+standalone CSV cell asserts the same refusal as a single CSV file gets from the subset preflight
+(E:subset/_api.py:351-377). Engine chunked FK admits only `remap` with a hash parent
+(E:execution/_chunked_fk_edge_checks.py:417-436); its "yes" cells use that configuration, and a
+second cell per FK row with another strategy asserts the decline code, as for one file. "As for
+one file" cells run the same case on the oracle file and
+assert the same route and code.
+
+### 10.2 Fault per assertion (R1-7)
+
+Each row is one fault, injected on the slice head, and the assertion it must turn red when the
+guarding code is removed. Builders record the red run; gates re-run their assigned rows.
+
+| Fault | Slice | Assertion | Mutation that must turn it red |
+|---|---|---|---|
+| Raise at each staging step (list, open, footer, hash, write, rename) | E2a | stage gone, scratch root as before, coded error | remove the `finally` release |
+| Marker removed after listing, during staging | E1, E2a | `source_set.marker_missing` at the end-of-staging re-check; stage gone | drop the end-of-staging marker re-check |
+| Real budget refusal: scratch capped so the third batch crosses `max_bytes` | E2a | spool-capacity refusal from `check_temp_disk_budget`; partial stage removed; no output | call the stager without `max_bytes` |
+| Admission refusal: listed sizes exceed free scratch | E2a | spool-capacity refusal before any member byte is read | skip admission |
+| Fixed-width member whose length is not a multiple of the record length | E3 | `source_set.member_record_boundary` naming table and ordinal; stage gone | join fixed-width members without the length check |
+| CSV member ending inside a quote | E3 | `source_set.member_open_quote`; stage gone | let the joiner close the quote |
+| Quarantined row at a member boundary (last row of member 2, first of member 3) | E6 | quarantine maps each row to its member ordinal and its row within that member, both right | map rows by the staged offset without member boundaries |
+| Evidence publish fails after staging and execution (sidecar write, then manifest write) | C2 | existing evidence error; no manifest without its sidecar and no sidecar without its manifest; stage released | write the manifest before the sidecar without rollback |
+| Member rewritten between hash and end | E2a | `source_set.member_changed` | skip the end identity check |
+| Run killed by SIGKILL in a child process | E2r | AT-18 assertions | drop the `LOCK_EX\|LOCK_NB` step |
+| Each `source_set.*` raise | E0 to E6 | `__cause__` and `__context__` are None | raise inside the handler |
 
 ## 11. Defect classes
 
 | # | Class | Closing structure | Sentry or property test | Mutation that must turn it red |
 |---|---|---|---|---|
-| 1 | Value-bearing output | member names only in the private sidecar; every `source_set.*` message built from the reason catalog with table and ordinal fields only; errors raised `from None` | AT-15 canary test plus a reason-catalog test that no `source_set.*` template takes a name or value field | add the relative name to the `member_changed` message; raise `member_changed` `from exc` |
-| 2 | Cleanup missing on an exit path | the acquisition is a context manager that owns the `ScratchArena` stage; reclaim for kills | AT-18, AT-26, and a test that raises at every staging step and checks the stage is gone | remove the `finally` release in the acquisition |
-| 3 | State machine and concurrency | stage names carry the run id; reclaim checks owner and age; the publish of parts is one pointer step | AT-18 two-run test; E8 test that a failed part write leaves the old generation current | reclaim without the owner check |
-| 4 | Route parity and silent fallback | one acquisition before preflight; the route table refuses a union table on routes that skip FK checks | the 10.1 matrix, AT-17; sentry that only the acquisition builds a union execution binding | let the chunked route accept a union table with FK |
+| 1 | Value-bearing output | member names only in the private sidecar; every `source_set.*` message built from the reason catalog with table and ordinal fields only; the reason is recorded inside the `except` handler and the `source_set.*` error is raised after the handler exits, so both `__cause__` and `__context__` are None (`raise ... from None` inside a handler still sets `__context__`); member verify issues carry table and ordinal only | AT-15 canary test, AT-28, plus a reason-catalog test that no `source_set.*` template takes a name or value field | add the relative name to the `member_changed` message; raise `member_changed` inside the handler; format the sidecar name into `input_member_changed` |
+| 2 | Cleanup missing on an exit path | the acquisition is a context manager that owns the `ScratchArena` stage; `reclaim_dead_arenas` for kills (E2r) | AT-18 (real child killed), AT-26, and the 10.2 faults, each asserting the stage is gone | remove the `finally` release in the acquisition; skip `reclaim_dead_arenas` in `acquire` |
+| 3 | State machine and concurrency | stage names carry the run id; reclaim proves death by `LOCK_EX\|LOCK_NB` on the arena root (a live opener holds `LOCK_SH`), plus owner and marker checks repeated after the lock; the publish of parts is one pointer step | AT-18 with a live run beside the killed one; E8 test that a failed part write leaves the old generation current | reclaim without the lock step; reclaim without the owner check |
+| 4 | Route parity and silent fallback | one acquisition before each entry point's first source-dependent step; single-file readers refuse unacquired selectors; the route table refuses a union table on routes that skip FK checks | the 10.1 matrix with a recorded-route assertion per cell, AT-17, AT-27, AT-29; sentry that only the acquisition builds a union execution binding | let the chunked route accept a union table with FK; move the `mask()` acquisition after the loader; force a native-dispatch cell onto the fallback route |
 | 5 | Referential integrity | consolidation gives FK code one table, so cross-part parents are visible | AT-1 to AT-4, AT-24 against the oracle | stage only the first member |
 | 6 | Untrusted producer | content checks per member: schema, header, quote state, magic bytes; marker freshness; table-format root refusal | AT-5, AT-9, AT-10, AT-11, AT-20 | accept a member by suffix without the magic-byte check |
-| 7 | TOCTOU (check then use) | hash and read from the held handle; first GET under the listed pin; identity check at the end | AT-6 with a rewrite between list and open and between open and end | open the member by path again after the identity check |
-| 8 | Weak tests and overclaimed evidence | equivalence against a test-built oracle, not against the code's own staging; evidence digests checked by verify; red-first on the assertion (M8) | AT-13 with the oracle built by plain Arrow concat; AT-14 tamper test | build the oracle with the stager itself |
-| 9 | Behavior-preserving refactor drift | the CI glob moves to the engine API with a parity corpus of every current CI contract pattern | parity test over the CI contract fixtures, old and new matcher | change `**` to match zero segments differently |
-| 10 | Frozen contract drift | evidence `cli-local-1.1` with readers for both versions; versioned sidecar; additive source keys; language freeze file updated in the same slice | `test_language_freeze.py`, frozen-surface sentry, legacy `cli-local-1` fixture test, sidecar version tests | drop `FileFingerprint` single-file support; accept an unknown sidecar version |
+| 7 | TOCTOU (check then use) | local: sequential hash and decode from the same held handle, identity check at the end; cloud: one pinned stream into a hashed member copy, decode the copy; first GET under the listed pin | AT-6 with a rewrite between list and open and between hash and end | open the member by path again after the identity check; decode the cloud member with a second GET |
+| 8 | Weak tests and overclaimed evidence | equivalence against a test-built oracle, not against the code's own staging; recorded hashes compared with `hashlib.sha256` of the fixture bytes computed by the test; evidence digests checked by verify; one fault per assertion (10.2); privacy tests first assert the artifact or error exists | AT-13 with the oracle built by plain Arrow concat; AT-14 hash and tamper tests; 10.2 | build the oracle with the stager itself; hash the Arrow read buffers instead of the stored bytes |
+| 9 | Behavior-preserving refactor drift | the CI glob moves to the engine API with a parity corpus of every current CI contract pattern; the debris rule stays out of the shared grammar and lives in the union-selector validator | parity test over the CI contract fixtures, old and new matcher; AT-30 paired test | change `**` to match zero segments differently; move the debris rule into `validate_path_glob` |
+| 10 | Frozen contract drift | manifest `cli-local-1.1` with readers for both versions; envelope tag `cli-local-2` with a reader and export rule per tag; versioned sidecar; additive source keys; language freeze file updated in the same slice | `test_language_freeze.py`, frozen-surface sentry, legacy `cli-local-1` fixture test, sidecar version tests, AT-31 | drop `FileFingerprint` single-file support; accept an unknown sidecar version; store `cli-local-1.1` as the envelope tag; export a `cli-local-1` record with the `cli-local-2` rule |
 | 11 | Second writer (H1) | Parquet staging only through `stage_typed_sources`; text staging only through `join_text_members` | `ET:tests/sentry/test_staging_writer_choke_point.py` with `source_sets/_acquire.py` in `CALLERS`; new text joiner guard (16) | open a `ParquetWriter` in `_acquire.py`; add a second byte write outside `join_text_members` |
 
 ## 12. Enumerations
 
 ### Exit paths of a union run
 
-- Validate refusal (selector, counts, var, static placement): no I/O, exit code for config errors.
+- Validate refusal (selector, debris selector, counts, var, static placement): no I/O, exit code
+  for config errors. AT-30.
+- Entry refusal before I/O: an unacquirable (location, format) pair
+  (`source_set.format_unavailable`), a CLI before C3 (`run.union_unavailable`), or a single-file
+  reader handed an unacquired selector (`source_set.not_acquired`). AT-27, AT-29.
 - Listing refusal (no match, counts, bounds, time bound, incomplete listing, marker, table-format
   root, member placement collisions): no stage created. AT-7, AT-9, AT-16, AT-20, AT-26 (a, d, e).
-- Staging refusal (schema, header, quote, changed, missing, disk): stage released by the
-  acquisition. AT-5, AT-6, AT-11, and the raise-at-every-step test.
+- Staging refusal (schema, header, quote, fixed-width record boundary, changed, missing, marker
+  removed during staging, disk budget): stage released by the acquisition. AT-5, AT-6, AT-9,
+  AT-11, and the 10.2 faults (one per assertion, including a real budget refusal).
 - Execution failure after staging: stage released by the acquisition (E:fileaccess/_scratch.py:340).
   AT-26 (b).
-- Kill or power loss: stage left; reclaimed by the next run (E:fileaccess/_reclaim.py:129). AT-18.
+- Evidence publish failure after staging and execution (sidecar or manifest write fails): the
+  run fails with the existing evidence error, no manifest without its sidecar and no sidecar
+  without its manifest is left, and the stage is released. 10.2.
+- Kill or power loss: arena left with its lock released; removed by the next acquisition on the
+  same base through `reclaim_dead_arenas` (E2r), with no age floor. AT-18 with a real child
+  process.
 - Success: evidence and sidecar written, then stage released. AT-26 (c).
 
 ### Routes a union table can take
 
-See the matrix in 10.1.
+See the matrix in 10.1. Each cell asserts the route the engine recorded (`RouteEvent.route` and
+`lane`, and the native dispatch evidence), not only the output (R1-6).
 
 - Full frame and stream: admitted.
-- Native companion: admitted on the staged file path (E:execution/_chunked_input.py:150).
-- Out-of-core FK: admitted; last-write-wins duplicates follow global row order, which is the staged
-  order (E:execution/out_of_core/_relation.py:348).
+- Native dispatch: admitted on the staged file path (E:execution/_chunked_input.py:150) for a
+  table outside an FK relationship; a table in an FK relationship is declined with
+  `fk_relationship_not_native_route` (E:execution/native/_dispatch.py:254-267) and runs on a
+  fallback route, where native kernels may still run. The matrix treats these as two columns.
+- Out-of-core FK: admitted for single-column and composite FK; last-write-wins duplicates follow
+  global row order, which is the staged order (E:execution/out_of_core/_relation.py:348). Self FK
+  is refused with `out_of_core_self_referential_fk_unsupported` (E:execution/out_of_core/_compat.py:504-519),
+  as for one file.
+- Forced sequential execution: admitted.
 - Engine chunked FK: admitted within its existing single-column limits
   (E:execution/_chunked_fk_edge_checks.py:418).
 - Explicit CLI `--chunked`: refused when the union table is in a declared FK or uniqueness check
@@ -669,11 +861,14 @@ See the matrix in 10.1.
   `compression`.
 - `FileMeta` (E:sdk.py:104): `etag`, `generation`, both optional.
 - Run result: per table `members_count`, `members_digest`, `staged_bytes`.
+- Library record envelope: `payload_schema` `cli-local-2` (E-rec).
 - Engine records model and CLI manifest (C:cli/evidence.py:286): version `cli-local-1.1`;
   `input_fingerprints[table]` is a discriminated union of `FileFingerprint`,
   `MemberSetFingerprint` and `ObjectFingerprint` (5.7).
-- Sidecar `decoy-members-1`: per member `ordinal`, `name`, `size`, `etag` or `generation` or local
-  identity, `sha256`, `rows`.
+- Sidecar `decoy-members-1`: `nonce` (256-bit, per run); per member `ordinal`, `name`, `size`,
+  `etag` or `generation` or local identity, `sha256`, `rows`.
+- `decoy ci` rule codes: `input_member_missing`, `input_member_changed`,
+  `input_member_sidecar_missing`.
 - Target models (E8): `parts`, `rows_per_part`.
 - Run options: `--var` (C4); library export option `--include-member-names` (C2).
 
@@ -684,7 +879,9 @@ See the matrix in 10.1.
 - Exception chains: `source_set.*` errors carry no `__cause__` or `__context__`.
 - Run result document (C:cli/run/_result.py): member counts and digests.
 - Evidence manifest: digests and counts; sidecar: names (private).
-- `report diff`: member counts, ordinals and digest changes, no names.
+- `report diff`: member counts, ordinals and `members_digest` changes, no names.
+- `report verify` and `ci check`, text and `--json`: member issues by table and ordinal only
+  (AT-28).
 - Library store and export: sidecar stored with the run; the default export leaves it out.
 - Quarantine files: declared-casting member mapping (E:declared_casting/_quarantine_protocol.py:71),
   ordinals only.
@@ -697,14 +894,19 @@ See the matrix in 10.1.
 | Path glob grammar | the `decoy ci` grammar, moved to the engine `path_glob/` | C:ci/contracts.py:481-492, C:ci/staged.py:56-92 |
 | Local listing and safe open | rooted file access with a held directory | E:fileaccess/_rooted.py:197-219 |
 | Cloud listing and streaming | connector `list` and `open`, F02 executor | E:connectors/s3.py:152, E:connectors/object_store.py:141-176 |
-| Parquet staging writer (H1) | `stage_typed_sources` with `open_fn`, identity `batch_fn`, `max_bytes` | E:declared_casting/_stream.py:101 |
-| Scratch stage | `ScratchArena` and reclaim | E:fileaccess/_scratch.py:184, E:fileaccess/_reclaim.py:47 |
-| Per-batch disk budget | `check_temp_disk_budget` (inside `stage_typed_sources`) | E:execution/out_of_core/_budget.py:523 |
+| Parquet staging writer (H1) | `stage_typed_sources` with `open_fn`, the batch-to-`Table` adapter as `batch_fn` (R1-3), `max_bytes` | E:declared_casting/_stream.py:101 |
+| Stored-byte hash | `hashlib.sha256` over sequential reads of the held handle or the member copy, not over Arrow reads (R1-3) | standard library |
+| Scratch stage | `ScratchArena` (opener holds `LOCK_SH`) | E:fileaccess/_scratch.py:169-184 |
+| Killed-run recovery | the parts of `reclaim_stages` (exact-name match, no-follow stat, owner, marker, `LOCK_EX\|LOCK_NB`), reused by the new `reclaim_dead_arenas`, because `reclaim_stages` covers only publication stages and refuses `apply=True` (R1-2) | E:fileaccess/_reclaim.py:47-159 |
+| Per-batch disk budget | `check_temp_disk_budget` (inside `stage_typed_sources`; `source_sets` imports the public export, R1-11) | E:execution/out_of_core/__init__.py:4 |
 | CSV dialect and header rules | the one CSV parser | E:profile/_csv_reader.py:84-113 |
 | Disk refusal | spool-capacity error | E:execution/out_of_core/_budget.py |
 | Reason codes | reason registry, new `source_set` catalog | E:reasons/_registry.py |
 | Placement collisions | CLI placement check | C:cli/io/_placement.py:128-179 |
-| Evidence store | `store_evidence` (single-caller sentry) | C:cli/library/_run_records.py:109 |
+| Evidence store | `store_evidence` (single-caller sentry, still one caller) and the library `_fs` module for sidecar bytes | C:cli/library/_run_records.py:109, C:cli/library/_fs.py |
+| Evidence verify issues | literal issue kinds and `decoy ci` rule codes | C:cli/evidence.py:662-680, C:ci/rule_codes.py:253 |
+| Record tags | records kind spec, tag grammar, export rules | E:records/_kinds.py:106-114, E:records/_grammar.py, E:records/_export.py:179-185 |
+| Route evidence for the matrix | `RouteEvent` (route, lane, reason code, table) and native dispatch evidence | E:execution/_progress_events.py, E:execution/native/_dispatch.py:254-267 |
 | Library export | export module | C:cli/library/_export.py |
 | Resume binding | F23 fingerprint | E:delivery/resume/_fingerprint.py:66-72 |
 | Atomic multi-file publish (E8) | batch publish | C:_atomic_batch.py:62-92 |
@@ -719,9 +921,16 @@ New code only where nothing exists: the text record joiner (D4) and the pin on t
 - Source config models: additive keys; selector mode refuses on targets.
 - `.decoy` grammar: new connector options; `tests/fixtures/release_freeze/lang-surface.json`
   updated in C1 with the freeze test, and again in C4 for `${var}`.
-- Evidence: **minor bump to `cli-local-1.1`** (H4; this replaces R2's "version stays"). Readers
-  accept `1` and `1.1`; older readers refuse `1.1` by exact match; the legacy `cli-local-1`
-  fixture is kept. Sidecar versioned `decoy-members-1`.
+- Evidence manifest: **minor bump to `cli-local-1.1`** (H4; this replaces R2's "version stays").
+  Readers accept `1` and `1.1`; older readers refuse `1.1` by exact match; the legacy
+  `cli-local-1` fixture is kept. Sidecar versioned `decoy-members-1`, with a per-run nonce.
+- Library record envelope (R1-8): new `payload_schema` tag `cli-local-2` for F03-era evidence
+  records; the evidence kind keeps `cli-local-1` for older records. `get` and default export pick
+  the reader and export rule by the record's own tag. AT-31 is the contract test.
+- `decoy ci` rule codes: additive literal kinds `input_member_missing`, `input_member_changed`,
+  `input_member_sidecar_missing`.
+- Public engine facade `decoy_engine.source_sets` (`acquire`, `ACQUIRABLE`) and
+  `fileaccess.reclaim_dead_arenas`: experimental, recorded in the surface inventory in E2a and E2r.
 - Run result: additive fields.
 - Reason codes: new `source_set.*` and `run.var_*` codes in the catalogs; `target.parts_*` in E8.
 - F23 resume fingerprint: gains the snapshot digest; an older checkpoint without it cannot resume a
@@ -734,37 +943,47 @@ Builder-days are for one builder. Risk tier per slice. "Rev" is the review set: 
 
 | Slice | Repo | What | Depends on | Builder-days | Risk | Rev |
 |---|---|---|---|---|---|---|
-| E0 | engine | `path_glob/` pure grammar package (bottom tier) with `validate_path_glob`, `match_path_glob` and SDK re-export; typed selector fields and count rules on the source models; `source_set` reason catalog; `.importlinter` and layout snapshot for `path_glob` and `source_sets`; selector debris-segment refusal | none | 1.5 | R2 | two |
-| E1 | engine | local selection in `source_sets/`: listing via rooted access, file-access registry entries, per-segment debris, sort, counts, local listing bounds and time bound, incomplete listing, marker "not older than", table-format root refusal; AT-7 (local), AT-8, AT-9, AT-20, AT-21, AT-26 (a, d, e local) | E0 | 2 | R2 | two |
-| E2a | engine | acquisition and Parquet staging: `acquire` context manager, `ScratchArena` stage and reclaim, pinned member `open_fn` through `stage_typed_sources` (sentry `CALLERS` updated), held-handle hash, all footers then the 5.4 schema rule, admission plus `max_bytes`, member facts in the run result, records model widening, `run_pipeline` ownership; AT-5, AT-6 (local), AT-10 (Parquet), AT-12, AT-18, AT-26 (b, c) | E1 | 2.5 | R2 | two |
-| E2b | engine | phase binding: preflight, capacity, profile, native admission, subset and execution use the staged binding; route matrix cells for every admitted engine route; AT-1 to AT-4, AT-13 (Parquet), AT-24, AT-25 | E2a | 2 | R2 | two |
-| E3 | engine | CSV and fixed-width record joiner `join_text_members` and its guard, gzip, empty versus corrupt, `column_names_file` binding, per-member budget; AT-10, AT-11, AT-13 (CSV) | E2a | 2.5 | R2 | two |
-| E4 | engine | S3: paged listing under `max_listed`, page and time bounds, incomplete listing; `FileMeta.etag` from listing; first GET under `IfMatch`; range and total checks; cost fixture on `moto`; AT-6 (S3), AT-7 (S3), AT-23, AT-26 (e S3) | E2a, F02-E1 (merged) | 2.5 | R2 | two |
-| E6 | engine | route refusal (`plan/checks/_union_routes.py`), declared-casting quarantine member mapping, resume snapshot binding; AT-17 (engine part), AT-19 | E2b | 2.5 | R2 | two |
-| E-rel1 | engine | release and repin (checklist) | E0 to E4, E6 | 0.5 | R1 | one |
-| C1 | CLI | language keys and `format:` for cloud unions, validate and gate checks, CI glob on the engine API with parity corpus, static placement checks; AT-16 (static part). No `${var}` | E-rel1 | 2.5 | R2 | two |
-| C3 | CLI | run wiring: `source_sets.acquire` before preflight, member placement collisions after listing, native gate on the staged binding, `--chunked` refusal, resume identity before the first checkpoint, evidence refused for union tables (as `--duckdb-source`) until C2; AT-16 (member part), AT-17, AT-19 end to end; CLI cells of the 10.1 matrix | C1; row 64 source wiring for the S3 cells | 2.5 | R2 | two |
-| C2 | CLI | evidence `cli-local-1.1`: discriminated fingerprints, `evidence_members.py` sidecar model, `store_evidence`, export flag, verify, report diff, cloud single-object entries; lifts the C3 evidence refusal; AT-14, AT-15 | C3 | 3 | R2 | two |
+| E0 | engine | `path_glob/` pure grammar package (bottom tier) with `validate_path_glob`, `match_path_glob` and SDK re-export, no debris rule; typed selector fields and count rules on the source models; union-selector validator with the debris-segment refusal; `source_sets.ACQUIRABLE` format table (empty) and the `source_set.format_unavailable` refusal; `source_set` reason catalog; `.importlinter` and layout snapshot for `path_glob` and `source_sets`; AT-29 (engine part), AT-30 | none | 1.5 | R2 | two |
+| E1 | engine | local selection in `source_sets/`: listing via rooted access, file-access registry entries, per-segment debris, sort, counts, local listing bounds and time bound, incomplete listing, marker "not older than", table-format root refusal; AT-7 (local), AT-8, AT-9 (marker cases), AT-20, AT-21, AT-26 (a, d, e local) | E0 | 2 | R2 | two |
+| E2r | engine | `fileaccess.reclaim_dead_arenas(base)`: exact-name match, no-follow stat, owner check, marker proof, `LOCK_EX\|LOCK_NB`, checks repeated after the lock, immediate removal of a proved-dead arena, grace period for unproved pending directories, their bytes reported for admission; counts-only report; AT-18 | none | 1.5 | R2 | two |
+| E2a | engine | acquisition and Parquet staging: `acquire(config, *, planned_paths, scratch)` context manager in the fixed order of 5.2, `reclaim_dead_arenas` first, member collision check against `planned_paths`, `ScratchArena` stage, pinned member `open_fn` through `stage_typed_sources` (sentry `CALLERS` updated) with the batch-to-`Table` adapter, sequential stored-byte hash (local held handle; cloud member copy path built but used from E4), all footers then the 5.4 schema rule, admission plus `max_bytes` with the public `check_temp_disk_budget`, member facts in the run result, records model widening, `ACQUIRABLE` row for local Parquet; `build_profile_source` and engine `subset_inputs_from_config` refuse an unacquired selector with `source_set.not_acquired`; AT-5, AT-6 (local), AT-9 (marker removed during staging), AT-10 (Parquet, multi-row-group), AT-12, AT-14 (engine hash part), AT-26 (b, c) | E1, E2r | 2.5 | R2 | two |
+| E2b | engine | phase binding and library entry: `run_pipeline` acquires when given a union config and no binding; preflight, capacity, profile, native admission, subset and execution use the staged binding; route matrix cells for every admitted engine route with route assertions; AT-1 to AT-4, AT-13 (Parquet), AT-24, AT-25, AT-27 (library part) | E2a | 2 | R2 | two |
+| E3 | engine | CSV and fixed-width record joiner `join_text_members` and its guard, gzip, empty versus corrupt, `column_names_file` binding, per-member budget, `ACQUIRABLE` rows for local CSV and fixed-width; AT-10, AT-11, AT-13 (CSV), fixed-width record-boundary fault (10.2) | E2a | 2.5 | R2 | two |
+| E6 | engine | route refusal (`plan/checks/_union_routes.py`), declared-casting quarantine member mapping, resume snapshot binding; AT-17 (engine part), AT-19, quarantine ordinal and row at a member boundary (10.2) | E2b | 2.5 | R2 | two |
+| E-rec | engine | evidence kind with one reader and one export rule per tag (`cli-local-1`, `cli-local-2`), rule picked by the record's own `payload_schema`, `cli-local-2` export strips `path`, `base`, `bucket`, `key`; AT-31 | none | 1.5 | R2 | two |
+| E-rel1 | engine | release and repin (checklist) for 1.1a | E0, E1, E2r, E2a, E2b, E3, E6, E-rec | 0.5 | R1 | one |
+| C1 | CLI | language keys and `format:` for cloud unions, validate and gate checks, CI glob on the engine API with parity corpus (debris rule not applied, AT-30 CLI side), static placement checks; `run`, `mask()` and `subset` refuse a union source with `run.union_unavailable` before any open; AT-16 (static part), AT-29 (CLI part). No `${var}` | E-rel1 | 2.5 | R2 | two |
+| C3 | CLI | entry-point wiring through `C:cli/io/_acquire.py`: `decoy run` before the native gate and loader, `decoy.mask()` after the output-collision check and before `_native_gate`, `decoy subset` dry run and execution around `subset_inputs_from_config`; caller `planned_paths` from the run layout; the CLI loader refuses an unacquired selector; deletes `run.union_unavailable`; `--chunked` refusal; resume identity before the first checkpoint; evidence refused for union tables (as `--duckdb-source`) until C2; AT-16 (member part), AT-17, AT-19 end to end, AT-27; CLI cells of the 10.1 matrix | C1 | 3.5 | R2 | two |
+| C2 | CLI | evidence: manifest `cli-local-1.1` in a `cli-local-2` envelope, discriminated fingerprints, sub-package `member_evidence/` (sidecar model with nonce, member verifier), `store_evidence` (one caller), sidecar bytes through `_fs`, export flag, `report verify`, `ci check` rule codes, report diff, cloud single-object entries, evidence publish failure after staging (10.2); lifts the C3 evidence refusal; AT-14, AT-15, AT-28, AT-32 | C3, E-rel1 (E-rec) | 3.5 | R2 | two |
 | D1 | CLI | docs: union sources guide, exporter selectors (Spark, DMS, Redshift, Athena), limits, marker semantics, cross-table consistency note | C2 | 1 | R0 | one |
 | C4 | CLI | `--var` complete: `${var.name}` syntax in `lang/_vars.py`, expansion, resolved-locator validation, digests in evidence, freeze file, its own docs; AT-22 | C2 | 2 | R2 | two |
 | C5 | CLI | `scan` and `init` grouped input over a selector | C3 | 2 | R1 | one |
-| E5 | engine | GCS: paged listing with bounds, generation from listing, first read under the generation, stored-bytes download; AT-6 (GCS), AT-7 (GCS) | F02-E2 | 1.5 | R2 | two |
+| E4 | engine | S3: paged listing under `max_listed`, page and time bounds, incomplete listing; `FileMeta.etag` from listing; first GET under `IfMatch`; range and total checks; member copy for Parquet hashing; `ACQUIRABLE` row for S3; cost fixture on `moto`; AT-6 (S3), AT-7 (S3), AT-23, AT-26 (e S3) | E-rel1, F02-E1 (merged) | 2.5 | R2 | two |
+| E5 | engine | GCS: paged listing with bounds, generation from listing, first read under the generation, stored-bytes download, `ACQUIRABLE` row for GCS; AT-6 (GCS), AT-7 (GCS) | E4, F02-E2 | 1.5 | R2 | two |
+| E-rel2 | engine | release and repin for 1.1b (E4, E5) | E4, E5 | 0.5 | R1 | one |
 | E7 | engine | hive partition columns (strings, clash and missing-key refusal, not for fixed-width) | E3 | 1.5 | R2 | two |
-| E9 | engine | `files_regex:` on google-re2 | OQ-4, E0 | 1 | R1 | one |
+| E9 | engine | `files_regex:` on google-re2 | OQ-4 dependency call, E0 | 1 | R1 | one |
 | E8 | engine | output parts: `parts: "mirror"`, `rows_per_part`, eligibility, generation publish | E-rel1 | 3 | R2 | two |
-| E-rel2 | engine | release and repin for E5, E7, E8, E9 | those slices | 0.5 | R1 | one |
-| C6 | CLI | parts delivery: generation folder, pointer publish local and S3, ledger, evidence, verify, resume over parts | E8, E-rel2 | 2.5 | R2 | two |
+| E-rel3 | engine | release and repin for E7, E8, E9 | those slices | 0.5 | R1 | one |
+| C6 | CLI | parts delivery: generation folder, pointer publish local and S3, ledger, evidence, verify, resume over parts | E8, E-rel3 | 2.5 | R2 | two |
 
-Total: 20 slices, about 39 builder-days (engine 23.5 across 13 slices, CLI 15.5 across 7
-including D1). Dennis estimated 38 to 42.
+Total: 23 slices, about 44 builder-days (engine 27 across 16 slices, CLI 17 across 7 including
+D1). Rev 3 adds E2r (1.5), E-rec (1.5) and E-rel3 (0.5), and grows C3 by 1 day (mask and subset
+entry points) and C2 by 0.5 day (member verifier).
 
-**First cut** (about 25 builder-days): E0, E1, E2a, E2b, E3, E4, E6, E-rel1, C1, C3, C2, D1.
-It ships local unions on its own, plus S3 when row 64 is merged (H3d; E4 is engine-only, so the
-CLI's S3 path needs row 64). Merge order keeps every merge clean (H3): C3 refuses evidence for
-union tables, so a union run between C3 and C2 never reaches `build_manifest` with a base
-directory (H3a); D1 waits only for C2 (H3b); no `${var}` parsing exists before C4 (H3c).
+**1.1a local file sources** (about 31 builder-days): E0, E1, E2r, E2a, E2b, E3, E6, E-rec,
+E-rel1, then C1, C3, C2, D1, then C4 and C5. It needs nothing from row 64 or F02. Merge order keeps
+every merge clean (H3, R1-5): before C3 the engine refuses unacquirable pairs with
+`source_set.format_unavailable` and the CLI refuses union sources with `run.union_unavailable`;
+C3 refuses evidence for union tables, so a union run between C3 and C2 never reaches
+`build_manifest` with a base directory (H3a); D1 waits only for C2 (H3b); no `${var}` parsing
+exists before C4 (H3c).
 
-Then C4 and C5 (4 days). Then E5 after F02-E2, E7, E9 after OQ-4, E8, E-rel2, C6 (10 days).
+**1.1b S3 and GCS** (about 4.5 F03 builder-days): E4, E5 after F02-E2, E-rel2, with row 64
+CLI-CLOUD and row 87 F02. The CLI S3 and GCS cells of the ATs are written in the first CLI slice
+after row 64 merges, never as skip markers (M15).
+
+**Later 1.x** (about 8.5 builder-days): E7, E9 after the OQ-4 dependency call, E8, E-rel3, C6.
 
 ## 16. Design notes, choke points and placement
 
@@ -775,13 +994,31 @@ acquisition returns one `StagedSource` value, not a tuple). Established pattern:
 as `--duckdb-source` and the subset stage do; pin on read, as S3 `IfMatch` and GCS
 `ifGenerationMatch` do.
 
-**Choke point 1, acquisition.** Rule: "a union source is listed, pinned and staged exactly once,
-by the acquisition". Enforced by construction: only `source_sets.acquire` can turn a descriptor
-with a selector into a readable binding; `build_profile_source` refuses a selector descriptor
-(E:profile/_readers.py:520). Guard: `ET:tests/sentry/source_config/test_union_acquisition_choke_point.py`
-checks that no module outside `source_sets/` calls connector `list` for a source and that
-`build_profile_source` refuses a selector. Mutation: let `build_profile_source` read the first
-matching member; the guard turns red.
+**Choke point 1, acquisition (R1-1).** Rule: "a union source is listed, pinned and staged exactly
+once, by the acquisition, before the caller's first source-dependent step". Enforced by
+construction: only `source_sets.acquire` can turn a descriptor with a selector into a readable
+binding, and every single-file reader refuses a selector descriptor with `source_set.not_acquired`
+before any open: `build_profile_source` (E:profile/_readers.py:520), the engine's
+`subset_inputs_from_config`, and the CLI loader `_load_sources_from_config`. A missed entry point
+therefore fails with a code, never with a directory read. Guards:
+`ET:tests/sentry/source_config/test_union_acquisition_choke_point.py` checks that no module
+outside `source_sets/` calls connector `list` for a source and that each named reader refuses a
+selector; CLI `tests/sentry/io_policy/test_union_acquire_entry_points.py` checks that `decoy run`,
+`decoy.mask()` and `decoy subset` reach `C:cli/io/_acquire.py` before the native gate, the loader
+and `subset_inputs_from_config` (an ordered call-site scan plus AT-27 behavior). Mutations: let
+`build_profile_source` read the first matching member (engine guard red); move the `mask()`
+acquisition after `_load_sources_from_config` (CLI guard and AT-27 red).
+
+**Choke point 1b, member collisions (R1-1).** Rule: "no member is a planned publication path".
+Enforced by construction: the check is a step inside `acquire`, and `planned_paths` is a
+keyword-only argument with no default. Guard: AT-16 (member part) through `run`, `mask()` and
+library `run_pipeline`. Mutation: skip the collision step in `acquire`.
+
+**Choke point 1c, dead-arena reclaim (R1-2).** Rule: "only `fileaccess.reclaim_dead_arenas`
+removes another run's arena". Guard: a new sentry beside the existing arena sentries,
+`ET:tests/sentry/scratch/test_arena_removal_owner.py`, checks that only `_scratch.py` (the opener)
+and `reclaim_dead_arenas` remove a path under an arena prefix, with a planted-remover self test.
+Mutation: drop the `LOCK_EX|LOCK_NB` step (AT-18 turns red: the live run's arena is removed).
 
 **Choke point 2, Parquet staging writer (H1).** The existing rule and guard: Parquet staging goes
 through `stage_typed_sources`; `ET:tests/sentry/test_staging_writer_choke_point.py` gains
@@ -803,7 +1040,8 @@ modules (at the fan-out cap), so both new parts are sub-packages:
 - `path_glob/` (pure grammar, imports only `reasons` and the standard library) goes in the bottom
   tier. E0 adds ` : path_glob` to the last `layers` line. `config` and `sdk` import it.
 - `source_sets/` (acquisition, imports `connectors`, `fileaccess`, `profile`, `declared_casting`,
-  `execution.out_of_core._budget`) goes in the `execution` tier. E0 adds ` : source_sets` to the
+  and `check_temp_disk_budget` from the public `execution.out_of_core` package, never from
+  `_budget`; R1-11) goes in the `execution` tier. E0 adds ` : source_sets` to the
   second `layers` line. No new `ignore_imports` line is needed: everything it imports is in its own
   tier or below.
 - Both names go into the layout snapshot in `ET:tests/sentry/layout/test_import_layers.py`.
@@ -826,7 +1064,10 @@ Placement (engine CODEMAP "Where Things Go"; CLI CODEMAP lines 52, 55, 61):
 | route refusal | `src/decoy_engine/plan/checks/_union_routes.py` | "Plan compile and checks" (plan is frozen at 30; new checks in `plan/checks/`) | other checks |
 | parts writer (E8) | `src/decoy_engine/safe_output/_parts.py` | "Safe output boundary" | other output modules |
 | guard tests | `tests/sentry/source_config/` | "Source readers" sentries | existing source sentries |
-| CLI evidence sidecar model and reader | `src/decoy/cli/evidence_members.py` (new, public within the CLI; `evidence.py` is at 792 lines and does not grow) | CLI evidence row | `evidence.py` |
+| dead-arena reclaim (E2r) | `src/decoy_engine/fileaccess/_reclaim.py` (extend; beside `reclaim_stages`) | "File access" | `_scratch.py` |
+| evidence kind tags (E-rec) | `src/decoy_engine/records/_kinds.py`, `_export.py` (edit only) | "Records" | existing |
+| CLI member evidence: `__init__.py`, `_sidecar.py` (`MemberSidecar`, nonce), `_verify.py` (member re-hash, table and ordinal issues) | `src/decoy/cli/member_evidence/` (new sub-package; the flat `src/decoy/cli` is frozen at its baseline of 29 in `tests/sentry/baselines/package-fanout.json`, and `evidence.py` is at 792 lines and does not grow). C2 adds a CODEMAP row "Member-set evidence" so `tests/sentry/layout/test_codemap_paths.py` checks the paths | CLI "Command-private helpers" row (named sub-package for new work) | `evidence.py` |
+| CLI acquisition wrapper | `src/decoy/cli/io/_acquire.py` (new; 15 modules in `io/`) | CLI "Source readers and target writers" row | `_lazy.py` |
 | CLI sidecar store | `src/decoy/cli/library/_run_records.py` (through `store_evidence`, no second caller) | CLI library row | existing |
 | CLI export flag | `src/decoy/cli/library/_export.py` | CLI library row | existing |
 | CLI `${var}` grammar and expansion | `src/decoy/lang/_vars.py` (validate, gate, `ci check` and run import it from `lang`) | CLI language row | `_connectors.py` |
@@ -834,10 +1075,12 @@ Placement (engine CODEMAP "Where Things Go"; CLI CODEMAP lines 52, 55, 61):
 | CLI placement collisions | `src/decoy/cli/io/_placement.py` (578 lines; extend) | CLI line 55 | existing |
 | CI glob migration | `src/decoy/ci/staged.py`, `contracts.py` (edit only) | CLI line 61 | existing |
 
-Size. Engine: about 9 new modules in two packages plus one reason catalog, about 1,700 lines of
-source; public names `validate_path_glob`, `match_path_glob`, `FileMeta.etag`,
-`FileMeta.generation`. CLI: 2 new modules, about 750 lines of source; public options `--var` and
-`--include-member-names`. Tests about twice the source.
+Size. Engine: about 9 new modules in two packages plus one reason catalog, edits to
+`fileaccess/_reclaim.py` and `records/`, about 2,000 lines of source; public names
+`validate_path_glob`, `match_path_glob`, `source_sets.acquire`, `source_sets.ACQUIRABLE`,
+`fileaccess.reclaim_dead_arenas`, `FileMeta.etag`, `FileMeta.generation`. CLI: one new
+sub-package of 3 modules, `io/_acquire.py` and `lang/_vars.py`, about 950 lines of source; public
+options `--var` and `--include-member-names`. Tests about twice the source.
 
 ## 17. Pre-mortem
 
@@ -854,17 +1097,30 @@ source; public names `validate_path_glob`, `match_path_glob`, `FileMeta.etag`,
   diff-checks the acceptance tests.
 - **Native cells silently skip** (gate venvs lack the companion). Mitigation: 10.1 cells run in
   `venv-native-lock` and the gate records a zero skip count for them.
-- **F02-E2 slips.** Mitigation: GCS is slice E5, off the first cut.
-- **Row 64 slips.** Mitigation: the first cut ships local unions alone. The engine S3 cells run on
-  `moto` in E4; the CLI S3 cells are written when row 64 merges, never as skip markers (M15).
+- **F02-E2 or row 64 slips.** Mitigation: 1.1a ships local unions alone; S3 and GCS are 1.1b.
+  The engine S3 cells run on `moto` in E4; the CLI S3 cells are written when row 64 merges, never
+  as skip markers (M15).
+- **A new entry point added later forgets to acquire** (as `mask()` and `subset` did in rev 2).
+  Mitigation: every single-file reader refuses an unacquired selector with
+  `source_set.not_acquired`, so the new caller fails loudly; the CLI entry-point sentry names the
+  callers.
+- **Repeated kills fill scratch.** Mitigation: the next acquisition removes proved-dead arenas at
+  once (E2r); unproved pending bytes count in admission, so the run refuses with the
+  spool-capacity error instead of filling the disk.
+- **Old evidence records stop exporting after the tag change.** Mitigation: the kind keeps a
+  `cli-local-1` reader and export rule, picked by the record's own tag; AT-31 covers both.
 - **The evidence change breaks an older reader.** Mitigation: the bump to `cli-local-1.1` makes
   older readers refuse cleanly; the legacy `cli-local-1` fixture keeps reading.
 
 ## 18. Done when
 
-- Every AT in section 10 is green on its slice's head, and red on its own assertion against the
-  slice's scaffolding (M8).
-- Every 10.1 matrix cell ran; the native cells ran in the companion venv with zero skips.
+- Every AT in section 10 is green on its slice's head, and red on its own assertion under its
+  named fault or mutation (M8, R1-7).
+- Every row of the 10.2 fault table has its red run recorded at the slice head it guards.
+- Every 10.1 matrix cell ran and asserted its recorded route or decline or refusal code; the
+  native cells ran in the companion venv with zero skips.
+- AT-27 shows every entry point acquires first; AT-28 shows no member name in verify and
+  `ci check`; AT-31 shows old and new evidence records store, read and export.
 - Class table rows each have their sentry and mutation recorded at the gate, with the exact head
   each mutation ran on (L5, recurring defect 9).
 - Docs (D1, and C4's `--var` docs) published; roadmap row F03 closed; CHANGELOG entries per slice.
@@ -875,6 +1131,10 @@ source; public names `validate_path_glob`, `match_path_glob`, `FileMeta.etag`,
   acquisition, so every stage-then-run path has one owner (follows from H1).
 - **L2.** Move the installer glob (C:distribution/installer.py:174) onto the engine `path_glob`
   grammar.
+- **L3 (chain note, rev 3).** Class 1 used to say "raised `from None`". `from None` inside an
+  `except` block sets `__cause__` to None and suppresses display, but `__context__` still holds
+  the original exception. The rule is now: record the reason inside the handler, raise the
+  `source_set.*` error after the handler exits (11, class 1; 10.2 last row).
 - **L4 (QA tag).** The acquisition guard (choke point 1) should resolve the same code shapes the
   engine file-access sentry already resolves: import aliases, `getattr` with a literal name, bound
   method aliases and method forms on a connector object (recurring defect 5).
