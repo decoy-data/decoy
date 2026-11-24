@@ -10,7 +10,9 @@ Rows keep their number from the pre-split track. A row number or section number 
 
 Blocks the 1.0 release.
 
-None.
+| # | Item | Repo | State | Branch, plan or handoff | After |
+|---|---|---|---|---|---|
+| POSTMASK-FAIL-CLOSED | G8: the post-mask leak check fails closed (owner 2026-11-24). In `E:verification/postmask/residual_pii.py:240-274`, `_source_identity` returns None on any exception, so a failed identity comparison gives no signal. Fix: report an explicit comparison-failed error finding, and add a test that forces the comparison to raise. The finding came from the F34 FRAME (row 67, closed); see [row-detail.md](../row-detail.md), F34 | engine | NOT STARTED. Verified on engine main 2026-11-24 | none | none |
 
 ## Later (1.x)
 
