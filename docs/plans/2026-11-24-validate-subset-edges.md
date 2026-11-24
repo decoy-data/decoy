@@ -8,7 +8,9 @@ Rules consulted: dev-rules `README.md`, `00-universal.md`, `risk-and-exceptions.
 
 Read at CLI `origin/main` `00ed97b2` and engine `origin/main` `3426165fb`. The CLI pins `decoy-engine==0.28.3` (`pyproject.toml:153`).
 
-Risk: R1. A refusal that already exists moves earlier, and two doc examples change. No new reason code, no output bytes, no `--json` shape change. Plan review: one round. Code gate: Codex. Tests: T0 and T1 per slice, then the T2 set. No full-suite trigger (no frozen contract, schema or test-config change).
+Risk: R1. A refusal that already exists moves earlier, and two doc examples change. No new reason code and no `--json` shape change. One exit-code change for `decoy run` on these configs (3 to 1, G2).
+
+Revision 2 (2026-11-24): addresses the Codex plan review of `60845ea8` (GO-WITH-FIXES): the `decoy run` contract (G2), the SDK override path (F6, AT-E6), the agent-card FK line (C1), one shared finding conversion (C1), the `decoy subset` and `--sample` follow-ups (non-goals), real sources for AT-C2 and AT-C6, the specific code in AT-C4, and no partial repin. Plan review: one round. Code gate: Codex. Tests: T0 and T1 per slice, then the T2 set. No full-suite trigger (no frozen contract, schema or test-config change).
 
 ## 1. Problem
 
@@ -25,7 +27,10 @@ Result today: `decoy validate` passes, then `decoy run` exits 3 after reading th
 ## 2. Guarantee (pinned)
 
 - G1. A config whose `subset:` block names an unknown edge, or a `downward`/`none` edge without `allow_dangling`, fails `decoy validate` with the same reason code `decoy run` gives today (`subset_unknown_edge` or `subset_dangling_not_acknowledged`), in the config layer, before any source is read. The exit code is the validate config-error exit (`gate_exit_code`, unchanged).
-- G2. `decoy run` refuses the same configs with the same codes, before the subset preflight reads a source.
+- G2. `decoy run` refuses the same configs with the same codes before any source is read. The CLI run calls the whole gate before `run_pipeline` (`check_before_run`, `src/decoy/cli/run/_prepare.py:420-425`), so the refusal now comes from the gate's config layer, not from the engine:
+  - exit code 1 (`EXIT_USAGE`, `src/decoy/cli/exit_codes.py:49`), where today it is 3. This matches the CLI QA call of 2026-11-08 that gate refusals exit 1.
+  - `decoy run --json` carries the subset code in `messages[].code`, built by `PreRunCheckError.from_result` (`src/decoy/cli/gate/_run.py:77-100`) and categorized in `src/decoy/cli/run/_errors.py:181-186`.
+  - An SDK caller of engine `run_pipeline` (no CLI gate) gets `SubsetConfigError` with the same code from the engine split, before the subset stage reads a source.
 - G3. The dangling refusal names the fix a config author can type: `allow dangling` in a `.decoy` subset block, or `allow_dangling: true` in YAML. The Python API name stays in the text for SDK callers.
 - G4. A config that passes the check today passes it after the change. No new refusals for valid configs.
 - G5. The two guide examples validate and run clean.
@@ -33,17 +38,20 @@ Result today: `decoy validate` passes, then `decoy run` exits 3 after reading th
 Non-goals:
 
 - No change to which configs are refused. The check, codes and edge-id format stay as they are.
-- No change to `decoy subset` or `--sample` beyond what G2 gives. `--sample` builds its own request (`subset/_sample.py:122-150`) and overrides directions on purpose; it does not go through the new site.
+- `decoy subset` and `--sample` are not changed. Follow-ups, logged for V2-LOG:
+  - Standalone `decoy subset` builds its request with `subset_request_from_config` (engine `subset/_api.py:388`), not the split, so it keeps the run-time check in `_compute` after its preflight.
+  - `decoy run --sample` stops at the not-ready refusal (`src/decoy/cli/run/_sample.py:149`) after the gate. The gate's config layer refuses a bad edge before that, but the engine sample builder (`subset/_sample.py:122-150`) overrides directions on purpose and does not use the split.
 - No `.decoy` line and column mapping for this finding beyond what the gate already does for a config-layer finding with a `location`.
 - No new reason code and no reason-manifest change (`tests/fixtures/f29/reason-manifest-v1.json:80,86`).
 
 ## 3. Failure modes
 
 - F1. Order change: a config with a bad edge AND a missing source now gets the edge refusal first, where today it gets the preflight refusal. Accepted: config errors come before source errors everywhere else in the gate. Tests that pin the old order are updated, not weakened, and the builder lists them.
-- F2. `decoy run --no-subset` passes `subset_request="skip"` (`src/decoy/cli/run/_execute.py:474`), and the engine still calls `split_subset_config` (`execution/pipeline/_subset_stage.py:266`). With the check in the split, a `--no-subset` run of a config with a bad edge now refuses. See owner question Q1.
+- F2. `decoy run --no-subset` passes `subset_request="skip"` (`src/decoy/cli/run/_execute.py:474`), and the engine still calls `split_subset_config` (`execution/pipeline/_subset_stage.py:266`). With the check in the split, a `--no-subset` run of a config with a bad edge now refuses, and the CLI gate refuses it first anyway (its config layer reads the block whatever the flag). The plan builds to option A of owner question Q1, which is the default while Q1 is open; it is not an owner decision. If the owner picks B, AT-C8 flips and C1 skips the config-layer split under `--no-subset`.
 - F3. An edge touching a generated table is dropped by `mask_relationships` (`subset/_edges.py:177-200`) before the check. An `edge_directions` entry naming such an edge is `subset_unknown_edge` at run today; it stays so, now at validate too. The message already lists the valid ids.
 - F4. Double report: the compile layer and the capacity step also call `split_subset_config` (`_layers.py:314`, `_layers.py:391-396`). The config layer fails first and returns `None`, so the compile layer does not run (`_run_config_base` contract, lines 186-187). The capacity step already swallows `SubsetError` (line 395). One finding, not two.
 - F5. `cardinality_mode: unique` makes the compile layer skip (`_layers.py:291-306`). That is why the CLI check goes in the config layer, not the compile layer.
+- F6. SDK override: `resolve_subset` accepts a caller-built `SubsetRequest` that replaces the config block (`execution/pipeline/_subset_stage.py:266-271`). It calls `split_subset_config(config)` first, so a check inside the split would refuse directions in the block the override discards. E1 keeps that path working: on an override, `resolve_subset` does not split the block; it drops it with the same helper the split uses and records that the config had one. The override request is still checked by `_compute` (`_api.py:118`).
 
 ## 4. Acceptance tests
 
@@ -54,41 +62,48 @@ Engine (slice E1):
 - AT-E3. `run_pipeline` on a dangling config whose source file does not exist raises `subset_dangling_not_acknowledged`, not a preflight error. This proves G2 "before any read".
 - AT-E4. The plan-validation consolidator (`plan/validate/_consolidator.py:96-104`) returns `ok=False` with the dangling code and `path="subset"`.
 - AT-E5. The dangling message contains `allow dangling` and `allow_dangling: true`.
-- Guard: AT-E1 and AT-E3. Mutation: delete the `resolve_edge_directions` call in `split_subset_config`. Both go red.
+- AT-E6. `run_pipeline` with `subset_request=<valid SubsetRequest>` on a config whose block has a `downward` edge and no `allow_dangling` runs and applies the override. Separate test from AT-E7.
+- AT-E7. `run_pipeline` with `subset_request="skip"` on the same config raises `subset_dangling_not_acknowledged` (Q1 option A, the open default).
+- Guard: AT-E1 and AT-E3. Mutation: delete the `resolve_edge_directions` call in `split_subset_config`. Both go red. A second mutation, routing the override through `split_subset_config`, turns AT-E6 red.
 
 CLI (slice C1, after the engine release and repin):
 
 - AT-C1. `decoy validate` on a `.decoy` file with `follow a.k -> b.k downward` and no `allow dangling` exits with the config-error code. The finding has layer `config`, code `subset_dangling_not_acknowledged`, location `subset.edge_directions`, and a hint naming `allow dangling`. No source file exists in the test, so a pass proves no read.
-- AT-C2. The same file plus `allow dangling` validates clean.
+- AT-C2. The same file plus `allow dangling`, with real CSV source fixtures for both tables in `tmp_path`, validates clean (all three layers).
 - AT-C3. A YAML config with an unknown edge id fails validate with `subset_unknown_edge`.
-- AT-C4. A config with a dangling edge and a `cardinality_mode: unique` column still fails validate (F5).
+- AT-C4. A config with a dangling edge and a `cardinality_mode: unique` column still fails validate, and the test asserts the finding code is `subset_dangling_not_acknowledged` (F5). Asserting only a non-zero exit would not prove the mutation below.
 - AT-C5. `decoy validate --json` and `decoy ci check` carry exactly one finding with that code (F4).
-- AT-C6. The examples in `agent-card.md` and `05-checks-and-subsets.md` validate clean. If a doc-example test already compiles the guide blocks, extend it; otherwise add the two blocks to the existing `.decoy` example test.
+- AT-C6. The full programs in `agent-card.md` and `05-checks-and-subsets.md` go through the real gate (`run_gate`) with CSV source fixtures that carry the columns each program names, and pass with no error finding. `tests/unit/lang/test_docs.py` only compiles the guide programs today; it extracts them, so the new test reuses its extraction and adds the fixtures.
+- AT-C7. `decoy run` (the real command, CliRunner) on a dangling config exits 1; with `--json`, `messages[].code` holds `subset_dangling_not_acknowledged`. The source files do not exist, so a source read would give a `source_file.*` code instead.
+- AT-C8. `decoy run --no-subset` on the same config exits 1 with the same code (Q1 option A, the open default).
 - Mutation: remove the new `split_subset_config` call from `_run_config_base`. AT-C4 goes red (AT-C1 alone could still pass through the compile layer).
 
 ## 5. Slices
 
 ### E1 (engine, R1): check directions in the one split
 
-Files: `src/decoy_engine/subset/_split.py`, `src/decoy_engine/subset/_policy.py` (message text only), engine tests under `tests/unit/subset/`, `CHANGELOG.md`.
+Files: `src/decoy_engine/subset/_split.py`, `src/decoy_engine/subset/_policy.py` (message text only), `src/decoy_engine/execution/pipeline/_subset_stage.py` (override path, F6), engine tests under `tests/unit/subset/` and the subset-stage tests, `CHANGELOG.md`.
 
 - In `split_subset_config`, when `request` is not None, call `resolve_edge_directions(build_subset_edges(request.relationships), request.policy)` before returning, and discard the result. `_compute` keeps its own call, because `select_subset` callers can pass a hand-built request.
+- Override path (F6): in `resolve_subset`, when `subset_request` is a `SubsetRequest`, do not call `split_subset_config`. Take the run config from a private helper in `_split.py` that returns the config with `subset` set to `None` (the split itself uses the same helper, so the run config and its hash stay identical), and set the third `SubsetStageScope` field from `config.get("subset") is not None`. `"config"` and `"skip"` still go through the split (Q1 option A).
 - Change the dangling message to name the config spelling first, for example: "... add `allow dangling` to the subset block (YAML: `allow_dangling: true`; Python: `FanOutPolicy(allow_dangling=True)`) to accept orphaned child rows, or set the edge to `both` or `upward`." Keep it value-free (edge ids only, as today).
 - Update any test that pins the old message text or the old preflight-before-edge order (F1), and list them in the build report.
 - Ships in the next engine release after merge (0.28.4, or whatever is next at merge time), through the engine repin checklist.
 
-Size: about 10 source lines in two files, no new public names.
+Size: about 20 source lines in three files, no new public names.
 
 ### C1 (CLI, R1): validate's config layer runs the split; docs fixed
 
-Files: `src/decoy/cli/gate/_layers.py`, the existing gate or validate tests, `docs/guides/decoy-language/agent-card.md`, `docs/guides/decoy-language/05-checks-and-subsets.md`, `CHANGELOG.md`, and the `pyproject.toml` pin only if the repin PR has not landed.
+Files: `src/decoy/cli/gate/_layers.py`, the existing gate, validate and run tests, `tests/unit/lang/test_docs.py` (or a sibling that reuses its extraction), `docs/guides/decoy-language/agent-card.md`, `docs/guides/decoy-language/05-checks-and-subsets.md`, `CHANGELOG.md`. No pin files: C1 starts only after the full repin PR to E1's release has merged (`pyproject.toml:153`, `requirements-dev.lock:387`, `.github/workflows/ci.yml:322`, `.github/workflows/release-smoke.yml:88`, per the engine repin checklist).
 
-- In `_run_config_base`, after `run_config_only_checks` (line 215), call `split_subset_config(validated)` once. Turn a `SubsetError` into one config-layer `GateFinding` (code `exc.code`, message `exc.message`, location and logical path `subset.edge_directions` for the two direction codes, else `getattr(exc, "path", None)`), and return `None` as the other config refusals do.
+- In `_run_config_base`, after `run_config_only_checks` (line 215), call `split_subset_config(validated)` once, and on a `SubsetError` return `None` with one config-layer finding, as the other config refusals do.
+- One conversion: move the compile layer's `SubsetError` to `GateFinding` code (`_layers.py:336-345`) into one private function that takes the layer name and the error, and call it from both sites. The rules live there once: code `exc.code`, message `exc.message`, location and logical path `subset.edge_directions` for the two direction codes, else `getattr(exc, "path", None)`, and the hint from `_plan_error_hint`. The compile-layer catch stays for other subset errors the validated shape cannot rule out.
 - Hint: add the dangling code to `_plan_error_hint` (`_layers.py:94-103`), which is already the value-free hint table for config-fixable refusals. The hint names `allow dangling` and `allow_dangling: true`.
 - Docs: add `allow dangling` to the subset block in both examples, plus one sentence in `05-checks-and-subsets.md`: a `downward` or `none` edge needs it, because child rows can point at parents the subset dropped.
-- Depends on E1's release. C1 does not carry a CLI-side copy of the check.
+- Agent card FK: with `allow dangling` alone the agent-card program still fails with `subset_unknown_edge`, because `orders.customer_id` is `hash in customer_identity` (`agent-card.md:207`) and no FK declares the edge. Change line 207 to `customer_id <- customers.customer_id orphans preserve`, as `05-checks-and-subsets.md:37` does. If the `namespace customer_identity for customers.customer_id, orders.customer_id` line (`agent-card.md:199`) then refuses, drop `orders.customer_id` from it. AT-C6 decides.
+- Depends on E1's release and the full repin. C1 does not carry a CLI-side copy of the check.
 
-Size: about 20 source lines in one file, two doc edits, no new public names.
+Size: about 30 source lines in one file (net of the moved conversion), two doc edits, one test helper reuse, no new public names.
 
 ## 6. Design notes
 
@@ -104,7 +119,7 @@ Size: about 20 source lines in one file, two doc edits, no new public names.
 | 1 | Value-bearing output | the refusal message and hint | the message names edge ids (table and column names) only, as today; no row value is read before the check | AT-E5 asserts the text; the test data puts a sentinel value in a source row and asserts it is absent | format a seed value into the message |
 | 2 | Cleanup on exit path | none | N/A: the check runs before any file or temp dir is opened | n/a | n/a |
 | 3 | State and concurrency | none | N/A: a pure function over the config dump | n/a | n/a |
-| 4 | Route parity and silent fallback | run, validate, plan validation, compile explain | one split every config path calls (section 6) | AT-E3, AT-E4, AT-C1, AT-C4 | call the check only in the CLI gate |
+| 4 | Route parity and silent fallback | run, validate, plan validation, compile explain, the SDK override | one split every config path calls (section 6); the override skips the block it discards (F6) | AT-E3, AT-E4, AT-E6, AT-C1, AT-C4, AT-C7 | call the check only in the CLI gate |
 | 5 | Referential integrity | the dangling-child guarantee itself | the existing `resolve_edge_directions` rule, unchanged; this change only runs it earlier | AT-E1, AT-C2 | default `allow_dangling` to true |
 | 6 | Untrusted producer | the config file | the config is schema-validated (`parse_pipeline_config`) before the split | AT-C3 | pass the raw YAML to the split |
 | 7 | Check then use (TOCTOU) | validate passes, run later | run repeats the same check through the same split (G2), so a config edited after validate is still caught | AT-E3 | drop the split call from `_subset_stage.py` |
@@ -163,7 +178,7 @@ All carry the existing code; only the message and hint text change:
 
 - `decoy validate` text
 - `decoy validate --json` and `decoy ci check`
-- `decoy run` stderr and `--json` error
+- `decoy run` stderr and `--json` `messages[].code` (exit 1, G2)
 
 ### 6.3 Reuse inventory
 
@@ -176,13 +191,15 @@ All carry the existing code; only the message and hint text change:
 
 ### 6.4 Frozen contracts touched
 
-None. Reason codes and the reason manifest are unchanged. The validate `--json` finding uses existing fields. Message and hint text are not frozen surfaces.
+Reason codes and the reason manifest are unchanged. The validate `--json` finding and the run `--json` envelope use existing fields (`json-shapes.json` unchanged). One exit-code change, stated in G2 and the CHANGELOG: `decoy run` on a config with a bad subset edge exits 1 (gate refusal) where it exited 3. Message and hint text are not frozen surfaces.
 
 ### 6.5 Pre-mortem
 
 - An engine test builds a dangling config to test something downstream and now fails at the split: give it `allow_dangling: true` only if the test is not about the refusal, and list it.
 - The CLI finding lands without a location, so `.decoy` users get no line: AT-C1 asserts the location.
-- The builder adds the CLI call before the engine release is pinned and the gate imports an engine without the check: C1 waits for the repin; AT-C1 fails on the old engine anyway (the compile layer would not catch the unique case, AT-C4).
+- The builder adds the CLI call before the engine release is pinned and the gate imports an engine without the check: C1 waits for the full repin; AT-C4 fails on the old engine anyway.
+- The override fix is skipped and an SDK caller's valid override is refused because of the discarded block: AT-E6.
+- The guide test only compiles, so an example that compiles but fails the gate slips through: AT-C6 runs the real gate with fixtures.
 
 ## 7. Established solutions
 
@@ -191,12 +208,12 @@ Not needed for R1. The check, its codes and its edge-id format already exist; th
 ## 8. Owner questions
 
 - Q1. `decoy run --no-subset` on a config whose subset block has a bad edge (F2). Options:
-  - A. Refuse anyway. The config is wrong, `decoy validate` refuses it too, and one split serves every path. (Recommended.)
+  - A. Refuse anyway. The config is wrong, `decoy validate` refuses it too, and one split serves every path. (Recommended.) An SDK `SubsetRequest` override is not affected either way (F6).
   - B. Skip the check on `--no-subset`. The engine split would need a flag, or the stage would need to bypass the split, which adds a second path.
-  Default if unanswered: A.
+  Q1 is open. The plan and AT-C8/AT-E7 build to the default, A, until the owner answers; this is not an owner decision.
 
 ## 9. Done when
 
-- E1 is merged and released, and the CLI is repinned to that release.
-- C1 is merged with AT-C1 to AT-C6 green and both mutations red.
+- E1 is merged and released, and the CLI is fully repinned to that release (pin, lock, CI and smoke engine tags).
+- C1 is merged with AT-C1 to AT-C8 green and its mutation red; E1's AT-E1 to AT-E7 green and both E1 mutations red.
 - Roadmap row VALIDATE-SUBSET-EDGES is closed in `docs/roadmap/groups/config.md`, and the guide fix is in the CHANGELOG.
