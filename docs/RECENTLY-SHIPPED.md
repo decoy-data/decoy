@@ -11,6 +11,10 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-24: row 24zf DUP-FREEZE closed
+
+- Row 24zf (DUP-FREEZE): CL4 is CLI #406 (2026-11-24): one owner each for the duplicate exit codes and error emitters. With E1, E2, E3, E4 and CL0 to CL5 merged, every surface that freezes at REL-GATE has one owner.
+
 ## 2026-11-23: rows 27, 79, 56, NATIVE-MISSING-WARN, NESTED-FREEZE, CSV-WRITE-FAST and FAKER-NATIVE-WIDEN closed
 
 Rows closed (each leaves its group file):

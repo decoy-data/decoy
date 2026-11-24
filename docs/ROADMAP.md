@@ -103,7 +103,7 @@ candidates that have no plan yet (90 in all), and the health file lists 31 maint
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC (1.1), 82 F07, 86 F01, 87 F02, AVRO-ORC (1.4), WAREHOUSE (1.5), CSV-TARGET-DIALECT | none |
 | [Quality and evidence](roadmap/groups/trust.md) | POSTMASK-FAIL-CLOSED | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10, ANON (1.9) | none |
 | [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, UPGRADE-KEY, 89 WIN-FEAS, 6 WIN-RUNNER, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER, QA-BETA, PERF-GUIDE | 90a REL-IMAGE, PIP-NATIVE-EXTRA (1.x) | 24zr SETUP-NER-JSON |
-| [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zf DUP-FREEZE, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, SIGNATURE-SENTRY, F31-AUDIT, RATCHET-GROWTH | none | ENGINE-ARCH, 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
+| [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, SIGNATURE-SENTRY, F31-AUDIT, RATCHET-GROWTH | none | ENGINE-ARCH, 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
 
 Engine fast-path gaps are due 2026-12-15 (owner 2026-11-22). Every masking strategy and generation provider runs its fastest path by default in V1. The named pandas exceptions are shuffle, geo_generalize, joint_mask, nested and tokenize; they show on the run card.
 
