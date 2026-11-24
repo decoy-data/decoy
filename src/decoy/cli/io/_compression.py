@@ -21,6 +21,7 @@ import bz2
 import contextlib
 import gzip
 import lzma
+import os
 import shutil
 import tarfile
 import tempfile
@@ -59,7 +60,8 @@ def is_archive_csv(fmt: str, path: Path) -> bool:
 
 def _archive_name(path: Path) -> str:
     """The member name inside an archive target: the real file name with the suffix cut."""
-    name = path.name
+    # The filesystem bytes, read as UTF-8, so the locale (C or UTF-8 mode) cannot change the name.
+    name = os.fsencode(path.name).decode("utf-8", "surrogateescape")
     for suffix, method in COMPRESSION:
         if method in ARCHIVES and name.lower().endswith(suffix):
             # A suffix-only target (`.zip`) cuts to nothing, and an empty member cannot be extracted.
@@ -116,6 +118,8 @@ def _tar_member(name: str, size: int, member_mode: int) -> tarfile.TarInfo:
 
 def _zip_member(name: str, size: int, member_mode: int) -> zipfile.ZipInfo:
     info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+    if not name.isascii():
+        info.flag_bits |= 0x800  # the zip UTF-8 name flag, set here so no locale decides it
     info.compress_type = zipfile.ZIP_DEFLATED  # level: zlib's default, which is 6
     info.create_system = 3
     info.external_attr = (0o100000 | member_mode) << 16
@@ -148,15 +152,15 @@ def open_csv_sink(tmp: Path, out_path: Path, *, member_mode: int) -> Iterator[IO
             size = _spooled_size(spool)
             name = _archive_name(out_path)
             if method == "zip":
+                # A zip name must be valid text; a raw byte becomes U+FFFD (tar keeps the byte).
+                zip_name = name.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
                 with zipfile.ZipFile(raw, "w") as archive:
-                    with archive.open(_zip_member(name, size, member_mode), "w") as member:
+                    with archive.open(_zip_member(zip_name, size, member_mode), "w") as member:
                         shutil.copyfileobj(spool, member)
             else:
                 outer = _suffix_codec(out_path)
                 # USTAR cannot hold a name over 100 bytes; PAX keeps its header deterministic here.
-                long_name = (
-                    len(name.encode(tarfile.ENCODING, "surrogateescape")) > tarfile.LENGTH_NAME
-                )
+                long_name = len(name.encode("utf-8", "surrogateescape")) > tarfile.LENGTH_NAME
                 fmt = (
                     tarfile.PAX_FORMAT
                     if size > _USTAR_MAX_SIZE or long_name
@@ -164,7 +168,13 @@ def open_csv_sink(tmp: Path, out_path: Path, *, member_mode: int) -> Iterator[IO
                 )
                 with contextlib.ExitStack() as inner:
                     wrapped = _stream_codec(inner, outer, raw)
-                    with tarfile.open(fileobj=wrapped, mode="w", format=fmt) as tf:
+                    with tarfile.open(
+                        fileobj=wrapped,
+                        mode="w",
+                        format=fmt,
+                        encoding="utf-8",
+                        errors="surrogateescape",
+                    ) as tf:
                         tf.addfile(_tar_member(name, size, member_mode), spool)
         else:
             yield _stream_codec(stack, method, raw)

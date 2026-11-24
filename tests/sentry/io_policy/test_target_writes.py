@@ -449,17 +449,13 @@ def test_staged_path_rule_only_covers_the_two_staged_writers() -> None:
     assert unstaged_writes(source) == []
 
 
-def _write_table_descriptors(source: str) -> dict[str, str]:
-    """For each function, the name passed as the last argument of its `_write_table(...)` call."""
-    found: dict[str, str] = {}
-    for func in ast.walk(ast.parse(source)):
-        if not isinstance(func, ast.FunctionDef):
-            continue
-        for node in ast.walk(func):
-            if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_write_table":
-                last = node.args[-1] if node.args else None
-                found[func.name] = last.id if isinstance(last, ast.Name) else "<other>"
-    return found
+def _write_table_descriptors(source: str) -> list[tuple[str, str]]:
+    """(enclosing function, last argument name) of every `_write_table(...)` call, sorted."""
+    found = []
+    for call, scope in _calls_named(source, {"_write_table"}):
+        last = call.args[-1] if call.args else None
+        found.append((scope, last.id if isinstance(last, ast.Name) else "<other>"))
+    return sorted(found)
 
 
 def _privacy_assignments(source: str) -> dict[str, tuple[str, str]]:
@@ -478,7 +474,27 @@ _EXPECTED_DESCRIPTORS = {
     "PUBLIC_TARGET": ("staged_local_target", "PUBLIC_MEMBER_MODE"),
     "PRIVATE_TARGET": ("staged_private_target", "PRIVATE_MEMBER_MODE"),
 }
-_EXPECTED_PASSED = {"write_table": "PUBLIC_TARGET", "write_private_table": "PRIVATE_TARGET"}
+# Every call, not the last per function: a branch may not pick another descriptor for one format.
+_EXPECTED_PASSED = [("write_private_table", "PRIVATE_TARGET"), ("write_table", "PUBLIC_TARGET")]
+
+
+def _stage_calls(source: str) -> list[tuple[str, str]]:
+    """(receiver, argument) of each `.stage(...)` call in `_write_table`; `<other>` if not a name."""
+    found = []
+    for func in ast.parse(source).body:
+        if not (isinstance(func, ast.FunctionDef) and func.name == "_write_table"):
+            continue
+        for node in ast.walk(func):
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", "") == "stage":
+                recv = getattr(node.func, "value", None)
+                arg = node.args[0] if len(node.args) == 1 and not node.keywords else None
+                found.append(
+                    (
+                        recv.id if isinstance(recv, ast.Name) else "<other>",
+                        arg.id if isinstance(arg, ast.Name) else "<other>",
+                    )
+                )
+    return found
 
 
 def descriptor_problems(source: str) -> list[str]:
@@ -487,6 +503,8 @@ def descriptor_problems(source: str) -> list[str]:
         problems.append("descriptors do not pair the right stager and member mode")
     if _write_table_descriptors(source) != _EXPECTED_PASSED:
         problems.append("a writer passes the wrong or an inline descriptor to _write_table")
+    if _stage_calls(source) != [("target", "path")]:
+        problems.append("_write_table must stage with exactly `target.stage(path)`")
     return problems
 
 
@@ -515,8 +533,27 @@ def test_the_public_whole_table_writers_pass_a_real_stager() -> None:
             "_write_table(data, fmt, path, layout, PUBLIC_TARGET)",
             "_write_table(data, fmt, path, layout, _TargetPrivacy(open, 0o644))",
         ),
+        # One format picks the other descriptor; the other call stays right.
+        lambda s: s.replace(
+            "    _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n",
+            "    _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n"
+            "    if fmt == 'csv':\n        _write_table(data, fmt, path, layout, PUBLIC_TARGET)\n",
+        ),
+        lambda s: s.replace(
+            "    _write_table(data, fmt, path, layout, PRIVATE_TARGET)\n",
+            "    _write_table(data, fmt, path, layout, PUBLIC_TARGET if fmt == 'csv' else PRIVATE_TARGET)\n",
+        ),
+        lambda s: s.replace("target.stage(path)", "other.stage(path)"),
     ],
-    ids=["swapped-stager", "swapped-mode", "swapped-writers", "inline-descriptor"],
+    ids=[
+        "swapped-stager",
+        "swapped-mode",
+        "swapped-writers",
+        "inline-descriptor",
+        "extra-call-other-descriptor",
+        "format-conditional-descriptor",
+        "stage-on-other-name",
+    ],
 )
 def test_a_wrong_descriptor_is_detected(mutate: Callable[[str], str]) -> None:
     source = (SRC / CHOKE_POINT).read_text(encoding="utf-8")
