@@ -135,7 +135,9 @@ class TestRunChunked:
         assert result.exit_code == 0, result.output
         assert (tmp_path / "out.csv").read_bytes() == plain
 
-    def test_faker_without_pool_size_exits_usage(self, tmp_path: Path) -> None:
+    def test_faker_without_pool_size_runs_chunked(self, tmp_path: Path) -> None:
+        """Engine 0.28.4 runs a faker column with no `pool_size` on the chunked route (it refused
+        it before), and the bytes match the plain run."""
         columns = [
             {
                 "name": "email",
@@ -146,9 +148,13 @@ class TestRunChunked:
             }
         ]
         cfg = _pipeline(tmp_path, columns)
-        result = runner.invoke(app, ["run", str(cfg), "--chunked"])
-        assert result.exit_code == EXIT_USAGE
-        assert "pool_size" in result.output
+        assert runner.invoke(app, ["run", str(cfg)]).exit_code == 0
+        plain = (tmp_path / "out.csv").read_bytes()
+        (tmp_path / "out.csv").unlink()
+
+        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "out.csv").read_bytes() == plain
 
 
 _CHUNKED_VAULT_REFUSAL = (
