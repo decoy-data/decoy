@@ -204,7 +204,7 @@ def _emit_load_error(state: OutputState, scan: str, exc: Exception, command_name
         message = f"could not parse {scan} as JSON ({exc.msg})."
         scan_cmd = None
     elif isinstance(exc, ScanSetFormatError):
-        message = str(exc)  # fixed text: the tag is shape-checked, the rest is schema names
+        message = str(exc)  # fixed text: an exact version tag at most, else table names
         scan_cmd = None
     else:
         # An OSError text can quote file content; name the type only.

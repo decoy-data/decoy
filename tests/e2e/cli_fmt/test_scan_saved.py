@@ -123,6 +123,19 @@ def test_a_tag_that_could_hold_data_is_not_echoed(core_file: Path, tmp_path: Pat
     assert result.exit_code == 1 and CANARY not in result.output
 
 
+@pytest.mark.parametrize("flags", [[], ["--json"]])
+def test_a_value_shaped_tag_on_stdin_is_not_echoed(flags: list[str]) -> None:
+    # An SSN fits a loose tag shape; only the exact version syntax is shown back.
+    result = runner.invoke(
+        app, ["scan", "fields", "-", *flags], input=json.dumps({"scan_schema": "123-45-6789"})
+    )
+    assert result.exit_code == 1, result.output
+    assert "123-45-6789" not in result.stdout + result.stderr
+    assert "unsupported scan_schema value" in result.output
+    if flags:
+        assert "123-45-6789" not in json.loads(result.stdout)["error"]
+
+
 # -- untagged saved scans (AT-D6) --------------------------------------------------------
 
 CODE = "scan.saved_scan_schema_unsupported"

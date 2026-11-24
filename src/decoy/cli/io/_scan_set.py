@@ -26,7 +26,8 @@ from typing import Any
 
 _NOT_A_SCAN = "not a saved scan Decoy can read"
 _SCHEMA_MAJOR = "scan-set/v1"
-_TAG_SHAPE = re.compile(r"^[A-Za-z0-9._/-]{1,32}\Z")
+# Only the exact version syntax is echoed: a looser shape admits values such as an SSN.
+_TAG_SHAPE = re.compile(r"^scan-set/v[0-9]{1,4}(?:\.[0-9]{1,4})?\Z")
 
 # Printed in the refusal, never matched on: `decoy scan` reports `code: message`.
 SAVED_SCAN_SCHEMA_UNSUPPORTED = "scan.saved_scan_schema_unsupported"
@@ -107,9 +108,13 @@ def _from_core(data: dict[str, Any]) -> dict[str, Any]:
 
     tag = data.get("scan_schema")
     if not (isinstance(tag, str) and (tag == _SCHEMA_MAJOR or tag.startswith(_SCHEMA_MAJOR + "."))):
-        shown = tag if isinstance(tag, str) and _TAG_SHAPE.fullmatch(tag) else "an unrecognised tag"
+        shown = (
+            f"scan_schema {tag} is not supported"
+            if isinstance(tag, str) and _TAG_SHAPE.fullmatch(tag)
+            else "unsupported scan_schema value"
+        )
         raise ScanSetFormatError(
-            f"scan_schema {shown} is not supported (expected {_SCHEMA_MAJOR})",
+            f"{shown} (expected {_SCHEMA_MAJOR})",
             SAVED_SCAN_SCHEMA_UNSUPPORTED,
         )
     failed = False
