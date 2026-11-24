@@ -301,6 +301,11 @@ def static_native_eligibility(config_dict: dict[str, Any]) -> bool:
     return source.get("format") in _NATIVE_SOURCE_FORMATS
 
 
+def _code_token(reason: str) -> str:
+    """STUB (red-first): replaced in the CL4 change."""
+    return reason
+
+
 def pre_execution_gate(
     *,
     intent: NativeIntent,

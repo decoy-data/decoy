@@ -106,9 +106,7 @@ def test_integrity_returns_report_shape(clean_pair: tuple[Path, Path]):
         "pass_failed_with",
         "generated_at",
     }
-    assert expected.issubset(set(report.keys())), (
-        f"missing keys: {expected - set(report.keys())}"
-    )
+    assert expected.issubset(set(report.keys())), f"missing keys: {expected - set(report.keys())}"
 
 
 def test_integrity_writes_out_file(clean_pair: tuple[Path, Path], tmp_path: Path):
@@ -175,9 +173,9 @@ class TestExitFourReachable:
         import pandas as pd
 
         src = tmp_path / "source.csv"
-        pd.DataFrame(
-            {"email": [f"user{i}@realmail.com" for i in range(50)]}
-        ).to_csv(src, index=False)
+        pd.DataFrame({"email": [f"user{i}@realmail.com" for i in range(50)]}).to_csv(
+            src, index=False
+        )
         masked = tmp_path / "masked.csv"
         masked.write_bytes(src.read_bytes())  # mask "ran" but changed nothing
 
@@ -193,13 +191,13 @@ class TestExitFourReachable:
         import pandas as pd
 
         src = tmp_path / "source.csv"
-        pd.DataFrame(
-            {"email": [f"user{i}@realmail.com" for i in range(50)]}
-        ).to_csv(src, index=False)
+        pd.DataFrame({"email": [f"user{i}@realmail.com" for i in range(50)]}).to_csv(
+            src, index=False
+        )
         masked = tmp_path / "masked.csv"
-        pd.DataFrame(
-            {"email": [f"fake{i}@masked.example" for i in range(50)]}
-        ).to_csv(masked, index=False)
+        pd.DataFrame({"email": [f"fake{i}@masked.example" for i in range(50)]}).to_csv(
+            masked, index=False
+        )
 
         result = runner.invoke(
             app, ["report", "integrity", str(masked), "--source", str(src), "--json"]

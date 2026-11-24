@@ -29,6 +29,7 @@ runner = CliRunner()
 # Test fixtures
 # ---------------------------------------------------------------------------
 
+
 def _minimal_config() -> dict:
     """Minimal V2 config that compiles cleanly."""
     return {
@@ -45,9 +46,7 @@ def _minimal_config() -> dict:
                 ],
             }
         ],
-        "targets": {
-            "customers": {"type": "file", "format": "csv", "path": "/tmp/y.csv"}
-        },
+        "targets": {"customers": {"type": "file", "format": "csv", "path": "/tmp/y.csv"}},
     }
 
 
@@ -148,8 +147,7 @@ def test_compile_explain_honesty_no_guarantee(tmp_path: Path) -> None:
     # Must not make safety guarantees
     for phrase in ("guaranteed safe", "guarantees", "all pii covered", "certif"):
         assert phrase not in lower, (
-            f"compile --explain must not claim '{phrase}'. "
-            "It explains decisions, not outcomes."
+            f"compile --explain must not claim '{phrase}'. It explains decisions, not outcomes."
         )
 
 
@@ -288,9 +286,7 @@ def _config_with_undeclared_column() -> dict:
                 ],
             }
         ],
-        "targets": {
-            "customers": {"type": "file", "format": "csv", "path": "/tmp/y.csv"}
-        },
+        "targets": {"customers": {"type": "file", "format": "csv", "path": "/tmp/y.csv"}},
     }
 
 

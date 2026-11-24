@@ -107,7 +107,9 @@ def test_report_render_html_exits_0(tmp_path: Path) -> None:
 
     result = runner.invoke(app, ["report", "render", str(evidence_path), "--output", str(out_path)])
 
-    assert result.exit_code == 0, f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    assert result.exit_code == 0, (
+        f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    )
     assert out_path.exists(), "HTML report file was not created"
     content = out_path.read_text(encoding="utf-8")
     assert "<!DOCTYPE" in content or "<!doctype" in content.lower()
@@ -128,7 +130,9 @@ def test_report_render_markdown_exits_0(tmp_path: Path) -> None:
         ["report", "render", str(evidence_path), "--format", "markdown", "--output", str(out_path)],
     )
 
-    assert result.exit_code == 0, f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    assert result.exit_code == 0, (
+        f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    )
     assert out_path.exists(), "Markdown report file was not created"
     content = out_path.read_text(encoding="utf-8")
     # Markdown should have at least one heading
@@ -174,7 +178,9 @@ def test_report_summarize_exits_0(tmp_path: Path) -> None:
     evidence_path, _ = _write_evidence(tmp_path)
     result = runner.invoke(app, ["report", "show", str(evidence_path)])
 
-    assert result.exit_code == 0, f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    assert result.exit_code == 0, (
+        f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    )
     output = result.output
     # Key fields should appear
     assert "cli-local-1" in output or "pipeline" in output.lower() or "run" in output.lower()
@@ -205,7 +211,9 @@ def test_report_compare_no_changes(tmp_path: Path) -> None:
 
     result = runner.invoke(app, ["report", "diff", str(evidence_path), str(evidence_path2)])
 
-    assert result.exit_code == 0, f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    assert result.exit_code == 0, (
+        f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    )
     output = result.output.lower()
     # Should indicate no changes
     assert "no change" in output or "identical" in output or "0 change" in output
@@ -231,9 +239,13 @@ def test_report_compare_detects_changed_pipeline_fingerprint(tmp_path: Path) -> 
 
     result = runner.invoke(app, ["report", "diff", str(evidence_path), str(evidence_path2)])
 
-    assert result.exit_code == 0, f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    assert result.exit_code == 0, (
+        f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    )
     output = result.output.lower()
-    assert "pipeline" in output and ("changed" in output or "differ" in output or "fingerprint" in output)
+    assert "pipeline" in output and (
+        "changed" in output or "differ" in output or "fingerprint" in output
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +269,9 @@ def test_report_compare_json_output(tmp_path: Path) -> None:
         app, ["report", "diff", str(evidence_path), str(evidence_path2), "--json"]
     )
 
-    assert result.exit_code == 0, f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    assert result.exit_code == 0, (
+        f"Expected exit 0; got {result.exit_code}. Output:\n{result.output}"
+    )
     data = _json.loads(result.stdout)
     assert "pipeline_fingerprint_changed" in data
     assert data["pipeline_fingerprint_changed"] is True
@@ -350,8 +364,14 @@ def test_report_render_json_envelope_invalid_format(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "report", "render", str(evidence_path),
-            "--output", str(out_path), "--format", "pdf", "--json",
+            "report",
+            "render",
+            str(evidence_path),
+            "--output",
+            str(out_path),
+            "--format",
+            "pdf",
+            "--json",
         ],
     )
 

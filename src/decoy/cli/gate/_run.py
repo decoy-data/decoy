@@ -117,6 +117,10 @@ class PreRunCheckError(Exception):
             messages=[_message(f) for f in result.findings],
         )
 
+    def context_members(self) -> dict[str, Any]:
+        """STUB (red-first): replaced in the CL4 change."""
+        return self.json_members()
+
     def json_members(self) -> dict[str, Any]:
         """The members a refusal adds to run's `--json` error envelope."""
         members: dict[str, Any] = {"error_kind": self.error_kind}

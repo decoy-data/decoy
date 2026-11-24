@@ -164,7 +164,14 @@ def test_render_html_includes_timing_info() -> None:
 def test_render_html_includes_warnings() -> None:
     """render_html includes warning details when present."""
     manifest = _make_manifest(
-        warnings=[{"code": "low_distinct_ratio", "provider": "faker.name", "column": "email", "detail": {}}]
+        warnings=[
+            {
+                "code": "low_distinct_ratio",
+                "provider": "faker.name",
+                "column": "email",
+                "detail": {},
+            }
+        ]
     )
     html = render_html(manifest)
     assert "low_distinct_ratio" in html
@@ -351,7 +358,9 @@ def test_compare_manifests_detects_warnings_added() -> None:
     """compare_manifests reports warnings present in new but not in old."""
     old = _make_manifest(warnings=[])
     new = copy.deepcopy(old)
-    new["warnings"] = [{"code": "low_distinct_ratio", "provider": "faker.name", "column": "email", "detail": {}}]
+    new["warnings"] = [
+        {"code": "low_distinct_ratio", "provider": "faker.name", "column": "email", "detail": {}}
+    ]
 
     result = compare_manifests(old, new)
 
@@ -361,7 +370,14 @@ def test_compare_manifests_detects_warnings_added() -> None:
 def test_compare_manifests_detects_warnings_removed() -> None:
     """compare_manifests reports warnings present in old but not in new."""
     old = _make_manifest(
-        warnings=[{"code": "low_distinct_ratio", "provider": "faker.name", "column": "email", "detail": {}}]
+        warnings=[
+            {
+                "code": "low_distinct_ratio",
+                "provider": "faker.name",
+                "column": "email",
+                "detail": {},
+            }
+        ]
     )
     new = copy.deepcopy(old)
     new["warnings"] = []
@@ -373,7 +389,12 @@ def test_compare_manifests_detects_warnings_removed() -> None:
 
 def test_compare_manifests_no_warning_changes_when_same() -> None:
     """compare_manifests shows no warning changes when both are identical."""
-    warning = {"code": "low_distinct_ratio", "provider": "faker.name", "column": "email", "detail": {}}
+    warning = {
+        "code": "low_distinct_ratio",
+        "provider": "faker.name",
+        "column": "email",
+        "detail": {},
+    }
     old = _make_manifest(warnings=[warning])
     new = copy.deepcopy(old)
 

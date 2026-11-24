@@ -203,6 +203,8 @@ QUIET_CASES: dict[str, list[str]] = {
     "subset": ["subset", BAD_YAML],
     "validate compile": ["validate", "compile", BAD_YAML],
     "scan multi": ["scan", GOOD_CSV, GOOD_CSV, "--output", "-"],
+    "scan show": ["scan", "show", GOOD_CSV, "field"],
+    "scan diff": ["scan", "diff", "-", "-"],
     "init scaffold": ["init", GOOD_CSV, "--preset", "generate", "-o", "-"],
     "report show": ["report", "show", BAD_JSON],
     "report verify": ["report", "verify", BAD_JSON],
@@ -214,7 +216,8 @@ QUIET_CASES: dict[str, list[str]] = {
 # Converted commands that must have a quiet case above. A new emit_error caller adds its name.
 CONVERTED = {
     "unmask", "tokenize", "detokenize", "fit", "show", "subset", "validate compile",
-    "scan multi", "init scaffold", "report vault", "report fidelity",
+    "scan multi", "scan show", "scan diff", "init scaffold", "report vault",
+    "report fidelity",
 }  # fmt: skip
 
 
@@ -292,3 +295,11 @@ def test_init_names_an_unsupported_extension_with_fixed_text(files: Path) -> Non
     assert json.loads(result.stdout)["error"] == (
         "unsupported file extension '.xlsx'; expected .csv, .tsv, or .parquet"
     )
+
+
+def test_scan_errors_print_one_hint_under_quiet(files: Path) -> None:
+    for name in ("scan show", "scan diff"):
+        result = runner.invoke(app, [*QUIET_CASES[name], "--quiet"])
+
+        assert result.exit_code == EXIT_USAGE
+        assert result.stderr.count("hint: ") == 1, result.stderr

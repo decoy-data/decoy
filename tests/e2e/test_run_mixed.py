@@ -236,9 +236,7 @@ class TestChunkedGenerateGuard:
                 {
                     "name": "synth",
                     "row_count": 5,
-                    "generate_columns": [
-                        {"name": "id", "type": "sequence", "start": 1, "step": 1}
-                    ],
+                    "generate_columns": [{"name": "id", "type": "sequence", "start": 1, "step": 1}],
                 }
             ],
             "targets": {
@@ -250,7 +248,9 @@ class TestChunkedGenerateGuard:
 
         result = runner.invoke(app, ["run", str(config_path), "--chunked"])
 
-        assert result.exit_code == 1, f"expected exit 1 (usage); got {result.exit_code}\n{result.output}"
+        assert result.exit_code == 1, (
+            f"expected exit 1 (usage); got {result.exit_code}\n{result.output}"
+        )
         assert "chunked" in result.output.lower() or "generate" in result.output.lower(), (
             f"error message should mention chunked or generate; got: {result.output}"
         )
@@ -263,7 +263,9 @@ class TestChunkedGenerateGuard:
 
         result = runner.invoke(app, ["run", str(config_path), "--chunked"])
 
-        assert result.exit_code == 1, f"expected exit 1 (usage); got {result.exit_code}\n{result.output}"
+        assert result.exit_code == 1, (
+            f"expected exit 1 (usage); got {result.exit_code}\n{result.output}"
+        )
         assert "chunked" in result.output.lower() or "generate" in result.output.lower(), (
             f"error message should mention chunked or generate; got: {result.output}"
         )
@@ -359,9 +361,7 @@ class TestMixedConfigVaultRoundTrip:
         config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
         vault_path = tmp_path / "mixed_vault.bin"
 
-        run_result = runner.invoke(
-            app, ["run", str(config_path), "--vault", str(vault_path)]
-        )
+        run_result = runner.invoke(app, ["run", str(config_path), "--vault", str(vault_path)])
         assert run_result.exit_code == 0, run_result.output
         assert vault_path.exists() and vault_path.stat().st_size > 0
 

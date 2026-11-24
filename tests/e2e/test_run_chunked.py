@@ -32,9 +32,7 @@ _SOURCE_COLUMNS = ("ssn", "email")
 def _undeclared_passthrough(columns: list[dict]) -> list[dict]:
     """The engine refuses a source column the config does not list; list the rest as passthrough."""
     declared = {c["name"] for c in columns}
-    return [
-        {"name": n, "strategy": "passthrough"} for n in _SOURCE_COLUMNS if n not in declared
-    ]
+    return [{"name": n, "strategy": "passthrough"} for n in _SOURCE_COLUMNS if n not in declared]
 
 
 def _pipeline(tmp_path: Path, columns: list[dict], rows: int = 200) -> Path:
@@ -75,17 +73,13 @@ _SAFE = [
 
 
 class TestRunChunked:
-    def test_chunked_output_is_byte_identical_to_plain_run(
-        self, tmp_path: Path
-    ) -> None:
+    def test_chunked_output_is_byte_identical_to_plain_run(self, tmp_path: Path) -> None:
         cfg = _pipeline(tmp_path, _SAFE)
         assert runner.invoke(app, ["run", str(cfg)]).exit_code == 0
         plain = (tmp_path / "out.csv").read_bytes()
         (tmp_path / "out.csv").unlink()
 
-        result = runner.invoke(
-            app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
-        )
+        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
         assert result.exit_code == 0, result.output
         assert (tmp_path / "out.csv").read_bytes() == plain
 
@@ -108,9 +102,7 @@ class TestRunChunked:
         result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "0"])
         assert result.exit_code != 0
 
-    def test_deterministic_faker_chunked_matches_plain_run(
-        self, tmp_path: Path
-    ) -> None:
+    def test_deterministic_faker_chunked_matches_plain_run(self, tmp_path: Path) -> None:
         """Deferred follow-up 2: deterministic faker with an explicit
         pool_size is admitted in chunked mode with byte parity."""
         columns = [
@@ -129,9 +121,7 @@ class TestRunChunked:
         plain = (tmp_path / "out.csv").read_bytes()
         (tmp_path / "out.csv").unlink()
 
-        result = runner.invoke(
-            app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
-        )
+        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
         assert result.exit_code == 0, result.output
         assert (tmp_path / "out.csv").read_bytes() == plain
 

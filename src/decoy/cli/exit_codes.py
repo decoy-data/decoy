@@ -160,6 +160,11 @@ def run_exit_code(category: str | None = None, *, blocking_failed: bool = False)
     ).exit_code
 
 
+def run_category_for(exc: BaseException) -> str | None:
+    """STUB (red-first): replaced by the real inverse of `RUN_EXIT_MAP` in the CL4 change."""
+    return None
+
+
 def _vault_input_codes() -> frozenset[str]:
     """The vault refusals the caller causes: the wrong secret, file or format, or a missing extra."""
     from decoy_engine.reasons import runtime as reasons_runtime

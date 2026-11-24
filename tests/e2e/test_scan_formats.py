@@ -124,8 +124,10 @@ def test_scan_reads_fixed_width_with_layout(fwf_fixture: tuple[Path, Path], tmp_
         [
             "scan",
             str(fwf_path),
-            "--layout", str(layout_path),
-            "--output", str(out),
+            "--layout",
+            str(layout_path),
+            "--output",
+            str(out),
         ],
     )
     assert result.exit_code == 0, f"exit={result.exit_code}\n{result.output}"
@@ -146,7 +148,8 @@ def test_scan_fixed_width_json_output(fwf_fixture: tuple[Path, Path]):
         [
             "scan",
             str(fwf_path),
-            "--layout", str(layout_path),
+            "--layout",
+            str(layout_path),
             "--json",
         ],
     )
@@ -178,9 +181,7 @@ def test_scan_fixed_width_without_layout_fails_closed(fwf_fixture: tuple[Path, P
         f"Got exit {result.exit_code}. output: {result.output}"
     )
     combined = result.output + (str(result.exception) if result.exception else "")
-    assert "layout" in combined.lower(), (
-        f"Expected 'layout' in error message. Got: {combined}"
-    )
+    assert "layout" in combined.lower(), f"Expected 'layout' in error message. Got: {combined}"
 
 
 def test_scan_fwf_extension_without_layout_fails_closed(tmp_path: Path):
@@ -197,9 +198,7 @@ def test_scan_fwf_extension_without_layout_fails_closed(tmp_path: Path):
         f"Got exit {result.exit_code}. output: {result.output}"
     )
     combined = result.output + (str(result.exception) if result.exception else "")
-    assert "layout" in combined.lower(), (
-        f"Expected 'layout' mention in error. Got: {combined}"
-    )
+    assert "layout" in combined.lower(), f"Expected 'layout' mention in error. Got: {combined}"
 
 
 # ---------------------------------------------------------------------------
@@ -215,8 +214,10 @@ def test_scan_explicit_format_parquet(parquet_fixture: Path, tmp_path: Path):
         [
             "scan",
             str(parquet_fixture),
-            "--format", "parquet",
-            "--output", str(out),
+            "--format",
+            "parquet",
+            "--output",
+            str(out),
         ],
     )
     assert result.exit_code == 0, f"exit={result.exit_code}\n{result.output}"
@@ -241,8 +242,10 @@ def test_scan_explicit_format_delimited(tmp_path: Path):
             "scan",
             str(csv_path),
             "--has-header",
-            "--format", "delimited",
-            "--output", str(out),
+            "--format",
+            "delimited",
+            "--output",
+            str(out),
         ],
     )
     assert result.exit_code == 0, f"exit={result.exit_code}\n{result.output}"
@@ -300,12 +303,8 @@ def test_malformed_layout_missing_width_exits_usage(fwf_data: Path, tmp_path: Pa
         f"Expected exit 1 (usage) for missing 'width', got {result.exit_code}.\n{result.output}"
     )
     combined = result.output + (str(result.exception) if result.exception else "")
-    assert "width" in combined.lower(), (
-        f"Expected 'width' named in error. Got: {combined}"
-    )
-    assert "column" in combined.lower(), (
-        f"Expected 'column' referenced in error. Got: {combined}"
-    )
+    assert "width" in combined.lower(), f"Expected 'width' named in error. Got: {combined}"
+    assert "column" in combined.lower(), f"Expected 'column' referenced in error. Got: {combined}"
 
 
 def test_malformed_layout_non_int_width_exits_usage(fwf_data: Path, tmp_path: Path):
@@ -326,9 +325,7 @@ def test_malformed_layout_non_int_width_exits_usage(fwf_data: Path, tmp_path: Pa
         f"Expected exit 1 (usage) for non-integer 'width', got {result.exit_code}.\n{result.output}"
     )
     combined = result.output + (str(result.exception) if result.exception else "")
-    assert "width" in combined.lower(), (
-        f"Expected 'width' named in error. Got: {combined}"
-    )
+    assert "width" in combined.lower(), f"Expected 'width' named in error. Got: {combined}"
     assert "integer" in combined.lower() or "int" in combined.lower(), (
         f"Expected 'integer'/'int' hint in error. Got: {combined}"
     )
@@ -374,6 +371,6 @@ def test_malformed_layout_empty_file_exits_usage(fwf_data: Path, tmp_path: Path)
         f"Expected exit 1 (usage) for empty layout, got {result.exit_code}.\n{result.output}"
     )
     combined = result.output + (str(result.exception) if result.exception else "")
-    assert any(
-        kw in combined.lower() for kw in ("columns", "mapping", "layout")
-    ), f"Expected actionable keyword in error. Got: {combined}"
+    assert any(kw in combined.lower() for kw in ("columns", "mapping", "layout")), (
+        f"Expected actionable keyword in error. Got: {combined}"
+    )
