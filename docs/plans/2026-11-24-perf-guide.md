@@ -2,303 +2,379 @@ Status: plan
 
 # PERF-GUIDE: one scripted benchmark of the whole flow, published on /how-it-works
 
-Owner: Cam. Author: Opus plan agent. Date: 2026-11-24. Revision 1. Roadmap row: PERF-GUIDE (`docs/roadmap/groups/release.md:27`, owner 2026-11-23, V1 release effort). Ordering from the row: after the final engine performance work, before row 94 (CLI-REL).
+Owner: Cam. Author: Opus plan agent. Date: 2026-11-24. Revision 2. Roadmap row: PERF-GUIDE (`docs/roadmap/groups/release.md:27`, owner 2026-11-23, V1 release effort). Ordering from the row: after the final engine performance work, before row 94 (CLI-REL).
 
 Rules consulted: dev-rules `README.md`, `00-universal.md`, `development-loop.md` (PLAN, Proportion), `risk-and-exceptions.md`, `performance.md`, `testing.md` (Rules, Test depth), `reuse-first.md`, `proportionality.md`, `architecture.md` (Layout), `cross-cutting-concerns.md`, `release-and-rollback.md`, `documentation.md`.
 
-Risk: R2 for build slices S1 to S4. They add new tooling, a public page that states numbers, and a data file shape on the site. S5 is R3: it spends money on one GCP VM and it publishes a consequential public claim. So S5 needs owner approval right before the cloud run and again before the page goes live. Plan review: one Codex review of this plan. Code gate per slice: Codex for S1 and S3; Codex then Dennis for S2 and S4. Tests: T0 per edit, T1 per commit. No slice changes shipped product code, so no full-suite trigger applies.
+Risk: S1 is R1 (synthetic fixtures and pipeline texts, no measurement or publication). S2a, S2b, S3 and S4 are R2: they decide what counts as a measurement and what the public page may show. S5 is R3: it spends money on one GCP VM and publishes a consequential public claim, so it needs owner approval before the cloud run and again before the page goes live. Plan review: one Codex review (rev 1 NO-GO, this is rev 2). Code gate per slice: Codex for S1; Codex then Dennis for S2a, S2b, S3 and S4. Tests: T0 per edit, T1 per commit. No slice changes shipped product code, so no full-suite trigger applies.
 
 Repos: CLI (`decoy-data/decoy`) for the harness, the records and the publisher. Web (`decoy-data/decoy-web`, local `/home/cam/vscode/decoy-site`) for the page. The engine gets no change.
 
+## Revision history
+
+| Rev | Date | Change |
+|---|---|---|
+| 1 | 2026-11-24 | First plan (head `c721ee6b`) |
+| 2 | 2026-11-24 | Codex R1 NO-GO, 15 BLOCK, 3 FIX, 1 V2-LOG. All taken. Release identity now comes from the verified candidate install, not a version string (F1). Site cells carry their raw repetitions and the site check recomputes them (F2). `/cli` loses its copy of the table (F3). S4 ships an empty placeholder, and provisional numbers never reach the deploy input (F4). Scenarios are frozen with exact strategies and a benchmark key (F5). MASK-SCAN needs proof that the scan ran (F6). Subset, mask and generate guards are exact (F7, F8). The result is read through `RunResultRead` from a fresh path (F9). Effective resources come from the child's own `resources` output (F10). Failures use the CLI exit codes and cgroup OOM evidence (F11). Memory labels say what the tool measured (F12). Per-table denominators and bytes are published (F13). A frozen campaign manifest and a no-selection variance rule (F14). Unique attempt ids with create-once publication (F15). Bounded fixture generation and per-device disk preflight (F16). Reuse of `scripts/qa` checks and writers (F17). S2 split into S2a and S2b, placement completed (F18). S5 elapsed time comes from a pilot (F19) |
+
 ## 1. Problem
 
-The Performance section of `/how-it-works` (`decoy-site/src/how-it-works.njk`, section `id="performance"`) renders from `src/_data/performance.json`. Today that file has `status: pending_benchmarks`, every cell is null, and the 100M cells carry `projected: true`. The caption says "100M is a linear projection from the measured sizes". So the page has no numbers. The one rule it states (projection) also conflicts with the owner's intent that the numbers come from real runs of the release build.
+The Performance section of `/how-it-works` (`decoy-site/src/how-it-works.njk`, section `id="performance"`) renders from `src/_data/performance.json`. Today that file has `status: pending_benchmarks`, every cell is null, and the 100M cells carry `projected: true`. The caption says "100M is a linear projection from the measured sizes". `/cli#performance` (`src/cli.njk:249-293`) renders a second table from the same file, with the same caption and a statement that there is no macOS or ARM64 evidence. So neither page has numbers, and the one rule they state (projection) conflicts with the owner's intent that the numbers come from real runs of the release build.
 
 A user who asks "how long will 10M rows take, and what box do I need" has no answer. No harness times the whole flow (source read to delivered output) of the shipped CLI, and no record of such runs exists.
 
 ## 2. Pinned guarantee
 
-Every number in the Performance section comes from a recorded run of the release build of `decoy run`. The run used a stated machine class and the default route, and it passed the correctness guard. No number is projected, extrapolated or copied from a dev build. A cell with no such run says "Not measured". A cell whose run failed on that class says "Needs a bigger box".
+Every number in the Performance section comes from a complete set of recorded, successful, guarded invocations of the verified release-candidate install of `decoy run`, on a named host under stated limits that the timed process itself reported. The site recomputes every shown number from the raw repetitions in its data file before deploy. No number is projected, extrapolated, selected from a subset of attempts, or taken from a dev build. A cell with no such set says "Not measured" with a reason. A cell whose run was refused for capacity, or killed by a confirmed out-of-memory event, says "Needs more memory" with that evidence. A timeout says "Did not finish in 2 h". Any other failure is "Not measured" with its reason.
 
 ## 3. Non-goals
 
 - No engine or CLI product change. A slow result is a finding for the engine roadmap, not work in this row.
 - No per-strategy or per-format micro benchmarks. The engine bench tools (`scripts/native-baseline/`, `scripts/fk-scale/`) keep that job.
-- No change to `/proof` or to the engine `docs/proof-manifest.json`. A later row may link them to the perf records.
-- No benchmark of the platform, of DP fit, or of `decoy scan` alone. The prior site plan listed Scan and DP fit rows. The owner row asks for mask and generate, with and without subset and pre-scan, so the page has those and nothing else. The current five-operation data shape goes away.
-- No CI job runs the benchmark. A person runs it by hand on chosen hosts. CI runs only the unit tests and the site data check.
+- No change to `/proof` or to the engine `docs/proof-manifest.json`.
+- No benchmark of the platform, of DP fit, or of `decoy scan` alone. The owner row asks for mask and generate, with and without subset and pre-scan. The current five-operation data shape goes away.
+- No CI job runs the benchmark. A person runs it by hand on chosen hosts. CI runs the unit tests and the site data check.
+- No 100M CSV cell. It is outside the scenario matrix and the page says so.
 - No census, baseline or allowlist raise in any slice.
 
 ## 4. Established solutions
 
-Search run: hyperfine and pyperf documentation (benchmark method), TPC-H and TPC-DS specifications (whole-flow benchmark with a data generator and scale factors), Linux cgroup v2 documentation and `systemd.resource-control` (`MemoryMax`, `AllowedCPUs`), psutil documentation (process tree memory), and in-codebase search of both repos and decoy-site for bench, perf, proof and how-it-works work.
+Search run: hyperfine and pyperf documentation (benchmark method), TPC-H and TPC-DS specifications (whole-flow benchmark with a data generator and scale factors), Linux cgroup v2 documentation (`memory.peak`, `memory.events`, `cpu.max`, `cpuset`) and `systemd.resource-control`, Linux `getrusage(2)`, psutil documentation, and in-codebase search of the CLI, the engine and decoy-site for bench, perf, proof, QA and how-it-works work.
 
 | Source | What we take |
 |---|---|
-| hyperfine, pyperf (warmup, repeated runs, median and spread, recorded environment) | One warmup run that does not count, then N measured runs. Report the median and the min to max range. Record host, OS, CPU model, versions and commands with every run. |
-| dev-rules `performance.md` | Define workload, correctness guard, baseline, warmup, variance and resource budget. Report throughput with the resources used and the correctness result. |
-| TPC-H / TPC-DS (fixed data generator, fixed scale factors, timed run from load to result) | A deterministic generator with a seed and fixed scale points (1M, 10M, 100M rows). The timed unit is the whole user command, not an inner function. |
-| cgroup v2 through `systemd-run --scope -p MemoryMax= -p AllowedCPUs=` | A machine class is enforced by a cap, not assumed. The engine already reads its cgroup quota and CPU affinity (`decoy_engine/execution/pipeline/_host.py`, `detect_usable_cpus`), and the CLI's `auto` threads and memory come from it (`src/decoy/_resources.py`). So a capped run shows what a user with that box gets. A run that finishes under a 16 GB cap shows that the flow fits in 16 GB. |
-| psutil process tree sampling; `getrusage` max RSS (as in GNU `time -v`) | Peak memory is the sampled sum of RSS over the `decoy` process tree. The engine can start an isolated child process, so one process's max RSS undercounts. The child's `ru_maxrss` is kept as a cross check. psutil is already in `requirements-dev.lock`. |
-| Prior plan: decoy-site `docs-src/docs/plans/2026-10-24-how-it-works-performance-matrix.md` (Codex draft, not reviewed) | Its honesty rules: no extrapolation, "Not measured", date, hardware, version and route on every cell, a link to the record. Also 5 repetitions at 1M and 10M and 3 at 100M, one site data file with a provenance check, and owner approval before cloud runs. We drop its Scan and DP fit rows. We also move its record folder from the engine to the CLI repo, because the release build is the CLI. |
+| hyperfine, pyperf | One untimed warmup, then N timed invocations. Report the median and the min to max range. Keep every attempt. Record host, OS, CPU, versions and commands |
+| dev-rules `performance.md` | Define workload, correctness guard, warmup, variance and resource budget. Report throughput with the resources used and the correctness result |
+| TPC-H / TPC-DS | A deterministic generator with a seed and fixed scale points (1M, 10M, 100M rows per table). The timed unit is the whole user command. The benchmark definition is frozen before any number exists |
+| cgroup v2 (`memory.peak`, `memory.events` `oom_kill`), `systemd-run --scope` | A capped run is a run on a named host under stated limits. `memory.peak` of a fresh per-invocation scope is the Linux memory figure, labelled "cgroup memory, includes page cache charged to the run". An `oom_kill` counter delta is the evidence for an out-of-memory kill |
+| `getrusage(2)`, psutil | `ru_maxrss` of children is the largest single child, not the tree, and its unit differs by OS. So it is recorded only as a labelled side figure. The portable figure is "highest sampled sum of process RSS, 100 ms interval", with its method, units and missed samples recorded |
+| Engine `scripts/fk-scale/_supervisor.py` | An external supervisor that starts the measured process in its own process group and records how it ended. Used as the reference design. It is not imported (private sibling-repo code) |
+| Engine `scripts/fk-scale/build_fk_chain.py` | Seeded FK Parquet generation one chunk at a time. The model for the fixture writer |
+| Prior plan: decoy-site `docs-src/docs/plans/2026-10-24-how-it-works-performance-matrix.md` | Honesty rules: no extrapolation, "Not measured", date, hardware, version and route on every cell, a link from each number to its exact record field, 5 reps at 1M and 10M and 3 at 100M, 100M runs only on an approved cloud budget. We drop its Scan and DP fit rows and put the records in the CLI repo, because the release build is the CLI |
 
-Reuse in this repo:
+Reuse in this repo (detail in 9b): `packaging_tools/candidate.py` and `packaging_tools/smoke_install.py` (candidate verify and install), `scripts/release/record_smoke.py` (`check_match`), `scripts/qa/invariants/` (`i1_leaks`, `i2_foreign_keys`, `i4_rows`, `i5_schema`), `scripts/qa/io.py` (`staged_private`, `publish_private_once`, `publish_or_same`), `scripts/qa/repro.py` (process-group timeout pattern), the engine public `RunResultRead`, and the `decoy run --json` `resources` envelope.
 
-- `tests/e2e/run_stream/_perf_driver.py`: one `decoy run` per child process, with `{exit, seconds, peak_rss}` output.
-- `scripts/release/record_smoke.py` with `packaging_tools/candidate.py` (`read_candidate`): an append-only record tied to a release candidate. The bench record checks the installed CLI version against the candidate the same way.
-- `scripts/qa/corpus/shapes.py`: the column mix of `single` and `parent_child` is the model for the fixture schema. The QA generator itself is not reused. It builds Python lists in memory and renders whole files, which does not scale to 100M rows.
-- `decoy run --result PATH`: the run result document gives `Timings.phases`, `Route` (execution mode, native state, chunked) and `ProducerInfo` (CLI, engine and registry versions). The harness reads these and adds no phase timer of its own.
-
-Custom code that remains: the fixture writer (no maintained generator produces this schema in row-group chunks with a fixed seed), the guard, the record writer and the publisher. Each is small and specific to this row.
+Custom code that remains: the chunked fixture writer, the bounded large-scale FK and subset check, the installed-process supervisor and the publisher. Each is specific to this row.
 
 ## 5. Behavior
 
 ### 5.1 Workload
 
-Fixture data. It is deterministic: seed `20261124`, and the same seed and size give the same bytes.
+Fixture data. Deterministic: seed `20261124`. The generator, PyArrow version, compression (Snappy), row-group size (1M rows, 1k in tests), dictionary and statistics settings are pinned in `fixture.json`. The same seed, size and pins give the same bytes, and the harness checks the sha256 of every file on every host.
 
-- `customers`: N rows, 12 columns. `customer_id` (int64, unique), `first_name`, `last_name`, `email`, `phone`, `ssn` (string), `street`, `city`, `postcode` (string), `birth_date` (date32), `balance` (float64), `status` (string, 5 values). Values come from fixed word lists and the seeded NumPy generator. About 5% nulls in `phone` and `street`.
-- `orders`: N rows, 6 columns. `order_id` (int64, unique), `customer_id` (int64, a foreign key to `customers`; every value is present in the parent), `order_date` (date32), `amount` (float64), `channel` (string), `note` (short free text; about 1% of rows contain an email, so the pre-scan finds something).
-- Formats: Parquet (Snappy, row groups of 1M rows), and plain CSV for the CSV scenario. The writer emits one row group at a time, so its memory does not grow with N.
+- `customers`: N rows. `customer_id` (int64, unique, 0..N-1 then a fixed permutation), `first_name`, `last_name`, `email`, `phone`, `ssn`, `street`, `city`, `postcode` (string), `birth_date` (date32), `balance` (float64), `status` (string, 5 values). About 5% nulls in `phone` and `street`. Every `email`, `ssn` and `last_name` value carries a synthetic marker token (`pgmark` plus the row id) that no Faker provider or redaction output can produce. So "source value appears in output" is an exact test, with no false hit from a real surname.
+- `orders`: N rows. `order_id` (int64, unique), `customer_id` (int64, every value present in `customers`, a fixed skew so some customers have many orders and some none), `order_date` (date32), `amount` (float64), `channel` (string), `note` (short free text).
+- The pre-scan marker for MASK-SCAN goes in `customers.street`: about 1% of rows hold a marker email address (`pgmark<id>@scan.invalid`) inside the street text. MASK-SCAN reads this table and masks `street`, so the scan has a known finding in data it reads (F6).
+- The writer produces one row group at a time from the seeded generator. No list or array covers the whole table. Only the files a scenario uses are generated.
 
-Scenarios. Each is one `.decoy` pipeline that passes `decoy validate`.
+Scenarios. Frozen in `scripts/bench/scenarios.py`, the one list. Each is one `.decoy` pipeline. Every pipeline sets `seed 20261124` and `secret ref("env:DECOY_BENCH_MASK_KEY")`. The key is a 32-byte random value made once per campaign, held only in the harness process and passed to the child through that one variable. It is never written to a record (only the reference text is).
 
-| Id | Flow | Sizes | Notes |
+Column treatment, the same in every mask scenario:
+
+| Column | Strategy | Parameters |
+|---|---|---|
+| `customer_id`, `order_id`, `customers` key in `orders` | passthrough (key columns) | none |
+| `first_name`, `last_name` | `faker` | `person_first_name`, `person_last_name` |
+| `email`, `phone` | `faker` | `person_email`, `person_phone` |
+| `ssn` | `redact` | default text |
+| `street` | `redact` | default text |
+| `city`, `postcode` | `faker` | the address-city and postcode providers named in S1 from `strategy_catalog()` |
+| `birth_date`, `order_date` | `date_shift` | `min_days: -30, max_days: 30` |
+| `balance`, `amount` | `bucket_perturb` | fixed buckets and noise named in S1 |
+| `status`, `channel` | passthrough | none |
+| `note` | `redact` | default text |
+
+S1 freezes the two provider names and the `bucket_perturb` parameters in `scenarios.py`, and AT-3 checks every named strategy and provider is in the installed `strategy_catalog()`. The page lists each strategy by name.
+
+| Id | Flow | Sizes (rows per table) | Denominator |
 |---|---|---|---|
-| MASK | `customers` Parquet in, Parquet out, the default mask for each column (name, email, phone, ssn, address parts, date shift on `birth_date`, numeric noise on `balance`) | 1M, 10M, 100M | The headline row |
-| MASK-SCAN | MASK plus a regex pre-scan before the run (`pre_scan` / `scan before(regex)`) | 1M, 10M, 100M | Needs PRE-SCAN-RUN (CLI run-start step) merged. Until then the cells are "Not measured" |
-| SUBSET-MASK | `customers` and `orders`; sample 10% of `customers` by `customer_id`; follow `orders.customer_id -> customers.customer_id` downward; mask both; Parquet out | 1M, 10M, 100M (N per table) | Output is about 10% of input. The table shows input rows and output rows |
-| MASK-CSV | MASK with CSV in and CSV out | 1M, 10M | The common second format. 100M CSV needs about 3 times the disk of Parquet and adds little |
-| GENERATE | Generate N rows of the `customers` schema from column specs, Parquet out | 1M, 10M, 100M | Subset and pre-scan do not apply, because there is no source data |
-
-N is the row count of each source table, or of the generated table. Rows per second is input rows (sum over source tables) divided by wall time. For GENERATE it is output rows.
+| MASK | `customers` Parquet in, Parquet out | 1M, 10M, 100M | input rows: N |
+| MASK-SCAN | MASK plus `scan before(regex)` with `continue` policy | 1M, 10M, 100M | input rows: N |
+| SUBSET-MASK | `customers` and `orders`; sample 10% of `customers` by `customer_id`; follow `orders.customer_id -> customers.customer_id`; mask both; Parquet out | 1M, 10M, 100M | input rows: 2N (both tables). Delivered rows and retention shown too |
+| MASK-CSV | MASK with CSV in and CSV out (explicit types on read) | 1M, 10M | input rows: N |
+| GENERATE | Generate N rows of the `customers` schema, Parquet out | 1M, 10M, 100M | output rows: N |
 
 ### 5.2 Machine classes
 
-| Class | Cores | RAM | How it is applied |
+| Class | Logical CPUs | Memory limit | Host |
 |---|---|---|---|
-| Small | 4 | 16 GB | A cap on a bigger Linux host, or a host of that size |
-| Medium | 8 | 32 GB | A cap on a bigger Linux host, or a host of that size |
-| Large | 16 | 64 GB | One GCP VM (for example n2-standard-16 with pd-ssd), no cap |
-| Laptop | 10 (M4) | 16 GB | The Mac mini as it is, no cap (macOS has no cgroup). Shown as its own column |
+| Small | 4 | 16 GiB | Capped on a larger Linux host, or a GCP VM with that shape |
+| Medium | 8 | 32 GiB | Capped on a larger Linux host, or a GCP VM with that shape |
+| Large | 16 | 64 GiB | One GCP VM (n2-standard-16, pd-ssd), no cap |
+| Laptop | 10 (M4, 4P+6E) | 16 GB installed | The Mac mini as it is (macOS has no cgroup). Its own column |
 
-A class run is valid only when one of these holds. `host.json` records which.
+Units: CPUs are logical CPUs (vCPU on GCP, hardware threads elsewhere). Memory limits are GiB (cgroup `memory.max`). The Mac shows installed RAM. Swap: the scope sets `MemorySwapMax=0`; the host's swap state is recorded. GCP VMs are described by machine type.
 
-1. The host's real cores and RAM equal the class.
-2. A cgroup cap was applied (`systemd-run --scope -p AllowedCPUs=... -p MemoryMax=...`, as root or with user delegation), and the harness read the cap back inside the scope before the run started.
+A capped run is "a measurement on host H under these limits". It is valid only when all of these hold (F10):
 
-If neither holds, the harness refuses the class (exit 2) and writes nothing. The harness passes no `--threads` or `--max-memory` flag, and it clears `DECOY_THREADS` and `DECOY_MAX_MEMORY` and uses an empty `DECOY_HOME`. So each run uses `auto`, as a user with that box would.
+1. The supervisor runs outside the measured scope. Each invocation gets its own new scope (`systemd-run --scope -p AllowedCPUs= -p MemoryMax= -p MemorySwapMax=0`) or, on a host of the class size, its own cgroup leaf.
+2. The measured child runs `decoy run --json` and its `resources` envelope reports `threads` and `memory` with source `auto`, the logical CPU count equal to the class, and the memory ceiling equal to the class limit (with the derived out-of-core budget recorded).
+3. The harness also reads, from inside the child's cgroup, the effective `cpuset`, `cpu.max` and `memory.max` up the whole ancestor chain, and the tightest values match the class.
 
-The harness records the disk (device type, filesystem). Source and output are on the same local disk. The harness does not drop the page cache (that needs root, and users rarely run cold). The warmup run reads the same files, so every measured run has a warm cache. The page says so.
+A run where any check fails is refused (no timing). The same checks apply to physical hosts: a host of the class size still has its `resources` output checked. S2a includes one real delegated-scope check on each measurement host.
+
+The child environment is built from an allowlist (`PATH`, `HOME` set to a fresh directory, `LANG`, `TMPDIR` set to the attempt's scratch, `DECOY_BENCH_MASK_KEY`). `DECOY_THREADS`, `DECOY_MAX_MEMORY` and `DECOY_HOME` are not passed, and the fresh home has no `settings.json`.
+
+Cache: the page says "one untimed warmup, OS caches left enabled". GENERATE has no input files, so its warmup only loads the program.
 
 ### 5.3 The harness
 
-`python scripts/bench/run.py --class medium --scenario MASK --rows 10M --reps 5 --out <records dir>`:
+Commands. Release and provisional modes are separate entry points so a dev build cannot take the release path.
 
-1. Checks the CLI under test. It runs `decoy --version` from `--decoy` (default: `decoy` on `PATH`). A version with `+` or `.dev`, or an editable install, is a dev build. A dev build runs only with `--provisional`, and every record it writes has `"provisional": true`.
-2. With `--candidate <dir>`, checks that the version equals the candidate's version through `packaging_tools/candidate.py` (`read_candidate`). A record that is not provisional requires `--candidate`.
-3. Generates the fixture at the given size if it is missing (`scripts/bench/fixtures.py`), and checks its manifest (row counts, seed, generator version, sha256 of each file).
-4. Writes the scenario pipeline into a new run folder and runs `decoy validate` once. Then it does one warmup run and `--reps` measured runs. Each run uses a new empty output folder and runs `decoy run <pipeline> --result <file>`. The harness times the child process with `time.monotonic_ns()`. A psutil sampler sums RSS over the process tree every 100 ms.
-5. After each run, applies the correctness guard (5.4). If the guard fails, the run is failed and the cell gets no number.
-6. Deletes the run's output folder after the guard, to keep disk use bounded at 100M.
-7. Writes the session record (5.5).
+- `python scripts/bench/run.py --campaign <manifest> --cell MASK/10M --class medium` (S2b, release). Reads the campaign manifest (5.5), which names the candidate directory.
+- `python scripts/bench/run.py --provisional --decoy <path> --cell MASK/1M --class medium` (S2a). Every attempt it writes is `provisional: true`. The publisher refuses these in release mode and the site check refuses them in every build.
 
-### 5.4 Correctness guard (each measured run)
+Release identity (F1). Release mode reads `<dist>/candidate.json` through `read_candidate`, then verifies and installs the signed artifact for this host's target through the existing release-smoke candidate path (`packaging_tools/smoke_install.py` `candidate_main`) into a fresh prefix. Every invocation (version, validate, warmup, timed runs) uses that install's absolute launcher. The attempt records the CLI and engine commits, the candidate sums digest, the target and the artifact digest. The result document's `ProducerInfo` CLI and engine versions must match the candidate (`record_smoke.check_match`). The campaign manifest pins one candidate. A replacement candidate makes a new campaign; earlier attempts stay but cannot publish under it.
 
-- Exit code 0, and the result document says the run succeeded.
-- Output row count per table equals the expected count: N for MASK, MASK-SCAN, MASK-CSV and GENERATE. For SUBSET-MASK, the output counts equal the counts in the result document, and every `orders.customer_id` in the output is present in the output `customers` (checked by streaming the output files with PyArrow).
-- Output column names and order equal the expected schema.
-- Masking happened. For MASK, MASK-SCAN and MASK-CSV: on a fixed 10k-row sample of `email`, `ssn` and `last_name`, no output value equals the source value in the same row. For SUBSET-MASK, row order changes, so the check is that the source `email` values of the sample do not appear in the output `email` column.
-- The result document's `Route` goes into the record. A route other than the default is not a failure (the page shows what users get), but the record and the page details line show it.
+One attempt (a cell on a class):
 
-### 5.5 Records
+1. Preflight: fixture sha256 check; free space on each actual device (fixture, output, spill in `TMPDIR`, guard scratch) against the scenario's per-device budget in `scenarios.py`; for GENERATE the budget is from output size only. Refuse with the device and the shortfall.
+2. Fresh attempt directory with a unique attempt id (`<campaign>/<cell>/<class>/<utc>-<random>`), its own project, output and scratch folders. The result path for each invocation is fresh and outside `out/`.
+3. `decoy validate` once with the installed launcher. A capacity refusal here (exit 5) ends the attempt as capacity-refused. Any other failure ends it as config-failed.
+4. One untimed warmup, then the timed invocations (5 at 1M and 10M, 3 at 100M). Each timed invocation: new scope, the supervisor starts `decoy run <pipeline> --json --result <fresh path>` in its own process group, timing from spawn to exit with `time.monotonic_ns()` outside the child. A sampler sums RSS over the scope's processes every 100 ms. After exit: `memory.peak` and the `memory.events` `oom_kill` delta of that fresh scope (Linux), `ru_maxrss` labelled as largest child.
+5. After each invocation, outside the timer: read the result through `RunResultRead`, then the guard (5.4). Then delete that invocation's output.
+6. Stage the attempt's evidence (one canonical `attempt.json` plus `commands.txt`) and publish it once with `publish_private_once`. An attempt with no completion file is incomplete and ignored by the publisher. Scratch is removed on success, guard failure, timeout and interrupt; fixture and evidence roots are outside the cleanup path.
 
-One folder per session in the CLI repo: `docs/records/perf-guide/<YYYY-MM-DD>-<class>-<host-label>/`.
+Exit classification of one invocation (F11), from the CLI's exit codes and the cgroup:
 
-- `host.json`: the class and how it was applied (real size, or cap with the values read back), CPU model, cores, RAM, OS, kernel, disk, Python, CLI, engine and registry versions (from `ProducerInfo`), and the candidate id or `provisional`.
-- `results.json`: one entry per cell. It has scenario, rows and reps; for each run: wall seconds, sampled peak tree RSS, child `ru_maxrss`, phases from the result document, route and guard result. Then the cell summary: median, min and max wall seconds, median rows per second, and the highest peak memory.
-- `fixture.json`: the fixture manifest (seed, generator version, sizes, sha256 per file).
-- `commands.txt`: every command run, with the pipeline text.
-- `record.md`: a short summary rendered from the JSON by `scripts/bench/record.py`, with `Status: record`.
+| Outcome | Evidence | Cell effect |
+|---|---|---|
+| success | exit 0, a new result document that `RunResultRead` accepts, guard pass | counts toward the set |
+| capacity | exit 5 (engine capacity reason code), or `oom_kill` delta > 0 in the run's own scope | "Needs more memory" with the code or the OOM evidence |
+| timeout | the 2 h limit hit; the supervisor kills the process group | "Did not finish in 2 h" |
+| runtime | exit 3 | "Not measured: runtime error" and a QA finding |
+| guard | exit 0, guard fails | "Not measured: guard failed" and a QA finding |
+| result | exit 0 with a missing, stale, unsupported-major or partial-delivery result | "Not measured: result unusable" |
+| other | any other exit code, a bare signal with no `oom_kill` delta, disk full, launch failure, cancel | "Not measured" with the named reason |
 
-Records are append-only: the writer refuses a folder that exists. Fixture data and outputs are never committed.
+A cell has a measured value only when every timed invocation in its set is a success. A mix of success and failure never gives a median of the successes.
+
+### 5.4 Correctness guard (each timed invocation)
+
+Result checks (F9): the result file is new (created after spawn, inode not seen before), parses through `RunResultRead` with a supported major, has the expected producer and config digest, a distinct invocation id from every earlier invocation in the campaign, success status, and a delivery entry for every expected table. The harness counts delivered rows and files itself and does not trust the document's counts. Route fields are recorded as observed, including null or inapplicable ones. Invocations with different observed routes are never combined under one label; a cell whose timed set has two routes is "Not measured: route changed between runs".
+
+MASK, MASK-SCAN, MASK-CSV (F8): delivered row count is N (`i4_rows.check_mask`). Schema: names, order, physical and logical types and nullability match `scenarios.py` (`i5_schema`), with CSV read using explicit types. Leak check: a fixed sample of 10k `customer_id` values; join output to source by `customer_id`; for each sampled row no marker token from the source `email`, `ssn`, `last_name` or `street` appears in any output column. A permuted but unmasked output fails because the join uses the key, not row position.
+
+MASK-SCAN (F6): the result's run-start `pre_scan` check is present, its state is `ran`, and it reports at least the expected number of marker findings in `street` under the `continue` policy. A missing or `not_run` check, or a result without the scan, is not a success.
+
+SUBSET-MASK (F7): exactly `max(1, floor(0.1 * N))` distinct `customer_id` values in the output, each present in the source. The guard independently computes the set of source `order_id` values whose `customer_id` is in that output set, and checks that the output `orders` holds every one of them exactly once and nothing else. The leak check runs on retained rows of both tables. At 10M and 100M the check uses a bounded, disk-backed join (sorted runs in scratch) outside the timer, not an in-memory set.
+
+GENERATE (F8): row count N (`i4_rows.check_generate`); exact types and nullability; `customer_id` unique; each column within its declared domain (non-null rate, string length range, date range, the 5 `status` values). An all-null column fails.
+
+### 5.5 Campaign and records
+
+Campaign manifest (F14), frozen and committed before any timed run: candidate directory and sums digest, fixture pins, the scenario matrix and its frozen pipelines (by digest), the classes and hosts, repetition counts, timeout, the variance rule, and stop conditions (5.8). The harness refuses a cell, class or host not in the manifest.
+
+Records in the CLI repo: `docs/records/perf-guide/<campaign-id>/<cell>/<class>/<attempt-id>/` with `attempt.json` (the one canonical structured record) and `commands.txt`. `attempt.json` holds: host and class facts (CPU model, logical CPUs, memory, swap, OS, kernel, disk device and filesystem, machine type), the limit checks and the child's `resources` output, release identity (1 above), fixture pins and per-table input rows and on-disk bytes, and for each invocation: kind (`warmup` or `timed`), invocation id, wall ns, memory figures with their labels and units, missed samples, outcome class, route as observed, delivered rows and bytes per table, and guard result by name. A campaign `summary.md` (`Status: record`) is rendered from the JSON by `scripts/bench/record.py`; nobody edits it.
+
+Records are append-only. A completed attempt is never overwritten. Two cells on one host on one day get distinct attempt ids. The CODEMAP row describes this layout.
+
+Variance rule (F14), fixed before measurement. If a measured cell's max/min wall time is above 1.5, the cell is rerun once as a new attempt. The published figures are the median and range over all timed invocations of both attempts, marked "high variance, rerun". No attempt is dropped. If the rerun is incomplete, the cell is "Not measured: unstable".
+
+Repeatability (AT-16): once per host, the first 1M MASK cell is run again as a new attempt. If the medians differ by more than 10%, every cell from that host is "Not measured: host failed repeatability" until the owner decides.
 
 ### 5.6 Site data
 
-`python scripts/bench/publish.py <record folders...> --out performance.json` builds the site file from records only. The file shape (schema version 1):
+`python scripts/bench/publish.py --campaign <manifest> --out performance.json` (release mode) reads every completed attempt under the campaign, owns all eligibility and statistics, and writes the site file. `publish.py --check performance.json --campaign <manifest>` regenerates and requires byte equality. Schema version 1:
 
-- `schema_version`, `generated_by` (`decoy scripts/bench/publish.py`), `release_version`, `measured_on` (date range), `status` (`pending` or `published`).
-- `classes`: id, label, cores, RAM, how applied, host summary.
-- `scenarios`: id, label, description. These come from `scripts/bench/scenarios.py`, the one list of scenarios.
-- `cells`: scenario, rows and class, then one of: `{median_s, min_s, max_s, rows_per_s, peak_mem_bytes, route, record}`, `{did_not_complete: true, reason, record}`, or `{not_measured: true}`.
-- `record` is the CLI repo path of the record folder and the commit that added it.
+- `schema_version`, `generated_by`, `release_version`, `evidence`: CLI repository, the 40-hex commit that holds the records, and the campaign id. `status` (`placeholder` or `published`) is derived by the publisher: `published` only when every measured cell comes from a non-provisional attempt and the row-close rule (5.8) holds.
+- `classes`: id, label, logical CPUs, memory limit with unit, host and machine type, how applied.
+- `scenarios`: id, label, description, strategies by name, denominator kind.
+- `cells`: scenario, `rows_per_table`, class, and `state` (`measured`, `capacity`, `timeout`, `not_measured`) with `reason`. A measured cell holds `timed_ns` (the raw wall times of every timed invocation, in order), `input_rows` and `delivered_rows` per table, `input_bytes` per table, `route`, `memory` (value, label, unit), `variance_rerun`, and `evidence` (the record path, the attempt ids and the 40-hex commit). The derived `median_s`, `min_s`, `max_s` and `rows_per_s` are written too, so the page reads them directly.
 
-`publish.py` refuses (exit 1) when: a record is provisional and `--allow-provisional` is not given; records name two CLI versions; a cell has a failed guard; a cell has fewer reps than the rule (5 at 1M and 10M, 3 at 100M). With `--allow-provisional` the output has `status: pending`.
+Publisher refusals (exit 1, named reason): a provisional attempt in release mode; attempts on two candidates; a duplicate cell key or invocation id; a non-finite or non-positive wall time; a timed count other than 5 or 3 (warmups never count); inconsistent fixture, pipeline or host identity inside a cell; mixed routes; any cell not in the manifest; a missing headline cell (5.8) when `published` is asked for.
 
-### 5.7 The page
+### 5.7 The pages
 
-S4 replaces the Performance section in `decoy-site/src/how-it-works.njk` and the shape of `src/_data/performance.json`:
+S4 (decoy-site):
 
-- A short intro: what was measured (the whole `decoy run`, source read to written output, warm cache, default settings), the release version, the dates, and a link to the records.
-- "Pick a box": for each scenario and size, the smallest class that completed, and its median time. This is the box-size answer the row asks for.
-- One table per scenario: rows (1M, 10M, 100M) by class. Each cell shows median time and rows per second, with peak memory and route in a details line.
-- "Not measured" for a cell with no run, and "Needs a bigger box" for a run that did not complete on that class. No projected values, no `projected` field, and no "linear projection" caption.
-- With `status: pending`, a notice says the numbers are preview data from a dev build, not release numbers.
-- It uses the site's existing table styles. Cam reviews the section live before merge.
+- `/how-it-works/#performance`: intro (whole `decoy run`, source read to delivered output, one untimed warmup with OS caches left enabled, default settings, the strategies by name, release version, dates, link to the evidence commit). "Pick a box": for each scenario and size, the smallest tested Linux class with a measured cell and its median; lower classes that were not tested or did not complete are shown with their state; the Mac is shown on its own. One table per scenario: rows per table by class. A measured cell shows median time and input rows per second (output rows per second for GENERATE). The details line has range, total input and delivered rows (and retention for SUBSET-MASK), input bytes, memory with its label, route, host, date and a link to the exact attempt record. Other states show their label and reason. No projected values and no projection caption.
+- `/cli#performance`: the table is replaced with one sentence and a link to `/how-it-works/#performance`. The anchor stays (F3). The Linux-only and projection text go.
+- `src/_data/performance.json` in S4 is a placeholder: schema 1, `status: placeholder`, every cell `not_measured` with reason "release benchmark not run yet", zero numbers (F4). Provisional numeric data exists only in fixture tests and local preview input, never in `src/_data/`.
 
-The site gets a perf data check, `scripts/check-performance.mjs`, called from `check:site`:
+`scripts/check-performance.mjs`, run by `check:site`, which `npm run check` runs and the Pages workflow runs before upload:
 
-- The data file matches schema version 1 and has `generated_by`.
-- No key named `projected`, `extrapolated` or `estimate` anywhere in the file.
-- Every measured or did-not-complete cell has a `record` with a path and a commit, and `release_version` is set.
-- `status: pending` fails a production build (the switch the existing docs gate uses) and passes a preview build.
-- The built HTML of the section contains no "projection" or "projected".
+- Schema 1, `generated_by` present, no key named `projected`, `extrapolated` or `estimate`.
+- `status: placeholder` passes only if no cell is measured. `status: published` passes only if every measured cell has a 40-hex evidence commit, a record path matching `docs/records/perf-guide/<campaign>/<cell>/<class>/<attempt>/`, and attempt ids. Any other status, and any provisional flag, fails in every build.
+- For each measured cell: `timed_ns` has exactly 5 entries (1M, 10M) or 3 (100M), all finite and positive; `median_s`, `min_s`, `max_s` and `rows_per_s` equal the values recomputed from `timed_ns` and the per-table rows; `input_rows` equals `rows_per_table` times the scenario's table count. So an edited median, a cell moved to another scale, or a flipped status fails (F2).
+- Built HTML of both pages has no "projection" or "projected", and the `/cli` link resolves to the `/how-it-works` anchor.
+
+Byte equality between the site file and the committed CLI records is checked by `publish.py --check` in S5, and the S5 evidence record lists its output. The site check cannot read the CLI repo at deploy time, which is why the raw repetitions travel in the site file.
+
+### 5.8 Row close and cost
+
+The row closes only when the published file has measured cells for MASK and GENERATE at 1M and 10M on at least Large, Medium and Laptop. A file where every cell is not measured cannot be `published` (F14).
+
+S5 elapsed time (F19): the full matrix is 14 cells per class, 76 timed and warmup invocations per class, about 304 over four classes, plus validation, fixtures, reruns and AT-16. Before the owner approval ping, a pilot runs MASK and GENERATE at 1M and 10M on the Dell or Mac and extrapolates the campaign's machine hours, disk and GCP cost (an estimate for budgeting only, never published). Stop conditions in the manifest: a GCP spend cap, a wall-clock cap per class, and stop on the first guard failure. VM and disk teardown is a checklist step in the S5 record.
 
 ## 6. Failure modes
 
 | Failure | Handling |
 |---|---|
-| Class cap cannot be applied or read back | Refuse the class, exit 2, write no record |
-| Dev build used for a release record | Refused unless `--provisional`. The publisher refuses provisional records unless `--allow-provisional`. The site refuses `pending` in production |
-| Candidate version differs from the installed CLI | Refuse, exit 2 |
-| A run exits non-zero, or the cap kills it (OOM) | Record the run as failed with its exit status or signal. The cell for that class is "did not complete", which is useful box-size data. The page shows "Needs a bigger box" |
-| A run takes more than 2 hours | The harness stops it and records "did not complete in 2 h" |
-| Guard fails (wrong rows, unmasked value, broken FK) | Run failed, the cell gets no number, and the harness prints the guard name. This is a product bug: open a QA finding and do not publish that cell |
-| Disk too small at 100M | Before each scenario the harness checks free space against 3 times the fixture size, and refuses with a clear message |
-| High variance (max over min above 1.5 in a cell) | Recorded and flagged in `record.md`. S5 reruns flagged cells once before publish |
-| Fixture bytes differ from the manifest | Refuse. Regenerate with `--force` |
-| PRE-SCAN-RUN not merged by S5 | MASK-SCAN cells are "Not measured", and the intro says pre-scan numbers come in a point release. The row is not blocked on it. The plan does not time `decoy scan` plus `decoy run` as a stand-in, because that is a different flow |
-| Engine performance work lands after S5 | The numbers are stale. S5 runs on the release candidate that row 94 ships. A later engine change means a rerun of S5, one command per class |
-| Mac has no cgroup | The Laptop class is the real machine with no cap, and the record says so |
+| Dev or foreign build in release mode | Release mode uses only the verified candidate install. A version match alone is not accepted. Provisional mode marks every attempt provisional, and both the publisher and the site check refuse provisional data |
+| Candidate replaced after measurement | New campaign; old attempts cannot publish under it |
+| Limits not applied or not seen by the child | Refuse the attempt (5.2) |
+| Missing mask key | `decoy validate` fails with the key reason before any timing (AT-3) |
+| Validate refuses for capacity | Attempt is "capacity" with the code, no timing |
+| Run exit 5 or OOM kill in scope | "Needs more memory" with the evidence |
+| Exit 3, unknown signal, disk full, launch failure | "Not measured" with the named reason |
+| Timeout 2 h | Process group killed, "Did not finish in 2 h" |
+| Result missing, stale or partial with exit 0 | "Not measured: result unusable" |
+| Guard fails | "Not measured: guard failed" and a QA finding. The cell is not published |
+| Interrupt or disk full mid-attempt | No completion file, so the publisher ignores it; scratch removed; earlier attempts untouched |
+| High variance | 5.5 rule, no selection |
+| Fixture bytes differ across hosts | Refuse; the pins in `fixture.json` name the difference |
+| MASK-SCAN not supported by the candidate | `pre_scan` not `ran`, so "Not measured: pre-scan not in this release" |
+| Engine performance work lands after S5 | New candidate, new campaign |
+| Mac has no cgroup | Laptop column is the real machine, checked through `resources`; no cgroup memory figure, only sampled RSS |
 
 ## 7. Acceptance tests
 
-Unit tests in `tests/unit/bench/` (T0 and T1, no large data):
+Unit tests in `tests/unit/bench/` (T0 and T1, small data). Fixture tests for decoy-site in `scripts/fixtures/performance/*.test.mjs` (the shape `scripts/run-fixtures.mjs` finds).
 
-- AT-1 Fixture determinism: the same seed and N (10k) give the same sha256 for every file, twice. A different seed gives different bytes. With a 1k row group size and 3 row groups, the writer never holds more than one row group (checked through an injected writer that records batch sizes).
-- AT-2 Fixture shape: schema and types as in 5.1; every `orders.customer_id` is in `customers`; null rates within 1 point of 5%; about 1% of notes contain an email.
-- AT-3 Scenario pipelines: each pipeline passes `decoy validate` on a 10k fixture (e2e through the dev CLI). MASK-SCAN is skipped with a stated reason until PRE-SCAN-RUN merges.
-- AT-4 Dev build check: a fake `decoy --version` that returns `1.0.0+local` or `1.0.0.dev3` is refused without `--provisional` and accepted with it, and the record says provisional.
-- AT-5 Candidate check: a candidate dir with version 1.0.0rc1 and a CLI that reports 1.0.0rc2 is refused.
-- AT-6 Class cap: with a fake `/proc/self/cgroup` and cgroup tree (as the engine's `_host.py` tests use), no cap on a host bigger than the class is refused; the cap present is accepted and its values recorded.
-- AT-7 Timing, memory and child control: a fake child (a Python script that sleeps 0.3 s and starts a grandchild that holds 50 MB) gives a wall time of at least 0.3 s, a sampled tree peak of at least 50 MB, and a recorded child `ru_maxrss`. With `DECOY_THREADS=1` set in the harness environment, the child does not see it. On timeout, the grandchild is gone after the kill.
-- AT-8 Guard: a fake output with one row missing, one unmasked email, or one orphan `orders.customer_id` each fails the guard by name. A correct output passes.
-- AT-9 Record writer: writes the five files, refuses an existing folder, and renders `record.md` from the JSON with `Status: record`. No fixture value (a sample of 100 `email` and `ssn` values) appears in any record file, including after a failed guard.
-- AT-10 Publisher refusals: a provisional record without the flag, two CLI versions, a failed guard, and too few reps each exit 1 with a named reason. Seeded mutation: remove the reps check and AT-10 fails.
-- AT-11 Publisher output: from two fixed record folders, the output equals a golden `performance.json`. Cells with no record are `not_measured`. An OOM run gives `did_not_complete`.
+- AT-1 Fixture determinism and bounds: same seed, N and pins give the same sha256 twice; another seed differs. With 1k row groups, peak live rows stay at one row group as N goes 3k to 30k. Seeded mutation: build the whole table first, then hand it out in batches; the test fails.
+- AT-2 Fixture shape: types; every `orders.customer_id` in `customers`; null rates within 1 point; marker tokens unique per row; about 1% street markers.
+- AT-3 Scenario pipelines: every named strategy and provider is in `strategy_catalog()`. Every scenario runs through delivered output on a 1k fixture with the installed dev CLI (MASK-SCAN skipped with its reason if pre-scan is not supported). With `DECOY_BENCH_MASK_KEY` removed, `decoy validate` fails with the key reason.
+- AT-4 Release identity: valid candidate and matching install pass; `1.0.0` candidate with a CLI reporting `1.0.1` fails with the version-mismatch reason; a same-version executable that is not the candidate install fails on artifact digest; two same-version candidates with different sums give two campaigns that cannot mix.
+- AT-5 Provisional path: provisional attempts carry the flag; the publisher in release mode refuses them; the site check refuses them in a preview and a production build.
+- AT-6 Limits: the child's `resources` with source `auto` and class values passes. Fails for: a tighter ancestor `cpu.max` or `memory.max`, a child started outside the scope, an inherited `DECOY_THREADS` or `settings.json`, a `resources` source other than `auto`.
+- AT-7 Supervisor: a fake child that sleeps 0.3 s and starts a grandchild holding 50 MB gives a wall time of at least 0.3 s and a sampled sum of at least 50 MB. Seeded mutation: sample only the direct child; the test fails. A large fake run followed by a small one: the second run's memory figure is not raised by the first. On timeout the grandchild is gone. `DECOY_THREADS=1` in the harness is not seen by the child.
+- AT-8 Guards: for each, a correct output passes and these fail by name: a permuted unmasked output; a generated column of nulls; a type changed with names and counts kept; full-copy subset output; empty child table; a missing valid child; a duplicated child; an orphan; each case also with a result document that agrees with the wrong output. MASK-SCAN with `pre_scan` missing or `not_run` fails.
+- AT-9 Result and records: exit 0 with a missing, stale, unsupported-major or partial-delivery result is "result unusable". Two cells on one host on one day, a variance rerun and a retry after an interrupt during writing all keep every completed attempt. A seeded failing marker and the benchmark key are run through the error paths; neither appears in terminal output, any record file or the site file (file names, config keys and column names are allowed).
+- AT-10 Exit classification: validate exit 5, run exit 5, exit 3, OOM delta, bare SIGKILL with no OOM delta, timeout, and a mixed success and failure set each give the state in 5.3.
+- AT-11 Publisher refusals: provisional in release mode, two candidates, duplicate cell or invocation id, a non-positive or NaN time, a counted warmup, a short set, mixed routes, an all-empty campaign asked to publish. Seeded mutation: remove the repetition-count check; the test fails.
+- AT-12 Publisher output: from fixed attempts the output equals a golden file; SUBSET-MASK has the 2N input denominator and delivered rows; GENERATE uses output rows; omitting the slow attempt of a variance pair is refused because the manifest expects it; `--check` fails after any byte change.
+- AT-13 Site check: the S4 placeholder passes in a production build; a provisional file fails in every build; an edited median, a cell relabeled to another scale, a bad evidence commit or path, and a flipped status each fail; a `projected` key fails. Seeded mutation: remove the recompute; the edited-median test fails.
+- AT-14 Pages: the built `/how-it-works` section has no projection text, shows each state label, and table headers have `scope`; `/cli#performance` links to the canonical section; neither page has the Linux-only claim.
 
-Site tests (S4, in decoy-site, through `npm run check`):
+S5 evidence (R3), in `docs/records/2026-<mm>-<dd>-perf-guide-release.md`:
 
-- AT-12 The data check passes the S4 sample data (`status: pending`) in a preview build and fails it in a production build.
-- AT-13 A data file with a `projected` key, a file without `generated_by`, or a measured cell without `record` each fails the check (fixture files in the site's existing `scripts/run-fixtures.mjs` setup). Seeded mutation: remove the `record` check and AT-13 fails.
-- AT-14 The built section has no "projection" text, shows "Not measured" for empty cells, and its table headers have `scope` set.
-
-S5 evidence (R3), in `docs/records/<date>-perf-guide-release.md`:
-
-- AT-15 Records exist for every scenario, size and class in 5.1 and 5.2, each one measured, did-not-complete or not-measured with its reason. All are on one candidate version, and all measured runs passed the guard.
-- AT-16 Rerunning one 1M cell on the same host gives a median within 10% of the recorded one (a repeatability check, once per host).
+- AT-15 The campaign covers the manifest; every cell has a state and reason; all attempts are on one candidate; the row-close rule in 5.8 holds; `publish.py --check` passes on the committed site file.
+- AT-16 Per-host repeatability as in 5.5.
 
 ## 7a. Defect classes
 
 | # | Class | Applies | Structure | Proof (mutation) |
 |---|---|---|---|---|
-| 1 | value | Yes: a record or the site file must not carry source values. Fixtures are synthetic, and records hold counts, times and versions only. The guard compares values in memory and records only the guard name and pass or fail | record schema has no value field; guard output is a name | AT-8, AT-9 (mutation: write the failing value into the record, AT-9 asserts no fixture value in any record file) |
-| 2 | cleanup | Yes: 100M outputs fill the disk; a killed run leaves a child process | output folder removed after each guard; the child is started in its own process group and the group is killed on timeout or Ctrl-C | AT-7 (mutation: kill only the child, the grandchild stays and the test fails) |
-| 3 | state | Yes: environment and settings leak into a run (`DECOY_THREADS`, `DECOY_MAX_MEMORY`, `settings.json`) | the harness builds the child environment from an allowlist and an empty `DECOY_HOME` | AT-7 (mutation: pass `os.environ` through; the test sets `DECOY_THREADS=1` and asserts the child does not see it) |
-| 4 | route | Yes: a cell measured on a non-default route would mislead | route recorded per run, never forced; shown on the page | AT-11 (route carried into the site file) |
-| 5 | referential | Yes: SUBSET-MASK output must keep every order's customer | FK check in the guard | AT-8 orphan case |
-| 6 | untrusted | N/A: the harness runs only the `decoy` the operator names, on synthetic data, on hosts we own. Records are written by our own tool | none | none |
-| 7 | toctou | Low: the fixture could change between manifest check and run. Fixtures are written once by the harness on our own disk | manifest checked before each scenario | AT-1 |
-| 8 | weak | Yes: a publisher or site check that accepts a bad file would publish a false claim | seeded mutations on the reps check and the `record` check | AT-10, AT-13 |
-| 9 | refactor drift | N/A: no product code moves | none | none |
-| 10 | frozen contract | Low: the site data file is a new schema (version 1) read only by our own site; the CLI run result document is read, not changed | `schema_version` checked by the site check | AT-12 |
+| 1 | value | Yes: records, terminal and site file must not carry source values or the key | records hold counts, times, versions and guard names only; the key is held in memory and passed by one env var | AT-9 (mutation: write the failing value or the key into a record) |
+| 2 | cleanup | Yes: scratch at 100M, orphaned processes | per-attempt scratch removed on every exit path; process group killed | AT-7, AT-9 (mutation: kill only the child) |
+| 3 | state | Yes: env, settings and earlier runs leak in | env allowlist, fresh home, fresh scope per invocation, fresh result path | AT-6, AT-7, AT-9 |
+| 4 | route | Yes: mixed routes under one label | route per invocation, mixed routes refused | AT-11 |
+| 5 | referential | Yes: subset output | exact independent subset check | AT-8 |
+| 6 | untrusted | Low: records are our own; the site file is checked by recompute | site check recomputes | AT-13 |
+| 7 | toctou | Low: fixture changed between check and run | sha256 checked in each attempt's preflight | AT-1 |
+| 8 | weak | Yes: a lax publisher or site check publishes a false claim | seeded mutations on the repetition check and the recompute | AT-11, AT-13 |
+| 9 | refactor drift | Low: `/cli` table removed, renderer becomes one | both pages built in AT-14 | AT-14 |
+| 10 | frozen contract | Low: the site data schema changes for both readers in one slice; the run result is read through the public versioned reader | `schema_version`; `RunResultRead` major check | AT-9, AT-13 |
 
 ## 8. Design notes
 
-- Choke point: `publish.py` is the one producer of the site file, and `check-performance.mjs` is the one gate on it. The page never reads records directly, and nobody edits `performance.json` by hand. Guard: the check refuses a file without `generated_by` or a cell without `record` (AT-13). Mutation that must turn it red: drop the `record` check.
-- One place per fact: the scenario list and its expected rows and schema live in `scripts/bench/scenarios.py`. The harness, the guard and the publisher read it. The site reads scenario labels from the published file, not from a second copy.
-- The harness drives the CLI as a user does: a subprocess on an installed `decoy`. So the numbers include process start, imports, validation and the write. That is the flow the row asks for.
-- Wall time comes from the harness; phases come from the result document. The page shows wall time only. Phases stay in the record for engine work.
-- The memory a user needs is the class (the cap the run fit in). The sampled peak is a guide.
-- Route: the V1 default is the fast path (owner 2026-11-22). The harness never forces a route. If the default for a scenario is not native, the record and the details line say so.
-- Run count: 4 scenarios at 3 sizes and MASK-CSV at 2 sizes is 14 cells per class. With the warmup, that is 6 runs per cell at 1M and 10M and 4 at 100M. The Large class runs all 14 cells. Small, Medium and Laptop run every cell; a 100M cell that does not fit is a did-not-complete result, which the page needs.
-- Design principles: none beyond the above. The modules are direct scripts with no new abstraction.
+- Choke point: `publish.py` is the one producer of the site file and the one owner of eligibility and statistics. `check-performance.mjs` verifies and recomputes; it decides nothing new. Mutation that must turn it red: drop the recompute (AT-13).
+- One place per fact: scenarios, strategies, denominators and disk budgets in `scenarios.py`; one canonical `attempt.json` per attempt; `summary.md`, commands and the site file are derived from it.
+- The supervisor drives the installed CLI as a user does, so numbers include process start, imports and the write.
+- Memory a user needs is the class limit the run fit in. The memory figure is a labelled guide.
 
 ## 9. Placement
 
-New CODEMAP row (S1): "Benchmark tooling (not shipped)": `scripts/bench/`, one module per concern, tests in `tests/unit/bench/`, imports no private product module (the same rule as the "QA tooling (not shipped)" row and `scripts/qa/`). Records go in `docs/records/perf-guide/`, under the existing "Roadmap, plans, records" row.
+CODEMAP (S1): new row "Benchmark tooling (not shipped)": `scripts/bench/`, tests in `tests/unit/bench/`, imports no private product module (same rule as "QA tooling (not shipped)"). The "Roadmap, plans, records" row gains one line: `docs/records/perf-guide/<campaign>/<cell>/<class>/<attempt>/` holds JSON attempt records, not dated Markdown.
 
-| File | Directory and map line | Beside | Lines (est.) | Slice | Consumer |
-|---|---|---|---|---|---|
-| `scripts/bench/__init__.py` | new row "Benchmark tooling" | `scripts/qa/` | 1 | S1 | package |
-| `scripts/bench/fixtures.py` (schema, chunked writer, manifest, entry point) | same | `scripts/qa/corpus/generate.py` | 300 | S1 | `run.py` (S2) |
-| `scripts/bench/scenarios.py` (pipeline texts, expected rows and schema) | same | | 200 | S1 | `run.py`, `_guard.py` (S2), `publish.py` (S3) |
-| `scripts/bench/_measure.py` (child run, timer, sampler, class caps) | same | `tests/e2e/run_stream/_perf_driver.py` | 260 | S2 | `run.py` |
-| `scripts/bench/_guard.py` | same | | 180 | S2 | `run.py` |
-| `scripts/bench/record.py` (record schema, writer, `record.md`) | same | `scripts/release/record_smoke.py` | 220 | S2 | `run.py`, `publish.py` |
-| `scripts/bench/run.py` (entry point, version and candidate checks, loop) | same | | 200 | S2 | person running S5 |
-| `scripts/bench/publish.py` | same | | 250 | S3 | site file (S4, S5) |
-| `tests/unit/bench/test_*.py` | "Benchmark tooling" tests | `tests/unit/qa/` | 600 total | S1 to S3 | |
-| `docs/records/perf-guide/<session>/` | "Roadmap, plans, records" | `docs/records/` | data | S2, S5 | `publish.py` |
-| decoy-site `src/how-it-works.njk` (section only), `src/_data/performance.json`, `scripts/check-performance.mjs`, `package.json` (`check:site`) | site layout | `scripts/check-claims.mjs` | 120 + data + 150 | S4 | the page |
+| File | Lines (est.) | Slice |
+|---|---|---|
+| `scripts/bench/fixtures.py` (pins, chunked writer, manifest) | 300 | S1 |
+| `scripts/bench/scenarios.py` (pipelines, strategies, schema, denominators, disk budgets) | 260 | S1 |
+| `scripts/bench/_supervise.py` (scope, spawn, timer, sampler, cgroup reads, limits check, env, exit classification) | 380 | S2a |
+| `scripts/bench/_attempt.py` (attempt ids, staging, `publish_private_once`, result read) | 220 | S2a |
+| `scripts/bench/run.py` (both entry points) | 200 | S2a, S2b |
+| `scripts/bench/_release.py` (candidate verify and install, identity match, campaign manifest) | 250 | S2b |
+| `scripts/bench/_guard.py` (uses `scripts/qa/invariants`) | 300 | S2b |
+| `scripts/bench/_subset_check.py` (bounded disk-backed join) | 200 | S2b |
+| `scripts/bench/record.py` (`summary.md`) | 150 | S2b |
+| `scripts/bench/publish.py` | 350 | S3 |
+| `tests/unit/bench/test_*.py` | about 900 over 8 files | S1 to S3 |
+| decoy-site `src/how-it-works.njk` (section), `src/cli.njk` (section to link), `src/_data/performance.json` (placeholder), `scripts/check-performance.mjs` (250), `scripts/fixtures/performance/*.test.mjs`, `package.json` (`check:site`) | | S4 |
+| CLI `docs/records/perf-guide/<campaign>/...`, `docs/records/2026-<mm>-<dd>-perf-guide-release.md`; decoy-site `src/_data/performance.json` (published) | data | S5 |
 
-Every module stays under 600 lines. New public names: none in the product. The scripts expose only their command lines.
+Every handwritten module stays under 600 lines. No new public product names.
 
 ## 9a. Enumerations
 
-### Exit paths of one measured run
+### Exit paths of one invocation
 
-- Clean exit 0, guard passes: the run counts toward the cell.
-- Clean exit 0, guard fails: run failed, guard name recorded, no number.
-- Non-zero exit or signal (cap OOM kill): run failed, exit status or signal recorded; the cell becomes did-not-complete if every measured run on that class fails this way.
-- Timeout (2 h): process group killed, did-not-complete recorded.
-- Harness interrupted (Ctrl-C): process group killed, no record written for the session (the writer runs only at the end).
+- success: exit 0, usable result, guard pass.
+- capacity: exit 5 (`src/decoy/cli/exit_codes.py:82`), validate refusal (`src/decoy/cli/validate.py:294`), or an `oom_kill` delta.
+- timeout: 2 h, process group killed.
+- runtime: exit 3 (`src/decoy/cli/exit_codes.py:66`).
+- guard: exit 0, guard fails.
+- result: exit 0 with an unusable result document.
+- other: unknown exit or signal, disk full, launch failure, cancel; a harness interrupt leaves no completion file.
+
+Cell states: `measured`, `capacity`, `timeout`, `not_measured` (with reason).
 
 ### Routes
 
-The harness forces none. Whatever `Route` the result document reports (native, chunked, pandas, out-of-core) is recorded per run.
+- None forced; every observed `Route` field is recorded, including null ones (engine `src/decoy_engine/run_result/_model.py:276`).
+- Two observed routes in one timed set: the cell is refused ("route changed between runs").
 
 ### FK shapes
 
-One: `orders.customer_id -> customers.customer_id`, single column, downward follow, in SUBSET-MASK.
+- `orders.customer_id -> customers.customer_id`, single column, downward follow, in SUBSET-MASK. Parent cardinality for unique non-null keys follows engine `src/decoy_engine/subset/_seed.py:267`.
+- No other FK shape: MASK, MASK-SCAN, MASK-CSV and GENERATE use one table.
+
+### Fields
+
+- Fixture fields as in 5.1.
+- Result fields read: producer, config digest, invocation id, status, per-table delivery, route, `pre_scan` check (engine `src/decoy_engine/run_result/_model.py:182`, `:297`).
+- Child `resources` fields: threads and memory with their sources (`src/decoy/cli/run/_render.py:128`, `src/decoy/_resources.py:105`).
 
 ### Output surfaces
 
-Record files (`host.json`, `results.json`, `fixture.json`, `commands.txt`, `record.md`), the site `performance.json`, the rendered page section, and the harness's terminal output. None carries a source value (class 1).
+- Record files: `attempt.json`, `commands.txt`, `summary.md`.
+- Terminal output of the harness and publisher.
+- The site file and both pages (`decoy-site/src/how-it-works.njk:240`, `src/cli.njk:259`).
+
+None carries a source value or the key.
 
 ## 9b. Reuse inventory
 
-`decoy run --result` and `decoy validate` (unchanged), `packaging_tools/candidate.py` `read_candidate`, the engine's cgroup probe (through `auto`), psutil and PyArrow from `requirements-dev.lock`, the pattern of `tests/e2e/run_stream/_perf_driver.py` and `scripts/release/record_smoke.py`, the site's `scripts/run-fixtures.mjs` and `check:site`. New: `scripts/bench/` modules and `scripts/check-performance.mjs`.
+- `packaging_tools/candidate.py` `read_candidate`; `packaging_tools/smoke_install.py` `candidate_main` (verify and install); `scripts/release/record_smoke.py` `check_match`.
+- `scripts/qa/invariants/i1_leaks.py` (marker approach), `i2_foreign_keys.py` (small-scale FK), `i4_rows.py` (`check_mask`, `check_subset`, `check_generate`), `i5_schema.py`.
+- `scripts/qa/io.py` `staged_private`, `publish_private_once`, `publish_or_same`; `scripts/qa/repro.py` process-group timeout pattern.
+- Engine public `RunResultRead`; `decoy run --json` `resources`; `decoy validate`.
+- Reference only, not imported: engine `scripts/fk-scale/_supervisor.py` and `build_fk_chain.py`.
+- psutil and PyArrow from `requirements-dev.lock`. decoy-site `scripts/run-fixtures.mjs` and `check:site`.
+
+New: the chunked fixture writer, the supervisor, the bounded subset check, the publisher and `check-performance.mjs`.
 
 ## 9c. Frozen contracts
 
-None changed. The run result document is read only. The new site data file is versioned (`schema_version: 1`) and has one reader, the site.
+None changed. The run result is read through the engine's public, versioned reader. The site data file moves to schema 1, and both its readers (`how-it-works.njk`, `cli.njk`) change in the same slice.
 
 ## 10. Slices
 
 | Slice | Content | Repo | Risk | Size | Depends on |
 |---|---|---|---|---|---|
-| S1 | Fixture generator, five scenario pipelines, CODEMAP row; AT-1, AT-2, AT-3 | CLI | R1 | 1 day | none |
-| S2 | Harness: version and candidate checks, class caps, timer and sampler, guard, record writer; AT-4 to AT-9; one provisional 1M session on the Dell or Mac committed as a sample record | CLI | R2 | 1 day | S1 |
-| S3 | Publisher with refusals and golden output; AT-10, AT-11; a provisional `performance.json` from the S2 sample | CLI | R2 | 0.5 day | S2 |
-| S4 | Page section, new data shape (the S3 provisional file, `status: pending`), site data check; AT-12 to AT-14; live review by Cam | web | R2 | 1 day | S3 output format |
-| S5 | Release run: Small and Medium on the Dell (or a capped GCP VM), Laptop on the Mac, Large on one GCP VM; records committed; publish; set `status: published`; AT-15, AT-16 | CLI, web | R3 | about 1 day of runs | release candidate for row 94, final engine perf work, S1 to S4; PRE-SCAN-RUN for MASK-SCAN cells |
+| S1 | Fixture writer with pins, frozen scenarios and strategies, CODEMAP rows; AT-1 to AT-3 including a 1k installed-CLI run per scenario | CLI | R1 | 1 day | none |
+| S2a | Provisional measurement: supervisor, limits check, env, exit classification, attempt staging, result read; AT-6, AT-7, AT-9, AT-10; the real delegated-scope check on the Dell and the Mac | CLI | R2 | 1 day | S1 |
+| S2b | Release qualification and correctness: candidate install and identity, campaign manifest, guards, bounded subset check, `summary.md`; AT-4, AT-5 (CLI half), AT-8 | CLI | R2 | 1 day | S2a |
+| S3 | Publisher and `--check`; AT-11, AT-12 | CLI | R2 | 1 day | S2a (attempt schema) |
+| S4 | Both pages, placeholder data, site check and fixture tests; AT-5 (site half), AT-13, AT-14; live review by Cam | web | R2 | 1 day | S3 site schema |
+| S5 | Pilot and cost ping, campaign, records, publish, page live; AT-15, AT-16 | CLI, web | R3 | builder about 1 day; machine time from the pilot | row 94 candidate, final engine perf work, S1 to S4; PRE-SCAN-RUN for measured MASK-SCAN |
 
-S1 to S4 can build now. S5 waits for the release candidate. S4 is web work during the web pause. It is allowed because PERF-GUIDE is an owner row in the V1 release effort.
+S1 to S4 can build now. S4 merges before S5. S4 is web work during the web pause, allowed because PERF-GUIDE is an owner row in the V1 release effort.
 
-Recovery for S5: the page change is one data file and one template section. If a published number is wrong, revert the decoy-site commit (the page goes back to `pending`) and rerun the cell.
+Recovery: the page data is one file. If a published number is wrong, revert the site data commit to the placeholder (which passes the production check) and rerun the cell in a new attempt.
 
 ## 11. Owner gates
 
-- Before the GCP run in S5: a Slack ping with VM type, disk, expected hours and a cost estimate, and owner approval (cloud spend; one VM at a time).
-- Before the page goes live: the owner reviews the S5 numbers and the page (consequential public claim).
-- Open choice, default applies if no answer: class sizes. Default: Small 4 cores and 16 GB, Medium 8 and 32 GB, Large 16 and 64 GB, Laptop the Mac M4 with 16 GB.
+- Before the GCP run in S5: a Slack ping with VM type, disk, the pilot's hour and cost estimate, stop conditions, and owner approval (one VM at a time).
+- Before the page goes live: the owner reviews the S5 numbers and both pages.
+- Open choice, default applies if no answer: class sizes as in 5.2.
 
 ## 12. Risks and pre-mortem
 
-- The numbers look worse than competitors' claims. That is a finding for engine work, not a reason to tune the benchmark. The workload is fixed in this plan before any number exists.
-- A builder lets the harness pass `--threads` or settings to make runs faster. AT-7 (environment) and the fixed command in `commands.txt` show it.
-- A builder drops the guard to save time at 100M. AT-8 and the publisher's failed-guard refusal (AT-10) stop the cell from publishing.
-- Someone edits `performance.json` by hand to fill a gap. The site check refuses a file without `generated_by` or a cell without `record` (AT-13).
-- The cap tool is not available on the Dell (WSL) or the devbox (LXC has no user systemd bus). Then Small and Medium run on a GCP VM of that exact size, one at a time, which is a cost item for the S5 owner ping.
-- Page cache makes warm numbers look better than a first run. The page says the cache was warm.
+- Numbers look worse than competitors'. That is engine work, not a reason to tune the benchmark. The manifest freezes the workload first.
+- A builder passes `--threads` or settings to go faster. AT-6 and AT-7 fail, and the child's `resources` output shows it.
+- A builder drops a guard at 100M. AT-8 and the publisher's eligibility rules stop the cell.
+- Someone edits `performance.json` by hand. The site recompute (AT-13) and `publish.py --check` catch it.
+- The cap tool is not available on the Dell (WSL) or the devbox (LXC). Small and Medium then run on GCP VMs of that shape, one at a time, in the S5 cost ping.
+- The pilot shows 100M on Small or Medium costs too much. The manifest marks those cells "Not measured: outside approved budget", and the row-close rule still holds without them.
