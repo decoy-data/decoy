@@ -83,21 +83,25 @@ def _cli_refusal_types() -> tuple[type, ...]:
     return (*owned, _VaultWriteError, PreRunCheckError, EvidenceWriteRefusal, IntegrityWriteRefusal)
 
 
-def _failure_reason(exc: Exception, engine_exc: Exception) -> Any:
-    """The engine's `ReasonRecord` for the failure, or None when the CLI owns the refusal.
+def _failure_reason(exc: Exception, engine_exc: Exception) -> tuple[Any, bool]:
+    """The engine's `ReasonRecord` for the failure and whether `exc` has fixed text.
 
-    `engine_exc` is the exception as the engine raised it, before the missing-extra and NER
-    rewrites, so a rewrite keeps the engine's record. The answer is computed here only; any
-    error in it drops the reason and never changes the exit.
+    The record is None when the CLI owns the refusal. `engine_exc` is the exception as the
+    engine raised it, before the missing-extra and NER rewrites, so a rewrite keeps the
+    engine's record. Both answers read the engine's reason registry, so both are computed
+    here only: any error in that read drops the reason, treats the text as free text (it
+    falls back to the type name) and never changes the exit.
     """
+    fixed_text = False
     try:
         from decoy_engine import reason_adapter
 
+        fixed_text = isinstance(exc, _fixed_text_types())
         if not _engine_family(type(engine_exc)) and isinstance(exc, _cli_refusal_types()):
-            return None
-        return reason_adapter.reason_from_exception(engine_exc)
+            return None, fixed_text
+        return reason_adapter.reason_from_exception(engine_exc), fixed_text
     except Exception:
-        return None
+        return None, fixed_text
 
 
 def _fixed_text_types() -> tuple[type, ...]:
@@ -112,25 +116,15 @@ def _fixed_text_types() -> tuple[type, ...]:
     return (*_cli_refusal_types(), ConfigFileError, MissingExtraError)
 
 
-def _has_fixed_text(exc: Exception) -> bool:
-    """Whether `exc` is one of `_fixed_text_types`, failing closed.
-
-    The check reads the engine's reason families; if that read fails, the text is treated as
-    free text, so the error keeps its exit and falls back to the type name.
-    """
-    try:
-        return isinstance(exc, _fixed_text_types())
-    except Exception:
-        return False
-
-
 def _capacity_text(code: str) -> str:
     """The fixed text of a coded capacity refusal. The engine's own message is dropped: it
     quotes sizes and host figures."""
     return f"the job needs more memory than this host has ({code})."
 
 
-def _safe_error_text(exc: Exception, *, capacity_code: str | None, out_of_memory: bool) -> str:
+def _safe_error_text(
+    exc: Exception, *, fixed_text: bool, capacity_code: str | None, out_of_memory: bool
+) -> str:
     """The run error text for `exc`: fixed words, codes and the exception type name only.
 
     `str(exc)` of an arbitrary exception can quote a source cell (pandas, pyarrow, a formula), and
@@ -149,9 +143,7 @@ def _safe_error_text(exc: Exception, *, capacity_code: str | None, out_of_memory
         return describe(exc)
     if isinstance(exc, LayoutError):
         return f"{exc.code}: {exc.message}"
-    if _has_fixed_text(exc) or (
-        isinstance(exc, DecoyError) and is_reason_code(getattr(exc, "code", None))
-    ):
+    if fixed_text or (isinstance(exc, DecoyError) and is_reason_code(getattr(exc, "code", None))):
         return cap_error_text(str(exc))
     return f"run failed ({type(exc).__name__})."
 
@@ -217,7 +209,7 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     out_of_memory = is_capacity and not pre_run and is_out_of_memory(exc)
 
     # One document and one exit integer for the run, from the one builder.
-    record = _failure_reason(exc, engine_exc)
+    record, fixed_text = _failure_reason(exc, engine_exc)
     document = _result.build(
         ctx,
         category=category,
@@ -228,7 +220,9 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     )
     # CLI QA fix (2026-06-02, F8): engine exceptions can quote source-row content verbatim
     # (pandas / pyarrow). `_safe_error_text` keeps only text the producer fixes.
-    error_text = _safe_error_text(exc, capacity_code=capacity_code, out_of_memory=out_of_memory)
+    error_text = _safe_error_text(
+        exc, fixed_text=fixed_text, capacity_code=capacity_code, out_of_memory=out_of_memory
+    )
     blocked: dict[str, Any] = {}
     if isinstance(exc, PostScanBlockedError):  # writes the report; the text is the fixed summary
         error_text, blocked = blocked_run(ctx.state, exc, ctx._post_scan_file, ctx.config_sha256)
@@ -392,7 +386,7 @@ def bad_parameter(ctx: RunContext, exc: typer.BadParameter) -> None:
 def interrupted(ctx: RunContext) -> None:
     """Write the envelope for Ctrl-C. Returns, and the caller re-raises the interrupt, so the
     process ends as it did before; the document carries the same exit (`run_cancelled`)."""
-    record = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt())
+    record, _ = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt())
     early = _early(ctx)
     document = _result.build(
         ctx, category="cancelled", reason=record, error_class="KeyboardInterrupt", early=early
