@@ -1,7 +1,7 @@
 """The catch-all error arm of `decoy run`: exception to exit code, text and output."""
 
 from datetime import datetime, timezone
-from typing import Any, NoReturn
+from typing import Any, NamedTuple, NoReturn
 
 import typer
 
@@ -83,33 +83,52 @@ def _cli_refusal_types() -> tuple[type, ...]:
     return (*owned, _VaultWriteError, PreRunCheckError, EvidenceWriteRefusal, IntegrityWriteRefusal)
 
 
-def _failure_reason(exc: Exception, engine_exc: Exception) -> tuple[Any, bool]:
-    """The engine's `ReasonRecord` for the failure and whether `exc` has fixed text.
+class _Failure(NamedTuple):
+    """What the reason registry says about a run failure."""
 
-    The record is None when the CLI owns the refusal. `engine_exc` is the exception as the
-    engine raised it, before the missing-extra and NER rewrites, so a rewrite keeps the
-    engine's record. Both answers read the engine's reason registry, so both are computed
-    here only: any error in that read drops the reason, treats the text as free text (it
-    falls back to the type name) and never changes the exit.
+    record: Any
+    """The engine's `ReasonRecord`, or None when the CLI owns the refusal."""
+    fixed_text: bool
+    """`str(exc)` is authored by the CLI or a registry, so it holds no data value."""
+    summary: str | None
+    """`<code>: <registry summary>` when the engine registered the exception's own code."""
+
+
+def _failure_reason(exc: Exception, engine_exc: Exception) -> _Failure:
+    """The engine's `ReasonRecord` for the failure and what text `exc` may show.
+
+    `engine_exc` is the exception as the engine raised it, before the missing-extra and NER
+    rewrites, so a rewrite keeps the engine's record. Every answer reads the engine's reason
+    registry, so all are computed here only: any error in that read drops the reason, treats
+    the text as free text (it falls back to the type name) and never changes the exit.
     """
     fixed_text = False
     try:
-        from decoy_engine import reason_adapter
+        from decoy_engine import reason_adapter, reasons
 
         fixed_text = isinstance(exc, _fixed_text_types())
         if not _engine_family(type(engine_exc)) and isinstance(exc, _cli_refusal_types()):
-            return None, fixed_text
-        return reason_adapter.reason_from_exception(engine_exc), fixed_text
+            return _Failure(None, fixed_text, None)
+        record = reason_adapter.reason_from_exception(engine_exc)
+        summary = None
+        if exc is engine_exc and getattr(exc, "code", None) == record.code:
+            spec = reasons.find(record.namespace, record.code)
+            if spec is not None:
+                # A message equal to the registry summary is registry text; any other engine
+                # wording can quote a cell (pyarrow cast errors do), so only the summary shows.
+                fixed_text = fixed_text or str(exc) == spec.summary
+                summary = f"{record.code}: {spec.summary}"
+        return _Failure(record, fixed_text, summary)
     except Exception:
-        return None, fixed_text
+        return _Failure(None, fixed_text, None)
 
 
 def _fixed_text_types() -> tuple[type, ...]:
     """Exceptions whose text the CLI or its registries author, so it holds no data value.
 
     The CLI's own refusals (`_cli_refusal_types`), the config file error and the
-    missing-extra install line. An engine exception is not here: it earns its text through a
-    registered code (see `_safe_error_text`).
+    missing-extra install line. An engine exception is not here: its text shows only when it is
+    the registry summary of its own registered code (see `_failure_reason`).
     """
     from decoy._config_file import ConfigFileError
 
@@ -123,18 +142,18 @@ def _capacity_text(code: str) -> str:
 
 
 def _safe_error_text(
-    exc: Exception, *, fixed_text: bool, capacity_code: str | None, out_of_memory: bool
+    exc: Exception, failure: _Failure, *, capacity_code: str | None, out_of_memory: bool
 ) -> str:
     """The run error text for `exc`: fixed words, codes and the exception type name only.
 
     `str(exc)` of an arbitrary exception can quote a source cell (pandas, pyarrow, a formula), and
     this text reaches the terminal in every mode, the `--json` document and the first-finding
     summary. A specific message is kept only when its producer supplies fixed text: a CLI
-    refusal, a file-write description, a layout refusal, or an engine error that carries a
-    registered reason code. Everything else reads `run failed (<ExceptionType>).`.
+    refusal, a file-write description, a layout refusal, or an engine message that is the
+    registry summary of its code. A code shape or a registered code alone is not enough: an
+    engine error with a registered code shows `<code>: <registry summary>` instead of its own
+    words. Everything else reads `run failed (<ExceptionType>).`.
     """
-    from decoy_engine import DecoyError
-
     if out_of_memory:
         return _OUT_OF_MEMORY_TEXT
     if capacity_code is not None:
@@ -143,8 +162,10 @@ def _safe_error_text(
         return describe(exc)
     if isinstance(exc, LayoutError):
         return f"{exc.code}: {exc.message}"
-    if fixed_text or (isinstance(exc, DecoyError) and is_reason_code(getattr(exc, "code", None))):
+    if failure.fixed_text:
         return cap_error_text(str(exc))
+    if failure.summary is not None:
+        return cap_error_text(failure.summary)
     return f"run failed ({type(exc).__name__})."
 
 
@@ -209,7 +230,8 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     out_of_memory = is_capacity and not pre_run and is_out_of_memory(exc)
 
     # One document and one exit integer for the run, from the one builder.
-    record, fixed_text = _failure_reason(exc, engine_exc)
+    failure = _failure_reason(exc, engine_exc)
+    record = failure.record
     document = _result.build(
         ctx,
         category=category,
@@ -221,7 +243,7 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     # CLI QA fix (2026-06-02, F8): engine exceptions can quote source-row content verbatim
     # (pandas / pyarrow). `_safe_error_text` keeps only text the producer fixes.
     error_text = _safe_error_text(
-        exc, fixed_text=fixed_text, capacity_code=capacity_code, out_of_memory=out_of_memory
+        exc, failure, capacity_code=capacity_code, out_of_memory=out_of_memory
     )
     blocked: dict[str, Any] = {}
     if isinstance(exc, PostScanBlockedError):  # writes the report; the text is the fixed summary
@@ -276,7 +298,7 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     # The one code of the envelope: the refusal's, the post-scan reason, the capacity code or
     # the native gate's. Only a valid reason code is promoted; `emit_error` would refuse the rest.
     code: str | None = None
-    if pre_run:
+    if isinstance(exc, PreRunCheckError):
         code = exc.code
     elif isinstance(exc, PostScanBlockedError):
         code = blocked.pop("code", None)
@@ -294,7 +316,7 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
             ctx.layout.abandon()
         context.update(ctx.published_members())
         context.update(blocked)
-        if pre_run:
+        if isinstance(exc, PreRunCheckError):
             context.update(exc.context_members())
         elif is_capacity:
             context["error_kind"] = "capacity"
@@ -386,7 +408,7 @@ def bad_parameter(ctx: RunContext, exc: typer.BadParameter) -> None:
 def interrupted(ctx: RunContext) -> None:
     """Write the envelope for Ctrl-C. Returns, and the caller re-raises the interrupt, so the
     process ends as it did before; the document carries the same exit (`run_cancelled`)."""
-    record, _ = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt())
+    record = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt()).record
     early = _early(ctx)
     document = _result.build(
         ctx, category="cancelled", reason=record, error_class="KeyboardInterrupt", early=early

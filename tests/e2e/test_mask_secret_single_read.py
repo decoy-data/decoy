@@ -147,7 +147,7 @@ def test_usage_and_source_refusals_come_before_the_secret_read(
     cfg_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
     result = runner.invoke(app, argv)
     expected = {
-        "chunk_incompatible": "value-keyed",
+        "chunk_incompatible": "strategy_not_chunk_safe",
         "missing_source": "absent.csv",
         "cloud_target": "cannot run through",
         "gcs_gate": "Cloud delivery does not support type",

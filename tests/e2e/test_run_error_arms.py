@@ -265,3 +265,42 @@ def test_a_compile_failure_shows_the_type_not_the_text(tmp_path: Path, flags: tu
     if "--json" in flags:
         doc = _doc(result)
         assert all("COMPILE-CANARY-42" not in json.dumps(m) for m in doc.get("messages", []))
+
+
+def _coded_canary_exc(kind: str) -> Exception:
+    from decoy_engine import DecoyError, reasons
+    from decoy_engine.execution import ExecutionError
+
+    if kind == "registered":
+        # The real leak: a chunked schema mismatch carries pyarrow text that quotes cell values.
+        return ExecutionError(
+            code=reasons.runtime.CHUNKED_SCHEMA_MISMATCH,
+            message="could not cast 'CODED-CANARY-77' to int64",
+        )
+
+    class ShapedDecoyError(DecoyError):
+        code = "shaped_but_unregistered"
+
+    return ShapedDecoyError("could not cast 'CODED-CANARY-77' to int64")
+
+
+# AT-16 coded canary: a registered or well-formed code does not make the engine's text safe.
+@pytest.mark.parametrize("kind", ["registered", "shaped"])
+@pytest.mark.parametrize("flags", [(), ("--quiet",), ("--json",)])
+def test_a_coded_engine_error_never_prints_its_text(
+    tmp_path: Path, flags: tuple, kind: str
+) -> None:
+    result = _run(tmp_path, _coded_canary_exc(kind), *flags)
+
+    assert isinstance(result.exception, SystemExit), result.exception
+    assert "CODED-CANARY-77" not in result.stdout + result.stderr
+    if "--json" in flags:
+        doc = _doc(result)
+        assert "CODED-CANARY-77" not in json.dumps(doc)
+        error = doc["error"]
+    else:
+        error = result.stderr
+    if kind == "registered":
+        assert "chunked_schema_mismatch: Chunked schema mismatch." in error
+    else:
+        assert "run failed (ShapedDecoyError)." in error

@@ -221,7 +221,9 @@ def test_headerless_misfit_fails_closed(
     args = ["run", str(cfg)] + (["--chunked", "--chunk-size", "2"] if chunked else [])
     result = runner.invoke(app, args)
     assert result.exit_code == 1, result.output
-    assert f"error: {code}: source people " in " ".join(result.output.split()), result.output
+    # The gate's refusal names the source; the engine's text is replaced by the registry summary.
+    shown = "Source file column count mismatch." if reaches_engine else "source people "
+    assert f"error: {code}: {shown}" in " ".join(result.output.split()), result.output
     assert not (tmp_path / "out.csv").exists()
     assert reached == ([1] if reaches_engine else [])
     for leaked in ("zz_marker_a", "zz_marker_b", "Alice", "secret_name_file", str(tmp_path)):
