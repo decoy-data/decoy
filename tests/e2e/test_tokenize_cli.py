@@ -745,6 +745,7 @@ class TestDetokenizeCompressedTargets:
         if not vault.exists():
             cfg = _pipeline(tmp_path, _TOKENIZE_COLS)
             runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
+        out.parent.mkdir(parents=True, exist_ok=True)
         args = ["detokenize", str(cfg), str(tmp_path / "tokenized.csv"), "--vault", str(vault)]
         result = runner.invoke(app, [*args, "-o", str(out)])
         assert result.exit_code == 0, result.output

@@ -11,6 +11,7 @@ import csv
 import io
 import json
 import math
+import sys
 from datetime import date, datetime, time
 from decimal import Decimal
 from pathlib import Path
@@ -563,9 +564,11 @@ def test_o3_two_writes_ten_seconds_apart_give_equal_bytes(
 
     # ZIP dates have 2-second steps, so a gap under 2 s would hide a clock-stamped member.
     monkeypatch.setattr(time, "time", lambda: 1_700_000_000.0)
-    first = _o2_write("public", frame_f(), tmp_path / f"a.csv{suffix}")
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    first = _o2_write("public", frame_f(), tmp_path / "a" / f"out.csv{suffix}")
     monkeypatch.setattr(time, "time", lambda: 1_700_000_010.0)
-    assert _o2_write("public", frame_f(), tmp_path / f"b.csv{suffix}") == first
+    assert _o2_write("public", frame_f(), tmp_path / "b" / f"out.csv{suffix}") == first
 
 
 @pytest.mark.parametrize("suffix", ["", *SUFFIXES])
@@ -642,6 +645,8 @@ def test_o9_a_long_tar_member_name_writes_as_pax(
 ) -> None:
     import tarfile
 
+    if case == "raw-byte" and sys.platform == "darwin":
+        pytest.skip("APFS refuses a file name that is not valid UTF-8")
     base = _O9_NAMES[case]
     member = f"{base}.csv"
     out = tmp_path / f"{member}{suffix}"
