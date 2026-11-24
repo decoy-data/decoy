@@ -2,7 +2,7 @@
 
 Routes the CLI reaches in engine 0.22.0: the whole-table `run_pipeline` call (mask, generate,
 and mixed with a relationship; the engine picks its internal route, full-frame for these sizes)
-and the `--rows` preview. `--chunked` calls `run_mask_pipeline_chunked`, which takes no progress
+and the `--rows` preview. `--chunked` calls `run_mask_chunked`, which takes no progress
 sink in 0.22.0 (it gains one with the RESULT E3 release), so its case is skipped as blocked and
 `test_the_chunked_engine_api_still_takes_no_sink` flips when the engine adds the parameter. No
 `decoy run` flag forces the engine's sequential or out-of-core route, and the streaming route
@@ -176,7 +176,7 @@ def test_every_route_feeds_the_sink(
 
 
 @pytest.mark.skip(
-    reason="blocked by the engine release: run_mask_pipeline_chunked in decoy-engine 0.22.0 "
+    reason="blocked by the engine release: run_mask_chunked in decoy-engine 0.22.0 "
     "takes no progress sink (RESULT E3 adds it); nothing to pass and no event to test"
 )
 def test_the_chunked_route_feeds_the_sink(tmp_path: Path, recorder: Recorder) -> None:
@@ -188,9 +188,9 @@ def test_the_chunked_route_feeds_the_sink(tmp_path: Path, recorder: Recorder) ->
 def test_the_chunked_engine_api_still_takes_no_sink() -> None:
     """When this fails, the pinned engine can take a sink on the chunked route: pass it and
     unskip `test_the_chunked_route_feeds_the_sink`."""
-    from decoy_engine import run_mask_pipeline_chunked
+    from decoy_engine import run_mask_chunked
 
-    params = inspect.signature(run_mask_pipeline_chunked).parameters
+    params = inspect.signature(run_mask_chunked).parameters
     assert "progress" not in params and "chunk_result_sink" in params  # non-vacuous: real API
 
 

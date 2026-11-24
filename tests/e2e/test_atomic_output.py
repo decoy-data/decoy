@@ -106,7 +106,7 @@ def _sha(path: Path) -> str:
 
 
 def _fail_after_first_chunk(monkeypatch: pytest.MonkeyPatch, exc: BaseException) -> None:
-    real = decoy_engine.run_mask_pipeline_chunked
+    real = decoy_engine.run_mask_chunked
 
     def patched(*args: Any, **kwargs: Any) -> Any:
         chunks = real(*args, **kwargs)
@@ -117,7 +117,7 @@ def _fail_after_first_chunk(monkeypatch: pytest.MonkeyPatch, exc: BaseException)
 
         return gen()
 
-    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", patched)
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", patched)
 
 
 # -- AT-A1, AT-A2: chunked writers ---------------------------------------------------------
@@ -208,7 +208,7 @@ def test_a_chunked_source_that_yields_nothing_leaves_the_prior_output_alone(
     cfg = _config(tmp_path)
     target = tmp_path / "out.csv"
     target.write_bytes(_PRIOR)
-    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", lambda *a, **k: iter(()))
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", lambda *a, **k: iter(()))
     result = _chunked(cfg)
     assert result.exit_code == 0, result.output
     assert target.read_bytes() == _PRIOR
@@ -230,10 +230,12 @@ def test_an_empty_parquet_source_still_writes_a_zero_row_parquet(tmp_path: Path)
 
 # sha256 of each output, recorded on CLI main ff82bc9 before this slice. The CSV rows (run, chunked,
 # mask_api, demo, tokenize, unmask) were regenerated on the CSV-WRITE-FAST head: CSV writer moved to
-# pyarrow. The detokenize, Parquet rows are the originals.
+# pyarrow. The detokenize and run_parquet rows are the originals. chunked_parquet moved with
+# PARQUET-CHUNKED-NULLABLE-INT S2: the file no longer carries the `pandas` schema key, which the
+# oracle added and `run_mask_chunked` does not (types and values are unchanged).
 _BASE_SHA: dict[str, str] = {
     "chunked_csv": "b2dc81999fe264b6cf883fbc3e4a3362a72e2466da2bb6a8bae10706dac82ad9",
-    "chunked_parquet": "b0683c6a777c6eed16efa729aa8816be938cc545efd43a9a92d050115a7e663d",
+    "chunked_parquet": "6598ed938a3589040204c80dde026192a2ee8ba2b366863085924461c6983c5b",
     "demo": "e145b68275ad20d9e9e1a0f0379d572d82ba6995078fef786b7097b40efa2c49",
     "detokenize": "22bc0317beeb6d82d44f6e003f9441d41e63e9efd59122173a11393b425fc909",
     "mask_api": "b2dc81999fe264b6cf883fbc3e4a3362a72e2466da2bb6a8bae10706dac82ad9",

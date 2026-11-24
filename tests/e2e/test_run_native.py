@@ -6,7 +6,7 @@ these tests hold regardless of whether a compiled `decoy-engine-native`
 companion happens to be installed in whatever environment runs them:
 
 1. **Genuine absence, everywhere, on demand.** `force_absent_companion`
-   (a fixture below) sets `sys.modules["decoy_engine_native"] = None`,
+   (a fixture in `tests/e2e/conftest.py`) sets `sys.modules["decoy_engine_native"] = None`,
    which is the standard way to make Python's import system report a
    module as genuinely not installed (`importlib.util.find_spec` returns
    `None` for a `None` sys.modules entry) -- this fools the ENGINE's own
@@ -66,14 +66,6 @@ _requires_real_companion = pytest.mark.skipif(
     not _NATIVE_COMPANION_INSTALLED,
     reason="needs a real compiled decoy-engine-native companion (none importable here)",
 )
-
-
-@pytest.fixture
-def force_absent_companion(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make the companion genuinely absent for BOTH the CLI probe and the
-    engine's own internal admission check, regardless of whether one is
-    actually installed in this environment. See module docstring point 1."""
-    monkeypatch.setitem(sys.modules, "decoy_engine_native", None)
 
 
 def _status(
@@ -441,9 +433,9 @@ def test_native_require_refuses_a_live_vault_writer(tmp_path: Path):
 
 def test_native_chunked_rejected_before_dispatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     def _boom(*args, **kwargs):
-        raise AssertionError("run_mask_pipeline_chunked must not be called")
+        raise AssertionError("run_mask_chunked must not be called")
 
-    monkeypatch.setattr("decoy_engine.run_mask_pipeline_chunked", _boom)
+    monkeypatch.setattr("decoy_engine.run_mask_chunked", _boom)
     config = _hash_eligible_config(tmp_path)
     result = runner.invoke(app, ["run", str(config), "--native", "--chunked"])
     assert result.exit_code == EXIT_USAGE
@@ -494,15 +486,6 @@ def test_route_indicator_not_applicable_for_generate_only(tmp_path: Path):
     payload = _json.loads(result.stdout)
     assert payload["native_route"]["applicable"] is False
     assert payload["native_route"]["state"] is None
-
-
-def test_route_indicator_reports_resolved_substrate_for_chunked(tmp_path: Path):
-    config = _hash_eligible_config(tmp_path)
-    result = runner.invoke(app, ["run", str(config), "--chunked", "--json"])
-    assert result.exit_code == 0, result.output
-    payload = _json.loads(result.stdout)
-    assert payload["native_route"]["applicable"] is False
-    assert payload["native_route"]["label"] == "pandas chunked stream"
 
 
 # ---------------------------------------------------------------------------

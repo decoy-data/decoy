@@ -220,6 +220,8 @@ def exit_code_for(exc: BaseException) -> int:
     from decoy_engine.reasons.runtime import VAULT_EXISTS
     from decoy_engine.verification.postmask import PostScanBlockedError
 
+    from decoy.cli.run._value_free import is_out_of_memory
+
     if isinstance(exc, ProvenanceError):
         return EXIT_RUNTIME
     if isinstance(exc, DpBudgetError):
@@ -227,7 +229,7 @@ def exit_code_for(exc: BaseException) -> int:
     if isinstance(exc, (DpError, CarrierError)):
         return EXIT_USAGE
 
-    if isinstance(exc, MemoryError):
+    if is_out_of_memory(exc):
         return EXIT_CAPACITY
     if isinstance(exc, DecoyError) and getattr(exc, "code", None) in capacity_codes():
         return EXIT_CAPACITY

@@ -405,8 +405,7 @@ def _coerce_int_columns(frame: pd.DataFrame, layout: Mapping[str, Any]) -> pd.Da
 def _csv_type_allowed(arrow_type: pa.DataType) -> bool:
     """True for an Arrow type the CSV writer has a frozen text form for (plan section 4).
 
-    Named predicates only: a family check (`is_floating`, `is_decimal`) would admit float16 or
-    decimal256, and a new Arrow type must be refused until it is added here with a row.
+    Named predicates only: a family check (`is_floating`) would admit float16, and a new Arrow type must be refused until it is added here with a row.
     """
     types = pa.types
     if types.is_dictionary(arrow_type):
@@ -424,6 +423,7 @@ def _csv_type_allowed(arrow_type: pa.DataType) -> bool:
         or types.is_date64(arrow_type)
         or types.is_timestamp(arrow_type)
         or types.is_decimal128(arrow_type)
+        or types.is_decimal256(arrow_type)
         or types.is_null(arrow_type)
         or types.is_time32(arrow_type)
         or types.is_time64(arrow_type)

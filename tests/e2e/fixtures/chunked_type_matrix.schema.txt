@@ -1,0 +1,10 @@
+i8: int8
+u16: uint16
+u64: uint64
+d128: decimal128(12, 2)
+d256: decimal256(40, 2)
+dic: dictionary<values=string, indices=int32, ordered=0>
+ts: timestamp[us, tz=UTC]
+req: int64 not null
+f: double
+email: string

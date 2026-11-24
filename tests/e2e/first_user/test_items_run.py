@@ -121,7 +121,7 @@ def test_chunked_run_that_publishes_nothing_counts_no_file(
 ) -> None:
     # The same stream-yields-nothing seam as AT-A9: the CSV writer publishes no file.
     pipeline = _chunked_config(tmp_path, "full_name\nAda Example\n")
-    monkeypatch.setattr(decoy_engine, "run_mask_pipeline_chunked", lambda *a, **k: iter(()))
+    monkeypatch.setattr(decoy_engine, "run_mask_chunked", lambda *a, **k: iter(()))
 
     human = runner.invoke(app, ["run", str(pipeline), "--chunked"])
     machine = runner.invoke(app, ["run", str(pipeline), "--chunked", "--json"])

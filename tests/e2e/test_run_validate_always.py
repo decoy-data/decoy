@@ -90,7 +90,7 @@ def spies(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     monkeypatch.setattr("decoy.cli.run._execute.read_source", _spy("read_source"))
     monkeypatch.setattr("decoy.cli.run._execute.iter_source_chunks", _spy("iter_source_chunks"))
     monkeypatch.setattr("decoy_engine.run_pipeline", _spy("run_pipeline"))
-    monkeypatch.setattr("decoy_engine.run_mask_pipeline_chunked", _spy("run_mask_pipeline_chunked"))
+    monkeypatch.setattr("decoy_engine.run_mask_chunked", _spy("run_mask_chunked"))
     return calls
 
 

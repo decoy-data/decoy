@@ -101,6 +101,13 @@ class NativeGateError(Exception):
         super().__init__(message)
 
 
+CHUNKED_NATIVE_REFUSAL = (
+    "--native is not supported with --chunked: the chunked route does not verify "
+    "compiled-kernel evidence before it publishes. Drop --native; the route label shows "
+    "whether a compiled kernel ran."
+)
+
+
 @dataclass(frozen=True)
 class PreGateResult:
     """What the caller should do before invoking `run_pipeline`."""
@@ -317,12 +324,13 @@ def pre_execution_gate(
 
     if intent == "require":
         if not candidate:
+            if chunked and not any_generate:
+                raise NativeGateError(CHUNKED_NATIVE_REFUSAL, code="native_require_not_a_candidate")
             raise NativeGateError(
-                "--native applies only to a non-chunked, mask-only run: this "
-                "invocation is chunked or includes a generate table, neither of "
-                "which ever routes through the unified slice, so it could never "
-                "show compiled-kernel evidence. Drop --native, or drop --chunked "
-                "/ the generate table.",
+                "--native applies only to a mask-only run: this invocation includes a "
+                "generate table, which never routes through the unified slice, so it could "
+                "never show compiled-kernel evidence. Drop --native, or drop the generate "
+                "table.",
                 code="native_require_not_a_candidate",
             )
         if vault_active:
@@ -407,26 +415,47 @@ def fallback_notice(result: ExecutionResult, *, intent: NativeIntent) -> str | N
     return f"{spec.summary} {FALLBACK_HINT}"
 
 
+def _chunked_route_label(evidence: list[Any] | None) -> str:
+    """The label of a chunked run, from the engine's runtime evidence (one object per table).
+
+    A table counts as native when a compiled kernel or the pool selection executed; a table
+    the engine declined as `empty_input` ran nothing and is left out. The flags are read, not
+    `native_admitted`, because admission is intent and a run can finish with nothing executed.
+    """
+    from decoy_engine import reasons
+
+    empty = reasons.route.EMPTY_INPUT
+    ran = [e for e in evidence or [] if getattr(e, "reroute_reason", None) != empty]
+    native = [bool(e.compiled_kernel_executed or e.pool_select_executed) for e in ran]
+    if native and all(native):
+        return "chunked stream (native)"
+    if any(native):
+        return "chunked stream (mixed)"
+    return "chunked stream (pandas)"
+
+
 def classify_route(
     *,
     chunked: bool,
     any_generate: bool,
     quality_metrics: dict[str, Any] | None,
+    chunked_evidence: list[Any] | None = None,
 ) -> RouteClassification:
     """The three-state native route indicator, scoped to candidacy (plan
     approach 4). Reads evidence (`unified_slice_activation` +
     `compiled_kernel_executed`), never the requested flag, so a rerouted job
     is never mislabeled.
 
-    `--chunked` runs have no `ExecutionResult` (the chunked path streams
-    per-chunk and returns nothing to classify), so `quality_metrics` is
-    `None` for them; the engine has one execution adapter, so their label
-    is fixed."""
+    `--chunked` runs have no `ExecutionResult` (the chunked path streams per chunk), so
+    `quality_metrics` is `None` for them. Their label comes from `chunked_evidence`, the
+    `NativeRouteEvidence` list the engine filled while the streams ran; read it only after
+    every stream is exhausted. A chunked run is never a unified-slice candidate, so
+    `applicable` is `False` and `state` is `None` whatever ran."""
     if chunked:
         return RouteClassification(
             applicable=False,
             state=None,
-            label="pandas chunked stream",
+            label=_chunked_route_label(chunked_evidence),
         )
 
     qm = quality_metrics or {}

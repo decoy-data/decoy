@@ -23,7 +23,6 @@ from decoy.cli.io import (
 
 _REFUSED = {
     "float16": pa.float16(),
-    "decimal256": pa.decimal256(40, 2),
     "binary": pa.binary(),
     "list": pa.list_(pa.int64()),
     "struct": pa.struct([("a", pa.int64())]),
@@ -47,6 +46,7 @@ _ACCEPTED = [
     pa.timestamp("us"),
     pa.timestamp("ns", tz="UTC"),
     pa.decimal128(10, 2),
+    pa.decimal256(40, 2),
     pa.dictionary(pa.int8(), pa.string()),
     pa.null(),
     pa.time32("s"),
@@ -182,3 +182,18 @@ def test_chunked_writer_writes_each_chunk_on_its_own_types(tmp_path: Path) -> No
     later = pa.table({"a": [3, 4], "b": pa.array([3.0, None], pa.float64())})
     out = _chunks(tmp_path, [first, later])
     assert out.read_bytes() == b'"a","b"\n1,1\n2,2\n3,3\n4,\n'
+
+
+def test_decimal256_text_equals_decimal128_text_for_the_same_values(tmp_path: Path) -> None:
+    from decimal import Decimal
+
+    values = [Decimal("1.25"), None, Decimal("3.50"), Decimal("-0.05")]
+    wide = tmp_path / "wide"
+    narrow = tmp_path / "narrow"
+    wide.mkdir()
+    narrow.mkdir()
+    out256 = _chunks(wide, [pa.table({"c": pa.array(values, pa.decimal256(40, 2))})])
+    out128 = _chunks(narrow, [pa.table({"c": pa.array(values, pa.decimal128(12, 2))})])
+    assert out256.read_bytes() == out128.read_bytes()
+    assert b"1.25" in out256.read_bytes()
+    assert b"3.50" in out256.read_bytes()
