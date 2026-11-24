@@ -679,3 +679,22 @@ def test_o10_a_suffix_only_archive_target_has_the_fallback_member(tmp_path: Path
                         assert tar.getnames() == ["data.csv"]
                         tar.extractall(extract, filter="data")
                 assert (extract / "data.csv").exists()
+
+
+@pytest.mark.parametrize("suffix", [".tar", ".tar.gz"])
+def test_o9_a_raw_byte_member_name_writes_without_touching_the_file_system(
+    tmp_path: Path, suffix: str
+) -> None:
+    """The opener reads only the name of `out_path`, so this runs on a file system (APFS) that
+    refuses a non-UTF-8 file name."""
+    import os
+    import tarfile
+
+    from decoy.cli.io._compression import PUBLIC_MEMBER_MODE, open_csv_sink
+
+    member = os.fsdecode(b"x" * 100 + b"\xff") + ".csv"
+    tmp = tmp_path / "staged"
+    with open_csv_sink(tmp, Path(member + suffix), member_mode=PUBLIC_MEMBER_MODE) as sink:
+        sink.write(b"a\n1\n")
+    with tarfile.open(tmp) as tar:
+        assert tar.getnames() == [member]
