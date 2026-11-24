@@ -374,7 +374,7 @@ Landing steps:
    statement), then merge #667 as a record (decision 4). F01 (row 86) is 1.x, planned for 1.11 (1.9 before the reorder) with the
    watchdog design.
 2. WAREHOUSE.3: merge as docs whenever a platform docs merge is allowed. It is the input to the plans.
-3. WAREHOUSE.1 (release 1.5, with DB-NEXT and SNOWFLAKE): write a fresh plan for the DuckDB attach and the multi-part Parquet reader on the current
+3. WAREHOUSE.1 (release 1.5, with DB-NEXT and SNOWFLAKE): F03 (1.1) replaces the multi-part Parquet reader. Write a fresh plan for the DuckDB attach on the current
    connectors and `fileaccess`, using the branch as reference. Leave out every tokenize and vault commit.
 4. WAREHOUSE.2: the same for the platform half, when the platform restarts ([platform-parked.md](platform-parked.md)).
 
@@ -488,10 +488,10 @@ How to read it:
 |---|---|---|---|---|
 | 1.0 | (not 1.x) | INTL-IDS.3 lands with FAKER-MIGRATE, before the freeze. The V2-to-V1 cut adds 1.0 rows NESTED-FREEZE and FIT-CODES-TEXT | 4 | yes, the launch engine |
 | 1.0.x | Fixes and byte-identical speed | Maintenance rows, patch entries of the corrective backlog; NONFK-OOM part (b) if its plan is not small | 1 to 4 each | only if a fix is in the engine |
-| 1.1 | Run in production pipelines | 64, 64b, 85, 41, BEHAVIOR-VERSION, SEAM-REASONS; scope cut: 36, then 29, 32c (opt-in model), LANG-SIDECAR; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 30 | yes |
+| 1.1 | Run in production pipelines | 64, F03, 87, 64b, 85, 41, BEHAVIOR-VERSION, SEAM-REASONS; scope cut: 36, then 29, 32c (opt-in model), LANG-SIDECAR; fill 82-E3b, INTL-IDS.1, TARGET-DUP-REFUSE | about 52 | yes |
 | 1.2 | Generate completeness and identifiers | 24r, the Later part of 24n, 24qb, RUST-DATE-TEXT, FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE, 79b; INTL-IDS.2, EDGE-CASES.1 | about 22 | yes |
 | 1.3 | More ways to install | 90a, 38, 42, PIP-NATIVE-EXTRA; candidates PYPI, PY-VERSIONS; CHUNK-PARALLEL; scope cut: 58b, 61b, 74b | about 18 | yes |
-| 1.4 | More file sources and formats | 87; AVRO-ORC.1, AVRO-ORC.2 | about 13 | yes |
+| 1.4 | More file sources and formats | AVRO-ORC.1, AVRO-ORC.2 (87 moved to 1.1) | about 4 | yes |
 | 1.5 | More databases and a warehouse | DB-NEXT (MySQL or SQL Server), SNOWFLAKE; WAREHOUSE.1, WAREHOUSE.3 | not sized; needs plans | yes |
 | 1.6 | Joint-distribution synthesis | COPULA.1 to COPULA.3, COPULA.5, COPULA.6 (COPULA.4 not needed); candidate F48 | about 10 (COPULA.5 and .6 not sized) | yes |
 | 1.7 | Policy, secrets and masking options | 81 with 24zt, 83; MASK-KEEP.1 to .3, DATE-ENTITY.1 | about 16 | yes |
@@ -516,7 +516,7 @@ Dependencies after the move:
 
 - 1.1 holds 64b and its Postgres CI lane, which 1.5 (more databases) and 1.11 (86 F01) need.
 - 1.1 holds BEHAVIOR-VERSION, which 1.2 (FIT-DATE-SHAPE, FIDELITY-ONE-INFERENCE) needs.
-- 1.4 (87 F02) needs 64 CLI-CLOUD from 1.1.
+- 87 F02 and F03 need 64 CLI-CLOUD; all three are in 1.1 (owner 2026-11-24). F03 on GCS needs F02-E2.
 - 1.9 holds F35, which comes before F32 in 1.10 (owner Q5, 2026-11-08).
 - 1.11 (82 F07, NESTED-NATIVE) uses the path grammar that 1.0 row NESTED-FREEZE fixes.
 - The copula (1.6) depends on no other 1.x release. The anonymity stack (1.9) needs only F35, which is
@@ -546,6 +546,8 @@ storage or a database, and need a failed run to restart without redoing finished
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
 | 64 CLI-CLOUD | [connect](groups/connect.md) | EC2b to EC5, REL-C, CC1 to CC5 | about 9 |
+| F03 file unions plus pattern selection | [connect](groups/connect.md) | owner 2026-11-24: first in 1.x with cloud sources; V1 stays small local files. Plan `C:plan/f03-file-unions`; plan gate not run | about 13 |
+| 87 F02 | [connect](groups/connect.md) | E2 to E5, release, C1 to C4. Moved from 1.4 with F03 (owner 2026-11-24: first in 1.x with cloud sources; V1 stays small local files); F03 on GCS needs F02-E2 | about 9 |
 | 64b CLI-DB-SRC | [connect](groups/connect.md) | not started; includes a Postgres CI lane (moved from 1.4, owner 2026-11-22) | about 5 |
 | 85 F23 resume, CLI half | [run](groups/run.md) | engine release, then C0, C1, C2a, C2b, C3 | 5 |
 | 41 L5a-cli progress | [library](groups/library.md) | one slice, plan passed | 1 |
@@ -561,7 +563,7 @@ storage or a database, and need a failed run to restart without redoing finished
 Other fill: job-outcome notifications ([run](groups/run.md)); the corrective-backlog minors on chunked
 progress events and the subset signal in `decoy.mask()` and `decoy tokenize`.
 
-This minor is the largest. If it does not fit, SEAM-REASONS moves to 1.2 as fill.
+This minor is the largest, about 52 slices after F03 and 87 joined it (owner 2026-11-24). It needs a split when it is planned: cloud and file sources (64, F03, 87) first. That split is an owner call. If it does not fit, SEAM-REASONS moves to 1.2 as fill.
 
 TARGET-DUP-REFUSE is pending a check. Data loss is a V1 blocker under the V1 bar, so the orchestrator
 first checks whether main already refuses two tables written to one target (engine #589 added
@@ -618,14 +620,13 @@ Theme: read files from where they are, in the format they are in.
 
 | Row or item | Group | What is left | Slices |
 |---|---|---|---|
-| 87 F02 | [connect](groups/connect.md) | E2 to E5, release, C1 to C4 | about 9 |
 | AVRO-ORC.1 | [connect](groups/connect.md) | port, code review, compatibility check | 2 |
 | AVRO-ORC.2 | [connect](groups/connect.md) | plan and build the CLI half | about 2 |
 
 Fill: SFTP host-key pinning, subset from non-Parquet sources; the
 corrective-backlog minor on one engine retry choke point (F02's retry executor is the same work).
 
-Depends on: 1.1 (CLI-CLOUD, for F02).
+Depends on: none. 87 F02 moved to 1.1 with F03 (owner 2026-11-24).
 
 ### 1.5: more databases and a warehouse
 
@@ -732,7 +733,7 @@ rows, or it is cheap next to work in flight.
 | Theme | Candidates | Groups |
 |---|---|---|
 | Larger-than-memory runs | VAULT-STREAM, TOKENIZE-CHUNKED, OOC-QUARANTINE, OOC-DATE-BUCKET, FK-CHUNKED-HASH-CHILD, route-coverage phase 2, chunk-level resume, multi-hop FK chains, FK cycles, bounded reorder, nested relationships out of core, the mixed-job deferrals, F05, F42 | [mask](groups/mask.md), [run](groups/run.md), [connect](groups/connect.md) |
-| File formats | X-02 to X-05, F03 | [connect](groups/connect.md) |
+| File formats | X-02 to X-05 | [connect](groups/connect.md) |
 | Streams | X-07 | [run](groups/run.md) |
 | Masks and detectors | the rest of X-08 (region disguises, detectors), the rest of X-10 and X-13, F47, F50, cross-job joinable masking, `when:` hashing of number columns, the secondary Faker sources, `windowed_date` range, the Faker pool snapshot, value-based FK discovery | [mask](groups/mask.md), [scan](groups/scan.md) |
 | Synthesis | X-15 to X-18 (the built part of X-17 is EDGE-CASES.1), dirty output on the mixed route, generate columns on a masked table | [generate](groups/generate.md) |
