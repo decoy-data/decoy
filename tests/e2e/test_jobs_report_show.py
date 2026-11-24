@@ -98,7 +98,9 @@ def test_report_show_exits_ok(tmp_path: Path) -> None:
     """report show MANIFEST exits 0 and renders the evidence summary."""
     evidence_path, _ = _write_evidence(tmp_path)
 
-    result = runner.invoke(app, ["report", "show", str(evidence_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["report", "show", str(evidence_path)], catch_exceptions=False
+    )
     assert result.exit_code == 0, f"Expected 0; got {result.exit_code}\n{result.output}"
 
 
@@ -133,7 +135,9 @@ def test_report_show_json(tmp_path: Path) -> None:
 def test_report_show_missing_file_exits_nonzero(tmp_path: Path) -> None:
     """report show for a non-existent manifest file exits non-zero."""
     missing = tmp_path / "nope.json"
-    result = runner.invoke(app, ["report", "show", str(missing)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["report", "show", str(missing)], catch_exceptions=False
+    )
     assert result.exit_code != 0
     output = result.output + (result.stderr if hasattr(result, "stderr") else "")
     assert "not found" in output.lower() or "evidence" in output.lower()
@@ -152,13 +156,9 @@ def test_report_show_html_out(tmp_path: Path) -> None:
     result = runner.invoke(
         app,
         [
-            "report",
-            "show",
-            str(evidence_path),
-            "--format",
-            "html",
-            "--output",
-            str(out_path),
+            "report", "show", str(evidence_path),
+            "--format", "html",
+            "--output", str(out_path),
         ],
         catch_exceptions=False,
     )
@@ -177,7 +177,9 @@ def test_report_show_includes_key_fields(tmp_path: Path) -> None:
     """report show includes key manifest fields like schema version / fingerprint."""
     evidence_path, _manifest = _write_evidence(tmp_path)
 
-    result = runner.invoke(app, ["report", "show", str(evidence_path)], catch_exceptions=False)
+    result = runner.invoke(
+        app, ["report", "show", str(evidence_path)], catch_exceptions=False
+    )
     assert result.exit_code == 0
     output = result.output
     assert "cli-local-1" in output or "sha256:" in output or "pipeline" in output.lower()

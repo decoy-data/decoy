@@ -26,7 +26,8 @@ SECTION_5_TOKENS = (
 def test_every_section_5_token_has_a_helper():
     for token in SECTION_5_TOKENS:
         assert callable(getattr(theme, token, None)), (
-            f"missing helper for token '{token}' -- CLI_UX_GUIDE.md section 5 requires it"
+            f"missing helper for token '{token}' -- "
+            f"CLI_UX_GUIDE.md section 5 requires it"
         )
 
 
@@ -42,7 +43,9 @@ def test_helpers_return_text_styled_with_token_name():
 
 def test_decoy_theme_defines_each_token():
     for token in SECTION_5_TOKENS:
-        assert token in theme.DECOY_THEME.styles, f"DECOY_THEME missing entry for token '{token}'"
+        assert token in theme.DECOY_THEME.styles, (
+            f"DECOY_THEME missing entry for token '{token}'"
+        )
         style = theme.DECOY_THEME.styles[token]
         # A non-empty Style: at least one color or attr set.
         assert style != "" and str(style) != ""

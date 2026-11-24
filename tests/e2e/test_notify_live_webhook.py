@@ -81,7 +81,9 @@ def _start_echo_server() -> tuple[HTTPServer, threading.Thread, int]:
 
 def _write_tiny_pipeline(tmp_path: Path) -> Path:
     src = tmp_path / "in.csv"
-    pd.DataFrame({"customer_id": ["1", "2", "3"], "name": ["a", "b", "c"]}).to_csv(src, index=False)
+    pd.DataFrame({"customer_id": ["1", "2", "3"], "name": ["a", "b", "c"]}).to_csv(
+        src, index=False
+    )
     cfg = {
         "version": 2,
         "global_settings": {"seed": 7, "mask_secret_ref": TEST_MASK_SECRET_REF},

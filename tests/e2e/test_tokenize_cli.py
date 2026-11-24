@@ -113,7 +113,9 @@ class TestTokenizeRoundTrip:
         vault = tmp_path / "tokens.db"
         runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
         tokenized = tmp_path / "tokenized.csv"
-        result = runner.invoke(app, ["detokenize", str(cfg), str(tokenized), "--vault", str(vault)])
+        result = runner.invoke(
+            app, ["detokenize", str(cfg), str(tokenized), "--vault", str(vault)]
+        )
         assert result.exit_code == 0, result.output
         recovered = pd.read_csv(tmp_path / "tokenized.detokenized.csv", dtype=str)
         assert list(recovered["email"]) == ["a@x.com", "b@y.com", "a@x.com"]
@@ -139,7 +141,9 @@ class TestTokenizeRoundTrip:
         assert out.exists()
 
     def test_nulls_are_preserved_through_the_round_trip(self, tmp_path: Path) -> None:
-        cfg = _pipeline(tmp_path, _TOKENIZE_COLS, emails=["a@x.com", "", "b@y.com"])
+        cfg = _pipeline(
+            tmp_path, _TOKENIZE_COLS, emails=["a@x.com", "", "b@y.com"]
+        )
         vault = tmp_path / "tokens.db"
         runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
         out = pd.read_csv(tmp_path / "tokenized.csv", dtype=str)
@@ -312,7 +316,9 @@ class TestFailClosed:
         assert result.exit_code == 0, result.output
         assert vault.exists()
 
-    def test_unresolvable_secret_gives_a_coded_error(self, tmp_path: Path, monkeypatch) -> None:
+    def test_unresolvable_secret_gives_a_coded_error(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         """LOW: a shape-valid --mask-secret that cannot resolve (here an unset env
         var) is a clean coded MaskSecretError at EXIT_USAGE, not the catch-all
         'unexpected MaskSecretError' at EXIT_RUNTIME. The message stays value-free
@@ -323,14 +329,8 @@ class TestFailClosed:
         vault = tmp_path / "tokens.db"
         result = runner.invoke(
             app,
-            [
-                "tokenize",
-                str(cfg),
-                "--vault",
-                str(vault),
-                "--mask-secret",
-                "env:DECOY_TEST_UNSET_MASK_SECRET",
-            ],
+            ["tokenize", str(cfg), "--vault", str(vault),
+             "--mask-secret", "env:DECOY_TEST_UNSET_MASK_SECRET"],
         )
         assert result.exit_code == EXIT_USAGE, result.output
         assert "missing_mask_secret" in result.output
@@ -373,7 +373,9 @@ class TestFailClosed:
         assert "source_file.declared_column_missing" in result.output
         assert not vault.exists()  # no vault is left behind
 
-    def test_failed_run_leaves_no_empty_vault(self, tmp_path: Path, monkeypatch) -> None:
+    def test_failed_run_leaves_no_empty_vault(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         """LOW: the vault file is created before run_pipeline, so a run that fails
         after creation must not leave an empty vault on disk to be mistaken for
         output. The catch-all message no longer claims 'no output was written' it
@@ -392,7 +394,9 @@ class TestFailClosed:
         # Normalize Rich's line wrapping before matching the message phrase.
         assert "aborted before the vault was committed" in " ".join(result.output.split())
 
-    def test_failed_run_keeps_a_preexisting_vault(self, tmp_path: Path, monkeypatch) -> None:
+    def test_failed_run_keeps_a_preexisting_vault(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         """LOW: cleanup removes only a vault THIS run created. A second run that
         fails must leave an earlier run's real vault (and its mappings) intact, so
         the fix never deletes an operator's existing vault on a later failure."""
@@ -408,14 +412,8 @@ class TestFailClosed:
         cfg_fail = _pipeline(tmp_path, _TOKENIZE_COLS, with_secret=False, out_name="t2.csv")
         second = runner.invoke(
             app,
-            [
-                "tokenize",
-                str(cfg_fail),
-                "--vault",
-                str(vault),
-                "--mask-secret",
-                "env:DECOY_TEST_UNSET_MASK_SECRET_2",
-            ],
+            ["tokenize", str(cfg_fail), "--vault", str(vault),
+             "--mask-secret", "env:DECOY_TEST_UNSET_MASK_SECRET_2"],
         )
         assert second.exit_code == EXIT_USAGE, second.output
         assert vault.exists()  # pre-existing vault kept
@@ -494,7 +492,9 @@ class TestFormats:
         runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
         bad = tmp_path / "corrupt.parquet"
         bad.write_bytes(b"not a parquet file")
-        result = runner.invoke(app, ["detokenize", str(cfg), str(bad), "--vault", str(vault)])
+        result = runner.invoke(
+            app, ["detokenize", str(cfg), str(bad), "--vault", str(vault)]
+        )
         assert result.exit_code == EXIT_USAGE
         assert "detokenize_unreadable_target" in result.output
         assert not (tmp_path / "corrupt.detokenized.parquet").exists()
@@ -531,14 +531,7 @@ class TestJsonAndSafety:
         runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
         result = runner.invoke(
             app,
-            [
-                "detokenize",
-                str(cfg),
-                str(tmp_path / "tokenized.csv"),
-                "--vault",
-                str(vault),
-                "--json",
-            ],
+            ["detokenize", str(cfg), str(tmp_path / "tokenized.csv"), "--vault", str(vault), "--json"],
         )
         assert result.exit_code == 0, result.output
         payload = json.loads(result.stdout)
@@ -613,11 +606,15 @@ class TestOutputNotClobbered:
         # different (valid) body so a clobber would change the first output.
         tsv_in = tmp_path / "tokenized.tsv"
         tsv_in.write_text("\n".join(csv_in.read_text().splitlines()[:2]) + "\n")
-        first = runner.invoke(app, ["detokenize", str(cfg), str(csv_in), "--vault", str(vault)])
+        first = runner.invoke(
+            app, ["detokenize", str(cfg), str(csv_in), "--vault", str(vault)]
+        )
         assert first.exit_code == 0, first.output
         out = tmp_path / "tokenized.detokenized.csv"
         before = out.read_bytes()
-        second = runner.invoke(app, ["detokenize", str(cfg), str(tsv_in), "--vault", str(vault)])
+        second = runner.invoke(
+            app, ["detokenize", str(cfg), str(tsv_in), "--vault", str(vault)]
+        )
         assert second.exit_code == EXIT_USAGE, second.output
         assert "detokenize_output_exists" in second.output
         assert out.read_bytes() == before
@@ -630,15 +627,8 @@ class TestOutputNotClobbered:
         out.write_text("old")
         result = runner.invoke(
             app,
-            [
-                "detokenize",
-                str(cfg),
-                str(tmp_path / "tokenized.csv"),
-                "--vault",
-                str(vault),
-                "-o",
-                str(out),
-            ],
+            ["detokenize", str(cfg), str(tmp_path / "tokenized.csv"),
+             "--vault", str(vault), "-o", str(out)],
         )
         assert result.exit_code == 0, result.output
         assert "a@x.com" in out.read_text()
@@ -697,7 +687,9 @@ class TestNoLeakOnErrorPaths:
         # Schema-invalid configs that carry a raw secret in the value: the
         # pydantic ValidationError path must not echo it.
         bad_cfgs = []
-        for i, gs in enumerate(({"mask_secret_ref": [_RAW_SECRET]}, {"mask_secret": _RAW_SECRET})):
+        for i, gs in enumerate(
+            ({"mask_secret_ref": [_RAW_SECRET]}, {"mask_secret": _RAW_SECRET})
+        ):
             raw = yaml.safe_load(cfg.read_text())
             raw["global_settings"].pop("mask_secret_ref")
             raw["global_settings"].update(gs)
@@ -713,14 +705,7 @@ class TestNoLeakOnErrorPaths:
             [str(cfg), str(tokenized), "--vault", str(junk), "-o", str(tmp_path / "o2.csv")],
             [str(wrong_cfg), str(tokenized), "--vault", str(vault), "-o", str(tmp_path / "o3.csv")],
             *(
-                [
-                    str(b),
-                    str(tokenized),
-                    "--vault",
-                    str(vault),
-                    "-o",
-                    str(tmp_path / f"b{b.stem}.csv"),
-                ]
+                [str(b), str(tokenized), "--vault", str(vault), "-o", str(tmp_path / f"b{b.stem}.csv")]
                 for b in bad_cfgs
             ),
         ]
@@ -743,13 +728,7 @@ class TestNoLeakOnErrorPaths:
         for args in (
             [str(bad_ref_cfg), "--vault", str(tmp_path / "v1.db")],
             [str(cfg), "--vault", str(tmp_path / "v2.db"), "--mask-secret", f"file:{weak}"],
-            [
-                str(cfg),
-                "--vault",
-                str(tmp_path / "v3.db"),
-                "--mask-secret",
-                f"literal:{_RAW_SECRET}",
-            ],
+            [str(cfg), "--vault", str(tmp_path / "v3.db"), "--mask-secret", f"literal:{_RAW_SECRET}"],
         ):
             for extra in ([], ["--json"]):
                 result = runner.invoke(app, ["tokenize", *args, *extra])

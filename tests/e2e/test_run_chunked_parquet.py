@@ -87,14 +87,18 @@ def _read_values(path: Path) -> dict:
 
 
 class TestChunkedParquet:
-    def test_parquet_to_parquet_value_parity_with_plain_run(self, tmp_path: Path) -> None:
+    def test_parquet_to_parquet_value_parity_with_plain_run(
+        self, tmp_path: Path
+    ) -> None:
         cfg = _pipeline(tmp_path, src_fmt="parquet", tgt_fmt="parquet")
         out = tmp_path / "out.parquet"
         assert runner.invoke(app, ["run", str(cfg)]).exit_code == 0
         plain = _read_values(out)
         out.unlink()
 
-        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
+        result = runner.invoke(
+            app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
+        )
         assert result.exit_code == 0, result.output
         chunked = _read_values(out)
         assert chunked == plain
@@ -104,12 +108,18 @@ class TestChunkedParquet:
         cfg = _pipeline(tmp_path, src_fmt="parquet", tgt_fmt="parquet")
         out = tmp_path / "out.parquet"
         assert (
-            runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "7"]).exit_code == 0
+            runner.invoke(
+                app, ["run", str(cfg), "--chunked", "--chunk-size", "7"]
+            ).exit_code
+            == 0
         )
         seven = _read_values(out)
         out.unlink()
         assert (
-            runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]).exit_code == 0
+            runner.invoke(
+                app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
+            ).exit_code
+            == 0
         )
         assert _read_values(out) == seven
 
@@ -117,11 +127,17 @@ class TestChunkedParquet:
         cfg = _pipeline(tmp_path, src_fmt="parquet", tgt_fmt="parquet")
         out = tmp_path / "out.parquet"
         assert (
-            runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]).exit_code == 0
+            runner.invoke(
+                app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
+            ).exit_code
+            == 0
         )
         first = out.read_bytes()
         assert (
-            runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]).exit_code == 0
+            runner.invoke(
+                app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
+            ).exit_code
+            == 0
         )
         assert out.read_bytes() == first
 
@@ -145,7 +161,9 @@ class TestChunkedParquet:
         assert runner.invoke(app, ["run", str(cfg)]).exit_code == 0
         plain = _read_values(out)
         out.unlink()
-        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
+        result = runner.invoke(
+            app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
+        )
         assert result.exit_code == 0, result.output
         assert _read_values(out) == plain
 
@@ -155,11 +173,15 @@ class TestChunkedParquet:
         assert runner.invoke(app, ["run", str(cfg)]).exit_code == 0
         plain = _read_values(out)
         out.unlink()
-        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
+        result = runner.invoke(
+            app, ["run", str(cfg), "--chunked", "--chunk-size", "33"]
+        )
         assert result.exit_code == 0, result.output
         assert _read_values(out) == plain
 
-    def test_empty_parquet_source_writes_valid_zero_row_file(self, tmp_path: Path) -> None:
+    def test_empty_parquet_source_writes_valid_zero_row_file(
+        self, tmp_path: Path
+    ) -> None:
         cfg = _pipeline(tmp_path, src_fmt="parquet", tgt_fmt="parquet", rows=0)
         out = tmp_path / "out.parquet"
         result = runner.invoke(app, ["run", str(cfg), "--chunked"])

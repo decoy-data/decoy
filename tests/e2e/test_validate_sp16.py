@@ -124,9 +124,7 @@ def test_validate_json_emits_messages_list_on_success(tmp_path: Path):
     result = runner.invoke(app, ["validate", "config", str(p), "--json"])
     assert result.exit_code == 0, result.output
     payload = _json.loads(result.stdout)
-    assert "messages" in payload, (
-        f"Expected 'messages' key in JSON envelope. Got: {list(payload.keys())}"
-    )
+    assert "messages" in payload, f"Expected 'messages' key in JSON envelope. Got: {list(payload.keys())}"
     assert isinstance(payload["messages"], list)
 
 

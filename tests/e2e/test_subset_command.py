@@ -71,7 +71,9 @@ def _base_config(tmp_path: Path, customers_path: Path, orders_path: Path) -> dic
         "tables": [
             {
                 "name": "customers",
-                "columns": [{"name": "id", "strategy": "hash", "namespace": "customer_identity"}],
+                "columns": [
+                    {"name": "id", "strategy": "hash", "namespace": "customer_identity"}
+                ],
             },
             {
                 "name": "orders",
@@ -369,9 +371,7 @@ def test_runtime_error_keeps_its_bracketed_code_prefix(tmp_path: Path, monkeypat
     from decoy_engine.subset import SubsetInternalError
 
     def _raise(**_kwargs):
-        raise SubsetInternalError(
-            code="subset_closure_violation", message="closure re-check failed"
-        )
+        raise SubsetInternalError(code="subset_closure_violation", message="closure re-check failed")
 
     monkeypatch.setattr("decoy_engine.subset.run_subset", _raise)
     p = _sample_subset_config(tmp_path)
@@ -414,7 +414,9 @@ def test_budget_exceeded_is_clean_error_and_writes_nothing(tmp_path: Path):
     customers_path, orders_path = _write_customers_orders(tmp_path)
     config = _base_config(tmp_path, customers_path, orders_path)
     config["subset"] = {
-        "seeds": [{"table": "customers", "mode": "sample", "key_columns": ["id"], "fraction": 1.0}],
+        "seeds": [
+            {"table": "customers", "mode": "sample", "key_columns": ["id"], "fraction": 1.0}
+        ],
         "budget": {"max_total_rows": 1},
     }
     p = _write_config(tmp_path, config)
@@ -435,7 +437,9 @@ def test_budget_exceeded_json(tmp_path: Path):
     customers_path, orders_path = _write_customers_orders(tmp_path)
     config = _base_config(tmp_path, customers_path, orders_path)
     config["subset"] = {
-        "seeds": [{"table": "customers", "mode": "sample", "key_columns": ["id"], "fraction": 1.0}],
+        "seeds": [
+            {"table": "customers", "mode": "sample", "key_columns": ["id"], "fraction": 1.0}
+        ],
         "budget": {"max_total_rows": 1},
     }
     p = _write_config(tmp_path, config)

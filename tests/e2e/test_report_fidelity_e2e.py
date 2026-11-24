@@ -81,12 +81,16 @@ def test_validate_distribution_generate_allows_row_count_mismatch(tmp_path: Path
     pd.DataFrame({"tier": ["gold", "silver"] * 100}).to_csv(src, index=False)
     pd.DataFrame({"tier": ["gold", "silver"] * 10}).to_csv(out, index=False)
 
-    result = runner.invoke(app, ["report", "fidelity", str(src), str(out), "--generate", "--json"])
+    result = runner.invoke(
+        app, ["report", "fidelity", str(src), str(out), "--generate", "--json"]
+    )
     assert result.exit_code == 0, result.output
     import json
 
     payload = json.loads(result.output)
-    row_count_check = next(c for c in payload["diagnostic"]["checks"] if c["check"] == "row_count")
+    row_count_check = next(
+        c for c in payload["diagnostic"]["checks"] if c["check"] == "row_count"
+    )
     assert row_count_check["passed"] is True
 
 

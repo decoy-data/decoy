@@ -437,10 +437,7 @@ _ALLOWED_PY_ARGS = (
     ("]",),  # `[ -x "$BIN/python" ]` existence test
     ("$ROOT/scripts/dev/_gates_report.py",),
     ('${junit[@]+"${junit[@]}"}',),  # args for the `bash -c` wrapper, built by gates.sh itself
-    (
-        "$BIN/ruff",
-        ";;",
-    ),  # the lintdebt wrapper: scripts/dev/lintdebt.py reads ruff output, not JUnit
+    ("$BIN/ruff", ";;"),  # the lintdebt wrapper: scripts/dev/lintdebt.py reads ruff output, not JUnit
 )
 
 

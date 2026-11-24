@@ -31,7 +31,9 @@ runner = CliRunner()
 def _undeclared_passthrough(columns: list[dict]) -> list[dict]:
     """The engine refuses a source column the config does not list; list the rest as passthrough."""
     declared = {c["name"] for c in columns}
-    return [{"name": n, "strategy": "passthrough"} for n in ("email", "name") if n not in declared]
+    return [
+        {"name": n, "strategy": "passthrough"} for n in ("email", "name") if n not in declared
+    ]
 
 
 def _pipeline(tmp_path: Path, columns: list[dict], rows: int = 50) -> Path:
@@ -92,14 +94,20 @@ class TestVaultRoundTrip:
         )
         assert result.exit_code == 0, result.output
         recovered = pd.read_csv(out, dtype=str)
-        assert recovered["email"].tolist() == [f"user{i}@example.com" for i in range(50)]
+        assert recovered["email"].tolist() == [
+            f"user{i}@example.com" for i in range(50)
+        ]
         assert "vault-reversed" in result.output
 
 
 class TestVaultUsageErrors:
     def test_vault_without_vaulted_columns_exits_usage(self, tmp_path: Path) -> None:
-        cfg = _pipeline(tmp_path, [{"name": "email", "strategy": "hash", "namespace": "n"}])
-        result = runner.invoke(app, ["run", str(cfg), "--vault", str(tmp_path / "v.bin")])
+        cfg = _pipeline(
+            tmp_path, [{"name": "email", "strategy": "hash", "namespace": "n"}]
+        )
+        result = runner.invoke(
+            app, ["run", str(cfg), "--vault", str(tmp_path / "v.bin")]
+        )
         assert result.exit_code == EXIT_USAGE
         assert "vault: true" in result.output
 
@@ -115,7 +123,9 @@ class TestVaultUsageErrors:
     ) -> None:
         cfg = _pipeline(tmp_path, _VAULTED)
         vault = tmp_path / "vault.bin"
-        assert runner.invoke(app, ["run", str(cfg), "--vault", str(vault)]).exit_code == 0
+        assert (
+            runner.invoke(app, ["run", str(cfg), "--vault", str(vault)]).exit_code == 0
+        )
         # Same config shape, a different mask secret: the vault must not decrypt.
         monkeypatch.setenv("DECOY_TEST_OTHER_SECRET", b"decoy-test-only-other-key-000032".hex())
         wrong = yaml.safe_load(cfg.read_text(encoding="utf-8"))
