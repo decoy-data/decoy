@@ -6,19 +6,23 @@
    receiver is a `to_pandas(...)` call, and a `to_csv` on a local name that the same function
    bound from a `to_pandas(...)` call, plain or annotated. The one remaining target `to_csv`
    call is `_write_table`'s DataFrame branch, pinned behind an `isinstance(data, pd.DataFrame)`
-   guard.
+   guard. It writes into the stream of an enclosing `open_csv_sink(...)` block and passes no
+   `compression=`, so the codec opener is the only place a CSV target picks its header and
+   member metadata (FREEZE-OUTPUT O2).
 2. A null rate comes from the engine's `snapshot_null_fraction`. The scan flags a division in a
    statement that reads `null_count` or `non_null_count`, so the CLI never keeps a second ratio
    (and its own zero-row rule).
 
 Named limits of a syntax walk: a conversion through an alias by assignment, a call through
-`getattr`, and a count held under a different name.
+`getattr`, a count held under a different name, and a `compression` passed through `**kwargs`.
 """
 
 from __future__ import annotations
 
 import ast
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
@@ -182,3 +186,91 @@ def test_seeded_direct_null_rate_division_is_detected() -> None:
     assert null_rate_division_lines(attr) == [2]
     assert null_rate_division_lines(clean) == []
     assert null_rate_division_lines(unrelated) == []
+
+
+def _to_csv_calls(tree: ast.AST) -> list[ast.Call]:
+    return [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr == "to_csv"
+    ]
+
+
+def sink_problems(source: str, function: str) -> list[str]:
+    """Why a `to_csv` call in `function` is not written into an `open_csv_sink` stream."""
+    tree = ast.parse(source)
+    func = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == function)
+    inside: dict[int, set[str]] = {}
+    for block in ast.walk(func):
+        if not isinstance(block, ast.With):
+            continue
+        names = {
+            item.optional_vars.id
+            for item in block.items
+            if isinstance(item.optional_vars, ast.Name)
+            and isinstance(item.context_expr, ast.Call)
+            and getattr(item.context_expr.func, "id", "") == "open_csv_sink"
+        }
+        for call in _to_csv_calls(ast.Module(body=block.body, type_ignores=[])):
+            inside.setdefault(id(call), set()).update(names)
+    problems = []
+    for call in _to_csv_calls(func):
+        first = call.args[0] if call.args else None
+        if not (isinstance(first, ast.Name) and first.id in inside.get(id(call), set())):
+            problems.append("not written into an open_csv_sink stream")
+        if any(k.arg == "compression" for k in call.keywords):
+            problems.append("passes compression=")
+    return problems
+
+
+def compression_keyword_lines(source: str) -> list[int]:
+    """Lines of any `to_csv(..., compression=...)` call, wherever it is."""
+    return [
+        c.lineno
+        for c in _to_csv_calls(ast.parse(source))
+        if any(k.arg == "compression" for k in c.keywords)
+    ]
+
+
+def test_the_dataframe_to_csv_call_writes_into_the_codec_sink() -> None:
+    text = (SRC / "cli" / "io" / "_targets.py").read_text(encoding="utf-8")
+    assert sink_problems(text, "_write_table") == []
+
+
+_SINK_OK = (
+    "def _write_table(data, path, tmp):\n"
+    "    with open_csv_sink(tmp, path, member_mode=1) as sink:\n"
+    "        data.to_csv(sink, index=False)\n"
+)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "def _write_table(data, path, tmp):\n"
+        "    with open_csv_sink(tmp, path, member_mode=1) as sink:\n"
+        "        data.to_csv(sink, compression='gzip')\n",
+        "def _write_table(data, path, tmp):\n"
+        "    with open_csv_sink(tmp, path, member_mode=1) as sink:\n        pass\n"
+        "    data.to_csv(sink)\n",
+        "def _write_table(data, path, tmp):\n"
+        "    with open_csv_sink(tmp, path, member_mode=1) as sink:\n"
+        "        data.to_csv(tmp, index=False)\n",
+        "def _write_table(data, path, tmp):\n    data.to_csv(tmp, compression='gzip')\n",
+    ],
+)
+def test_a_to_csv_outside_the_sink_or_with_compression_is_detected(body: str) -> None:
+    assert sink_problems(_SINK_OK, "_write_table") == []
+    assert sink_problems(body, "_write_table") != []
+
+
+def test_no_to_csv_passes_a_compression_keyword_anywhere_in_src() -> None:
+    hits = []
+    for path in sorted(SRC.rglob("*.py")):
+        hits += [
+            f"{path.relative_to(SRC)}:{n}"
+            for n in compression_keyword_lines(path.read_text(encoding="utf-8"))
+        ]
+    assert hits == []
+    assert compression_keyword_lines("def f(d):\n    d.to_csv(p, compression='gzip')\n") == [2]
+    assert compression_keyword_lines("def f(d):\n    d.to_csv(p, index=False)\n") == []

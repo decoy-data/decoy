@@ -755,3 +755,40 @@ class TestNoLeakOnErrorPaths:
                 result = runner.invoke(app, ["tokenize", *args, *extra])
                 assert result.exit_code != 0, result.output
                 self._assert_clean(result, [*sentinels, _RAW_SECRET])
+
+
+class TestDetokenizeCompressedTargets:
+    """FREEZE-OUTPUT O2: a compressed detokenize target is reproducible and has no staging name."""
+
+    def _detokenize(self, tmp_path: Path, out: Path) -> bytes:
+        cfg = tmp_path / "pipeline.yaml"
+        vault = tmp_path / "tokens.db"
+        if not vault.exists():
+            cfg = _pipeline(tmp_path, _TOKENIZE_COLS)
+            runner.invoke(app, ["tokenize", str(cfg), "--vault", str(vault)])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        args = ["detokenize", str(cfg), str(tmp_path / "tokenized.csv"), "--vault", str(vault)]
+        result = runner.invoke(app, [*args, "-o", str(out)])
+        assert result.exit_code == 0, result.output
+        return out.read_bytes()
+
+    def test_gz_target_is_reproducible_and_carries_no_name(self, tmp_path: Path) -> None:
+        first = self._detokenize(tmp_path, tmp_path / "one" / "out.csv.gz")
+        second = self._detokenize(tmp_path, tmp_path / "two" / "out.csv.gz")
+        assert first == second
+        assert first[:10] == bytes.fromhex("1f8b08000000000000ff")
+        assert b"decoy-" not in first
+
+    def test_a_long_tar_member_name_and_a_suffix_only_target_write(self, tmp_path: Path) -> None:
+        import tarfile
+        import zipfile
+
+        long_out = tmp_path / "x" / (("a" * 101) + ".csv.tar")
+        self._detokenize(tmp_path, long_out)
+        with tarfile.open(long_out) as tar:
+            assert tar.getnames() == [("a" * 101) + ".csv"]
+        bare = tmp_path / "y" / ".zip"
+        self._detokenize(tmp_path, bare)
+        with zipfile.ZipFile(bare) as archive:
+            assert archive.namelist() == ["data.csv"]
+            assert (archive.infolist()[0].external_attr >> 16) & 0o777 == 0o600
