@@ -18,11 +18,14 @@ for CLI-written files lives with their writer, in `cli/io/_targets.py`.
 from __future__ import annotations
 
 import itertools
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pyarrow as pa
+
+if TYPE_CHECKING:
+    from decoy_engine import DeclarationRequest, PreparedDeclaredSources
 
 
 def resolve_path(raw_path: str, base_dir: Path) -> Path:
@@ -113,6 +116,34 @@ def _read_refusal(exc: Exception) -> Any:
     return PipelineValidationError(f"{code}: {text}", code=code)
 
 
+def _prepare(
+    request_for: Callable[[dict[str, Any]], DeclarationRequest],
+    config_dict: dict[str, Any],
+    base_dir: Path,
+    *,
+    passthrough: tuple[type[BaseException], ...],
+) -> PreparedDeclaredSources:
+    """Build a request on the reader-side copy and prepare it; the one exception contract.
+
+    An exception in `passthrough` is a gate refusal and leaves as raised. Any other engine read
+    failure (missing, unreadable or malformed source) becomes a `PipelineValidationError` with a
+    registered code and a fixed, path-free text, raised after the handler closes so it carries no
+    exception context. `PipelineConfigError` is both a `DecoyError` and a `ValueError`, so a route
+    that expects it must list it in `passthrough` or it is relabeled as a read failure.
+    """
+    from decoy_engine import DecoyError, prepare_declared_sources
+
+    resolved = resolved_source_config(config_dict, base_dir)
+    refusal = None
+    try:
+        return prepare_declared_sources(request_for(resolved))
+    except passthrough:
+        raise
+    except (OSError, ValueError, DecoyError) as read_error:
+        refusal = _read_refusal(read_error)
+    raise refusal
+
+
 def prepared_sources(
     config_dict: dict[str, Any],
     *,
@@ -128,32 +159,75 @@ def prepared_sources(
     data row. The request holds the reader-side copy, so a relative `path` or
     `column_names_file` resolves against `base_dir` and not the working directory.
 
-    One exception contract: a gate refusal is the engine's `PipelineValidationError` as raised,
-    and an engine read failure (missing, unreadable or malformed source) becomes a
-    `PipelineValidationError` with a registered code and a fixed, path-free text.
+    One exception contract (shared with `scan_prepared_sources` through `_prepare`): a gate
+    refusal is the engine's `PipelineValidationError` as raised, and an engine read failure
+    (missing, unreadable or malformed source) becomes a `PipelineValidationError` with a
+    registered code and a fixed, path-free text.
     """
-    from decoy_engine import (
-        DeclarationRequest,
-        DecoyError,
-        PipelineValidationError,
-        prepare_declared_sources,
-    )
+    from decoy_engine import DeclarationRequest, PipelineValidationError
 
-    resolved = resolved_source_config(config_dict, base_dir)
-    refusal = None
-    try:
-        if schemas is None:
-            # A source with no `path` is not read (`source_is_materialized`), so it has no header.
-            read = {n: d for n, d in (resolved.get("sources") or {}).items() if _has_path(d)}
-            request = DeclarationRequest.for_descriptors({**resolved, "sources": read})
-        else:
-            request = DeclarationRequest.for_supplied(resolved, schemas)
-        return prepare_declared_sources(request)
-    except PipelineValidationError:
-        raise
-    except (OSError, ValueError, DecoyError) as read_error:
-        refusal = _read_refusal(read_error)
-    raise refusal
+    def request_for(resolved: dict[str, Any]) -> DeclarationRequest:
+        if schemas is not None:
+            return DeclarationRequest.for_supplied(resolved, schemas)
+        # A source with no `path` is not read (`source_is_materialized`), so it has no header.
+        read = {n: d for n, d in (resolved.get("sources") or {}).items() if _has_path(d)}
+        return DeclarationRequest.for_descriptors({**resolved, "sources": read})
+
+    return _prepare(request_for, config_dict, base_dir, passthrough=(PipelineValidationError,))
+
+
+def scan_gate_refusals() -> tuple[type[Exception], ...]:
+    """The engine refusals `scan_prepared_sources` lets through as raised: coded, value-free.
+
+    A function, not a module constant, so the engine is imported only when a scan runs.
+    """
+    from decoy_engine import ConfigError, PipelineValidationError
+    from decoy_engine.config import PipelineConfigError
+
+    return (PipelineValidationError, PipelineConfigError, ConfigError)
+
+
+def scan_refusal_fields(exc: Exception) -> tuple[str, str | None]:
+    """The printable message and the reason code of a scan gate refusal, as the engine raised it.
+
+    The code is the exception's own `code`, or its first config problem's code; a refusal the
+    engine leaves untagged (a descriptor that fails validation) has none, and prints without a
+    `[code]` prefix. The reason adapter is not asked: G-ONE-REASON keeps that call in `decoy run`'s
+    failure helper. The message drops a leading `code: ` (the printer shows the code itself) and,
+    like every engine refusal here, names a table or key, never a value.
+    """
+    from decoy.ui.output import is_reason_code
+
+    code = getattr(exc, "code", None)
+    if not isinstance(code, str):
+        problems = getattr(exc, "problems", ())
+        code = getattr(problems[0], "code", None) if problems else None
+    if not is_reason_code(code):
+        code = None
+    return refusal_message(exc), code
+
+
+def scan_prepared_sources(
+    sources_config: dict[str, Any],
+    *,
+    base_dir: Path,
+    tables: Sequence[str] | None = None,
+) -> PreparedDeclaredSources:
+    """The scan's gate: a sources mapping (or a full pipeline) to a scan capability, no row read.
+
+    `DeclarationRequest.for_scan` checks the shape, every descriptor, the table selection and the
+    declared relationships; a names file is read once and inlined. It opens no data file, so a
+    missing data file still fails during the scan. A refusal is one of `scan_gate_refusals()` as
+    raised; any other read failure takes the same fixed refusal as `prepared_sources`.
+    """
+    from decoy_engine import DeclarationRequest
+
+    return _prepare(
+        lambda resolved: DeclarationRequest.for_scan(resolved, tables),
+        sources_config,
+        base_dir,
+        passthrough=scan_gate_refusals(),
+    )
 
 
 # The CSV dialect keys of a file-source descriptor, the engine's `CsvDialect` fields plus

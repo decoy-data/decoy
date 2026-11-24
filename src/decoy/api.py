@@ -46,6 +46,7 @@ from decoy.cli.io import (
     prepared_sources,
     resolved_output_collisions,
     run_outputs,
+    scan_prepared_sources,
 )
 from decoy.cli.io._targets import claimed_format, format_for_path
 from decoy.cli.run import (
@@ -710,6 +711,9 @@ def scan(
     Raises:
         ValueError: A usage error, found before any file is read.
         TypeError: `data` is neither a path nor a DataFrame, or Arrow cannot convert it.
+        PipelineConfigError: The engine refused the source descriptor before any row was read
+            (a `ValueError`). A `PipelineValidationError` or a dialect `ConfigError` is raised
+            the same way.
     """
     is_frame = isinstance(data, pd.DataFrame)
     if not is_frame and not isinstance(data, (str, Path)):
@@ -740,7 +744,8 @@ def scan(
             )
             if source_label:
                 descriptors = {source_label: next(iter(descriptors.values()))}
-        core = scan_descriptors(descriptors, rows=rows, strategy=strategy).core
+        prepared = scan_prepared_sources({"sources": descriptors}, base_dir=Path.cwd())
+        core = scan_descriptors(prepared, rows=rows, strategy=strategy).core
     finally:
         for tmp_path in tmp_paths:
             tmp_path.unlink(missing_ok=True)

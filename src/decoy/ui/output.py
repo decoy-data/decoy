@@ -204,6 +204,13 @@ _FIXED_MEMBERS = frozenset({"command", "status", "error", "code", "hint"})
 # Same rule as `docs/schemas/decoy-error-v1.schema.json`. `fullmatch`, not `$`, so a trailing
 # newline cannot slip through.
 _CODE_RULE = re.compile(r"[a-z][a-z0-9_.]*")
+
+
+def is_reason_code(code: object) -> bool:
+    """Whether `code` is a spelling `emit_error` accepts. The one reason-code predicate."""
+    return isinstance(code, str) and _CODE_RULE.fullmatch(code) is not None
+
+
 _HINT_STYLE = hint
 
 
@@ -225,7 +232,7 @@ def emit_error(
     line. The caller builds `message` and `hint` without data values; this function only
     refuses a malformed call (a `ValueError` before anything is written).
     """
-    if code is not None and _CODE_RULE.fullmatch(code) is None:
+    if code is not None and not is_reason_code(code):
         raise ValueError("error code must match [a-z][a-z0-9_.]*")
     shadowed = _FIXED_MEMBERS.intersection(context or ())
     if shadowed:

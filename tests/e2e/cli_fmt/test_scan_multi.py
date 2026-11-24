@@ -329,3 +329,97 @@ def test_a_bad_layout_never_echoes_the_rejected_value(
     assert result.exit_code != 0
     assert "Could not parse layout file" in result.output
     assert "ZQCANARY" not in result.output
+
+
+# -- T2-positional-gate-exit (S1c.2a) ---------------------------------------------------------
+
+
+@pytest.fixture
+def descriptor_without_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`resolve_sources` drops `has_header`, so the engine refuses the descriptor at the gate."""
+    from decoy.cli.scanning import _multi
+
+    real = _multi.resolve_sources
+
+    def without_header(*args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        descriptors, shown = real(*args, **kwargs)  # type: ignore[arg-type]
+        for d in descriptors.values():
+            d.pop("has_header", None)
+        return descriptors, shown
+
+    monkeypatch.setattr(_multi, "resolve_sources", without_header)
+
+
+def _assert_engine_refusal(output: str) -> None:
+    # The engine's own coded refusal, not the fixed read refusal a relabel would give.
+    assert "source descriptor for table 'a' is invalid" in output
+    assert "could not be read" not in output
+    assert "csv_malformed" not in output
+    assert "scan failed" not in output
+    assert "ZQCANARY" not in output
+
+
+@pytest.mark.usefixtures("descriptor_without_header")
+def test_a_refused_positional_descriptor_exits_1_before_the_scan(
+    tmp_path: Path, spy_engine: list[object]
+) -> None:
+    """The engine refuses a CLI-built descriptor at the gate (exit 1), not during the scan (3)."""
+    a = _csv(tmp_path / "a.csv", "A")
+    result = runner.invoke(app, ["scan", str(a), "--has-header"])
+    assert result.exit_code == 1, result.output
+    _assert_engine_refusal(result.output)
+    assert spy_engine == []
+
+
+def _refuse_with_code(monkeypatch: pytest.MonkeyPatch) -> str:
+    from decoy_engine import PipelineValidationError, reasons
+
+    from decoy.cli.scanning import _multi
+
+    code = reasons.config.SOURCE_FILE_FILE_NOT_FOUND
+
+    def refuse(*_a: object, **_k: object) -> None:
+        raise PipelineValidationError(f"{code}: a declared source is refused", code=code)
+
+    monkeypatch.setattr(_multi, "scan_prepared_sources", refuse)
+    return code
+
+
+def test_a_gate_refusal_with_a_code_prints_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spy_engine: list[object]
+) -> None:
+    code = _refuse_with_code(monkeypatch)
+    a = _csv(tmp_path / "a.csv", "A")
+    result = runner.invoke(app, ["scan", str(a), "--has-header"])
+    assert result.exit_code == 1, result.output
+    assert f"[{code}] a declared source is refused" in result.output
+    assert spy_engine == []
+
+
+def test_a_gate_refusal_with_a_code_carries_it_in_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spy_engine: list[object]
+) -> None:
+    code = _refuse_with_code(monkeypatch)
+    a = _csv(tmp_path / "a.csv", "A")
+    result = runner.invoke(app, ["scan", str(a), "--has-header", "--json"])
+    assert result.exit_code == 1, result.output
+    doc = json.loads(result.output)
+    assert (doc["status"], doc["code"], doc["error"]) == (
+        "error",
+        code,
+        "a declared source is refused",
+    )
+    assert spy_engine == []
+
+
+@pytest.mark.usefixtures("descriptor_without_header")
+def test_an_untagged_gate_refusal_prints_its_text_without_a_code(
+    tmp_path: Path, spy_engine: list[object]
+) -> None:
+    """The engine tags no code on a descriptor that fails validation; none is invented."""
+    a = _csv(tmp_path / "a.csv", "A")
+    result = runner.invoke(app, ["scan", str(a), "--has-header", "--json"])
+    assert result.exit_code == 1, result.output
+    _assert_engine_refusal(result.output)
+    assert "code" not in json.loads(result.output)
+    assert spy_engine == []
