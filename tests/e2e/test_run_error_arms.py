@@ -230,12 +230,12 @@ def test_an_env_flag_error_in_run_exits_1(tmp_path: Path) -> None:
     cls = getattr(errors, "EnvFlagError", None)
     if cls is None:
         pytest.skip("the pinned engine has no EnvFlagError")
-    exc = cls.__new__(cls)
-    exc.code = "env_flag_bad"
-    exc.message = "bad flag"
-    result = _run(tmp_path, exc)
+    # The real constructor: a bare `__new__` leaves `variable` unset, `str(exc)` then raises
+    # inside the error arm, and the crash exits 1 whatever the exit owner says.
+    result = _run(tmp_path, cls("DECOY_SOME_FLAG"))
 
     assert result.exit_code == EXIT_USAGE
+    assert isinstance(result.exception, SystemExit), result.exception
 
 
 # AT-16 pipeline canary
