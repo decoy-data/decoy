@@ -150,15 +150,21 @@ def test_a_long_undelivered_detail_is_printed_whole_and_verbatim(tmp_path: Path)
 
 
 def test_a_long_dispatch_failure_is_printed_whole_and_verbatim(tmp_path: Path):
-    """The dispatch-failed warning carries the exception text."""
+    """The dispatch-failed warning names the exception type, printed whole.
+
+    Plan CL4 G5b: the outer dispatch catch passes only the type name, so the exception text
+    never reaches the warning. A long type name keeps the no-fold check.
+    """
     cfg = _write_mask_config(tmp_path)
     text = f"transport {_LONG} closed [eof]"
-    with mock.patch("decoy.notify.dispatch", side_effect=RuntimeError(text)):
+    long_type = type(f"Transport{_LONG}Error", (RuntimeError,), {})
+    with mock.patch("decoy.notify.dispatch", side_effect=long_type(text)):
         result = runner.invoke(
             app, ["run", str(cfg), "--notify", "webhook:https://hooks.example.com/x"]
         )
     assert result.exit_code == 0, result.output
-    assert f"notify dispatch failed: {text}" in result.stderr, result.stderr
+    assert f"notify dispatch failed: {long_type.__name__}" in result.stderr, result.stderr
+    assert text not in result.stderr, result.stderr
 
 
 # ---------------------------------------------------------------------------

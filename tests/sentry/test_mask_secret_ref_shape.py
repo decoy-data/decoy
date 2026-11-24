@@ -186,9 +186,10 @@ def _expected_json(surface: str, cfg: Path, vault: Path, remedy: str) -> str:
         "run": {
             "command": "run",
             "status": "error",
+            "error": remedy,
+            "hint": "rerun with --verbose for the full traceback.",
             "config": str(cfg),
             "mode": "mask",
-            "error": remedy,
         },
         "tokenize": {
             "command": "tokenize",

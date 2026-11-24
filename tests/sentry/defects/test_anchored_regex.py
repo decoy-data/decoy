@@ -132,7 +132,7 @@ _FIXED = [
     ("decoy.ci.staged", "_OID", "0123456789abcdef0123456789abcdef01234567"),
     ("decoy.ci.staged", "_OID", "0123456789abcdef" * 4),
     ("decoy.cli._duckdb_source", "_IDENT_RE", "orders_1"),
-    ("decoy.cli.io._scan_set", "_TAG_SHAPE", "v1.2-a"),
+    ("decoy.cli.io._scan_set", "_TAG_SHAPE", "scan-set/v2.1"),
 ]
 
 

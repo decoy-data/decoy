@@ -230,7 +230,10 @@ def test_failing_run_engine_error_with_pii_never_reaches_the_wire(tmp_path: Path
 
     with (
         mock.patch("decoy_engine.run_pipeline", side_effect=engine_error),
-        mock.patch("decoy._outbound._open", lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout)),
+        mock.patch(
+            "decoy._outbound._open",
+            lambda _opener, req, timeout: _fake_urlopen(req, timeout=timeout),
+        ),
     ):
         result = runner.invoke(
             app,
@@ -247,12 +250,13 @@ def test_failing_run_engine_error_with_pii_never_reaches_the_wire(tmp_path: Path
 
     # The run failed (engine raised), so exit code is non-zero.
     assert result.exit_code != 0, result.output
-    # Control: the raw error DID reach local stdout (the --json envelope's
-    # `error` field). This proves the error path actually fired.
-    assert _SENTINEL_PII in result.stdout, (
-        "test setup error: the engine error did not reach local output, so the "
-        "egress assertion below would be vacuously true"
+    # Control: the error path fired (the --json envelope names the exception type). Since CL4
+    # the raw text no longer reaches local output either; only the type name does.
+    assert "run failed (RuntimeError)." in result.stdout, (
+        "test setup error: the error path did not fire, so the egress assertion below "
+        "would be vacuously true"
     )
+    assert _SENTINEL_PII not in result.stdout
 
     # A real POST was made over the (mocked-transport) webhook.
     assert "body" in captured, "the failure-path notification must have been dispatched"

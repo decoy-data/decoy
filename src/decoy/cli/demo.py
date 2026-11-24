@@ -18,7 +18,7 @@ from decoy.cli._sources import (
     refusal_message,
     resolved_source_config,
 )
-from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import exit_code_for
 from decoy.cli.io import RunLayout, prepared_sources
 from decoy.cli.io._targets import check_target_formats, write_targets
 from decoy.ui.card import render_card
@@ -344,11 +344,8 @@ def _demo(
         # CLI QA fix (2026-06-02, F7): preserve inner typer.Exit codes.
         raise
     except Exception as exc:
-        # Audit H10 (2026-06-12): dispatch on exception type so scripts
-        # can tell "your config is wrong" (EXIT_USAGE, per the
-        # exit_codes.py contract) from "the run blew up" (EXIT_RUNTIME).
-        from decoy_engine import ConfigError, PipelineValidationError
-        from decoy_engine.plan import PlanCompileError
+        # The exit is the one owner map's, the same as `decoy run` gives the exception.
+        from decoy_engine import PipelineValidationError
 
         if isinstance(exc, PipelineValidationError):
             # A declared-source refusal: the one emitter, code once (r12.3).
@@ -361,12 +358,8 @@ def _demo(
             )
             if state.verbose:
                 print_traceback(state)
-            raise typer.Exit(code=EXIT_USAGE)
-        _exit_code = (
-            EXIT_USAGE
-            if isinstance(exc, (PlanCompileError, PipelineValidationError, ConfigError))
-            else EXIT_RUNTIME
-        )
+            raise typer.Exit(code=exit_code_for(exc))
+        _exit_code = exit_code_for(exc)
         # CLI QA fix (2026-06-02, F8): truncate the error message at
         # 500 chars before emitting through --json.
         error_text = str(exc)

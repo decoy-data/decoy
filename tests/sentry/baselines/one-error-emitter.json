@@ -110,39 +110,6 @@
   "cli/report.py::_verify::88ac16526f10": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/run/_errors.py::fail::64bc6273e082": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::6b4bb5d082e3": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::b093958fbe09": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::b093958fbe09#1": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::c06db90fca96": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_diff::33ac29cba33e": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_diff::b5594f5a743a": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_emit_load_error::106ce9ad9e0c": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_emit_load_error::96d4423a210b": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_show::34b94a01435c": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_show::d38c54124ff5": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
   "cli/subset.py::_emit_budget_failure::1d382960c047": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
