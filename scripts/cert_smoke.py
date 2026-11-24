@@ -5,7 +5,7 @@ Not a pytest test -- run it directly with the certified venv's interpreter:
 
     .venv-certified/bin/python scripts/cert_smoke.py
 
-This is the proof that the pristine runtime install (engine 0.28.3 + decoy-cli
+This is the proof that the pristine runtime install (engine 0.28.4 + decoy-cli
 + the pinned closure in requirements-certified.txt, no dev tooling) actually
 reproduces certified row (platform, cpython 3.10.20, fingerprint
 228ed71e...). A real `fit_dp_snapshot` call only completes on a certified

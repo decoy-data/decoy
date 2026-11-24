@@ -147,10 +147,13 @@ dependencies = [
     #
     # 0.28.3 keeps the 70 pins; only the hashed engine version moves (fingerprint 228ed71e).
     #
+    # 0.28.4 drops the engine's jsonpath-ng dependency, so the CLI runtime profile loses
+    # jsonpath-ng==1.8.0 (69 pins, fingerprint a4aad6c7).
+    #
     # Hard-pinned to one engine release. The platform is parked and stays on
     # 0.18.0, so the two pins differ for now. The engine is not on PyPI, so CI
-    # and the smoke docs install the `v0.28.3` git tag.
-    "decoy-engine==0.28.3",
+    # and the smoke docs install the `v0.28.4` git tag.
+    "decoy-engine==0.28.4",
     # Pin the typer minor: `typer utils docs` metavar rendering differs across
     # typer minors (0.26.x emits `TEXT`/`FILE`; 0.27.x emits `<str>`/`<file>`),
     # and docs/cli-reference.md is committed and checked by the test_cli_surface

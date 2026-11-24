@@ -242,7 +242,7 @@ class TestVaultInfoInstallLine:
         self, vault_setup, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # A vault_crypto_not_installed message that ends in `pip install 'decoy-engine[vault]'`;
-        # printed through Rich markup, `[vault]` is parsed as a tag and disappears. Engine 0.28.3
+        # printed through Rich markup, `[vault]` is parsed as a tag and disappears. Engine 0.28.4
         # no longer words its own message that way (the vault uses PyNaCl, a base dependency), so
         # the engine call is patched to raise the old text and the CLI's escaping is checked.
         from decoy_engine import VaultError

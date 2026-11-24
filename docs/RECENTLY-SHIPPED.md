@@ -74,6 +74,10 @@ Other merges:
 - **CLI #368 (`0da58741`):** roadmap rows PRE-SCAN-RUN and HANDLER-ROW-COUNT.
 - **Engine #684 (row 82, F07 E3b) not merged:** held as a draft until 1.1, because row 82 is a Later row.
 
+## 2026-11-24: engine 0.28.4 repin (CLI)
+
+- **CLI**: the engine repin to 0.28.4 (tag `v0.28.4`, `19aabbfa9`). `requirements-certified.txt` drops `jsonpath-ng` (69 pins); fingerprint is now `a4aad6c7...`, a certified row in the engine.
+
 ## 2026-11-22: engine 0.28.3 repin (CLI)
 
 - **CLI**: the engine repin to 0.28.3 (tag `v0.28.3`, `263e020b9`). `requirements-certified.txt` keeps its 70 pins; fingerprint is now `228ed71e...`, a certified row in the engine.

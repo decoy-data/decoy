@@ -7,7 +7,8 @@ from typing import Any
 
 import pandas as pd
 import pytest
-from decoy_engine import VALIDATION_CODES, PipelineValidationError
+from decoy_engine import PipelineValidationError
+from decoy_engine.reasons import config as config_reasons
 
 from decoy.cli._sources import iter_source_chunks, read_source
 
@@ -44,7 +45,7 @@ def _refused(tmp_path: Path, case: str, fn: str) -> PipelineValidationError:
 @pytest.mark.parametrize("case", sorted(_MISFITS))
 def test_cli_read_errors_are_coded_and_value_free(tmp_path: Path, case: str, fn: str) -> None:
     err = _refused(tmp_path, case, fn)
-    code = getattr(VALIDATION_CODES, _MISFITS[case][1])
+    code = getattr(config_reasons, _MISFITS[case][1])
     assert err.code == code
     assert str(err).startswith(f"{code}: source events ")
     for text in (str(err), repr(err)):

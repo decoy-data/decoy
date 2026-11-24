@@ -266,7 +266,7 @@ def test_sdist_excludes_every_history_root() -> None:
 # rule-code allowlist holds none either. Needs an engine release that carries the tombstone delete.
 ENGINE_DIST = "decoy-engine"
 MANIFEST_FIELDS = ("code", "summary", "owner", "symbol")
-# Entry count of the reason manifest in engine 0.28.3; a smaller count means the check read less.
+# Entry count of the reason manifest in engine 0.28.4; a smaller count means the check read less.
 MANIFEST_FLOOR = 1400
 
 

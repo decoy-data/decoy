@@ -393,7 +393,7 @@ class TestUnmaskVaultError:
     ) -> None:
         # A vault_crypto_not_installed message that ends in `pip install 'decoy-engine[vault]'`.
         # The error print must not hand that to Rich's markup parser, which drops `[vault]` as a
-        # tag. Engine 0.28.3 no longer words its own message that way (the vault uses PyNaCl, a
+        # tag. Engine 0.28.4 no longer words its own message that way (the vault uses PyNaCl, a
         # base dependency), so the engine call is patched to raise the old text.
         from decoy_engine import VaultError
 
