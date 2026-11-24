@@ -94,6 +94,58 @@ def _run_categories() -> dict[str, Any]:
     return cases
 
 
+# AT-1: the exit and category the old `decoy run` classifier gave each case on main before CL4,
+# typed out as literals (recorded at base `00ed97b2`). Nothing here is computed from `exit_code_for`.
+_BASE_TABLE: dict[str, tuple[str, int]] = {
+    "engine capacity code": ("capacity", 5),
+    "execution capacity code": ("capacity", 5),
+    "memory error": ("capacity", 5),
+    "native gate": ("usage", 1),
+    "os error": ("runtime", 3),
+    "other generation error": ("runtime", 3),
+    "pre-run capacity": ("capacity", 5),
+    "pre-run usage": ("usage", 1),
+    "runtime error": ("runtime", 3),
+    "uniqueness impossible": ("usage", 1),
+    "value error": ("runtime", 3),
+    "usage type ConfigError": ("usage", 1),
+    "usage type DuckDBSourceError": ("usage", 1),
+    "usage type LayoutError": ("usage", 1),
+    "usage type MaskSecretError": ("usage", 1),
+    "usage type MissingExtraError": ("usage", 1),
+    "usage type ModelUnavailableError": ("usage", 1),
+    "usage type NativeGateError": ("usage", 1),
+    "usage type NerUnavailableError": ("usage", 1),
+    "usage type OutDirUsageError": ("usage", 1),
+    "usage type PipelineValidationError": ("usage", 1),
+    "usage type PlanCompileError": ("usage", 1),
+    "usage type PostScanRouteError": ("usage", 1),
+    "usage type ResourceError": ("usage", 1),
+    "usage type TargetFormatError": ("usage", 1),
+    "usage type UnsupportedCloudEndpointError": ("usage", 1),
+    "usage type UsageRefusal": ("usage", 1),
+    "usage type _ChunkedFixedWidthError": ("usage", 1),
+    "usage type _ChunkedGenerateError": ("usage", 1),
+    "usage type _ChunkedIntegrityError": ("usage", 1),
+    "usage type _ChunkedQuarantineError": ("usage", 1),
+    "usage type _ChunkedReportFlagError": ("usage", 1),
+    "usage type _ChunkedVaultError": ("usage", 1),
+    "usage type _MaskSecretUsageError": ("usage", 1),
+    "usage type _OtelSettingsUsageError": ("usage", 1),
+    "usage type _VaultUsageError": ("usage", 1),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_BASE_TABLE))
+def test_exit_code_for_equals_the_recorded_base_table(name: str) -> None:
+    assert name in _run_categories()
+    assert exit_code_for(_run_categories()[name]) == _BASE_TABLE[name][1]
+
+
+def test_the_base_table_covers_every_case() -> None:
+    assert sorted(_BASE_TABLE) == sorted(_run_categories())
+
+
 @pytest.mark.parametrize("name", sorted(_run_categories()))
 def test_every_run_category_matches_the_classifier(name: str) -> None:
     exc = _run_categories()[name]
