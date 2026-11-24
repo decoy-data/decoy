@@ -10,6 +10,8 @@ Read at CLI `origin/main` `00ed97b2` and engine `origin/main` `3426165fb`. The C
 
 Risk: R1. A refusal that already exists moves earlier, and two doc examples change. No new reason code and no `--json` shape change. One exit-code change for `decoy run` on these configs (3 to 1, G2).
 
+Revision 3 (2026-11-24): Codex round 2 fixes: F6 keeps a block-less input dict unchanged (hash parity, AT-E6b), the drop helper is public in `decoy_engine.subset`, and test tags plus layer assertions for AT-E6, AT-E7, AT-C6, AT-C7 and AT-C8.
+
 Revision 2 (2026-11-24): addresses the Codex plan review of `60845ea8` (GO-WITH-FIXES): the `decoy run` contract (G2), the SDK override path (F6, AT-E6), the agent-card FK line (C1), one shared finding conversion (C1), the `decoy subset` and `--sample` follow-ups (non-goals), real sources for AT-C2 and AT-C6, the specific code in AT-C4, and no partial repin. Plan review: one round. Code gate: Codex. Tests: T0 and T1 per slice, then the T2 set. No full-suite trigger (no frozen contract, schema or test-config change).
 
 ## 1. Problem
@@ -51,7 +53,7 @@ Non-goals:
 - F3. An edge touching a generated table is dropped by `mask_relationships` (`subset/_edges.py:177-200`) before the check. An `edge_directions` entry naming such an edge is `subset_unknown_edge` at run today; it stays so, now at validate too. The message already lists the valid ids.
 - F4. Double report: the compile layer and the capacity step also call `split_subset_config` (`_layers.py:314`, `_layers.py:391-396`). The config layer fails first and returns `None`, so the compile layer does not run (`_run_config_base` contract, lines 186-187). The capacity step already swallows `SubsetError` (line 395). One finding, not two.
 - F5. `cardinality_mode: unique` makes the compile layer skip (`_layers.py:291-306`). That is why the CLI check goes in the config layer, not the compile layer.
-- F6. SDK override: `resolve_subset` accepts a caller-built `SubsetRequest` that replaces the config block (`execution/pipeline/_subset_stage.py:266-271`). It calls `split_subset_config(config)` first, so a check inside the split would refuse directions in the block the override discards. E1 keeps that path working: on an override, `resolve_subset` does not split the block; it drops it with the same helper the split uses and records that the config had one. The override request is still checked by `_compute` (`_api.py:118`).
+- F6. SDK override: `resolve_subset` accepts a caller-built `SubsetRequest` that replaces the config block (`execution/pipeline/_subset_stage.py:266-271`). It calls `split_subset_config(config)` first, so a check inside the split would refuse directions in the block the override discards. E1 keeps that path working: on an override, `resolve_subset` does not split the block; it drops it with the same public helper the split uses and records that the config had one. When `config.get("subset") is None` the helper returns the input dict unchanged (no `subset: None` key added), because the pinned engine hashes a missing key and `subset: None` differently, and today's split returns the input unchanged in that case (`subset/_split.py:26-28`). The override request is still checked by `_compute` (`_api.py:118`).
 
 ## 4. Acceptance tests
 
@@ -62,8 +64,9 @@ Engine (slice E1):
 - AT-E3. `run_pipeline` on a dangling config whose source file does not exist raises `subset_dangling_not_acknowledged`, not a preflight error. This proves G2 "before any read".
 - AT-E4. The plan-validation consolidator (`plan/validate/_consolidator.py:96-104`) returns `ok=False` with the dangling code and `path="subset"`.
 - AT-E5. The dangling message contains `allow dangling` and `allow_dangling: true`.
-- AT-E6. `run_pipeline` with `subset_request=<valid SubsetRequest>` on a config whose block has a `downward` edge and no `allow_dangling` runs and applies the override. Separate test from AT-E7.
-- AT-E7. `run_pipeline` with `subset_request="skip"` on the same config raises `subset_dangling_not_acknowledged` (Q1 option A, the open default).
+- AT-E6. `run_pipeline` with `subset_request=<valid SubsetRequest>` on a config whose block has a `downward` edge and no `allow_dangling` runs and applies the override. Separate test from AT-E7. Tag: green before E1 (a pin); red under the mutation that routes the override through the split.
+- AT-E6b. Hash parity for the override: `resolve_subset` with a `SubsetRequest` on an input dict with no `subset` key returns a run config equal to the input dict (no `subset` key added) and with the same config hash as `run_pipeline` without a subset. A second case with a `subset` block gives the same hash as the `"config"` path's run config. Tag: green before E1 (a pin).
+- AT-E7. `run_pipeline` with `subset_request="skip"` on the same config raises `subset_dangling_not_acknowledged` (Q1 option A, the open default). Tag: red before E1.
 - Guard: AT-E1 and AT-E3. Mutation: delete the `resolve_edge_directions` call in `split_subset_config`. Both go red. A second mutation, routing the override through `split_subset_config`, turns AT-E6 red.
 
 CLI (slice C1, after the engine release and repin):
@@ -73,9 +76,9 @@ CLI (slice C1, after the engine release and repin):
 - AT-C3. A YAML config with an unknown edge id fails validate with `subset_unknown_edge`.
 - AT-C4. A config with a dangling edge and a `cardinality_mode: unique` column still fails validate, and the test asserts the finding code is `subset_dangling_not_acknowledged` (F5). Asserting only a non-zero exit would not prove the mutation below.
 - AT-C5. `decoy validate --json` and `decoy ci check` carry exactly one finding with that code (F4).
-- AT-C6. The full programs in `agent-card.md` and `05-checks-and-subsets.md` go through the real gate (`run_gate`) with CSV source fixtures that carry the columns each program names, and pass with no error finding. `tests/unit/lang/test_docs.py` only compiles the guide programs today; it extracts them, so the new test reuses its extraction and adds the fixtures.
-- AT-C7. `decoy run` (the real command, CliRunner) on a dangling config exits 1; with `--json`, `messages[].code` holds `subset_dangling_not_acknowledged`. The source files do not exist, so a source read would give a `source_file.*` code instead.
-- AT-C8. `decoy run --no-subset` on the same config exits 1 with the same code (Q1 option A, the open default).
+- AT-C6. The full programs in `agent-card.md` and `05-checks-and-subsets.md` go through the real gate (`run_gate`) with CSV source fixtures that carry the columns each program names, and pass with no error finding. `tests/unit/lang/test_docs.py` only compiles the guide programs today; it extracts them, so the new test reuses its extraction and adds the fixtures. Tag: green today on the current docs and engine; red after E1 lands if the docs are not fixed.
+- AT-C7. `decoy run` (the real command, CliRunner) on a dangling config exits 1; with `--json`, `messages[].code` holds `subset_dangling_not_acknowledged`. The source files do not exist, so a source read would give a `source_file.*` code instead. The test also asserts the message's `layer == "config"` and that no `preflight` or `compile` layer message is present (`messages[].layer`, `gate/_run.py:132-134`), so a pass through the compile layer after the repin cannot satisfy it.
+- AT-C8. `decoy run --no-subset` on the same config exits 1 with the same code (Q1 option A, the open default). Same `layer == "config"` and no-preflight assertions as AT-C7.
 - Mutation: remove the new `split_subset_config` call from `_run_config_base`. AT-C4 goes red (AT-C1 alone could still pass through the compile layer).
 
 ## 5. Slices
@@ -85,12 +88,12 @@ CLI (slice C1, after the engine release and repin):
 Files: `src/decoy_engine/subset/_split.py`, `src/decoy_engine/subset/_policy.py` (message text only), `src/decoy_engine/execution/pipeline/_subset_stage.py` (override path, F6), engine tests under `tests/unit/subset/` and the subset-stage tests, `CHANGELOG.md`.
 
 - In `split_subset_config`, when `request` is not None, call `resolve_edge_directions(build_subset_edges(request.relationships), request.policy)` before returning, and discard the result. `_compute` keeps its own call, because `select_subset` callers can pass a hand-built request.
-- Override path (F6): in `resolve_subset`, when `subset_request` is a `SubsetRequest`, do not call `split_subset_config`. Take the run config from a private helper in `_split.py` that returns the config with `subset` set to `None` (the split itself uses the same helper, so the run config and its hash stay identical), and set the third `SubsetStageScope` field from `config.get("subset") is not None`. `"config"` and `"skip"` still go through the split (Q1 option A).
+- Override path (F6): in `resolve_subset`, when `subset_request` is a `SubsetRequest`, do not call `split_subset_config`. Take the run config from one helper defined in `subset/_split.py` and exported from `decoy_engine.subset` (added to `__init__.py` and `__all__`, beside `split_subset_config`), so `execution.pipeline` imports only the public subset API it already uses. The helper returns the input dict unchanged when `config.get("subset") is None`, and otherwise `{**config, "subset": None}`. The split uses the same helper, so the run config and its hash are identical on every path. Set the third `SubsetStageScope` field from `config.get("subset") is not None`. `"config"` and `"skip"` still go through the split (Q1 option A).
 - Change the dangling message to name the config spelling first, for example: "... add `allow dangling` to the subset block (YAML: `allow_dangling: true`; Python: `FanOutPolicy(allow_dangling=True)`) to accept orphaned child rows, or set the edge to `both` or `upward`." Keep it value-free (edge ids only, as today).
 - Update any test that pins the old message text or the old preflight-before-edge order (F1), and list them in the build report.
 - Ships in the next engine release after merge (0.28.4, or whatever is next at merge time), through the engine repin checklist.
 
-Size: about 20 source lines in three files, no new public names.
+Size: about 25 source lines in four files (`_split.py`, `_policy.py`, `_subset_stage.py`, `subset/__init__.py`). One new public name in `decoy_engine.subset` (the drop-block helper; the builder picks a name such as `drop_subset_block` and adds it to the engine CHANGELOG).
 
 ### C1 (CLI, R1): validate's config layer runs the split; docs fixed
 
@@ -199,6 +202,7 @@ Reason codes and the reason manifest are unchanged. The validate `--json` findin
 - The CLI finding lands without a location, so `.decoy` users get no line: AT-C1 asserts the location.
 - The builder adds the CLI call before the engine release is pinned and the gate imports an engine without the check: C1 waits for the full repin; AT-C4 fails on the old engine anyway.
 - The override fix is skipped and an SDK caller's valid override is refused because of the discarded block: AT-E6.
+- The drop helper always adds `subset: None` and an override run on a config with no block changes its hash: AT-E6b.
 - The guide test only compiles, so an example that compiles but fails the gate slips through: AT-C6 runs the real gate with fixtures.
 
 ## 7. Established solutions
@@ -215,5 +219,5 @@ Not needed for R1. The check, its codes and its edge-id format already exist; th
 ## 9. Done when
 
 - E1 is merged and released, and the CLI is fully repinned to that release (pin, lock, CI and smoke engine tags).
-- C1 is merged with AT-C1 to AT-C8 green and its mutation red; E1's AT-E1 to AT-E7 green and both E1 mutations red.
+- C1 is merged with AT-C1 to AT-C8 green and its mutation red; E1's AT-E1 to AT-E7 and AT-E6b green and both E1 mutations red.
 - Roadmap row VALIDATE-SUBSET-EDGES is closed in `docs/roadmap/groups/config.md`, and the guide fix is in the CHANGELOG.
