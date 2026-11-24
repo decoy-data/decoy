@@ -210,6 +210,8 @@ S5 evidence (R3), in `docs/records/<date>-perf-guide-release.md`:
 | 6 | untrusted | N/A: the harness runs only the `decoy` the operator names, on synthetic data, on hosts we own. Records are written by our own tool | none | none |
 | 7 | toctou | Low: the fixture could change between manifest check and run. Fixtures are written once by the harness on our own disk | manifest checked before each scenario | AT-1 |
 | 8 | weak | Yes: a publisher or site check that accepts a bad file would publish a false claim | seeded mutations on the reps check and the `record` check | AT-10, AT-13 |
+| 9 | refactor drift | N/A: no product code moves | none | none |
+| 10 | frozen contract | Low: the site data file is a new schema (version 1) read only by our own site; the CLI run result document is read, not changed | `schema_version` checked by the site check | AT-12 |
 
 ## 8. Design notes
 
@@ -242,6 +244,36 @@ New CODEMAP row (S1): "Benchmark tooling (not shipped)": `scripts/bench/`, one m
 
 Every module stays under 600 lines. New public names: none in the product. The scripts expose only their command lines.
 
+## 9a. Enumerations
+
+### Exit paths of one measured run
+
+- Clean exit 0, guard passes: the run counts toward the cell.
+- Clean exit 0, guard fails: run failed, guard name recorded, no number.
+- Non-zero exit or signal (cap OOM kill): run failed, exit status or signal recorded; the cell becomes did-not-complete if every measured run on that class fails this way.
+- Timeout (2 h): process group killed, did-not-complete recorded.
+- Harness interrupted (Ctrl-C): process group killed, no record written for the session (the writer runs only at the end).
+
+### Routes
+
+The harness forces none. Whatever `Route` the result document reports (native, chunked, pandas, out-of-core) is recorded per run.
+
+### FK shapes
+
+One: `orders.customer_id -> customers.customer_id`, single column, downward follow, in SUBSET-MASK.
+
+### Output surfaces
+
+Record files (`host.json`, `results.json`, `fixture.json`, `commands.txt`, `record.md`), the site `performance.json`, the rendered page section, and the harness's terminal output. None carries a source value (class 1).
+
+## 9b. Reuse inventory
+
+`decoy run --result` and `decoy validate` (unchanged), `packaging_tools/candidate.py` `read_candidate`, the engine's cgroup probe (through `auto`), psutil and PyArrow from `requirements-dev.lock`, the pattern of `tests/e2e/run_stream/_perf_driver.py` and `scripts/release/record_smoke.py`, the site's `scripts/run-fixtures.mjs` and `check:site`. New: `scripts/bench/` modules and `scripts/check-performance.mjs`.
+
+## 9c. Frozen contracts
+
+None changed. The run result document is read only. The new site data file is versioned (`schema_version: 1`) and has one reader, the site.
+
 ## 10. Slices
 
 | Slice | Content | Repo | Risk | Size | Depends on |
@@ -261,3 +293,12 @@ Recovery for S5: the page change is one data file and one template section. If a
 - Before the GCP run in S5: a Slack ping with VM type, disk, expected hours and a cost estimate, and owner approval (cloud spend; one VM at a time).
 - Before the page goes live: the owner reviews the S5 numbers and the page (consequential public claim).
 - Open choice, default applies if no answer: class sizes. Default: Small 4 cores and 16 GB, Medium 8 and 32 GB, Large 16 and 64 GB, Laptop the Mac M4 with 16 GB.
+
+## 12. Risks and pre-mortem
+
+- The numbers look worse than competitors' claims. That is a finding for engine work, not a reason to tune the benchmark. The workload is fixed in this plan before any number exists.
+- A builder lets the harness pass `--threads` or settings to make runs faster. AT-7 (environment) and the fixed command in `commands.txt` show it.
+- A builder drops the guard to save time at 100M. AT-8 and the publisher's failed-guard refusal (AT-10) stop the cell from publishing.
+- Someone edits `performance.json` by hand to fill a gap. The site check refuses a file without `generated_by` or a cell without `record` (AT-13).
+- The cap tool is not available on the Dell (WSL) or the devbox (LXC has no user systemd bus). Then Small and Medium run on a GCP VM of that exact size, one at a time, which is a cost item for the S5 owner ping.
+- Page cache makes warm numbers look better than a first run. The page says the cache was warm.
