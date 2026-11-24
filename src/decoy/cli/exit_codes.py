@@ -81,7 +81,7 @@ EXIT_USAGE (the user gave bad input) and EXIT_RUNTIME (the CLI crashed)."""
 
 EXIT_CAPACITY: int = 5
 """The job needs more memory than this host (or the budget it was given) has.
-Raised by `decoy run` when the engine refuses a job for memory, and by
+Raised by `decoy run` and `decoy demo` when the engine refuses a job for memory, and by
 `decoy validate preflight` when its capacity check predicts the same refusal before
 the run starts. The fix is a bigger host/cgroup ceiling or a smaller job -- not a
 config mistake (EXIT_USAGE) and not an engine defect (EXIT_RUNTIME).
@@ -161,8 +161,19 @@ def run_exit_code(category: str | None = None, *, blocking_failed: bool = False)
 
 
 def run_category_for(exc: BaseException) -> str | None:
-    """STUB (red-first): replaced by the real inverse of `RUN_EXIT_MAP` in the CL4 change."""
-    return None
+    """The `decoy run` failure category of `exc`, read back from `exit_code_for`.
+
+    The inverse of the `("failed", category)` rows of `RUN_EXIT_MAP`, so the category fact keeps
+    one home. A blocking finding (exit 4) has no category: the caller sets `blocking_failed`. An
+    exit with no row raises, so a new exit code cannot pass through the run error arm silently.
+    """
+    code = exit_code_for(exc)
+    if code == EXIT_FINDINGS:
+        return None
+    for (status, category), mapped in RUN_EXIT_MAP.items():
+        if status == "failed" and mapped == code:
+            return category
+    raise RuntimeError("exit_code_for returned an exit with no RUN_EXIT_MAP failure row")
 
 
 def _vault_input_codes() -> frozenset[str]:
@@ -198,9 +209,8 @@ def exit_code_for(exc: BaseException) -> int:
     The engine and CLI exception types are imported here, not at module level: the CI modules
     and `ui.output` import this file and must not load the engine.
 
-    Until CL4 (DUP-FREEZE) the run classifier in `cli/run/_errors.py`, `demo`'s map and `fit`'s
-    arms still decide for themselves; `tests/unit/test_exit_code_for.py` holds this function
-    equal to each of them.
+    `decoy run`, `decoy demo` and `decoy fit` all take their exit from here;
+    `tests/unit/test_exit_code_for.py` holds it to a table recorded before they did.
     """
     if isinstance(exc, KeyboardInterrupt):
         return _EXIT_INTERRUPTED
@@ -292,6 +302,7 @@ def usage_error_types() -> tuple[type, ...]:
 
     from decoy import _native_gate, _resources
     from decoy.cli.extras import MissingExtraError, UnsupportedCloudEndpointError
+    from decoy.cli.gen._fit import FitSourceError
     from decoy.cli.io import DuckDBSourceError, LayoutError, TargetFormatError
     from decoy.cli.run._context import UsageRefusal
     from decoy.cli.run._errors import OutDirUsageError
@@ -341,6 +352,8 @@ def usage_error_types() -> tuple[type, ...]:
         OutDirUsageError,
         MissingExtraError,
         UnsupportedCloudEndpointError,
+        # `fit` reports the caller's file, columns or flags with it.
+        FitSourceError,
         *ner,
         _native_gate.NativeGateError,
         *mask_secret,

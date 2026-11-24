@@ -1,10 +1,10 @@
-"""`exit_code_for`: the one exception-to-exit map, and its parity with the three older copies.
+"""`exit_code_for`: the one exception-to-exit map, held to the table recorded before CL4.
 
-AT-CL3-7. Until CL4 the `decoy run` classifier (`cli/run/_errors.py`), `decoy demo`'s three-type
-map and `decoy fit`'s differential-privacy arms still decide for themselves. This file runs the
-same exception through each and through `exit_code_for`, so the owner cannot drift from them
-before they are deleted. The categories come from the run classifier's own type list, so a type
-added there without a matching rule here fails the parity test.
+AT-CL3-7 and AT-1 of CL4. `decoy run`, `decoy demo` and `decoy fit` take their exit from
+`exit_code_for`. The base table below was typed out from the old `decoy run` classifier on main
+before CL4, so the owner is compared with a record and not with itself. The rows 7.2 of the plan
+changes on purpose are tested after it, each with a comment naming the line. The final tests run
+the real `fail()` for each case and check that it agrees with the owner.
 """
 
 from __future__ import annotations
@@ -142,8 +142,14 @@ def test_exit_code_for_equals_the_recorded_base_table(name: str) -> None:
     assert exit_code_for(_run_categories()[name]) == _BASE_TABLE[name][1]
 
 
+# FitSourceError joined `usage_error_types()` in CL4 (plan 5.1); the old run classifier did not
+# know it (it gave 3), so it has no row in the base table. `test_fit_source_error_is_a_usage_type`
+# pins it.
+_NOT_IN_BASE = {"usage type FitSourceError"}
+
+
 def test_the_base_table_covers_every_case() -> None:
-    assert sorted(_BASE_TABLE) == sorted(_run_categories())
+    assert sorted(_BASE_TABLE) == sorted(set(_run_categories()) - _NOT_IN_BASE)
 
 
 @pytest.mark.parametrize("name", sorted(_run_categories()))

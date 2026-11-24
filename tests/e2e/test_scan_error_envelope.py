@@ -18,12 +18,11 @@ runner = CliRunner()
 
 @pytest.fixture
 def scans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    (tmp_path / "raw.csv").write_text("a,b\n1,2\n", encoding="utf-8")
+    (tmp_path / "raw.csv").write_text("email,age\na@x.com,4\nb@x.com,5\n", encoding="utf-8")
     (tmp_path / "bad.json").write_text("{nope", encoding="utf-8")
-    (tmp_path / "scan.json").write_text(
-        json.dumps({"fields": [{"name": "email", "pii_score": 1}]}), encoding="utf-8"
-    )
     monkeypatch.chdir(tmp_path)
+    made = runner.invoke(app, ["scan", "raw.csv", "--has-header", "--output", "scan.json"])
+    assert made.exit_code == 0, made.output
     return tmp_path
 
 

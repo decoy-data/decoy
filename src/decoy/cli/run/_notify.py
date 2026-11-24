@@ -2,10 +2,13 @@
 
 import os
 
+from decoy._env_flags import env_int
 from decoy.cli.extras import MissingExtraError, translate_missing_extra
 from decoy.cli.run._context import RunContext, UsageRefusal
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
+
+_DEFAULT_SMTP_PORT = 587
 
 
 class _OtelSettingsUsageError(Exception):
@@ -111,6 +114,15 @@ def parse_channels(ctx: RunContext) -> None:
             raise refusal
 
 
+def _smtp_port() -> tuple[int, str | None]:
+    """The SMTP port from `DECOY_NOTIFY_SMTP_PORT` and, when it is not a whole number, the
+    value-free message for the email channel. A bad port never stops the other channels."""
+    try:
+        return env_int("DECOY_NOTIFY_SMTP_PORT", _DEFAULT_SMTP_PORT), None
+    except ValueError as exc:
+        return _DEFAULT_SMTP_PORT, str(exc)
+
+
 def _dispatch_run_notifications(
     channels: list,
     *,
@@ -151,9 +163,11 @@ def _dispatch_run_notifications(
             error_summary=error_summary,
         )
         webhook_secret = os.environ.get("DECOY_NOTIFY_WEBHOOK_SECRET")
+        smtp_port, smtp_problem = _smtp_port()
         smtp = SmtpConfig(
             host=os.environ.get("DECOY_NOTIFY_SMTP_HOST", ""),
-            port=int(os.environ.get("DECOY_NOTIFY_SMTP_PORT") or 587),
+            port=smtp_port,
+            problem=smtp_problem,
             user=os.environ.get("DECOY_NOTIFY_SMTP_USER") or None,
             password=os.environ.get("DECOY_NOTIFY_SMTP_PASS") or None,
             from_addr=os.environ.get("DECOY_NOTIFY_SMTP_FROM") or None,
@@ -174,7 +188,8 @@ def _dispatch_run_notifications(
         ]
     except Exception as exc:  # notify must never take the run down (D2)
         if state.mode is not OutputMode.quiet:
+            # The type name only: the exception text can quote a URL, a header or a value.
             state.err_console.print(
-                warn("warning:"), f"notify dispatch failed: {exc}", markup=False
+                warn("warning:"), f"notify dispatch failed: {type(exc).__name__}", markup=False
             )
         return []

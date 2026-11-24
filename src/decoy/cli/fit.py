@@ -40,7 +40,7 @@ import typer
 
 from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
 from decoy._resources import ResourceError, read_fit_max_rows
-from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE, exit_code_for
 from decoy.cli.gen import (
     FIT_SAMPLE_SEED,
     FitSourceError,
@@ -555,6 +555,8 @@ def fit(
         try:
             check_contingency_top_k(parsed)
         except DistributionSnapshotError as exc:
+            # Named override: the engine type is a flag validator here, and the owner map's 3
+            # for it is right for a snapshot that fails at run time (24ze G-C1 carries it).
             _emit_error(
                 f"--joint-max-cells must be a whole number from 1 to {MAX_CONTINGENCY_TOP_K}.",
                 err_code=exc.code,
@@ -644,14 +646,10 @@ def fit(
             check_dp_fit_request(column_schema, epsilon=epsilon, delta=delta, **dp_kwargs)
         except ProvenanceError as exc:
             _emit_dp_refused(exc)
-            raise typer.Exit(code=EXIT_RUNTIME)
-        except DpBudgetError as exc:
-            exit_code = EXIT_RUNTIME if exc.code == "dp_schedule_mismatch" else EXIT_USAGE
+            raise typer.Exit(code=exit_code_for(exc))
+        except (DpBudgetError, DpError, CarrierError) as exc:
             _emit_error(exc.message, err_code=exc.code)
-            raise typer.Exit(code=exit_code)
-        except (DpError, CarrierError) as exc:
-            _emit_error(exc.message, err_code=exc.code)
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=exit_code_for(exc))
 
     rows_total: int
     fit_warnings: list[dict[str, Any]] = []
@@ -673,7 +671,7 @@ def fit(
             source_error = exc
         if source_error is not None:  # raised outside the except block: no exception context
             _emit_error(source_error.message, err_code=source_error.code)
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=exit_code_for(source_error))
         snapshot, rows_used, rows_total = fitted.snapshot, fitted.rows_used, fitted.rows_total
         fit_warnings = [
             warning_record(w.code, column=w.column, detail=w.detail)
@@ -706,14 +704,10 @@ def fit(
             )
         except ProvenanceError as exc:
             _emit_dp_refused(exc)
-            raise typer.Exit(code=EXIT_RUNTIME)
-        except DpBudgetError as exc:
-            exit_code = EXIT_RUNTIME if exc.code == "dp_schedule_mismatch" else EXIT_USAGE
+            raise typer.Exit(code=exit_code_for(exc))
+        except (DpBudgetError, DpError, CarrierError) as exc:
             _emit_error(exc.message, err_code=exc.code)
-            raise typer.Exit(code=exit_code)
-        except (DpError, CarrierError) as exc:
-            _emit_error(exc.message, err_code=exc.code)
-            raise typer.Exit(code=EXIT_USAGE)
+            raise typer.Exit(code=exit_code_for(exc))
 
     withheld: list[str] = list(snapshot.get("redacted_columns") or []) if epsilon is None else []
     # Only reached on success: a failed fit creates or overwrites nothing.

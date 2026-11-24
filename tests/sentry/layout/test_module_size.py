@@ -95,7 +95,7 @@ def test_a_legacy_module_that_shrank_demands_a_ratchet_down(tmp_path: Path) -> N
 
 
 def test_a_legacy_module_removed_from_the_allowlist_is_red(tmp_path: Path) -> None:
-    key = "src/decoy/cli/scan.py"
+    key = "src/decoy/cli/fit.py"
     _copy(tmp_path, key)
     rest = {k: v for k, v in SIZE_ALLOWLIST.items() if k != key}
     found = census(tmp_path, rest)

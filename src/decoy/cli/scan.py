@@ -49,9 +49,9 @@ from decoy.cli.scanning import (
     saved_field_facts,
 )
 from decoy.ui.card import render_card
-from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
+from decoy.ui.output import OutputMode, OutputState, emit_error, emit_json, setup_output
 from decoy.ui.table import make_table
-from decoy.ui.theme import code, error, hint, risk_high, risk_med, success
+from decoy.ui.theme import code, hint, risk_high, risk_med, success
 
 _SCAN_GROUP_HELP = (
     "Profile a dataset for PII and re-identification risk. `decoy scan "
@@ -207,32 +207,17 @@ def _emit_load_error(state: OutputState, scan: str, exc: Exception, command_name
         message = str(exc)
         scan_cmd = None
 
-    if state.mode is OutputMode.json:
-        emit_json(
-            state,
-            {
-                "command": command_name,
-                "status": "error",
-                "scan": scan,
-                "error": message,
-            },
-        )
-    elif state.mode is not OutputMode.quiet:
-        state.err_console.print(error("error:"), message)
-        if scan_cmd is not None:
-            state.err_console.print(
-                " ",
-                hint("hint:"),
-                "scan it first:",
-                code(scan_cmd),
-            )
-        else:
-            state.err_console.print(
-                " ",
-                hint("hint:"),
-                "pass the JSON file produced by",
-                code("decoy scan --output scan.json"),
-            )
+    emit_error(
+        state,
+        command_name,
+        message,
+        hint=(
+            f"scan it first: {scan_cmd}"
+            if scan_cmd is not None
+            else "pass the JSON file produced by decoy scan --output scan.json"
+        ),
+        context={"scan": scan},
+    )
 
 
 _TABLE_HELP = "Table to read when the saved scan holds more than one."
@@ -513,34 +498,21 @@ def _show(
     if matched is None:
         names = [str(f.get("name", "")) for f in fields]
         suggestion = difflib.get_close_matches(field, names, n=1)
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "scan show",
-                    "status": "error",
-                    "scan": scan,
-                    "field": field,
-                    "error": f"Field {field!r} not in scan.",
-                    "suggestion": suggestion[0] if suggestion else None,
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), f"Field {field!r} not in scan.")
-            if suggestion:
-                state.err_console.print(
-                    " ",
-                    hint("hint:"),
-                    "did you mean",
-                    code(suggestion[0]),
-                )
-            else:
-                state.err_console.print(
-                    " ",
-                    hint("hint:"),
-                    "list all fields with",
-                    code(f"decoy scan fields {scan}"),
-                )
+        emit_error(
+            state,
+            "scan show",
+            f"Field {field!r} not in scan.",
+            hint=(
+                f"did you mean {suggestion[0]}"
+                if suggestion
+                else f"list all fields with decoy scan fields {scan}"
+            ),
+            context={
+                "scan": scan,
+                "field": field,
+                "suggestion": suggestion[0] if suggestion else None,
+            },
+        )
         raise typer.Exit(code=EXIT_USAGE)
 
     qi_groups = data.get("quasi_identifier_groups", [])
@@ -627,18 +599,12 @@ def _diff(
     state = setup_output(json_, quiet, verbose)
 
     if old == "-" and new == "-":
-        if state.mode is OutputMode.json:
-            emit_json(
-                state,
-                {
-                    "command": "scan diff",
-                    "status": "error",
-                    "error": "only one of OLD or NEW can be `-` (stdin).",
-                },
-            )
-        elif state.mode is not OutputMode.quiet:
-            state.err_console.print(error("error:"), "only one of OLD or NEW can be `-` (stdin).")
-            state.err_console.print(" ", hint("hint:"), "pipe one scan, pass the other as a path.")
+        emit_error(
+            state,
+            "scan diff",
+            "only one of OLD or NEW can be `-` (stdin).",
+            hint="pipe one scan, pass the other as a path.",
+        )
         raise typer.Exit(code=EXIT_USAGE)
 
     try:

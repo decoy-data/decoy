@@ -117,7 +117,7 @@ expect = "exit 1, a reason that says no column declares vault: true"
 id = "mask-native-vault-flag"
 kind = "refused"
 when = { native = "--native", vault = "--vault" }
-doc = "src/decoy/_native_gate.py:336"
+doc = "src/decoy/_native_gate.py:345"
 cites = ["vault_active"]
 expect = "exit 1 before any run, code native_require_vault_active"
 
@@ -152,7 +152,7 @@ expect = "refusal before any output is written, as for an FK table (unconfirmed 
 id = "mask-native-bucketize-no-evidence"
 kind = "refused_after_run"
 when = { native = "--native", strategy_mix = "bucketize and truncate" }
-doc = "src/decoy/_native_gate.py:513"
+doc = "src/decoy/_native_gate.py:522"
 cites = ["native_require_no_evidence"]
 expect = "refusal before any output is written; bucketize has no native operator"
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
@@ -15,6 +16,7 @@ from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_USAGE
 from decoy.cli.gate import GateFinding, PreRunCheckError
 from tests.e2e.first_user.test_items_error_envelope import SCHEMA
 from tests.e2e.test_run_error_arms import _config, _doc
+from tests.keyed_secret import TEST_MASK_SECRET_REF
 
 runner = CliRunner()
 MESSAGES = [
@@ -84,8 +86,13 @@ def test_an_invalid_top_level_code_is_left_out(tmp_path: Path) -> None:
     assert doc["messages"] == MESSAGES
 
 
+@pytest.mark.usefixtures("mask_secret")
 def test_tokenize_emits_the_first_layout_code_and_every_message(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
+    raw = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    raw["global_settings"]["mask_secret_ref"] = TEST_MASK_SECRET_REF
+    raw["tables"][0]["columns"][1] = {"name": "email", "strategy": "tokenize", "namespace": "ns"}
+    cfg.write_text(yaml.dump(raw), encoding="utf-8")
     findings = [
         GateFinding("config", "error", "layout.first_code", "first", "targets"),
         GateFinding("config", "error", "layout.second_code", "second", "targets"),
