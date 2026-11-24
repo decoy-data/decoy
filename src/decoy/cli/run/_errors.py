@@ -112,6 +112,18 @@ def _fixed_text_types() -> tuple[type, ...]:
     return (*_cli_refusal_types(), ConfigFileError, MissingExtraError)
 
 
+def _has_fixed_text(exc: Exception) -> bool:
+    """Whether `exc` is one of `_fixed_text_types`, failing closed.
+
+    The check reads the engine's reason families; if that read fails, the text is treated as
+    free text, so the error keeps its exit and falls back to the type name.
+    """
+    try:
+        return isinstance(exc, _fixed_text_types())
+    except Exception:
+        return False
+
+
 def _capacity_text(code: str) -> str:
     """The fixed text of a coded capacity refusal. The engine's own message is dropped: it
     quotes sizes and host figures."""
@@ -137,7 +149,7 @@ def _safe_error_text(exc: Exception, *, capacity_code: str | None, out_of_memory
         return describe(exc)
     if isinstance(exc, LayoutError):
         return f"{exc.code}: {exc.message}"
-    if isinstance(exc, _fixed_text_types()) or (
+    if _has_fixed_text(exc) or (
         isinstance(exc, DecoyError) and is_reason_code(getattr(exc, "code", None))
     ):
         return cap_error_text(str(exc))
