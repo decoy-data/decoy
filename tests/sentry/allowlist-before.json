@@ -139,7 +139,7 @@
   "cli/run/_context.py::output_placement": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
  },
  "package-fanout": {
-  "src/decoy/cli": {"max": 28, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
+  "src/decoy/cli": {"max": 27, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
  },
  "readme-table-omitted": {
   "doctor": {"reason": "real command the README Common commands table deliberately does not repeat; the table points readers to decoy --help"},

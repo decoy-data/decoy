@@ -71,26 +71,27 @@ def test_the_walk_reaches_every_capped_folder() -> None:
 # --- meta-tests: seeded violations prove the guard sees them ------------------------------
 
 
-LEGACY = "src/decoy/cli/preflight.py"
+LEGACY = "src/legacy.py"
+RECORDED = LIMIT + 10
 
 
-def _copy(root: Path, key: str, extra: str = "") -> None:
-    dest = root / key
+def _plant(root: Path, lines: int) -> dict[str, int]:
+    """A synthetic legacy module of ``lines`` lines, and the allowlist that records it."""
+    dest = root / LEGACY
     dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text((ROOT / key).read_text(encoding="utf-8") + extra, encoding="utf-8")
+    dest.write_text("x = 1\n" * lines, encoding="utf-8")
+    return {LEGACY: RECORDED}
 
 
 def test_a_legacy_module_grown_by_one_line_is_red(tmp_path: Path) -> None:
-    _copy(tmp_path, LEGACY, "\n")
-    found = census(tmp_path, SIZE_ALLOWLIST)
+    allow = _plant(tmp_path, RECORDED + 1)
+    found = census(tmp_path, allow)
     assert list(found) == [LEGACY] and "may only shrink" in found[LEGACY]
 
 
 def test_a_legacy_module_that_shrank_demands_a_ratchet_down(tmp_path: Path) -> None:
-    dest = tmp_path / LEGACY
-    dest.parent.mkdir(parents=True)
-    dest.write_text("x = 1\n" * (SIZE_ALLOWLIST[LEGACY] - 1), encoding="utf-8")
-    found = census(tmp_path, SIZE_ALLOWLIST)
+    allow = _plant(tmp_path, RECORDED - 1)
+    found = census(tmp_path, allow)
     assert list(found) == [LEGACY] and "Ratchet the census down" in found[LEGACY]
 
 
