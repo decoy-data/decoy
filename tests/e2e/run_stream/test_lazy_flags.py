@@ -215,11 +215,10 @@ def test_native_require_accepts_faker_column_on_engine_0_28_4(tmp_path: Path) ->
     assert len(targets[0].read_text(encoding="utf-8").splitlines()) > 1
 
 
-def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
+def _empty_fixed_width_schemas(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """AT-C1w: with no record the lazy source reports the layout schema, so an `int` field is
-    `int64`; the resident read of the same empty file gave `null`. The layout wins (CHANGELOG)."""
+) -> tuple[pa.Schema, pa.Schema]:
+    """Parquet schemas the lazy and the resident route write for an empty fixed-width file."""
     from tests.csv_sources import file_source
 
     path = tmp_path / "data" / "e.dat"
@@ -257,11 +256,30 @@ def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
     def schema(run: Any) -> pa.Schema:
         return pq.read_schema(pa.BufferReader(run.files["t.parquet"]))
 
-    assert schema(lazy).field("i").type == pa.int64()
-    assert schema(base).field("i").type == pa.null()
-    # Engine 0.28.4 (#770) writes an untouched column as the source holds it, a zero-row column
-    # included. The resident read of the empty file holds every column as `null`, so `s` is
-    # `null` there, as it was on 0.28.3 (engine #791 fixes that reader). The lazy source reports
-    # the declared layout, so `s` is `string` on this route only.
-    assert schema(lazy).field("s").type == pa.string()
-    assert schema(base).field("s").type == pa.null()
+    return schema(lazy), schema(base)
+
+
+def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """AT-C1w: with no record the lazy source reports the layout schema, so an `int` field is
+    `int64`; the resident read of the same empty file gave `null`. The layout wins (CHANGELOG)."""
+    lazy, base = _empty_fixed_width_schemas(tmp_path, monkeypatch)
+    assert lazy.field("i").type == pa.int64()
+    assert base.field("i").type == pa.null()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "engine reader fix EMPTY-LAYOUT-PARITY (engine PR 791): the resident read of an empty "
+        "fixed-width file holds a declared text field as null, the lazy route writes string. "
+        "Must pass once the CLI pins the engine release that carries it; remove this marker then."
+    ),
+)
+def test_empty_fixed_width_text_field_type_matches_across_routes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lazy, base = _empty_fixed_width_schemas(tmp_path, monkeypatch)
+    assert lazy.field("s").type == pa.string()
+    assert base.field("s").type == pa.string()
