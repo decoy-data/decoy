@@ -4,11 +4,13 @@ Status: plan
 
 Owner: Cam. Author: Opus plan agent. Date: 2026-11-24. Roadmap row: VALIDATE-SUBSET-EDGES (`docs/roadmap/groups/config.md:16`). Source finding: `v1-fast-path-audit-2026-11-22.md` (vault), rank 5, sized at one slice.
 
-Rules consulted: dev-rules `README.md`, `00-universal.md`, `risk-and-exceptions.md`, `development-loop.md` (PLAN, Proportion), `cross-cutting-concerns.md` (choke point and guard), `api-and-compatibility.md` (reason codes and messages). Global CLAUDE.md commit and test-depth rules.
+Rules consulted: dev-rules `README.md`, `00-universal.md`, `risk-and-exceptions.md`, `development-loop.md` (PLAN, Proportion), `cross-cutting-concerns.md` (choke point and guard), `api-and-compatibility.md` (reason codes and messages), `testing.md` (acceptance criteria, mutations), `profiles/local-operations.md` (gate done-state), `catalogs/recurring-defects.md` (all 11 classes; section 6.1). Global CLAUDE.md commit and test-depth rules.
 
 Read at CLI `origin/main` `00ed97b2` and engine `origin/main` `3426165fb`. The CLI pins `decoy-engine==0.28.3` (`pyproject.toml:153`).
 
 Risk: R1. A refusal that already exists moves earlier, and two doc examples change. No new reason code and no `--json` shape change. One exit-code change for `decoy run` on these configs (3 to 1, G2).
+
+Revision 4 (2026-11-25): Codex review of C1 (GO-WITH-FIXES). C1 adds no CLI hint; it forwards the engine message once, and the engine already names both config spellings (merged E1, engine `8ee461e0f`, `subset/_policy.py:55-58`). AT-C1 asserts the fix text in `message` and pins exit 1 as a literal. AT-C6 runs each corrected example against its CSV fixtures to exit 0 (G5). Example tests go in `tests/unit/lang/test_docs.py`.
 
 Revision 3 (2026-11-24): Codex round 2 fixes: F6 keeps a block-less input dict unchanged (hash parity, AT-E6b), the drop helper is public in `decoy_engine.subset`, and test tags plus layer assertions for AT-E6, AT-E7, AT-C6, AT-C7 and AT-C8.
 
@@ -28,12 +30,12 @@ Result today: `decoy validate` passes, then `decoy run` exits 3 after reading th
 
 ## 2. Guarantee (pinned)
 
-- G1. A config whose `subset:` block names an unknown edge, or a `downward`/`none` edge without `allow_dangling`, fails `decoy validate` with the same reason code `decoy run` gives today (`subset_unknown_edge` or `subset_dangling_not_acknowledged`), in the config layer, before any source is read. The exit code is the validate config-error exit (`gate_exit_code`, unchanged).
+- G1. A config whose `subset:` block names an unknown edge, or a `downward`/`none` edge without `allow_dangling`, fails `decoy validate` with the same reason code `decoy run` gives today (`subset_unknown_edge` or `subset_dangling_not_acknowledged`), in the config layer, before any source is read. The exit code is 1 (`EXIT_USAGE`, `src/decoy/cli/exit_codes.py:49`), unchanged; tests pin the literal, not a value derived from `gate_exit_code`.
 - G2. `decoy run` refuses the same configs with the same codes before any source is read. The CLI run calls the whole gate before `run_pipeline` (`check_before_run`, `src/decoy/cli/run/_prepare.py:420-425`), so the refusal now comes from the gate's config layer, not from the engine:
   - exit code 1 (`EXIT_USAGE`, `src/decoy/cli/exit_codes.py:49`), where today it is 3. This matches the CLI QA call of 2026-11-08 that gate refusals exit 1.
   - `decoy run --json` carries the subset code in `messages[].code`, built by `PreRunCheckError.from_result` (`src/decoy/cli/gate/_run.py:77-100`) and categorized in `src/decoy/cli/run/_errors.py:181-186`.
   - An SDK caller of engine `run_pipeline` (no CLI gate) gets `SubsetConfigError` with the same code from the engine split, before the subset stage reads a source.
-- G3. The dangling refusal names the fix a config author can type: `allow dangling` in a `.decoy` subset block, or `allow_dangling: true` in YAML. The Python API name stays in the text for SDK callers.
+- G3. The dangling refusal names the fix a config author can type: `allow dangling` in a `.decoy` subset block, or `allow_dangling: true` in YAML. The Python API name stays in the text for SDK callers. The engine message is the one home for this text; the CLI forwards it and keeps no copy.
 - G4. A config that passes the check today passes it after the change. No new refusals for valid configs.
 - G5. The two guide examples validate and run clean.
 
@@ -71,12 +73,12 @@ Engine (slice E1):
 
 CLI (slice C1, after the engine release and repin):
 
-- AT-C1. `decoy validate` on a `.decoy` file with `follow a.k -> b.k downward` and no `allow dangling` exits with the config-error code. The finding has layer `config`, code `subset_dangling_not_acknowledged`, location `subset.edge_directions`, and a hint naming `allow dangling`. No source file exists in the test, so a pass proves no read.
+- AT-C1. `decoy validate` on a `.decoy` file with `follow a.k -> b.k downward` and no `allow dangling` exits 1. The test asserts `exit_code == 1` as a literal, not through `gate_exit_code`, so a change to the selector cannot move the expectation with it. The finding has layer `config`, code `subset_dangling_not_acknowledged`, location `subset.edge_directions`, and a `message` that contains `allow dangling` and `allow_dangling: true` (the engine text, forwarded). The finding's `hint` is `None`: no second copy of the fix. No source file exists in the test, so a pass proves no read.
 - AT-C2. The same file plus `allow dangling`, with real CSV source fixtures for both tables in `tmp_path`, validates clean (all three layers).
 - AT-C3. A YAML config with an unknown edge id fails validate with `subset_unknown_edge`.
 - AT-C4. A config with a dangling edge and a `cardinality_mode: unique` column still fails validate, and the test asserts the finding code is `subset_dangling_not_acknowledged` (F5). Asserting only a non-zero exit would not prove the mutation below.
 - AT-C5. `decoy validate --json` and `decoy ci check` carry exactly one finding with that code (F4).
-- AT-C6. The full programs in `agent-card.md` and `05-checks-and-subsets.md` go through the real gate (`run_gate`) with CSV source fixtures that carry the columns each program names, and pass with no error finding. `tests/unit/lang/test_docs.py` only compiles the guide programs today; it extracts them, so the new test reuses its extraction and adds the fixtures. Tag: green today on the current docs and engine; red after E1 lands if the docs are not fixed.
+- AT-C6. The full programs in `agent-card.md` and `05-checks-and-subsets.md` run end to end: `decoy run` (CliRunner) on each corrected program, with CSV source fixtures in `tmp_path` that carry the columns and FK values each program names, exits 0 and writes its outputs. This covers G5 through subset selection and output, not only the gate. The test lives in `tests/unit/lang/test_docs.py`, which already extracts the guide programs (`_PROGRAMS`, lines 14-19); it reuses that extraction and adds the fixtures. Tag: red on the current docs with the repinned engine (E1 refuses both examples); green after the C1 doc fix.
 - AT-C7. `decoy run` (the real command, CliRunner) on a dangling config exits 1; with `--json`, `messages[].code` holds `subset_dangling_not_acknowledged`. The source files do not exist, so a source read would give a `source_file.*` code instead. The test also asserts the message's `layer == "config"` and that no `preflight` or `compile` layer message is present (`messages[].layer`, `gate/_run.py:132-134`), so a pass through the compile layer after the repin cannot satisfy it.
 - AT-C8. `decoy run --no-subset` on the same config exits 1 with the same code (Q1 option A, the open default). Same `layer == "config"` and no-preflight assertions as AT-C7.
 - Mutation: remove the new `split_subset_config` call from `_run_config_base`. AT-C4 goes red (AT-C1 alone could still pass through the compile layer).
@@ -97,11 +99,11 @@ Size: about 25 source lines in four files (`_split.py`, `_policy.py`, `_subset_s
 
 ### C1 (CLI, R1): validate's config layer runs the split; docs fixed
 
-Files: `src/decoy/cli/gate/_layers.py`, the existing gate, validate and run tests, `tests/unit/lang/test_docs.py` (or a sibling that reuses its extraction), `docs/guides/decoy-language/agent-card.md`, `docs/guides/decoy-language/05-checks-and-subsets.md`, `CHANGELOG.md`. No pin files: C1 starts only after the full repin PR to E1's release has merged (`pyproject.toml:153`, `requirements-dev.lock:387`, `.github/workflows/ci.yml:322`, `.github/workflows/release-smoke.yml:88`, per the engine repin checklist).
+Files: `src/decoy/cli/gate/_layers.py`, the existing gate, validate and run tests, `tests/unit/lang/test_docs.py` (AT-C6; no new test file), `docs/guides/decoy-language/agent-card.md`, `docs/guides/decoy-language/05-checks-and-subsets.md`, `CHANGELOG.md`. No pin files: C1 starts only after the full repin PR to E1's release has merged (`pyproject.toml:153`, `requirements-dev.lock:387`, `.github/workflows/ci.yml:322`, `.github/workflows/release-smoke.yml:88`, per the engine repin checklist).
 
 - In `_run_config_base`, after `run_config_only_checks` (line 215), call `split_subset_config(validated)` once, and on a `SubsetError` return `None` with one config-layer finding, as the other config refusals do.
-- One conversion: move the compile layer's `SubsetError` to `GateFinding` code (`_layers.py:336-345`) into one private function that takes the layer name and the error, and call it from both sites. The rules live there once: code `exc.code`, message `exc.message`, location and logical path `subset.edge_directions` for the two direction codes, else `getattr(exc, "path", None)`, and the hint from `_plan_error_hint`. The compile-layer catch stays for other subset errors the validated shape cannot rule out.
-- Hint: add the dangling code to `_plan_error_hint` (`_layers.py:94-103`), which is already the value-free hint table for config-fixable refusals. The hint names `allow dangling` and `allow_dangling: true`.
+- One conversion: move the compile layer's `SubsetError` to `GateFinding` code (`_layers.py:336-345`) into one private function that takes the layer name and the error, and call it from both sites. The rules live there once: code `exc.code`, message `exc.message`, location and logical path `subset.edge_directions` for the two direction codes, else `getattr(exc, "path", None)`, and no hint for the two direction codes. The compile-layer catch stays for other subset errors the validated shape cannot rule out.
+- No CLI hint: `_plan_error_hint` (`_layers.py:94-103`) gets no entry for the direction codes. The engine message (`subset/_policy.py:55-58`) already names `allow dangling`, `allow_dangling: true` and the Python spelling, and the finding forwards it once as `message`. A CLI copy would give `--json` readers the fix twice and go stale when the engine text changes. If a separate `hint` field is ever needed, it is forwarded from one engine-owned definition, never written in the CLI.
 - Docs: add `allow dangling` to the subset block in both examples, plus one sentence in `05-checks-and-subsets.md`: a `downward` or `none` edge needs it, because child rows can point at parents the subset dropped.
 - Agent card FK: with `allow dangling` alone the agent-card program still fails with `subset_unknown_edge`, because `orders.customer_id` is `hash in customer_identity` (`agent-card.md:207`) and no FK declares the edge. Change line 207 to `customer_id <- customers.customer_id orphans preserve`, as `05-checks-and-subsets.md:37` does. If the `namespace customer_identity for customers.customer_id, orders.customer_id` line (`agent-card.md:199`) then refuses, drop `orders.customer_id` from it. AT-C6 decides.
 - Depends on E1's release and the full repin. C1 does not carry a CLI-side copy of the check.
@@ -113,13 +115,13 @@ Size: about 30 source lines in one file (net of the moved conversion), two doc e
 - Choke point: `split_subset_config` (engine `subset/_split.py:25`). Every config-driven path already goes through it: engine run (`_subset_stage.py:266`), engine plan validation (`_consolidator.py:100`), CLI gate compile and capacity (`_layers.py:314`, `:394`), and CLI `compile_explain.py:247`. With the check there, a new caller gets it by construction. A CLI-side copy would be a second home for the rule, so there is none.
 - Guard tests and mutations: section 4.
 - No new structure: no new module, class or variant. Design principles: none apply beyond one place per fact.
-- Placement: no new files, so no Placement table.
+- Placement: no new files, so no Placement table. The example tests (AT-C6) go in the existing `tests/unit/lang/test_docs.py`.
 
 ### 6.1 Class table
 
 | # | Class | Where it applies | Structure that closes it | Proof | Mutation that must turn it red |
 |---|---|---|---|---|---|
-| 1 | Value-bearing output | the refusal message and hint | the message names edge ids (table and column names) only, as today; no row value is read before the check | AT-E5 asserts the text; the test data puts a sentinel value in a source row and asserts it is absent | format a seed value into the message |
+| 1 | Value-bearing output | the refusal message | the message names edge ids (table and column names) only, as today; no row value is read before the check | AT-E5 asserts the text; the test data puts a sentinel value in a source row and asserts it is absent | format a seed value into the message |
 | 2 | Cleanup on exit path | none | N/A: the check runs before any file or temp dir is opened | n/a | n/a |
 | 3 | State and concurrency | none | N/A: a pure function over the config dump | n/a | n/a |
 | 4 | Route parity and silent fallback | run, validate, plan validation, compile explain, the SDK override | one split every config path calls (section 6); the override skips the block it discards (F6) | AT-E3, AT-E4, AT-E6, AT-C1, AT-C4, AT-C7 | call the check only in the CLI gate |
@@ -177,7 +179,7 @@ Read from the validated dump, nothing else:
 
 #### Output surfaces
 
-All carry the existing code; only the message and hint text change:
+All carry the existing code; only the engine message text changes:
 
 - `decoy validate` text
 - `decoy validate --json` and `decoy ci check`
@@ -190,7 +192,8 @@ All carry the existing code; only the message and hint text change:
 | The rule | engine `resolve_edge_directions` |
 | The edges | engine `build_subset_edges` over `request.relationships` |
 | The request | engine `split_subset_config` |
-| The finding shape and hint | CLI `GateFinding`, `_plan_error_hint` |
+| The finding shape | CLI `GateFinding` |
+| The fix text | engine dangling message, forwarded as `message` (no CLI hint) |
 
 ### 6.4 Frozen contracts touched
 
@@ -203,6 +206,7 @@ Reason codes and the reason manifest are unchanged. The validate `--json` findin
 - The builder adds the CLI call before the engine release is pinned and the gate imports an engine without the check: C1 waits for the full repin; AT-C4 fails on the old engine anyway.
 - The override fix is skipped and an SDK caller's valid override is refused because of the discarded block: AT-E6.
 - The drop helper always adds `subset: None` and an override run on a config with no block changes its hash: AT-E6b.
+- The builder adds a CLI hint for the dangling code and the fix text exists twice: AT-C1 asserts `hint is None` and the fix text in `message`.
 - The guide test only compiles, so an example that compiles but fails the gate slips through: AT-C6 runs the real gate with fixtures.
 
 ## 7. Established solutions
