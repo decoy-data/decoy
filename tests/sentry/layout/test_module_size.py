@@ -75,6 +75,12 @@ LEGACY = "src/legacy.py"
 RECORDED = LIMIT + 10
 
 
+def _copy(root: Path, key: str, extra: str = "") -> None:
+    dest = root / key
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text((ROOT / key).read_text(encoding="utf-8") + extra, encoding="utf-8")
+
+
 def _plant(root: Path, lines: int) -> dict[str, int]:
     """A synthetic legacy module of ``lines`` lines, and the allowlist that records it."""
     dest = root / LEGACY
