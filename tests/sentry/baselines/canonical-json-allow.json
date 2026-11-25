@@ -8,7 +8,7 @@
   },
   "cli/report/_compare.py": {
    "sites": 1,
-   "reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Moving it to records.canonical_bytes is a V2-LOG follow-up (docs/roadmap/inbox.md, CLI-SPLIT S1)."
+   "reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Move to records.canonical_bytes when report.py is next split."
   },
   "distribution/signing.py": {
    "sites": 1,
