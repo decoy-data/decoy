@@ -34,7 +34,7 @@ CLI_DIR = Path(__file__).resolve().parents[3] / "src" / "decoy" / "cli"
 # aliased import, a module-alias attribute call and a bare same-file call all count. The pinned
 # count turns a missed caller red.
 FORWARDERS: dict[str, tuple[str, int, int]] = {
-    "decoy.cli.report._load_manifest": ("command", 2, 5),
+    "decoy.cli.report._shared._load_manifest": ("command", 2, 5),
     "decoy.cli.scan._emit_load_error": ("command_name", 3, 4),
     "decoy.cli.reference._reject_kind": ("verb", 99, 2),
     "decoy.cli.io.resolve_pipeline": ("command", 2, 13),
@@ -215,12 +215,14 @@ SEEDS = {
     "from-import forwarder call": (
         "from decoy.cli.scan import _emit_load_error\n_emit_load_error(s, p, e, 'bogus cmd')"
     ),
-    "aliased import": ("from decoy.cli.report import _load_manifest as lm\nlm(p, s, 'bogus cmd')"),
+    "aliased import": (
+        "from decoy.cli.report._shared import _load_manifest as lm\nlm(p, s, 'bogus cmd')"
+    ),
     "module-alias attribute call": (
-        "import decoy.cli.report as r\nr._load_manifest(p, s, 'bogus cmd')"
+        "import decoy.cli.report._shared as r\nr._load_manifest(p, s, 'bogus cmd')"
     ),
     "from-import module attribute call": (
-        "from decoy.cli import report\nreport._load_manifest(p, s, command='bogus cmd')"
+        "from decoy.cli.report import _shared\n_shared._load_manifest(p, s, command='bogus cmd')"
     ),
 }
 
@@ -247,9 +249,9 @@ def test_non_literal_is_a_problem(source: str) -> None:
 
 
 def test_bare_same_file_forwarder_call_is_collected() -> None:
-    values, _, counts = scan_source("_load_manifest(p, s, 'bogus cmd')", "report.py")
+    values, _, counts = scan_source("_load_manifest(p, s, 'bogus cmd')", "report/_shared.py")
     assert [v for _, _, v in values] == ["bogus cmd"]
-    assert counts == {"decoy.cli.report._load_manifest": 1}
+    assert counts == {"decoy.cli.report._shared._load_manifest": 1}
 
 
 _IN_BODY = 'def resolve_pipeline(token, command):\n    return {"command": command}\n'

@@ -22,7 +22,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
-from decoy.cli.report import _GRADE_MIN_SCORE, _build_strategy_map
+from decoy.cli.report._fidelity import _GRADE_MIN_SCORE, _build_strategy_map
 
 runner = CliRunner()
 
