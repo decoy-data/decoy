@@ -8,7 +8,6 @@ from pathlib import Path
 import typer
 
 from decoy._config_file import ConfigFileError, config_refusal
-from decoy._yaml_errors import sanitize_yaml_error
 from decoy.cli._sources import (
     ReportSourceError,
     gate_report_source,
@@ -147,11 +146,6 @@ def _integrity(
             except (ConfigFileError, OSError) as exc:
                 emit_error(state, "report integrity", context=members, **config_refusal(exc))
                 raise typer.Exit(code=exit_code_for(exc))
-            except ValueError as exc:
-                # A tag constructor (`!!int x`) raises ValueError, not YAMLError, and its
-                # text quotes the scalar. sanitize_yaml_error reads only the error mark.
-                emit_error(state, "report integrity", sanitize_yaml_error(exc), context=members)
-                raise typer.Exit(code=EXIT_RUNTIME)
             config_dict = parse_pipeline_config(raw).model_dump()
             # One source/masked pair: anchor on the first declared table.
             tables = config_dict.get("tables") or []

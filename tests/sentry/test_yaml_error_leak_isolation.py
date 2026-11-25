@@ -113,18 +113,22 @@ def test_yaml_parse_error_does_not_leak_source_line(label: str, tmp_path: Path) 
 
 
 # A tag constructor (`!!int marker`) fails with ValueError, not YAMLError, and the text of that
-# error quotes the scalar. Each entry pairs the command with the exit code it had before the fix.
+# error quotes the scalar. Each entry pairs the command with its exit code (1, as for any other config parse failure).
 _TAG_MARKER = "TAGLEAK_MARKER_" + "Q" * 8
 _TAG_COMMANDS: dict[str, tuple[Callable[[str, str, str], list[str]], int]] = {
     "report fidelity --policy": (_COMMANDS["report fidelity --policy"], 1),
-    "report integrity --config": (_COMMANDS["report integrity --config"], 3),
+    "report integrity --config": (_COMMANDS["report integrity --config"], 1),
 }
 
 
+@pytest.mark.parametrize("tag", ["!!int", "!!bool"])
 @pytest.mark.parametrize("label", list(_TAG_COMMANDS))
-def test_yaml_tag_constructor_error_does_not_leak_scalar(label: str, tmp_path: Path) -> None:
+def test_yaml_tag_constructor_error_does_not_leak_scalar(
+    label: str, tag: str, tmp_path: Path
+) -> None:
+    # `!!bool x` raises KeyError (not ValueError) and its text is the quoted scalar.
     cfg_path = tmp_path / "tag.yaml"
-    cfg_path.write_text(f"version: !!int {_TAG_MARKER}\n", encoding="utf-8")
+    cfg_path.write_text(f"version: {tag} {_TAG_MARKER}\n", encoding="utf-8")
     src = tmp_path / "src.csv"
     src.write_text("email\na@b.com\n", encoding="utf-8")
     out = tmp_path / "out.csv"

@@ -171,7 +171,9 @@ def _parse_yaml_mapping(text: str) -> dict[str, Any]:
     raw: Any = None
     try:
         raw = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
+    except Exception as exc:
+        # Not only YAMLError: a tag constructor (`!!int x`) raises ValueError and `!!bool x`
+        # a KeyError, and both texts quote the scalar. sanitize_yaml_error reads only the mark.
         parse_failure = sanitize_yaml_error(exc)
     if parse_failure is not None:
         raise ConfigFileError("yaml.parse_error", parse_failure)

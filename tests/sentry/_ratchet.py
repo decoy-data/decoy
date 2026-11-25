@@ -330,7 +330,7 @@ def _split_entry_finding(
     for new in news:
         entry = head.reasons[new]
         if not isinstance(entry, dict) or (
-            {k: v for k, v in entry.items() if k not in CEILING_FIELDS} != rest
+            not _same_json({k: v for k, v in entry.items() if k not in CEILING_FIELDS}, rest)
             or {f for f in CEILING_FIELDS if f in entry} != set(held)
             or any(_int_field(entry, f) is None for f in held)
         ):

@@ -815,3 +815,23 @@ def test_a_split_that_changes_only_the_rule_fails(repo: Path) -> None:
     entries = {"n::g": _entry(count=2), "o::g": _entry(count=3), "m::g": _entry()}
     _write(repo, A, _split(entries, {"m::f": ["n::g", "o::g"]}))
     _assert_red(repo, "changes the rule after :: of m::f")
+
+
+def test_a_split_that_changes_a_metadata_json_type_fails(repo: Path) -> None:
+    """``1`` -> ``true`` is equal in Python; split metadata must keep its JSON types."""
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
+    doc = {
+        "sentry_id": "a",
+        "created_in": "S0",
+        "entries": {"m::f": _entry(count=5, flag=1), "m::g": _entry()},
+    }
+    _write(repo, A, json.dumps(doc))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "counted base")
+    entries = {
+        "n::f": _entry(count=2, flag=True),
+        "o::f": _entry(count=3, flag=1),
+        "m::g": _entry(),
+    }
+    _write(repo, A, _split(entries, _SPLIT))
+    _assert_red(repo, "split entry n::f differs from m::f in the merge base")
