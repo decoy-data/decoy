@@ -49,7 +49,52 @@ validate command's code path.
 
 from __future__ import annotations
 
+# The old single module had no `__all__`, so it bound every name it imported. They are kept
+# from their original sources so named and wildcard imports see the same objects as before.
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import typer
+from rich.text import Text
+
+from decoy._config_file import ConfigFileError, config_refusal, load_config_mapping
+from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_USAGE, EXIT_WARNINGS, exit_code_for
+from decoy.cli.gate import capacity_codes
+from decoy.cli.io import pipeline_argument, resolve_pipeline
 from decoy.cli.preflight._command import PREFLIGHT_EPILOG, preflight
 from decoy.cli.preflight._result import CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK
+from decoy.ui.output import OutputMode, emit_json, setup_output
+from decoy.ui.theme import code, error, hint, success, warn
 
-__all__ = ["CAPACITY_CHECK", "PLAN_UNCOMPILABLE_CHECK", "PREFLIGHT_EPILOG", "preflight"]
+__all__ = [
+    "CAPACITY_CHECK",
+    "EXIT_CAPACITY",
+    "EXIT_USAGE",
+    "EXIT_WARNINGS",
+    "PLAN_UNCOMPILABLE_CHECK",
+    "PREFLIGHT_EPILOG",
+    "Any",
+    "ConfigFileError",
+    "OutputMode",
+    "Path",
+    "Text",
+    "annotations",
+    "capacity_codes",
+    "code",
+    "config_refusal",
+    "dataclass",
+    "emit_json",
+    "error",
+    "exit_code_for",
+    "field",
+    "hint",
+    "load_config_mapping",
+    "pipeline_argument",
+    "preflight",
+    "resolve_pipeline",
+    "setup_output",
+    "success",
+    "typer",
+    "warn",
+]
