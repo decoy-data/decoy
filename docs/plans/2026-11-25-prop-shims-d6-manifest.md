@@ -1,7 +1,7 @@
 # 24zk PROP-SHIMS D6 manifest half: `report diff` refuses an evidence manifest entry with no `format`
 
 Status: plan
-Revision: 2
+Revision: 3
 Repo: decoy (CLI), branch `docs/plans-prop-shims-d6-manifest`, planned against CLI `origin/main`
 `fffca916`.
 Parent: engine `docs/plans/2026-11-16-prop-batch.md` (revision 7, branch
@@ -18,6 +18,11 @@ Revision 2 folds Dennis R1 (8 should-fix, 7 low): deviations from the parent sta
 checked before any read, M-5 defined once, `entry_format` loses its unused `path`, stale legacy
 text listed, AT-6 replaced by existing tests, no new export.
 
+Revision 3 folds Codex R1 (2 V1, 1 DESIGN, 5 low): a one-sided table entry is checked too; each
+side is checked on its own so the codes do not depend on argument order; the hint lives only in
+the exception message and one block records refused or unreadable paths; AT-4 covers human and
+JSON modes; M-1 and M-3 made executable; full run before the code gate; anchors corrected.
+
 ## 1. Problem
 
 `entry_format` (`src/decoy/cli/io/_targets.py:302`) reads an evidence-manifest output entry back
@@ -29,11 +34,11 @@ CLI #313 deferred this half because `report.py` was over the size cap. The CLI s
 the `src/decoy/cli/report/` package (`_compare.py` 312 lines, `_diff.py` 361 lines), so the size
 reason is gone.
 
-Every current writer records `format` for a file target (`src/decoy/cli/evidence.py:313-316`
+Every current writer records `format` for a file target (`src/decoy/cli/evidence.py:313-317`
 with `_format_keys` at `evidence.py:179-196`), and no non-file target can carry `path` (the
-engine's `S3Target` and `GCSTarget` forbid extra fields). Only manifests written before format
-recording (CLI 0.1.0 and pre-CLI-FMT main builds) lack it. No CLI release since 0.1.0 has
-shipped, and format recording is in the CHANGELOG `[Unreleased]` block as a pre-1.0 breaking
+engine's `S3Target` and `GCSTarget` forbid extra fields). Only manifests written by main builds
+between the evidence writer (`7de0d22f`) and format recording lack it; CLI 0.1.0 predates the
+evidence writer. No CLI release since 0.1.0 has shipped, and format recording is in the CHANGELOG `[Unreleased]` block as a pre-1.0 breaking
 change.
 
 ## 2. Guarantee and non-goals
@@ -53,7 +58,7 @@ Non-goals:
 - The raw manifest path strings that `report diff` already prints for a missing or unreadable
   output stay as they are (they are the user's own paths, not cell values).
 - `_compare.py:231` stops at the first missing or refused table (existing behaviour), so
-  `refused_codes` lists codes found up to that table. Logged, not changed.
+  `refusals` lists refusals found up to that table. Logged, not changed.
 - The parent plan's other D items, and every 24zi and 24zj slice.
 
 ## 2a. Deviations from parent D6
@@ -88,24 +93,34 @@ only by the fallback) and becomes `entry_format(recorded)`. With no `format` it 
 format recording); re-run the pipeline to write a new manifest")`. Delete
 `_legacy_format_for_path` and the legacy sentence of the docstring (`_targets.py:307-308`).
 
-4.2 `src/decoy/cli/report/_compare.py` `compare_data` (`_compare.py:158`): resolve both sides'
-formats first, then read. The loop at `_compare.py:233-245` becomes:
-`fmt_a = entry_format(rec_a)`, `fmt_b = entry_format(rec_b)` inside an
-`except TargetFormatError as err` arm that adds both raw paths to `missing_files` (as today) and
-`err.code` to a `refused_codes` set, then `continue`; then the two `read_file` calls under the
-existing `except (OSError, ValueError, DecoyError)` arm. `TargetFormatError` is raised only in
-`_targets.py`, so `read_file` never reaches the first arm. The result dict gains
-`"refused_codes": sorted(refused_codes)`. The arm is needed because the generic arm drops the
-code, and the code is the only thing that tells a user why the file was not compared. Update the
-docstring (`_compare.py:170-172`) and the comment at `_compare.py:234`, which still describe the
-legacy suffix rule.
+4.2 `src/decoy/cli/report/_compare.py` `compare_data` (`_compare.py:158`):
+- One local helper, `_entry_refusal(entry) -> TargetFormatError | None`, calls
+  `entry_format({k: entry[k] for k in ("format", "layout") if k in entry})` and returns the
+  error instead of raising. Each side is checked on its own, so a pair with one `format: xml`
+  side and one side with no `format` yields both codes in either argument order.
+- One-sided table (`_compare.py:201-216`): before recording the "only exists in one run" delta,
+  the present entry is checked. A refusal records the refusal and its raw path and skips the
+  delta; a current entry keeps the existing delta. Covers added and removed tables.
+- Two-sided table: after the path check (`_compare.py:225-232`), both sides are checked. Any
+  refusal records every refusal and both raw paths, then `continue`; only when both pass are the
+  two `read_file` calls made, under the existing `except (OSError, ValueError, DecoyError)` arm.
+- One block records a skipped side: a local `_skip(raws, refusals=())` appends the raw paths to
+  `missing_files` (deduplicated, as today at `_compare.py:242-244`) and adds each
+  `(err.code, str(err))` pair to a `refusals` set. Both the refusal path and the generic read arm
+  call it.
+- The result dict gains `"refusals": sorted(refusals)` (pairs of fixed code and fixed message).
+  It is needed because the generic arm drops the code, and the code is the only thing that tells
+  a user why the file was not compared.
+- Update the docstring (`_compare.py:170-172`) and the comment at `_compare.py:234`, which still
+  describe the legacy suffix rule.
 
-4.3 `src/decoy/cli/report/_diff.py`: build one text when `refused_codes` is non-empty:
-`"refused: " + ", ".join(codes) + "; re-run the pipeline to write a new manifest"`. Append it
-with `"; "` to the `--require-data` message (`_diff.py:130-135`); set the existing skipped-branch
-`data_note` key (`_diff.py:162-167`) to it when there is no dependency error; in the human note
-(`_diff.py:221-229`) say "output files missing or refused (...)" and append it. Codes are fixed
-identifiers, never data.
+4.3 `src/decoy/cli/report/_diff.py`: one function `_refusal_text(refusals)` builds
+`"refused: " + "; ".join(f"{code}: {message}" ...)`. The remediation hint is only in the
+exception message (4.1), so every mode prints the same text. Append it with `"; "` to the
+`--require-data` message (`_diff.py:130-135`); set the existing skipped-branch `data_note` key
+(`_diff.py:162-167`) to it when there is no dependency error; in the human note
+(`_diff.py:221-229`) say "output files missing or refused (...)" and append it. Codes and
+messages are fixed text, never data.
 
 4.4 Docs: `src/decoy/cli/evidence.py` module docstring (`evidence.py:21-29`) states that an entry
 without `format` is refused by `report diff` with `target_format_unrecorded`. The `_format_keys`
@@ -144,7 +159,7 @@ entry before either side's file is read.
 - `output_fingerprints.<table>.layout`: unchanged; read only when `format` is `fixed_width`.
 - `report diff` JSON `data_note`: existing optional string on the skipped branch, now also set for
   a refusal.
-- `compare_data` result `refused_codes`: new internal key, never emitted as its own JSON key.
+- `compare_data` result `refusals`: new internal key, never emitted as its own JSON key.
 
 ### Output surfaces
 
@@ -169,13 +184,14 @@ entry before either side's file is read.
 | B2 | Either entry lacks `format`, no `--require-data` | Exit 0, `data_level: skipped`, both paths in `missing_files`, `data_note` holds the refusal text; no file of that table is read |
 | B3 | Same, with `--require-data` | Exit 1, message holds the refusal text |
 | B4 | Old entry whose file is missing | Missing as today (path check runs first, `_compare.py:225-232`); no code |
+| B4a | Table in one manifest only, its entry has no `format` | Refused as B2/B3 (added or removed table); with `format`, the existing "only exists in one run" delta |
 | B5 | Entry with `format: xml` | `target_format_unreadable` named the same way (gains the code in the note) |
 | B6 | Corrupt file with a valid `format` | Unchanged: generic arm, no code |
 | B7 | `report verify` on an old manifest | Unchanged |
 
 ## 6. Failure modes
 
-- F1: the value-isolation sentry (`tests/sentry/test_report_raw_value_isolation.py:60-63`)
+- F1: the value-isolation sentry (`tests/sentry/test_report_raw_value_isolation.py:64-67`)
   builds entries without `format`. After the change its CSV and Parquet leak cells (`:212`,
   `:266`) would read nothing and pass vacuously. AT-5 moves them to recorded formats and asserts
   the data level ran.
@@ -186,7 +202,7 @@ entry before either side's file is read.
   codes; AT-4 pins the exact text and the cell sentinel's absence.
 - F5: two e2e tests rely on the fallback: `test_report_diff_old_manifest_falls_back`
   (`tests/e2e/cli_fmt/test_target_format_readers.py:413`) and
-  `test_report_diff_old_manifest_pq_holds_csv` (`:431`). The first becomes AT-2. The second
+  `test_report_diff_old_manifest_pq_holds_csv` (`:429`). The first becomes AT-2. The second
   becomes the `.pq`-holds-CSV refusal cell of AT-2 (old manifest, `.pq` path, CSV bytes: refused,
   not compared). Neither is deleted or weakened to pass.
 - F6: a future writer path drops `format` for a file target, so `report diff` refuses its own
@@ -204,7 +220,7 @@ entry before either side's file is read.
 | 3 | Partial state | N/A: read-only command, no state written | | | |
 | 4 | Route parity | Applies | One reader, `entry_format`, for the only route | AT-1, AT-2 | M-1: restore the fallback |
 | 5 | Referential integrity | N/A: no keys or relations involved | | | |
-| 6 | Untrusted input | Applies | The manifest is untrusted; a missing key is refused at one point before any read | AT-1, AT-3 | M-1, M-6 |
+| 6 | Untrusted input | Applies | The manifest is untrusted; a missing key is refused at one point before any read, one-sided entries included | AT-1, AT-3 | M-1, M-6, M-8 |
 | 7 | TOCTOU / check-then-use | N/A: the format is read from the same parsed manifest used for the path | | | |
 | 8 | Weak test | Applies | Sentry asserts the data level ran | AT-5 | M-4 |
 | 9 | Refactor drift | Applies | Helper deleted, not kept as dead code | AT-1 | M-1 |
@@ -236,37 +252,47 @@ Written red first against `fffca916`:
   refusal case: `entry_format({})` raises `TargetFormatError` with `code == UNRECORDED` and no
   `__cause__`, and the message equals the constant. The existing parametrized cases drop the
   `path` argument.
-- AT-2 (e2e, `test_target_format_readers.py:413` and `:431`): `..._old_manifest_falls_back`
+- AT-2 (e2e, `test_target_format_readers.py:413` and `:429`): `..._old_manifest_falls_back`
   becomes `..._old_manifest_refused`, and `..._pq_holds_csv` becomes its `.pq`-holds-CSV cell.
   With `--require-data`: exit 1, output names `target_format_unrecorded`. Without it: exit 0,
   JSON `data_level == "skipped"`, `data_note` starts with `refused: target_format_unrecorded`,
   the payload key set equals the current skipped set (manifest keys plus `data_level`,
-  `any_data_change`, `table_deltas`, `missing_files`, `data_note`) and `"refused_codes"` is not a
-  key.
-- AT-3 (unit or e2e, same file): the old entry on side A, then on side B, with
-  `decoy.cli.report._compare.read_file` (the name `compare_data` calls) monkeypatched to raise (the `boom` pattern at
-  `test_targets_format.py:166`): refused with the code both times, and `read_file` never called.
+  `any_data_change`, `table_deltas`, `missing_files`, `data_note`), `"refusals"` is not a key, and
+  `missing_files` holds exactly the two distinct raw paths.
+- AT-3 (unit, calls `compare_data` directly) with `decoy.cli.report._compare.read_file` (the
+  name `compare_data` calls) monkeypatched to raise (the `boom` pattern at
+  `test_targets_format.py:164`). Cells: old entry on side A; old entry on side B; `format: xml`
+  on A and no `format` on B, in both argument orders (same sorted `refusals`, both codes); an old
+  entry for a table only in A, and only in B (refused, no "only exists in one run" delta); a
+  current entry for a one-sided table (delta kept). `read_file` is never called in any refusal
+  cell.
 - AT-4 (e2e, `test_unreadable_entries_are_value_free` at `:450`): add the old-shape entry to its
-  cases. The text after `refused:` up to `;` is exactly the sorted code list, and the cell
-  sentinel `_CELL` is absent from stdout, stderr and JSON (the existing check at `:472`).
+  cases and give each case an expected code or an explicit no-code expectation (parser failures
+  keep no code, B6; the existing generic read-error cases stay). Run each in human mode and in
+  `--json` mode (the helper at `:324` passes `--json` only, so a human-mode call is added). The
+  refusal text equals the fixed `code: message` text, and the cell sentinel `_CELL` is absent
+  from stdout, stderr and JSON (the existing check at `:489`).
 - AT-5 (sentry, `test_report_raw_value_isolation.py`): `_outputs(path, fmt)` records `format`;
   the CSV and Parquet cells assert `table_deltas` is non-empty before checking the sentinel is
   absent.
 - Existing real-run cover for F6, kept green: `test_manifest_records_format_and_layout`
   (`test_target_format_readers.py:299`), `test_report_diff_parquet_at_pq_dat_and_no_suffix`
-  (`:345`), `test_report_diff_fixed_width_both_sides`, and the json-shapes `report diff`
+  (`:347`), `test_report_diff_fixed_width_both_sides`, and the json-shapes `report diff`
   scenario. No new test is added for it.
 
 ### Mutations
 
-- M-1: restore the legacy fallback in `entry_format`. AT-1, AT-2 red.
+- M-1: in `entry_format`, return `("csv", None)` when `format` is absent. AT-1 and the CSV cell of
+  AT-2 red.
 - M-2: catch `TargetFormatError` in the generic arm only (drop the new arm). AT-2, AT-4 red.
-- M-3: format a recorded key (`recorded["layout"]` or the entry keys) into the refusal message.
-  AT-1 red.
+- M-3: interpolate `recorded.get("layout")` into the refusal message. AT-1 gains a cell that
+  passes a seeded layout with no `format` and asserts the message equals the constant: red.
 - M-4: revert AT-5's `_outputs` to no format. AT-5 red (empty `table_deltas`).
 - M-5: drop `format` from `_format_keys`. The real-run tests above go red.
-- M-6: restore read-then-check order (`read_file` for A before `entry_format` for B). AT-3 red.
-- M-7: emit `refused_codes` as a JSON key on the skipped branch. AT-2 red.
+- M-6: restore read-then-check order (`read_file` for A before B is checked), or stop at the
+  first side's refusal. AT-3 red.
+- M-8: drop the one-sided check. AT-3 one-sided cells red.
+- M-7: emit `refusals` as a JSON key on the skipped branch. AT-2 red.
 
 ## 9. Frozen contracts
 
@@ -285,8 +311,10 @@ T1: the three changed test files, `tests/unit/cli_fmt/`, `tests/e2e/cli_fmt/`,
 `tests/e2e/release_freeze/test_json_shapes.py`, `tests/unit/test_evidence.py`,
 `tests/e2e/test_report_diff_command.py`, `tests/e2e/project_layout/test_evidence_paths.py`,
 every test file that imports `decoy.cli.report` or names `entry_format`, plus the repo guard
-tests. T3: full suite on the merge head (serialization and frozen-contract trigger), diffed
-against the saved main baseline.
+tests. Full suite (serialization and frozen-contract trigger) at the slice head before the code
+gate, diffed against the saved main baseline; reused at merge if the merge head is the same
+tree, else re-run on the merge head. The Codex gate runs T2 on the head it records, and mutation
+evidence (M-1 to M-8) is from the final head.
 
 ## 11. Pre-mortem
 
@@ -296,7 +324,7 @@ against the saved main baseline.
   forbids it; M-1 and review check both are gone.
 - A builder deletes the `.pq`-holds-CSV test instead of converting it. F5 and AT-2 name its new
   form.
-- A user with a CLI 0.1.0 manifest loses data-level diff. Accepted: pre-1.0, named in the
+- A user with a manifest from a pre-format main build loses data-level diff. Accepted: pre-1.0, named in the
   CHANGELOG, and the refusal text tells them to re-run.
 
 ## 12. Owner calls
@@ -306,11 +334,12 @@ technical.
 
 ## 13. Done when
 
-- [ ] AT-1 to AT-5 green and the named real-run tests still green; M-1 to M-7 each turn a named
+- [ ] AT-1 to AT-5 green and the named real-run tests still green; M-1 to M-8 each turn a named
   test red.
 - [ ] `_legacy_format_for_path` and the `entry_format` `path` parameter gone; no caller of the
   fallback left; docstrings, comment and CHANGELOG no longer describe the suffix rule.
-- [ ] Files stay under 800 lines.
+- [ ] Source and test files stay under 800 lines.
 - [ ] T3 shows no new failing id against the main baseline.
-- [ ] The parent plan's D6 row and AT-D6 text name `target_format_unrecorded` and exit 1 under
+- [ ] The parent plan's D6 row, AT-D6 text, exit summary (`prop-batch.md:792`) and registry
+  summary (`prop-batch.md:896`) name `target_format_unrecorded` and exit 1 under
   `--require-data`; row 24zk D6-manifest marked done in its post-1.0 rows.
