@@ -1,4 +1,4 @@
-"""Finding text for the preflight capacity check, kept out of `preflight.py` for size."""
+"""Finding text for the preflight capacity check, kept out of `cli/preflight/` for size."""
 
 from __future__ import annotations
 

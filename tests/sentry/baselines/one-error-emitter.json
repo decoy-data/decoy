@@ -44,10 +44,10 @@
   "cli/io/_pipelines.py::resolve_pipeline::fded7ff3cc71": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/preflight.py::_emit_preflight_result::13b936a5128f": {
+  "cli/preflight/_render.py::_emit_preflight_result::13b936a5128f": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/preflight.py::_emit_preflight_result::48e0f1638b82": {
+  "cli/preflight/_render.py::_emit_preflight_result::48e0f1638b82": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
   "cli/project/_common.py::refuse::4e7f9cb4f1f8": {
@@ -166,6 +166,8 @@
   "cli/report/_show.py::_show::533228a372c4": "cli/report.py::_show::533228a372c4",
   "cli/report/_verify.py::_verify::2168d2d9d1cc": "cli/report.py::_verify::2168d2d9d1cc",
   "cli/report/_verify.py::_verify::6e8ed47c2d96": "cli/report.py::_verify::6e8ed47c2d96",
-  "cli/report/_verify.py::_verify::88ac16526f10": "cli/report.py::_verify::88ac16526f10"
+  "cli/report/_verify.py::_verify::88ac16526f10": "cli/report.py::_verify::88ac16526f10",
+  "cli/preflight/_render.py::_emit_preflight_result::13b936a5128f": "cli/preflight.py::_emit_preflight_result::13b936a5128f",
+  "cli/preflight/_render.py::_emit_preflight_result::48e0f1638b82": "cli/preflight.py::_emit_preflight_result::48e0f1638b82"
  }
 }

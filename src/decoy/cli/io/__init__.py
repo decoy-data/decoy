@@ -34,6 +34,7 @@ from decoy.cli._sources import (
     source_schema_and_chunks,
 )
 from decoy.cli.io._component import is_portable_component
+from decoy.cli.io._display import redact_urls
 from decoy.cli.io._integrity_report import (
     INTEGRITY_OUT_OPTION,
     INTEGRITY_WRITE_FAILED,
@@ -288,6 +289,7 @@ __all__ = [
     "read_report_config",
     "read_small_file",
     "read_source",
+    "redact_urls",
     "refuse_unchecked_chunked",
     "relative_outputs",
     "report_dest",

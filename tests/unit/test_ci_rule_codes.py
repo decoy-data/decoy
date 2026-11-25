@@ -168,24 +168,36 @@ def _cli_gate_codes() -> tuple[set[str], set[str]]:
         "_check_capacity",
         "_check_native",
     }
-    for fn in ast.walk(_module_tree(cli_preflight)):
-        if not (isinstance(fn, ast.FunctionDef) and fn.name in gate_checks):
-            continue
+    # The checks live in several modules of the package; scan them all so a later move
+    # inside the package cannot hide one.
+    scanned: set[str] = set()
+    package_dir = Path(cli_preflight.__file__).parent
+    functions = [
+        fn
+        for path in sorted(package_dir.glob("*.py"))
+        for fn in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(fn, ast.FunctionDef) and fn.name in gate_checks
+    ]
+    for fn in functions:
+        scanned.add(fn.name)
         for node in ast.walk(fn):
             if not isinstance(node, ast.Call):
                 continue
-            for kw in node.keywords:
-                if kw.arg not in ("name", "code"):
-                    continue
-                if isinstance(kw.value, ast.JoinedStr):
+            # `name=` / `code=` keywords, and the positional name of `add_warn(name, msg, loc)`.
+            named = [kw.value for kw in node.keywords if kw.arg in ("name", "code")]
+            if node.args and isinstance(node.func, ast.Attribute):
+                if node.func.attr in ("add_pass", "add_warn", "add_fail"):
+                    named.append(node.args[0])
+            for value in named:
+                if isinstance(value, ast.JoinedStr):
                     templates.add(
                         "".join(
-                            p.value if isinstance(p, ast.Constant) else "{}"
-                            for p in kw.value.values
+                            p.value if isinstance(p, ast.Constant) else "{}" for p in value.values
                         )
                     )
                 else:
-                    codes.update(s for s in _literals(kw.value) if _CODE_TOKEN.match(s))
+                    codes.update(s for s in _literals(value) if _CODE_TOKEN.match(s))
+    assert scanned == gate_checks, "the preflight scan did not visit every check function"
     from decoy.cli import extras
 
     for node in ast.walk(_module_tree(extras)):

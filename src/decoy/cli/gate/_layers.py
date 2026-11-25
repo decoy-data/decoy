@@ -240,10 +240,10 @@ def _run_config_base(
         fixed_target_overwrites,
         target_format_issues,
     )
-    from decoy.cli.preflight import _check_target_overwrite, _PreflightAccumulator
+    from decoy.cli.preflight import readiness
 
-    advisory = _PreflightAccumulator()
-    _check_target_overwrite(raw, advisory, config_path.parent)
+    advisory = readiness._PreflightAccumulator()
+    readiness._check_target_overwrite(raw, advisory, config_path.parent)
     findings = _findings_from_checks(advisory, "config")
     # The route is unknown here, so only the route-free contradictions (chunked=False).
     findings.extend(
@@ -390,16 +390,9 @@ def _run_preflight_layer(
     the location too keeps a same-code failure at another config path.
     """
     from decoy.cli._sources import remote_source_names
-    from decoy.cli.preflight import (
-        CAPACITY_CHECK,
-        PLAN_UNCOMPILABLE_CHECK,
-        _check_capacity,
-        _check_native,
-        _check_source_files,
-        _PreflightAccumulator,
-    )
+    from decoy.cli.preflight import CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK, readiness
 
-    acc = _PreflightAccumulator()
+    acc = readiness._PreflightAccumulator()
     # `--no-subset` reads every row, so price that: the engine's split returns a copy without
     # the block, from the validated dump; the config itself is not edited.
     capacity_raw = raw
@@ -410,7 +403,7 @@ def _run_preflight_layer(
             capacity_raw = split_subset_config(validated).run_config
         except SubsetError:
             pass  # the compile layer reports it; the estimate then says "not applicable"
-    _check_source_files(raw, config.parent, acc)
+    readiness._check_source_files(raw, config.parent, acc)
     for name in remote_source_names(raw):
         acc.add_warn(
             name=f"source.{name}.declared_columns",
@@ -418,8 +411,8 @@ def _run_preflight_layer(
             message=f"Source {name!r}: declared columns not checked: remote source, checked at run.",
             location=f"sources.{name}",
         )
-    _check_capacity(capacity_raw, config, acc)
-    _check_native(raw, acc)
+    readiness._check_capacity(capacity_raw, config, acc)
+    readiness._check_native(raw, acc)
 
     if route is GateRoute.CHUNKED:
         for c in acc.checks:

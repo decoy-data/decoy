@@ -363,12 +363,14 @@ def test_seeded_bypass_outside_the_allowlist_is_red(tmp_path: Path) -> None:
 def test_seeded_extra_rule_in_an_exempt_function_is_red() -> None:
     """The preflight exemption covers the preflight rule only, not a second parse in it."""
     seeded = {
-        "cli/preflight.py": [(10, "decoy.cli.preflight", "preflight", RULE_PREFLIGHT)],
+        "cli/preflight/_command.py": [
+            (10, "decoy.cli.preflight._command", "preflight", RULE_PREFLIGHT)
+        ],
         "cli/validate.py": [(5, "decoy.cli.validate", "config", RULE_YAML)],
     }
     out = findings(seeded)
     assert "cli/validate.py:5: yaml_safe_load called in config outside decoy.cli.gate" in out
-    assert not any(line.startswith("cli/preflight.py") for line in out)
+    assert not any(line.startswith("cli/preflight/_command.py") for line in out)
 
 
 def test_stale_exemption_is_red() -> None:

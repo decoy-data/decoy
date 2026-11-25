@@ -89,8 +89,8 @@ def test_every_output_consumer_agrees_with_the_one_enumerator(
     issue: bool,
 ) -> None:
     """One table holds enumeration, placement, gate, preflight and writer type parity."""
-    from decoy.cli import preflight
     from decoy.cli.io import _targets
+    from decoy.cli.preflight import readiness as preflight
 
     root = tmp_path / "project"
     root.mkdir()
