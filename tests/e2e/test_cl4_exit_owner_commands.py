@@ -85,9 +85,10 @@ def test_fit_exits_through_the_owner_for_a_source_error(tmp_path: Path) -> None:
 
     good = tmp_path / "good.csv"
     good.write_text("a,b\n1,2\n", encoding="utf-8")
-    with mock.patch("decoy.cli.fit.exit_code_for", return_value=EXIT_RUNTIME, create=True):
+    with mock.patch("decoy.cli.fit._command.exit_code_for", return_value=EXIT_RUNTIME, create=True):
         with mock.patch(
-            "decoy.cli.fit.fit_exact_snapshot", side_effect=FitSourceError("x", code="fit_x")
+            "decoy.cli.fit._command.fit_exact_snapshot",
+            side_effect=FitSourceError("x", code="fit_x"),
         ):
             result = runner.invoke(app, ["fit", str(good)])
 

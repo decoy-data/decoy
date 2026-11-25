@@ -34,11 +34,11 @@
    "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",
    "count": 1
   },
-  "cli/fit.py::dp_numeric_domain_invalid": {
+  "cli/fit/_args.py::dp_numeric_domain_invalid": {
    "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",
    "count": 2
   },
-  "cli/fit.py::row_count": {
+  "cli/fit/_command.py::row_count": {
    "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart.",
    "count": 2
   },
@@ -94,5 +94,9 @@
    "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry.",
    "count": 1
   }
+ },
+ "moved_from": {
+  "cli/fit/_args.py::dp_numeric_domain_invalid": "cli/fit.py::dp_numeric_domain_invalid",
+  "cli/fit/_command.py::row_count": "cli/fit.py::row_count"
  }
 }
