@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import redact_urls
+from tests.csv_sources import csv_source
 
 runner = CliRunner()
 CANARY = "PW-CANARY-7f3a"
@@ -21,7 +22,7 @@ def _config(tmp_path: Path, path: str) -> Path:
     cfg = {
         "version": 2,
         "global_settings": {"seed": 1},
-        "sources": {"a": {"type": "file", "format": "csv", "path": path}},
+        "sources": {"a": {**csv_source(tmp_path / "unused.csv"), "path": path}},
         "tables": [{"name": "a", "columns": [{"name": "email", "strategy": "redact"}]}],
         "targets": {"a": {"type": "file", "format": "csv", "path": "out.csv"}},
     }
