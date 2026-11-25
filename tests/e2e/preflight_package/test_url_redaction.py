@@ -101,3 +101,13 @@ def test_an_unreadable_url_like_path_does_not_leak_through_the_error(
     assert result.exit_code == EXIT_USAGE, text
     assert CANARY not in text
     assert "not readable" in text
+
+
+def test_redact_url_covers_leading_space_embedded_and_plain_values() -> None:
+    from decoy.cli.io import redact_url
+
+    assert redact_url(f" postgres://u:{CANARY}@h:5432/db") == "postgres://h:5432/db"
+    assert redact_url(f"dsn=postgres://u:{CANARY}@h/db") == "dsn=postgres://h/db"
+    plain = "/tmp/a:/alice@local/f?rev=1"
+    assert redact_url(plain) == plain
+    assert redact_url(QUOTED_URL) == "https://example.invalid/data/in.csv"

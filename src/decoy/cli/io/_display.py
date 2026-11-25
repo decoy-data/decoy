@@ -27,14 +27,16 @@ def _redact_one(match: re.Match[str]) -> str:
 
 
 def redact_url(value: str) -> str:
-    """One configured path or URL as shown in a finding, parsed whole.
+    """One configured path or URL as shown in a finding.
 
-    Userinfo may hold quotes and other characters a text scan would stop at, so a value with
-    a scheme is parsed as a whole, not matched. A plain path comes back unchanged.
+    A value that starts with a scheme is parsed whole, because userinfo may hold quotes and
+    other characters a text scan stops at. Any other value goes through the embedded-URL
+    scan, so `dsn=postgres://u:p@h` is still redacted while a plain path stays as it is.
     """
-    if re.match(r"[A-Za-z][A-Za-z0-9+.-]*://", value):
-        return _redact_text(value)
-    return value
+    stripped = value.strip()
+    if re.match(r"[A-Za-z][A-Za-z0-9+.-]*://", stripped):
+        return _redact_text(stripped)
+    return redact_urls(value)
 
 
 def redact_urls(text: str) -> str:
