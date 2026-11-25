@@ -17,7 +17,7 @@ The change moves code and nothing else. After it:
 - `decoy fit` prints the same bytes to stdout and stderr, writes the same snapshot file, and exits with the same code as before, for every input and flag.
 - `decoy fit --help` and `decoy --help` are byte-identical.
 - Every non-underscore name the old `fit.py` bound stays importable from `decoy.cli.fit` (`fit`, `FIT_EPILOG`, and the imported names such as `read_fit_csv`, `fit_exact_snapshot`, `strict_csv`, `emit_error`). The old module had no `__all__`, so the package defines none either, and `from decoy.cli.fit import *` yields the same names as on base.
-- No sentry count or ceiling goes up. Two go down: module-size loses its last entry (`fit.py`), and package-fanout for `src/decoy/cli` goes from 27 (after S2) to 26.
+- No sentry count or ceiling goes up. Two go down: module-size loses its last entry (`fit.py`), and package-fanout for `src/decoy/cli` goes down by one: 28 to 27 on the #411 stack, 27 to 26 once S2 has merged.
 
 Non-goals (recorded follow-ups, not blockers):
 
@@ -49,7 +49,7 @@ Do the move as `git mv src/decoy/cli/fit.py src/decoy/cli/fit/__init__.py` first
 |---|---|---|---|
 | `__init__.py`, `_args.py`, `_command.py` | `src/decoy/cli/fit/` | "Command-private helpers" (S1 and S2 add `src/decoy/cli/report/` and `src/decoy/cli/preflight/` there). S3 adds `src/decoy/cli/fit/` (the `decoy fit` command package) to the same line. | `src/decoy/cli/preflight/`, `src/decoy/cli/gen/` |
 
-S3 adds cases to `tests/unit/test_cli_split_imports.py`, which S2 creates. It adds no test file.
+S3 adds one test file, `tests/unit/cli_split/test_fit_imports.py` (new `tests/unit/cli_split/` package, as the other `tests/unit/` subdirectories are), beside S2's preflight guards in `tests/unit/test_cli_split_imports.py`. `tests/unit/` keeps its 58 direct modules.
 
 ## Importers
 
@@ -61,7 +61,7 @@ Import-path edits only (no assertion changes). Each one reaches a private name, 
 |---|---|---|---|
 | `tests/e2e/test_fit_command.py:35` | `from decoy.cli.fit import _build_typed_frame, _map_flag_token` | from `decoy.cli.fit._args` | `ImportError` (loud) |
 | `tests/e2e/test_fit_command.py:1053` | parses `decoy.cli.fit.__file__` for engine imports | parse every `*.py` in the package directory | `__init__.py` holds no engine import, so the `any(...)` assert fails (loud). Walking the package keeps the "no private engine import" half over `_args.py` too. |
-| `tests/e2e/first_user/test_fit_rows.py:339-348` | subclasses and patches `fit_module._FitUsageError` | subclass `decoy.cli.fit._args._FitUsageError`; patch `_FitUsageError` on both `_args` and `_command` | the raise at L534 and the `except` at L535 are in `_command`, so a patch on the package does nothing; `raised` stays empty and the test fails (loud). Both are patched so a raise in `_args` and the `except` in `_command` see the same class. |
+| `tests/e2e/first_user/test_fit_rows.py:339-348` | subclasses and patches `fit_module._FitUsageError` | subclass `decoy.cli.fit._args._FitUsageError`; patch `_FitUsageError` on `_command` | the raise at L534 and the `except` at L535 are in `_command`, so a patch on the package does nothing; `raised` stays empty and the test fails (loud). `_command` both raises and catches the error on this path, so one patch covers it. |
 | `tests/e2e/test_cl4_exit_owner_commands.py:88-90` | `mock.patch("decoy.cli.fit.exit_code_for", create=True)` and `mock.patch("decoy.cli.fit.fit_exact_snapshot")` | both on `decoy.cli.fit._command` | the second patch raises `AttributeError` (loud). The first one has `create=True`, so on its own it would patch nothing and stay quiet. Both must move together. The builder proves the first patch fires: on a scratch copy, set its `return_value` to a different code, and the test must go red. |
 | `tests/e2e/first_user/test_fit_fanout.py:115-116` | `monkeypatch.setattr("decoy.cli.fit.read_fit_csv", ...)` and `"decoy.cli.fit.fit_exact_snapshot"` | both on `decoy.cli.fit._command` | `monkeypatch.setattr` raises on a missing attribute (loud) |
 
@@ -73,11 +73,11 @@ Re-home each entry to the new file at the same site. Every one-to-one re-key goe
 
 | File | Change |
 |---|---|
-| `tests/sentry/baselines/module-size.json` | Delete `src/decoy/cli/fit.py` (max 811). `entries` becomes `{}`. Empty baselines already exist (`exit-code-owner.json`, `output-name-allow.json`). |
-| `tests/sentry/baselines/package-fanout.json` | `src/decoy/cli` max 27 to 26. |
+| `tests/sentry/baselines/module-size.json` | Delete `src/decoy/cli/fit.py` (max 811). On the #411 stack `preflight.py` is still an entry; once S2 has merged `entries` becomes `{}`. Empty baselines already exist (`exit-code-owner.json`, `output-name-allow.json`). |
+| `tests/sentry/baselines/package-fanout.json` | `src/decoy/cli` max 28 to 27 (27 to 26 after S2). |
 | `tests/sentry/baselines/lint-debt.json` | 5 keys (8 hits) become 6 keys. See below. |
 | `tests/sentry/baselines/engine-reason-code-copies.json` | (entries at L37 and L41) `moved_from`: `"cli/fit/_args.py::dp_numeric_domain_invalid": "cli/fit.py::dp_numeric_domain_invalid"` (count 2, L148 and L153), and `"cli/fit/_command.py::row_count": "cli/fit.py::row_count"` (count 2, both on L749). |
-| `tests/sentry/allowlist-before.json` | The same re-keys and shrinks: L61-62 (engine-reason-code), L131 (module-size, delete), the `src/decoy/cli` package-fanout row (27 to 26). |
+| `tests/sentry/allowlist-before.json` | The same re-keys and shrinks: L61-62 (engine-reason-code), L131 (module-size, delete), the `src/decoy/cli` package-fanout row (28 to 27; 27 to 26 after S2). |
 | `tests/sentry/baselines/csv-read-allow.json` | No edit. Its `moved_from` value `"cli/fit.py::fit"` is a leftover from an earlier move; `_ratchet.py` ignores leftovers. |
 | `tests/sentry/test_csv_read_choke_point.py:104` | `FIT_READER_CALLERS`: `("cli/fit.py", "fit")` to `("cli/fit/_command.py", "fit")`. If missed, the exact-set assert fails (loud). |
 | `tests/sentry/io_policy/test_private_files.py:139` | `"cli/fit.py::fit::write_local_target::1"` to `"cli/fit/_command.py::fit::write_local_target::1"`. If missed, the site table and the scan disagree (loud). |
@@ -216,7 +216,7 @@ S3 depends on both earlier slices:
 
 - `split_from` exists only after #411 merges (`tests/sentry/_ratchet.py`). Without it, the ANN401 split would need an `approved_growth` row.
 - S2 makes the module-size meta-tests synthetic. Without that, deleting the `fit.py` entry turns the meta-tests red.
-- S2 sets package-fanout to 27 and creates `tests/unit/test_cli_split_imports.py`, both of which S3 edits.
+- S2 sets package-fanout to 27 and creates `tests/unit/test_cli_split_imports.py`. S3 edits the fanout ledger only; its own import guards live in `tests/unit/cli_split/`, so the two slices never add the same file.
 - All three slices edit the same ledgers: `lint-debt.json`, `module-size.json`, `package-fanout.json`, `allowlist-before.json`. `engine-reason-code-copies.json` is not a three-way conflict: its fit entries (L37, L41) are unchanged on #411, which does not edit that ledger.
 
 Order: build S3 from `origin/main` after S2 merges. If the builder starts earlier, it branches from the S2 branch and opens its PR against `main` only after S2 has merged and the branch is rebased onto main (`git rebase --onto origin/main <S2 head> <S3 branch>`). A PR based on the S2 or #411 branch is not allowed: a PR merged into a non-main base never ships (#749 on 2026-11-22).

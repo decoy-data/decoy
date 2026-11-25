@@ -345,8 +345,7 @@ def test_a_bad_setting_error_carries_no_exception_context(
             super().__init__(*args, **kwargs)
             raised.append(self)
 
-    # The raise sits in `_args` and the `except` in `_command`; both must see one class.
-    monkeypatch.setattr(_args, "_FitUsageError", Recording)
+    # On this path `_command` both raises and catches the error, so one patch covers it.
     monkeypatch.setattr(_command, "_FitUsageError", Recording)
     _home.mkdir()
     (_home / "settings.json").write_text(
