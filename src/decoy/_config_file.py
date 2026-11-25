@@ -171,6 +171,10 @@ def _parse_yaml_mapping(text: str) -> dict[str, Any]:
     raw: Any = None
     try:
         raw = yaml.safe_load(text)
+    except MemoryError:
+        # Resource exhaustion says nothing about the file; reporting it as malformed YAML
+        # would blame valid input.
+        raise
     except Exception as exc:
         # Not only YAMLError: a tag constructor (`!!int x`) raises ValueError and `!!bool x`
         # a KeyError, and both texts quote the scalar. sanitize_yaml_error reads only the mark.

@@ -129,3 +129,20 @@ def test_the_loader_opens_the_path_once(tmp_path: Path, monkeypatch: pytest.Monk
 
     assert load_config_mapping(path) == {"version": 2}
     assert [p for p in opened if p == str(path)] == [str(path)]
+
+
+def test_a_parser_memory_error_is_not_reported_as_malformed_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write(tmp_path, b"version: 2\n")
+    # The sanitizer imports the engine on first use, and that import may call yaml.safe_load
+    # itself. Load it first so the injected failure hits only the config parse.
+    import decoy_engine.safe_output  # noqa: F401
+
+    def exhausted(_text: str) -> object:
+        raise MemoryError
+
+    monkeypatch.setattr("decoy._config_file.yaml.safe_load", exhausted)
+
+    with pytest.raises(MemoryError):
+        load_config_mapping(path)
