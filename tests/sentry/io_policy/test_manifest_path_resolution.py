@@ -64,7 +64,7 @@ ALLOWLIST: tuple[AllowedForward, ...] = tuple(
 RESOLVER_CALLERS = {
     ("src/decoy/cli/evidence.py", "read_manifest"),
     ("src/decoy/cli/evidence.py", "verify_manifest_issues"),
-    ("src/decoy/cli/report.py", "compare_data"),
+    ("src/decoy/cli/report/_compare.py", "compare_data"),
 }
 
 _GROUP_KEYS = {"input_fingerprints", "output_fingerprints"}

@@ -8,7 +8,7 @@ a `json.dumps` or `json.dump` call (through `import json`, `import json as j` an
 unless its file is in ALLOWLIST with the exact recorded site count.
 
 The rule is `sort_keys`, not "sort_keys plus compact separators": a sorted pretty form
-(`ci/manifest.py`) or a sorted comparison key (`cli/report.py`) is still a second canonical form,
+(`ci/manifest.py`) or a sorted comparison key (`cli/report/_compare.py`) is still a second canonical form,
 and the re-FRAME (docs/records/lib-reframe-2026-11-11.md) measured both. Size 5 at L1b.2; the
 plan's three (`signing`, `notify`, `installer`) plus those two. Shrink-only ratchet:
 tests/sentry/baselines/canonical-json-allow.json.

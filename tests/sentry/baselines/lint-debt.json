@@ -554,25 +554,97 @@
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 1
   },
-  "src/decoy/cli/report.py::ANN401": {
+  "src/decoy/cli/report/_compare.py::ANN401": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 5
+   "count": 2
   },
-  "src/decoy/cli/report.py::BLE001": {
+  "src/decoy/cli/report/_compare.py::C901": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 5
+   "count": 1
   },
-  "src/decoy/cli/report.py::C901": {
+  "src/decoy/cli/report/_compare.py::PLR0912": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 7
+   "count": 1
   },
-  "src/decoy/cli/report.py::PLR0912": {
+  "src/decoy/cli/report/_compare.py::PLR0915": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 7
+   "count": 1
   },
-  "src/decoy/cli/report.py::PLR0915": {
+  "src/decoy/cli/report/_diff.py::ANN401": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 6
+   "count": 2
+  },
+  "src/decoy/cli/report/_diff.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/report/_diff.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 2
+  },
+  "src/decoy/cli/report/_diff.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_fidelity.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 4
+  },
+  "src/decoy/cli/report/_fidelity.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_fidelity.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_fidelity.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_html.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_html.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_html.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_html.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_integrity.py::BLE001": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_integrity.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_integrity.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_integrity.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_markdown.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_markdown.py::PLR0912": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/report/_markdown.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
   },
   "src/decoy/cli/run/_context.py::ANN401": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
@@ -1570,6 +1642,50 @@
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 1
   }
+ },
+ "split_from": {
+  "src/decoy/cli/report.py::ANN401": [
+   "src/decoy/cli/report/_compare.py::ANN401",
+   "src/decoy/cli/report/_diff.py::ANN401",
+   "src/decoy/cli/report/_html.py::ANN401"
+  ],
+  "src/decoy/cli/report.py::BLE001": [
+   "src/decoy/cli/report/_fidelity.py::BLE001",
+   "src/decoy/cli/report/_integrity.py::BLE001"
+  ],
+  "src/decoy/cli/report.py::C901": [
+   "src/decoy/cli/report/_compare.py::C901",
+   "src/decoy/cli/report/_diff.py::C901",
+   "src/decoy/cli/report/_fidelity.py::C901",
+   "src/decoy/cli/report/_html.py::C901",
+   "src/decoy/cli/report/_integrity.py::C901",
+   "src/decoy/cli/report/_markdown.py::C901"
+  ],
+  "src/decoy/cli/report.py::PLR0912": [
+   "src/decoy/cli/report/_compare.py::PLR0912",
+   "src/decoy/cli/report/_diff.py::PLR0912",
+   "src/decoy/cli/report/_fidelity.py::PLR0912",
+   "src/decoy/cli/report/_html.py::PLR0912",
+   "src/decoy/cli/report/_integrity.py::PLR0912",
+   "src/decoy/cli/report/_markdown.py::PLR0912"
+  ],
+  "src/decoy/cli/report.py::PLR0915": [
+   "src/decoy/cli/report/_compare.py::PLR0915",
+   "src/decoy/cli/report/_diff.py::PLR0915",
+   "src/decoy/cli/report/_fidelity.py::PLR0915",
+   "src/decoy/cli/report/_html.py::PLR0915",
+   "src/decoy/cli/report/_integrity.py::PLR0915",
+   "src/decoy/cli/report/_markdown.py::PLR0915"
+  ],
+  "src/decoy/cli/preflight.py::C901": [
+   "src/decoy/cli/preflight/_capacity.py::C901",
+   "src/decoy/cli/preflight/_command.py::C901",
+   "src/decoy/cli/preflight/_render.py::C901"
+  ],
+  "src/decoy/cli/preflight.py::PLR0912": [
+   "src/decoy/cli/preflight/_capacity.py::PLR0912",
+   "src/decoy/cli/preflight/_render.py::PLR0912"
+  ]
  },
  "moved_from": {
   "src/decoy/cli/preflight/_render.py::ANN401": "src/decoy/cli/preflight.py::ANN401",

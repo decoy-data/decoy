@@ -71,7 +71,7 @@ def test_an_unavailable_config_model_exits_1_before_the_csvs_are_read(
     cfg = write_pipeline(tmp_path, post=post)
     masked = _masked(tmp_path, cfg)
     monkeypatch.setenv("DECOY_ML_DISABLED", "1")
-    with mock.patch("decoy.cli.report.read_report_source") as reads:
+    with mock.patch("decoy.cli.report._integrity.read_report_source") as reads:
         result = _integrity(
             masked, "--source", tmp_path / "customers.csv", "--config", cfg, "--json"
         )

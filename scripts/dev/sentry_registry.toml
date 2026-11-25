@@ -9,6 +9,10 @@
 #              load_allowlist("<id>") and no other file may (checked by test_baseline_registry)
 #   from_scan  the keys are recomputed from the source tree by a scanner module
 #   from_file  the keys are read from a committed config file (a reader in _baseline_sources.py)
+#
+# split = true marks a row whose counted ceilings add across files (lint-debt hits), so the
+# baseline may carry a top-level `split_from`. Leave it off any row whose ceiling does not add
+# (a module size `max`): one oversize exception must never become several.
 
 [[sentry]]
 id = "engine-internal-allow"
@@ -197,12 +201,6 @@ consumer = "tests/sentry/release/test_old_org_refs.py"
 [[sentry]]
 id = "lint-debt"
 baseline = "tests/sentry/baselines/lint-debt.json"
-approved_growth = [
-  { key = "src/decoy/cli/preflight/_capacity.py::C901", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
-  { key = "src/decoy/cli/preflight/_command.py::C901", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
-  { key = "src/decoy/cli/preflight/_render.py::C901", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
-  { key = "src/decoy/cli/preflight/_capacity.py::PLR0912", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
-  { key = "src/decoy/cli/preflight/_render.py::PLR0912", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
-]
 kind = "json"
 consumer = "tests/sentry/test_lint_debt.py"
+split = true

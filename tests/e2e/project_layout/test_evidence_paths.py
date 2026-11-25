@@ -665,7 +665,7 @@ def outside(tmp_path: Path, monkeypatch, elsewhere: Path):
         returned.append(path)
         return path
 
-    from decoy.cli import report as report_module
+    from decoy.cli.report import _compare as report_module
 
     monkeypatch.setattr(evidence_module, "resolve_manifest_path", spy)
     monkeypatch.setattr(report_module, "resolve_manifest_path", spy, raising=False)
