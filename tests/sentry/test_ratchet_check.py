@@ -350,6 +350,143 @@ def test_a_merged_move_left_in_the_map_is_ignored(repo: Path) -> None:
     assert res.returncode == 0, res.stdout + res.stderr
 
 
+# --- split_from: one key split across several, total kept (CLI-SPLIT) -------------------------
+
+
+def _split_repo(repo: Path, count: int = 5) -> None:
+    """Base: ``m::f`` with a counted ceiling, plus ``m::g``."""
+    doc = {
+        "sentry_id": "a",
+        "created_in": "S0",
+        "entries": {"m::f": _entry(count=count), "m::g": _entry()},
+    }
+    _write(repo, A, json.dumps(doc))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "counted base")
+
+
+def _split(entries: dict[str, object], split: object) -> str:
+    doc = {"sentry_id": "a", "created_in": "S0", "entries": entries, "split_from": split}
+    return json.dumps(doc)
+
+
+_SPLIT = {"m::f": ["n::f", "o::f"]}
+
+
+def test_an_exact_split_passes(repo: Path) -> None:
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}
+    _write(repo, A, _split(entries, _SPLIT))
+    res = _run(repo)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+@pytest.mark.parametrize(
+    ("entries", "split", "needle"),
+    [
+        pytest.param(
+            {"n::f": _entry(count=3), "o::f": _entry(count=3), "m::g": _entry()},
+            _SPLIT,
+            "split of m::f: count sums to 6, the merge base holds 5",
+            id="sum-one-higher",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "p::f": _entry(count=1)},
+            _SPLIT,
+            "gained key(s) not in the merge base: p::f",
+            id="new-key-not-listed",
+        ),
+        pytest.param(
+            {"m::f": _entry(count=5), "n::f": _entry(count=2), "o::f": _entry(count=3)},
+            _SPLIT,
+            "split_from old key m::f is still in the head",
+            id="old-key-still-present",
+        ),
+        pytest.param(
+            {
+                "n::f": {"reason": "a different reviewed reason text", "count": 2},
+                "o::f": _entry(count=3),
+                "m::g": _entry(),
+            },
+            _SPLIT,
+            "split entry n::f differs from m::f in the merge base",
+            id="changed-reason",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=5), "m::g": _entry()},
+            _SPLIT,
+            "split_from key o::f is not an entry in the head",
+            id="listed-key-missing",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            {"m::ghost": ["n::f", "o::f"]},
+            "split_from old key m::ghost was not in the merge base",
+            id="old-key-not-in-base",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(max=3), "m::g": _entry()},
+            _SPLIT,
+            "split entry o::f differs from m::f in the merge base",
+            id="ceiling-moved-to-another-field",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            {"m::f": ["n::f", "o::f", "n::f"]},
+            "split_from names n::f twice",
+            id="new-key-named-twice",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            {"m::f": "n::f"},
+            "split_from needs non-empty string keys and lists of keys",
+            id="value-not-a-list",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            ["m::f"],
+            "split_from is not an object",
+            id="not-an-object",
+        ),
+    ],
+)
+def test_a_split_that_breaks_a_rule_fails(
+    repo: Path, entries: dict[str, object], split: object, needle: str
+) -> None:
+    _split_repo(repo)
+    _write(repo, A, _split(entries, split))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "Traceback" not in res.stderr
+    assert needle in res.stderr
+
+
+def test_a_split_of_an_entry_with_no_ceiling_fails(repo: Path) -> None:
+    entries = {"m::f": _entry(), "n::g": _entry(), "o::g": _entry()}
+    _write(repo, A, _split(entries, {"m::g": ["n::g", "o::g"]}))
+    _assert_red(repo, "split of m::g needs a counted entry")
+
+
+def test_a_key_both_moved_and_split_fails(repo: Path) -> None:
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}
+    doc = json.loads(_split(entries, _SPLIT))
+    doc["moved_from"] = {"o::f": "m::g"}
+    doc["entries"].pop("m::g")
+    _write(repo, A, json.dumps(doc))
+    _assert_red(repo, "o::f is named by both moved_from and split_from")
+
+
+def test_a_merged_split_left_in_the_map_is_ignored(repo: Path) -> None:
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}
+    _write(repo, A, _split(entries, _SPLIT))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "split merged")
+    res = _run(repo)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
 # --- numeric ``max`` entries: a head value above its base value is growth --------------------
 
 _CASES = pytest.mark.parametrize(

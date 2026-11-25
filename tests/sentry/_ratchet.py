@@ -24,6 +24,13 @@ old key that was in the merge base, is gone from the head, is named once, and wh
 equals the new head entry exactly. An entry whose new key is already in the base is a leftover
 of a merged move and is ignored. The map is top-level, not inside an entry, because other
 sentries compare entries exactly.
+
+A code split moves one counted key's hits into several files. A baseline may carry a top-level
+``"split_from": {old_key: [new_key, ...]}`` map (CLI-SPLIT). The new keys are admitted only when
+the old key was in the merge base and is gone from the head, every listed new key is a head entry,
+each new entry equals the old one apart from its ceilings, and each ceiling the old entry held
+sums across the new entries to exactly the old value. A key named by both maps is a finding. A
+split whose new keys are all already in the base is a leftover of a merged split and is ignored.
 """
 
 from __future__ import annotations
@@ -71,6 +78,7 @@ class Baseline:
     keys: frozenset[str]
     reasons: dict[str, object]
     moved_from: object = None  # raw top-level map; validated in ``move_findings``
+    split_from: object = None  # raw top-level map; validated in ``split_findings``
 
 
 def parse_registry(text: str) -> tuple[dict[str, str], list[str]]:
@@ -137,6 +145,7 @@ def parse_baseline(text: str) -> Baseline:
         frozenset(entries),
         entries,
         data.get("moved_from"),
+        data.get("split_from"),
     )
 
 
@@ -241,6 +250,93 @@ def move_findings(
     return findings, frozenset(admitted)
 
 
+def _split_entry_finding(
+    path: str, old: str, old_entry: object, news: list[str], head: Baseline
+) -> str | None:
+    """Why the split of ``old`` into ``news`` is refused, or None when it keeps the total."""
+    held = (
+        [f for f in CEILING_FIELDS if _int_field(old_entry, f) is not None]
+        if isinstance(old_entry, dict)
+        else []
+    )
+    if not held:
+        return f"{path}: split of {old} needs a counted entry (max, count or sites)"
+    assert isinstance(old_entry, dict)
+    rest = {k: v for k, v in old_entry.items() if k not in CEILING_FIELDS}
+    for new in news:
+        entry = head.reasons[new]
+        if not isinstance(entry, dict) or (
+            {k: v for k, v in entry.items() if k not in CEILING_FIELDS} != rest
+            or {f for f in CEILING_FIELDS if f in entry} != set(held)
+            or any(_int_field(entry, f) is None for f in held)
+        ):
+            return f"{path}: split entry {new} differs from {old} in the merge base"
+    for field in held:
+        total = sum(_int_field(head.reasons[new], field) or 0 for new in news)
+        if total != old_entry[field]:
+            return (
+                f"{path}: split of {old}: {field} sums to {total},"
+                f" the merge base holds {old_entry[field]}"
+            )
+    return None
+
+
+def split_findings(
+    path: str, head: Baseline, base: Baseline | None, gained: frozenset[str]
+) -> tuple[list[str], frozenset[str]]:
+    """Validate ``split_from`` against the base; return findings and the admitted new keys."""
+    raw = head.split_from
+    if raw is None:
+        return [], frozenset()
+    if not isinstance(raw, dict):
+        return [f"{path}: split_from is not an object"], frozenset()
+    findings: list[str] = []
+    admitted: set[str] = set()
+    base_keys = base.keys if base is not None else frozenset()
+    moved = head.moved_from if isinstance(head.moved_from, dict) else {}
+    seen: set[str] = set()
+    for old, news in sorted(raw.items(), key=lambda kv: str(kv[0])):
+        if (
+            not isinstance(old, str)
+            or not old.strip()
+            or not isinstance(news, list)
+            or not news
+            or not all(isinstance(n, str) and n.strip() for n in news)
+        ):
+            findings.append(f"{path}: split_from needs non-empty string keys and lists of keys")
+            continue
+        twice = sorted({n for n in news if n in seen or news.count(n) > 1})
+        if twice:
+            findings.append(f"{path}: split_from names {', '.join(twice)} twice")
+            continue
+        seen.update(news)
+        both = sorted(n for n in news if n in moved)
+        if both:
+            findings.append(f"{path}: {', '.join(both)} is named by both moved_from and split_from")
+            continue
+        missing = sorted(n for n in news if n not in head.keys)
+        if missing:
+            findings.append(
+                f"{path}: split_from key {', '.join(missing)} is not an entry in the head"
+            )
+            continue
+        if not any(n in gained for n in news):
+            continue  # the split already merged: its keys are in the base, so it admits nothing
+        if old not in base_keys:
+            findings.append(f"{path}: split_from old key {old} was not in the merge base")
+            continue
+        if old in head.keys:
+            findings.append(f"{path}: split_from old key {old} is still in the head")
+            continue
+        assert base is not None
+        why = _split_entry_finding(path, old, base.reasons[old], news, head)
+        if why is not None:
+            findings.append(why)
+            continue
+        admitted.update(news)
+    return findings, frozenset(admitted)
+
+
 def _fmt(keys: frozenset[str]) -> str:
     return ", ".join(sorted(keys))
 
@@ -300,6 +396,9 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
             moved_f, admitted = move_findings(path, base, base_doc, grown)
             findings += moved_f
             grown -= admitted
+            split_f, split_admitted = split_findings(path, base, base_doc, grown)
+            findings += split_f
+            grown -= split_admitted
             approved = grown & frozenset(approvals.get(sid, {}))
             report += [
                 f"{sid}: approved growth {k} ({approvals[sid][k]})" for k in sorted(approved)
