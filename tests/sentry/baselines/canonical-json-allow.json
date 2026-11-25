@@ -6,7 +6,7 @@
    "sites": 1,
    "reason": "Pretty-printed committed JSON Schema (indent=2) drift-tested against its file; a stable display form, never hashed."
   },
-  "cli/report.py": {
+  "cli/report/_compare.py": {
    "sites": 1,
    "reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Move to records.canonical_bytes when report.py is next split."
   },
@@ -24,6 +24,7 @@
   }
  },
  "moved_from": {
-  "distribution/trust_state.py": "distribution/installer.py"
+  "distribution/trust_state.py": "distribution/installer.py",
+  "cli/report/_compare.py": "cli/report.py"
  }
 }

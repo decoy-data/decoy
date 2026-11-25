@@ -29,7 +29,7 @@
   "cli/plan.py::render_plan_artifact::1": {
    "reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"
   },
-  "cli/report.py::_fidelity::1": {
+  "cli/report/_fidelity.py::_fidelity::1": {
    "reason": "policy file: a different file kind where an empty file means no policy"
   },
   "cli/scanning/_layout.py::_parse_layout::1": {
@@ -38,6 +38,7 @@
  },
  "moved_from": {
   "_source_positions.py::YamlPositionIndex.from_text::1": "ci/locations.py::YamlSourceIndex.from_text::1",
-  "cli/scanning/_layout.py::_parse_layout::1": "cli/scan.py::_parse_layout::1"
+  "cli/scanning/_layout.py::_parse_layout::1": "cli/scan.py::_parse_layout::1",
+  "cli/report/_fidelity.py::_fidelity::1": "cli/report.py::_fidelity::1"
  }
 }
