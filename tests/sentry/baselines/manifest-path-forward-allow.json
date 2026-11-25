@@ -2,8 +2,11 @@
  "sentry_id": "manifest-path-forward-allow",
  "created_in": "PROJECT-LAYOUT-P3",
  "entries": {
-  "src/decoy/cli/report.py::compare_manifests::_fp_changes": {
+  "src/decoy/cli/report/_compare.py::compare_manifests::_fp_changes": {
    "reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."
   }
+ },
+ "moved_from": {
+  "src/decoy/cli/report/_compare.py::compare_manifests::_fp_changes": "src/decoy/cli/report.py::compare_manifests::_fp_changes"
  }
 }

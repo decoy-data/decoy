@@ -71,7 +71,7 @@ def test_the_walk_reaches_every_capped_folder() -> None:
 # --- meta-tests: seeded violations prove the guard sees them ------------------------------
 
 
-LEGACY = "src/decoy/cli/report.py"
+LEGACY = "src/decoy/cli/preflight.py"
 
 
 def _copy(root: Path, key: str, extra: str = "") -> None:

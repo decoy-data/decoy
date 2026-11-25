@@ -202,7 +202,7 @@ _REAL_CELLS = {
     "direct-run": ("decoy.cli.run", ["run", "{cfg}"]),
     "scan-default": ("decoy.cli.scan", ["scan", "{src}"]),
     "validate-default": ("decoy.cli.validate", ["validate", "{cfg}"]),
-    "report-show": ("decoy.cli.report", ["report", "show", "{ev}"]),
+    "report-show": ("decoy.cli.report._show", ["report", "show", "{ev}"]),
 }
 
 
@@ -269,7 +269,7 @@ def test_real_app_crash_without_flag_is_one_line(cell: str, monkeypatch, tmp_pat
 
 
 def test_real_app_verbose_state_does_not_leak_between_invocations(monkeypatch, tmp_path) -> None:
-    _crash_in(monkeypatch, "decoy.cli.report")
+    _crash_in(monkeypatch, "decoy.cli.report._show")
     argv = _real_argv(["report", "show", "{ev}"], tmp_path)
     loud = runner.invoke(app, [*argv, "--verbose"])
     quiet = runner.invoke(app, argv)

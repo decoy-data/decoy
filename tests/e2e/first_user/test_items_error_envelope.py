@@ -247,7 +247,7 @@ def test_fidelity_read_failure_carries_no_input_bytes(files: Path, monkeypatch) 
     def _boom(*_args, **_kwargs):
         raise UnicodeDecodeError("utf-8", secret.encode(), 0, 1, secret)
 
-    monkeypatch.setattr("decoy.cli.report.read_report_source", _boom)
+    monkeypatch.setattr("decoy.cli.report._fidelity.read_report_source", _boom)
     for extra in ([], ["--json"], ["--quiet"]):
         result = runner.invoke(app, ["report", "fidelity", GOOD_CSV, GOOD_CSV, *extra])
 
