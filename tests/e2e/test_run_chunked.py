@@ -149,8 +149,9 @@ class TestRunChunked:
     def test_nondeterministic_categorical_with_numeric_categories_is_refused(
         self, tmp_path: Path
     ) -> None:
-        """Engine 0.28.4 admits a categorical column to --chunked only when it is deterministic,
-        or non-deterministic with a namespace and string categories. The help, `decoy explain
+        """Engine 0.28.4 admits a categorical column to --chunked only when it has a namespace
+        (both the deterministic and the non-deterministic branch need one) and, if it is
+        non-deterministic, string categories. The help, `decoy explain
         chunked` and the reference say so; this pins the refused case they describe."""
         columns = [
             {
