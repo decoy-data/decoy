@@ -69,7 +69,7 @@ def _owns_csv(package: str, name: str) -> bool:
 
 def read_sites(source: str) -> list[tuple[int, str]]:
     """Return (line, enclosing function or '<module>') for each watched call."""
-    # Leaf scope names: the baseline keys (`cli/report.py::_load`) are recorded that way.
+    # Leaf scope names: the baseline keys (`cli/gen/_fit.py::read_fit_csv`) are recorded that way.
     return call_sites(source, qualified_match=_owns, qualified_scopes=False)
 
 
@@ -101,7 +101,9 @@ def test_allowlist_has_reasons_and_unique_identities() -> None:
 # The callers of `cli/gen/_fit.py::read_fit_csv`, pinned by (file, function). The allowlist above
 # covers the one pandas call inside it; this pins who may reach that call.
 FIT_READER = "read_fit_csv"
-FIT_READER_CALLERS = frozenset({("cli/fit.py", "fit"), ("cli/gen/_fit.py", "fit_exact_snapshot")})
+FIT_READER_CALLERS = frozenset(
+    {("cli/fit/_command.py", "fit"), ("cli/gen/_fit.py", "fit_exact_snapshot")}
+)
 
 
 def fit_reader_callers(root: Path) -> set[tuple[str, str]]:

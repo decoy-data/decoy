@@ -414,3 +414,15 @@ def test_a_helper_module_holding_an_allowlist_is_caught() -> None:
     assert inline_allowlists(helper, set()) == [
         "tests/sentry/cli_text/_helper.py: constant ALLOWLIST"
     ]
+
+
+ADDITIVE_SPLIT_ROWS = frozenset({"lint-debt"})
+
+
+def test_only_additive_rows_may_split() -> None:
+    """``split = true`` is for counts that add across files; a module-size ``max`` never does."""
+    flagged = {r["id"] for r in registry_rows() if r.get("split") is True}
+    assert flagged == ADDITIVE_SPLIT_ROWS
+    for row in registry_rows():
+        if row["id"] not in ADDITIVE_SPLIT_ROWS:
+            assert "split_from" not in _doc(row["id"])

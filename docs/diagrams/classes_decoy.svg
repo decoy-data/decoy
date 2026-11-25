@@ -3579,9 +3579,9 @@
 <polyline fill="none" stroke="black" points="40774.25,-560.5 40941.75,-560.5"/>
 <text xml:space="preserve" text-anchor="start" x="40855.75" y="-543.2" font-family="Times,serif" font-size="14.00"> </text>
 </g>
-<!-- decoy.cli.fit._FitUsageError -->
+<!-- decoy.cli.fit._args._FitUsageError -->
 <g id="node228" class="node">
-<title>decoy.cli.fit._FitUsageError</title>
+<title>decoy.cli.fit._args._FitUsageError</title>
 <polygon fill="none" stroke="black" points="40959.5,-543.88 40959.5,-636.88 41086.5,-636.88 41086.5,-543.88 40959.5,-543.88"/>
 <text xml:space="preserve" text-anchor="start" x="40967.5" y="-619.58" font-family="Times,serif" font-size="14.00" fill="red">_FitUsageError</text>
 <polyline fill="none" stroke="black" points="40959.5,-611.62 41086.5,-611.62"/>
