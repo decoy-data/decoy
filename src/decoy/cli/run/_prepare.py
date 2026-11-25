@@ -70,7 +70,7 @@ def _load_raw_config(
     try:
         data = read_config_bytes(config_path)
         raw, findings = parse_pipeline_yaml(config_path, data)
-    except (OSError, UnicodeDecodeError) as exc:
+    except OSError as exc:
         return None, [], exc, None
     return raw, findings, None, config_sha256(data)
 

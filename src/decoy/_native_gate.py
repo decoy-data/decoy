@@ -301,6 +301,15 @@ def static_native_eligibility(config_dict: dict[str, Any]) -> bool:
     return source.get("format") in _NATIVE_SOURCE_FORMATS
 
 
+def _code_token(reason: str) -> str:
+    """The engine's companion reason as a reason-code token: `-` becomes `_`.
+
+    The engine spells some reasons with hyphens (`kat-corrupt`), which `emit_error` refuses in
+    a `code`. The message text keeps the engine's own spelling.
+    """
+    return reason.replace("-", "_")
+
+
 def pre_execution_gate(
     *,
     intent: NativeIntent,
@@ -350,7 +359,7 @@ def pre_execution_gate(
             raise NativeGateError(
                 "--native requires a healthy decoy-engine-native companion, but "
                 f"the probe reports {status.reason!r} ({_remediation(status.reason)}).",
-                code=f"native_require_{status.reason}",
+                code=f"native_require_{_code_token(status.reason)}",
             )
         return PreGateResult(unified_slice_enabled=True)
 
@@ -388,7 +397,7 @@ def pre_execution_gate(
         raise NativeGateError(
             "the decoy-engine-native companion is present but not usable "
             f"({status.reason}); {_remediation(status.reason)}.",
-            code=f"native_companion_{status.reason}",
+            code=f"native_companion_{_code_token(status.reason)}",
         )
     return PreGateResult(unified_slice_enabled=True)
 

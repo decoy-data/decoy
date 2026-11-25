@@ -101,7 +101,7 @@ class TestRunChunked:
         cfg = _pipeline(tmp_path, [{"name": "ssn", "strategy": "shuffle"}])
         result = runner.invoke(app, ["run", str(cfg), "--chunked"])
         assert result.exit_code == EXIT_USAGE
-        assert "shuffle" in result.output and "value-keyed" in result.output
+        assert "strategy_not_chunk_safe: Strategy not chunk safe." in result.output
 
     def test_chunk_size_must_be_positive(self, tmp_path: Path) -> None:
         cfg = _pipeline(tmp_path, _SAFE)

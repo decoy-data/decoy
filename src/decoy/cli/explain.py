@@ -477,7 +477,7 @@ _TOPICS: dict[str, _Topic] = {
             "      run's output. The fix is in the data being checked, not\n"
             "      in the CLI invocation. Pattern source:\n"
             "      semgrep's exit-code split.\n"
-            "  5   Capacity. `decoy run` or `decoy validate preflight` refused\n"
+            "  5   Capacity. `decoy run`, `decoy demo` or `decoy validate preflight` refused\n"
             "      the job because it needs more memory than the host (or\n"
             "      budget) has, either hit mid-run or predicted up front. The\n"
             "      engine decides which refusals count: the out-of-core-FK\n"

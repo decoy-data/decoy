@@ -1,4 +1,4 @@
-"""`decoy run` reads every exit integer from `RUN_EXIT_MAP`; the integers match the old ones."""
+"""`decoy run` exits match the old integers and stay tied to `RUN_EXIT_MAP`."""
 
 from __future__ import annotations
 
@@ -89,9 +89,16 @@ def test_exits_read_the_map(tmp_path: Path, exc: BaseException, expected: int, k
     cfg = _config(tmp_path)
     with _engine_raises(exc):
         assert runner.invoke(app, ["run", str(cfg)]).exit_code == expected
-    # The same case follows the map, so no second table can hold the integer.
     with _patched_cell(key, 9), _engine_raises(exc):
-        assert runner.invoke(app, ["run", str(cfg)]).exit_code == 9
+        result = runner.invoke(app, ["run", str(cfg)])
+    if key[0] == "findings":
+        # The findings cell is read straight from the map.
+        assert result.exit_code == 9
+    else:
+        # Plan CL4 5.1: the failure category is the map's inverse over `exit_code_for`, so a
+        # failure cell retuned alone leaves that exit with no row and the run raises (AT-4).
+        assert isinstance(result.exception, RuntimeError)
+        assert "no RUN_EXIT_MAP failure row" in str(result.exception)
 
 
 @pytest.mark.parametrize("flags", [[], ["--json"], ["--quiet"]], ids=["human", "json", "quiet"])

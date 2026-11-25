@@ -191,6 +191,7 @@ def test_usage_types_single_source(tmp_path: Path) -> None:
 
     from decoy import _native_gate
     from decoy.cli.extras import UnsupportedCloudEndpointError
+    from decoy.cli.gen._fit import FitSourceError
     from decoy.cli.io import DuckDBSourceError, LayoutError, TargetFormatError
     from decoy.cli.run import _context, _execute, _notify, _prepare, _vault
 
@@ -216,6 +217,7 @@ def test_usage_types_single_source(tmp_path: Path) -> None:
         _errors.OutDirUsageError,
         MissingExtraError,
         UnsupportedCloudEndpointError,
+        FitSourceError,
         NerUnavailableError,
         _native_gate.NativeGateError,
         MaskSecretError,

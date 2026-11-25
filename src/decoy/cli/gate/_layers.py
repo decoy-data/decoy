@@ -138,6 +138,15 @@ def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:
     return findings
 
 
+def _exception_finding_text(what: str, error: BaseException) -> str:
+    """A finding message for an exception: fixed words and the type name, never `str(exc)`.
+
+    Engine and library exception text can quote a source value, and a finding reaches the
+    terminal, the `--json` document and the first-finding summary of a refused run.
+    """
+    return f"{what} ({type(error).__name__})."
+
+
 def _schema_findings(refusal: PipelineConfigError) -> list[GateFinding]:
     """The config-layer errors for a config the engine schema refused, one per problem.
 
@@ -203,7 +212,7 @@ def _run_config_base(
                     "config",
                     "error",
                     "pipeline.validation_error",
-                    str(exc),
+                    _exception_finding_text("pipeline validation failed", exc),
                     logical_path=getattr(exc, "path", None),
                 )
             ],
@@ -343,8 +352,15 @@ def _run_compile_layer(
             )
         )
         return findings
-    except Exception as exc:  # mirrors `compile`'s own broad compile-error catch
-        findings.append(GateFinding("compile", "error", "compile_error", str(exc)))
+    except Exception as unexpected:  # mirrors `compile`'s own broad compile-error catch
+        findings.append(
+            GateFinding(
+                "compile",
+                "error",
+                "compile_error",
+                _exception_finding_text("compile failed", unexpected),
+            )
+        )
         return findings
 
     for w in plan.plan_compile.warnings:

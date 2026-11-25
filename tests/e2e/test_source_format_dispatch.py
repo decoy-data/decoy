@@ -371,7 +371,10 @@ def test_malformed_fixed_width_surfaces_engine_error(tmp_path: Path, bad_line: s
     result = runner.invoke(app, ["run", str(config), "--json"])
     assert result.exit_code != 0
     payload = _json.loads(result.stdout)
-    assert str(engine_err.value) in payload["error"]
+    # Plan CL4 5.2 (G5b): the reader's text quotes the path and column, so the run error is
+    # the fixed type-name form.
+    assert payload["error"] == f"run failed ({type(engine_err.value).__name__})."
+    assert str(engine_err.value) not in result.output
     assert not (tmp_path / "out.csv").exists()
 
 
