@@ -17,8 +17,9 @@ The change moves code and nothing else. After it:
 - `decoy validate preflight` prints the same bytes to stdout and stderr and exits with the same code as before, for every input and flag (`--local`, `--json`, `--quiet`, `--verbose`, `--fail-on-warning`).
 - The gate's preflight layer (`decoy validate`, and `decoy run` through `run_gate`) gives the same findings, in the same order, with the same exit codes.
 - `decoy validate --help` and `decoy validate preflight --help` are byte-identical.
-- `from decoy.cli.preflight import preflight, PREFLIGHT_EPILOG, CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK` keeps working. These four public names form the new `__all__`.
-- Named and wildcard imports of other names: the old module had no `__all__`, so `from decoy.cli.preflight import *` also gave the names it imported (`ConfigFileError`, `typer`, `Path`, `exit_code_for` and others, `src/decoy/cli/preflight.py:52-66`). Those are not part of the contract. Nothing imports them from here (`grep -rn "decoy.cli.preflight" src tests docs` lists only the sites in Importers), no file does `import *` from it, and `decoy.cli` is not a library surface (`docs/library.md` names only `decoy.cli.io.read_small_file`). Each such name keeps its own home module. The import-compat test records this choice (acceptance test 2).
+- `from decoy.cli.preflight import preflight, PREFLIGHT_EPILOG, CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK` keeps working. These four names have named consumers (see Importers).
+- Named and wildcard imports keep working for every non-underscore name the old module bound. The old module had no `__all__`, so `from decoy.cli.preflight import *` and named imports reached the names it imported as well as the ones it defined. The package keeps that set exactly. The set at `origin/main` (`d0826aa9`), computed with `{n for n in vars(module) if not n.startswith("_")}`, is: `CAPACITY_CHECK`, `ConfigFileError`, `EXIT_CAPACITY`, `EXIT_USAGE`, `EXIT_WARNINGS`, `OutputMode`, `PLAN_UNCOMPILABLE_CHECK`, `PREFLIGHT_EPILOG`, `Path`, `Any`, `Text`, `annotations`, `capacity_codes`, `code`, `config_refusal`, `dataclass`, `emit_json`, `error`, `exit_code_for`, `field`, `hint`, `load_config_mapping`, `pipeline_argument`, `preflight`, `resolve_pipeline`, `setup_output`, `success`, `typer`, `warn`. `__init__.py` binds each one from the submodule that uses it (`_command`, `_result` or `_render`) and sets `__all__` to the same sorted list, so a wildcard import gives the same names as before. Nothing in `src`, `tests` or `docs` uses these extra names through `decoy.cli.preflight` today; they are kept because a user script might.
+- Keeping these names on the package brings back one risk: a test that patches `decoy.cli.preflight.<name>` sets an attribute the moved code never reads, so the patch does nothing and the test still passes. The import-compat test therefore also scans `tests/` for patch targets (`mock.patch("...")`, `monkeypatch.setattr("...")` strings) that name `decoy.cli.preflight.<attr>` directly on the package and fails on any it finds. Patch targets must name the submodule (`decoy.cli.preflight._command.<attr>` and so on).
 - No sentry count or ceiling goes up. Two go down: module-size loses its `preflight.py` entry, and package-fanout for `src/decoy/cli` goes from 28 (after S1) to 27.
 
 Non-goals (recorded follow-ups, not blockers):
@@ -33,7 +34,7 @@ Non-goals (recorded follow-ups, not blockers):
 
 | Module | Holds (line ranges at `d6b9e4c7`) | Reason to change | Est. lines |
 |---|---|---|---|
-| `__init__.py` | Module docstring (L1-48), re-exports, `__all__` | the public surface | ~60 |
+| `__init__.py` | Module docstring (L1-48), re-exports of the base name set, `__all__` | the public surface | ~75 |
 | `_result.py` | `CAPACITY_CHECK`, `PLAN_UNCOMPILABLE_CHECK` with their comments, `_CheckResult`, `_PreflightAccumulator` (L111-181) | the fields of one check result | ~90 |
 | `_checks.py` | `_check_source_files` (L188-262), `_check_target_overwrite` (L265-298), `_check_native` (L521-580) | how a source, a target or the native companion is judged ready | ~200 |
 | `_capacity.py` | `_file_sources_missing_on_disk`, `_check_capacity` (L306-513) | the out-of-core FK capacity verdict | ~230 |
@@ -49,7 +50,7 @@ Imports run one way: `_result` is a leaf; `_checks`, `_capacity` and `_render` i
 
 No module imports `__init__`. The engine imports (`decoy_engine.execution`, `decoy_engine`, `decoy._native_gate`, `parse_pipeline_config`, `run_config_only_checks`) and the `decoy.cli.io` layout imports stay lazy inside function bodies, as today, so `--help` does not load the engine.
 
-`__init__.py` stays thin: no function definitions. It re-exports only the four public names, each with a named consumer (see Importers). Private names (`_PreflightAccumulator`, `_check_*`, `_emit_preflight_result`) are not re-exported. A re-exported private name invites a test to patch the package attribute, which the moved code no longer reads, so the patch would do nothing without failing.
+`__init__.py` stays thin: no function definitions. It re-exports the four names with named consumers (see Importers) and the other non-underscore names the old module bound (see Guarantee), so named and wildcard imports keep working. Private names (`_PreflightAccumulator`, `_check_*`, `_emit_preflight_result`) are not re-exported. A re-exported private name invites a test to patch the package attribute, which the moved code no longer reads, so the patch would do nothing without failing.
 
 Do the move as `git mv src/decoy/cli/preflight.py src/decoy/cli/preflight/__init__.py` first, then cut the modules out of it, so `git log --follow` and `git blame -C` keep the history.
 
@@ -131,13 +132,13 @@ Every new entry keeps the old reason. The builder re-runs `scripts/dev/lintdebt.
 
 ## Acceptance tests
 
-1. Existing tests pass with no assertion edits. The only test edits are the import paths and sentry tables listed above.
-2. Import-compat test (new, kept): `tests/unit/test_cli_split_imports.py`. S2 creates it; S3 adds its cases. One parametrized test asserts that `decoy.cli.preflight.__all__` is exactly the four public names, that each resolves to the object its owning submodule defines (`preflight is _command.preflight`, `CAPACITY_CHECK is _result.CAPACITY_CHECK`), and that `validate.py`'s `_preflight_command` is that same object. It asserts `readiness.__all__` is exactly the five check names and that each `readiness` name is the object its defining module holds. It asserts that no private name is bound on the package: `not hasattr(decoy.cli.preflight, name)` for `_check_capacity`, `_check_source_files`, `_check_target_overwrite`, `_check_native`, `_PreflightAccumulator` and `_emit_preflight_result`. Mutation that must turn it red: re-export `_check_capacity` from `__init__`.
+1. Existing tests pass with no assertion edits. The test edits are the import paths and sentry tables listed above, plus two required additions: the valid-input spy control in `test_layout_gate.py` (Importers) and the visited-functions assert in `test_ci_rule_codes.py` (Defect classes, row 4).
+2. Import-compat test (new, kept): `tests/unit/test_cli_split_imports.py`. S2 creates it; S3 adds its cases. One parametrized test asserts that `decoy.cli.preflight.__all__` and the package's non-underscore names both equal the frozen base list in the Guarantee section, that `from decoy.cli.preflight import *` in a fresh namespace binds that same list, that each resolves to the object its owning submodule defines (`preflight is _command.preflight`, `CAPACITY_CHECK is _result.CAPACITY_CHECK`), and that `validate.py`'s `_preflight_command` is that same object. It asserts `readiness.__all__` is exactly the five check names and that each `readiness` name is the object its defining module holds. It asserts that no private name is bound on the package: `not hasattr(decoy.cli.preflight, name)` for `_check_capacity`, `_check_source_files`, `_check_target_overwrite`, `_check_native`, `_PreflightAccumulator` and `_emit_preflight_result`. It runs the patch-target scan described in the Guarantee section. Mutations that must turn it red: re-export `_check_capacity` from `__init__`; drop `ConfigFileError` from `__init__`; add a test string `monkeypatch.setattr("decoy.cli.preflight._check_capacity", ...)`.
 3. Golden byte check. A throwaway harness (outside the tree; its script and per-case hash table go in the PR body) runs on the base commit and on the head and compares stdout, stderr and exit code byte for byte for:
    - `decoy validate preflight` on: a clean pipeline; a missing source file; an unreadable source; a target that already exists; an escaping target (the layout refusal at `src/decoy/cli/preflight.py:701-705`, config from `tests/e2e/project_layout/test_layout_gate.py:113-123`); a capacity fail and a capacity warn (the configs in `tests/e2e/test_preflight_capacity.py`); an uncompilable plan; the native cases from `tests/e2e/test_preflight_native.py`; a YAML error; a schema error. Each with no flag, `--json` and `--quiet`, plus `--fail-on-warning` where a warning exists, and one `--local` run;
    - `decoy validate` (the gate) on the capacity-fail, missing-source and target-exists configs, with and without `--json`;
    - `decoy validate --help` and `decoy validate preflight --help`.
-   The harness runs in process through Typer's `CliRunner`, so it can apply the same test doubles the e2e tests use: the memory ceiling (`decoy_engine.execution.out_of_core._budget.detect_effective_memory_bytes`, `test_preflight_capacity.py:244`), the estimator failure (`estimate_job_capacity`, `:360`) and the companion status (`decoy_engine.native_companion_status`, `test_preflight_native.py:42,119`). All three targets are engine names, so the same patch applies on both trees. Before it compares bytes, each case asserts its expected exit code and, for `--json`, the expected `status` and `code` (copied from the e2e test it comes from). A case whose double did not take effect fails there, so two identical wrong outputs cannot pass.
+   The harness runs in process through Typer's `CliRunner`, so it can apply the same test doubles the e2e tests use: the memory ceiling (`decoy_engine.execution.out_of_core._budget.detect_effective_memory_bytes`, `test_preflight_capacity.py:244`), the estimator failure (`estimate_job_capacity`, `:360`) the route override from the `low_threshold` fixture (`decoy_engine.execution.capacity.decide_execution_route`, `test_preflight_capacity.py:137`, used by the capacity-warn case at `:319`) and the companion status (`decoy_engine.native_companion_status`, `test_preflight_native.py:42,119`). All four targets are engine names, so the same patch applies on both trees. Before it compares bytes, each case asserts its expected exit code and, for `--json`, the expected `status` and `code` (copied from the e2e test it comes from). The capacity-warn cases also assert that `capacity.message` starts with `ADVISORY --`, since both the confirmed and the unconfirmed route can give `warn` with a null code (`src/decoy/cli/preflight.py:482,505`). A case whose double did not take effect fails there, so two identical wrong outputs cannot pass.
    The harness first runs the base tree twice. Any field that differs between those two runs (timestamps, temp paths) is listed and masked. Everything else must match exactly. `--verbose` traceback text is out of scope because it names file paths.
 4. Ratchet equal, not raised: the ratchet check against the merge base reports no finding, and the total of the preflight lint-debt counts is 7 before and after. These pass: `tests/sentry/layout/test_module_size.py`, `test_package_fanout.py`, `test_import_layers.py`, `test_codemap_paths.py`, `tests/sentry/test_lint_debt.py`, `test_baseline_registry.py`, `test_ratchet_check.py`, `test_sentry_manifest.py`, `test_gate_single_entry.py`, `tests/sentry/io_policy/` and `tests/unit/test_ci_rule_codes.py`.
 5. `ruff check`, `ruff format --check` and `mypy` are clean on the head.
@@ -188,7 +189,7 @@ N/A: no `--json` field is added, renamed or removed. The payload is built in `_e
 
 ## Frozen contracts
 
-- The `decoy.cli.preflight` import path and the four names in `__all__`.
+- The `decoy.cli.preflight` import path and the base name set in `__all__` (named and wildcard imports).
 - The `decoy validate preflight` CLI: flags, help text, stdout, stderr, `--json` schema and exit codes.
 - The gate's preflight findings (names, order, exit codes) seen through `decoy validate` and `decoy run`.
 - The sentry allowlist identities, re-keyed only through `moved_from` or `split_from`.
@@ -223,17 +224,17 @@ No new design problem: this is a module move. The steps follow Fowler's catalog 
 
 One slice, one PR (this plan). It is slice S2 of the CLI-SPLIT row; S1 is #411 and S3 is the fit plan. The five commits under "Size and commits" are steps inside this slice, not separate PRs.
 
-## Blocks on #411, conflicts and merge order
+## Dependency on #411 (merged), conflicts and merge order
 
-S2 depends on #411 in three ways:
+S2 depended on #411 in three ways, all now on main:
 
-- `split_from` exists only on #411's branch (`tests/sentry/_ratchet.py`). Without it, the C901 and PLR0912 splits would need `approved_growth` rows.
+- `split_from` (`tests/sentry/_ratchet.py`). Satisfied: #411 merged to main as `d0826aa9`. Between the #411 head these plans read (`301e703c`) and main, only `_ratchet.py` (one JSON-equality fix in `_split_entry_finding`), `test_ratchet_check.py` and `test_yaml_error_leak_isolation.py` changed; none changes a fact in this plan.
 - #411 sets `test_module_size.py` `LEGACY` to `preflight.py` and package-fanout to 28. S2 edits both again.
 - S2 edits the same ledgers: `lint-debt.json`, `one-error-emitter.json`, `module-size.json`, `package-fanout.json`, `allowlist-before.json`.
 
-Order: build S2 from `origin/main` after #411 merges. If the builder starts before that, it branches from `feat/cli-split-report` (head `301e703c` at planning time). It opens its PR against `main` only after #411 has merged and the branch is rebased onto main (`git rebase --onto origin/main <#411 head> <S2 branch>`). A PR based on `feat/cli-split-report` is not allowed: a PR merged into a non-main base never ships (#749 on 2026-11-22).
+Order: #411 is merged, so S2 has no blocker. Build S2 on a branch from current `origin/main` and open its PR against `main`. Never base a PR on another feature branch: a PR merged into a non-main base never ships (#749 on 2026-11-22).
 
-Open PRs on 2026-11-25 (`gh pr list -R decoy-data/decoy --state open`, 16 open): only #411 touches `preflight.py`, `gate/_layers.py` or the ledgers above. Every remote branch with commits after 2026-11-10 that touches `preflight.py`, `fit.py` or `gate/_layers.py` is merged (for example #309, #347, #359, #363, #371, #375, #383, #384, #386, #406).
+Open PRs on 2026-11-25 (`gh pr list -R decoy-data/decoy --state open`, 16 open, before #411 merged): only #411 touched `preflight.py`, `gate/_layers.py` or the ledgers above. Every remote branch with commits after 2026-11-10 that touches `preflight.py`, `fit.py` or `gate/_layers.py` is merged (for example #309, #347, #359, #363, #371, #375, #383, #384, #386, #406).
 
 S3 (`fit.py`) goes after S2. S2 makes the module-size meta-tests synthetic and sets package-fanout to 27; S3 removes the last legacy entry and sets 26. On a rebase conflict in a shared ledger, keep both sides, then re-run the ratchet check.
 
@@ -274,3 +275,5 @@ None needed. Defaults taken, each open to change in review:
 
 1. `_render.py` is separate from `_command.py`. Joined they would be about 335 lines and still under the cap. They are kept apart because output format and step order change for different reasons, and S1 split its renderers the same way.
 2. `CAPACITY_CHECK` and `PLAN_UNCOMPILABLE_CHECK` stay on the package path, and `_layers.py` reads them from there. That keeps the public import surface the same and gives the re-export a named consumer.
+3. The package keeps every non-underscore name the old module bound, imported names included, for named and wildcard import parity (Guarantee). The owner can narrow it to the four used names later; that is a separate, visible API change.
+4. Follow-up, not in this slice: `format_gib` and `insufficient_text` in `gate/_capacity_text.py` have one consumer, the capacity check (`src/decoy/cli/preflight.py:62,468,499`). Moving them beside `_check_capacity` would remove a cross-package private import. It is a behavior-neutral move with its own sentry effects, so it is logged for later.

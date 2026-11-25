@@ -16,8 +16,9 @@ The change moves code and nothing else. After it:
 
 - `decoy fit` prints the same bytes to stdout and stderr, writes the same snapshot file, and exits with the same code as before, for every input and flag.
 - `decoy fit --help` and `decoy --help` are byte-identical.
-- `from decoy.cli.fit import fit, FIT_EPILOG` keeps working. These two names form the new `__all__`.
-- Named and wildcard imports of other names: the old module had no `__all__`, so `from decoy.cli.fit import *` and `from decoy.cli.fit import read_fit_csv` also worked for the names it imported (`read_fit_csv`, `fit_exact_snapshot`, `exit_code_for`, `typer` and others, `src/decoy/cli/fit.py:34-53`). Those names are not part of the contract, and the package does not re-export them. Evidence: `grep -rn "decoy.cli.fit" src tests docs` finds only `src/decoy/__main__.py:25-26` as an importer; the other hits are patch targets and module handles, all listed below and all moved to the module that looks the name up. No file does `import *` from it. `decoy.cli` is not a library surface (`docs/library.md` names only `decoy.cli.io.read_small_file`). Each such name keeps its own home module (`read_fit_csv` and `fit_exact_snapshot` in `decoy.cli.gen`). A re-export here would invite a patch on the package that `fit` no longer reads (see Module map). The owner can overrule this in Owner decisions.
+- `from decoy.cli.fit import fit, FIT_EPILOG` keeps working. Their consumer is `src/decoy/__main__.py:25-26`.
+- Named and wildcard imports keep working for every non-underscore name the old module bound. The old module had no `__all__`, so `from decoy.cli.fit import *` and `from decoy.cli.fit import read_fit_csv` reached the names it imported as well as the ones it defined. The package keeps that set exactly. The set at `origin/main` (`d0826aa9`), computed with `{n for n in vars(module) if not n.startswith("_")}`, is: `Any`, `AtomicWriteError`, `EXIT_RUNTIME`, `EXIT_USAGE`, `FIT_EPILOG`, `FIT_SAMPLE_SEED`, `FitSourceError`, `OutputMode`, `Path`, `ResourceError`, `WriteMode`, `annotations`, `code`, `describe`, `emit_error`, `emit_json`, `exit_code_for`, `fit`, `fit_exact_snapshot`, `hint`, `json`, `math`, `read_fit_csv`, `read_fit_max_rows`, `setup_output`, `side_file_default`, `strict_csv`, `success`, `typer`, `warn`, `write_local_target`. `__init__.py` binds each one from the submodule that uses it (`_command` or `_args`) and sets `__all__` to the same sorted list, so a wildcard import gives the same names as before. Only `fit` and `FIT_EPILOG` have an importer today (`src/decoy/__main__.py:25-26`); the rest are kept because a user script might use them.
+- Keeping these names on the package brings back one risk: a test that patches `decoy.cli.fit.read_fit_csv` sets an attribute that `fit` never reads, so the patch does nothing and the test still passes. The import-compat test therefore scans `tests/` for patch-target strings (`mock.patch("...")`, `monkeypatch.setattr("...")`) that name `decoy.cli.fit.<attr>` directly on the package and fails on any it finds. Patch targets must name the submodule where `fit` looks the name up (`decoy.cli.fit._command.read_fit_csv`), as the patch-site table below does.
 - No sentry count or ceiling goes up. Two go down: module-size loses its last entry (`fit.py`), and package-fanout for `src/decoy/cli` goes from 27 (after S2) to 26.
 
 Non-goals (recorded follow-ups, not blockers):
@@ -32,7 +33,7 @@ Non-goals (recorded follow-ups, not blockers):
 
 | Module | Holds (line ranges at `d6b9e4c7`) | Reason to change | Est. lines |
 |---|---|---|---|
-| `__init__.py` | Module docstring (L1-31), re-exports, `__all__` | the public surface | ~40 |
+| `__init__.py` | Module docstring (L1-31), re-exports of the base name set, `__all__` | the public surface | ~65 |
 | `_args.py` | `_FitUsageError`, `_parse_dp_number_spec`, `_parse_rows`, `_build_column_schema`, `_FLAG_TRUE_TOKENS`, `_FLAG_FALSE_TOKENS`, `_map_flag_token`, `_build_typed_frame` (L113-250) | how a flag value or a declared column type is parsed and checked | ~160 |
 | `_command.py` | `_DP_REFUSED_LINE`, `_DP_REFUSED_HINT` (L55-62), `_FIT_EPILOG` (L64-110), `fit` (L253-808), `FIT_EPILOG = _FIT_EPILOG` (L811) | the fit command flow: read, fit, refuse, write, report | ~640 |
 
@@ -40,7 +41,7 @@ Both modules are under the 800-line cap. `_command.py` stays large because `fit`
 
 Imports run one way: `_args` is a leaf; `_command` imports from `_args`; `__init__` imports from `_command`. No module imports `__init__`. The lazy imports inside `fit` (`decoy_engine`, `decoy_engine.quality.*`, `decoy.ui.summary`) and inside `_map_flag_token` (`pandas`) stay inside the function bodies, so `--help` does not load the engine or pandas.
 
-`__init__.py` stays thin: no function definitions. It re-exports only `fit` and `FIT_EPILOG`, whose consumer is `src/decoy/__main__.py:25-26`. Private names (`_FitUsageError`, `_build_typed_frame`, `_map_flag_token` and others) are not re-exported. A re-exported private name invites a test to patch the package attribute, which the moved code no longer reads, so the patch would do nothing without failing.
+`__init__.py` stays thin: no function definitions. It re-exports the base name set from the Guarantee section (`fit` and `FIT_EPILOG` are the two with an importer). Private names (`_FitUsageError`, `_build_typed_frame`, `_map_flag_token` and others) are not re-exported. A re-exported private name invites a test to patch the package attribute, which the moved code no longer reads, so the patch would do nothing without failing.
 
 Do the move as `git mv src/decoy/cli/fit.py src/decoy/cli/fit/__init__.py` first, then cut the modules out of it, so `git log --follow` and `git blame -C` keep the history.
 
@@ -82,7 +83,7 @@ Re-home each entry to the new file at the same site. Every one-to-one re-key goe
 | `tests/sentry/baselines/csv-read-allow.json` | No edit. Its `moved_from` value `"cli/fit.py::fit"` is a leftover from an earlier move; `_ratchet.py` ignores leftovers. |
 | `tests/sentry/test_csv_read_choke_point.py:104` | `FIT_READER_CALLERS`: `("cli/fit.py", "fit")` to `("cli/fit/_command.py", "fit")`. If missed, the exact-set assert fails (loud). |
 | `tests/sentry/io_policy/test_private_files.py:139` | `"cli/fit.py::fit::write_local_target::1"` to `"cli/fit/_command.py::fit::write_local_target::1"`. If missed, the site table and the scan disagree (loud). |
-| `tests/sentry/io_policy/test_fit_value_redaction.py:24,59,63` | `FIT` points at one file and is read twice. The negative check (L58-59, no sensitivity name) scans every `*.py` under `src/decoy/cli/fit/`, with the message changed to `cli/fit/`. The positive check (L63, `fit` reads `redacted_columns` from the engine's document) points at `src/decoy/cli/fit/_command.py` only, the module that holds the executable read (`src/decoy/cli/fit.py:712` today). A package-wide search would also match the docstring at `fit.py:14`, which moves to `__init__.py`, and would pass with the read gone. The module docstring (L11) changes to match. If missed, `read_text` raises (loud). Mutations: put `pii_score` in `_args.py` on a scratch copy, the negative check must go red; on a scratch copy, rename the `redacted_columns` key at both of its uses in `_command.py` (L712 and L760 today), the positive check must go red. |
+| `tests/sentry/io_policy/test_fit_value_redaction.py:24,59,63` | `FIT` points at one file and is read twice. The negative check (L58-59, no sensitivity name) scans every `*.py` under `src/decoy/cli/fit/`, with the message changed to `cli/fit/`. The positive check (L63, `fit` reads `redacted_columns` from the engine's document) points at `src/decoy/cli/fit/_command.py` only, the module that holds the read (`src/decoy/cli/fit.py:712` today). It changes from a substring check to a check for the call `snapshot.get("redacted_columns")`, because the JSON output key at `fit.py:760` alone would satisfy the substring. A package-wide search would also match the docstring at `fit.py:14`, which moves to `__init__.py`. The module docstring (L11) changes to match. If missed, `read_text` raises (loud). Mutations: put `pii_score` in `_args.py` on a scratch copy, the negative check must go red; on a scratch copy, replace only the read at L712 with `[]`, the positive check must go red. |
 
 `tests/sentry/layout/test_module_size.py` needs no edit: S2 makes its meta-tests synthetic. No `fit.py` entry exists in `.importlinter`, `one-error-emitter`, `gate-single-entry-allow`, `private-file-sinks`, `canonical-json-allow` or `ci/vendored.toml`.
 
@@ -148,18 +149,18 @@ N/A: no `--json` field is added, renamed or removed. The payload is built inside
 
 ## Frozen contracts
 
-- The `decoy.cli.fit` import path and the two names in `__all__`.
+- The `decoy.cli.fit` import path and the base name set in `__all__` (named and wildcard imports).
 - The `decoy fit` CLI: flags, help text, stdout, stderr, `--json` schema, the snapshot file bytes, and exit codes.
 - The sentry allowlist identities, re-keyed only through `moved_from` or `split_from`.
 
 ## Acceptance tests
 
 1. Existing tests pass with no assertion edits. The only test edits are the import paths, patch targets and sentry tables listed above.
-2. Import-compat test: add a `fit` case to `tests/unit/test_cli_split_imports.py`. It asserts that `decoy.cli.fit.__all__` is exactly `["FIT_EPILOG", "fit"]`, that each resolves to the object `_command` defines, and that `decoy.__main__`'s `fit_command` is that same object. It also asserts that no moved name is bound on the package: `not hasattr(decoy.cli.fit, name)` for `_FitUsageError`, `_build_typed_frame`, `_map_flag_token`, `read_fit_csv` and `fit_exact_snapshot`. Mutation that must turn it red: re-export `_FitUsageError` from `__init__`.
+2. Import-compat test: add a `fit` case to `tests/unit/test_cli_split_imports.py`. It asserts that `decoy.cli.fit.__all__` and the package's non-underscore names both equal the frozen base list in the Guarantee section, that `from decoy.cli.fit import *` in a fresh namespace binds that same list, that each name is the same object the base bound (`read_fit_csv is decoy.cli.gen.read_fit_csv`, `fit is _command.fit`), and that `decoy.__main__`'s `fit_command` is that same object. It also asserts that no private name is bound on the package: `not hasattr(decoy.cli.fit, name)` for `_FitUsageError`, `_build_typed_frame` and `_map_flag_token`. It runs the patch-target scan from the Guarantee section. Mutations that must turn it red: re-export `_FitUsageError` from `__init__`; drop `read_fit_csv` from `__init__`; add a test string `monkeypatch.setattr("decoy.cli.fit.read_fit_csv", ...)`.
 3. Golden byte check. A throwaway harness (outside the tree; its script and per-case hash table go in the PR body) runs on the base commit and on the head and compares stdout, stderr, exit code and the snapshot file bytes for:
    - a clean exact fit, with no flag, `--json` and `--quiet`, and with `--rows`, `--joint` and `--parse-dates`;
    - a DP fit (`--epsilon`, `--delta`, `--dp-number`, `--dp-flag`) with the deterministic doubles from `tests/e2e/test_fit_command.py:822-830` (`_pass_gate` and a stub `decoy_engine.quality.dp.fit_dp_snapshot`), which must exit 0 and write a snapshot on both trees; the real certified-install refusal on this host as its own case; an undeclared DP column (with and without `--dp-allow-omit`) and a declared column missing from the CSV;
-   - a DP request error raised at `check_dp_fit_request` (`src/decoy/cli/fit.py:646`, before the full read) and a DP error raised at `fit_dp_snapshot` (`:702`, after it), each injected with a double on the engine name; each asserts its error code and that no snapshot file exists;
+   - a DP request error raised at `check_dp_fit_request` (`src/decoy/cli/fit.py:646`, before the full read). Then, with the request gate passed (`_pass_gate`), two cases at `fit_dp_snapshot` (`:702`, after the full read): a `ProvenanceError` (the refused path, `:707`) and a `DpError` (the error path, `:710`), each injected with a double on the engine name. The real install refusal exits at `:649` before either handler, so it does not cover them. Each case asserts its diagnostic text, exit code and error code, and that no snapshot file exists;
    - the changed-header case (`tests/e2e/test_fit_command.py:1091`, the header changes between the check read and the full read);
    - a bad `--joint` spec, `--joint-max-cells` without `--joint`, and an out-of-range `--joint-max-cells`;
    - each usage error the existing e2e tests raise: a bad `--rows`, a bad `--dp-number` spec, an empty column name, a bad setting, an unreadable CSV;
@@ -212,18 +213,18 @@ No new design problem: this is a module move. The steps follow Fowler's catalog 
 
 One slice, one PR (this plan). It is slice S3 of the CLI-SPLIT row and the last one. The commits under "Size and commits" are steps inside this slice. The row closes when S3 merges and `module-size.json` is empty.
 
-## Blocks on S2 and #411, conflicts and merge order
+## Blocks on S2, conflicts and merge order
 
-S3 depends on both earlier slices:
+S3 depends on both earlier slices. #411 is merged; S2 is not:
 
-- `split_from` exists only after #411 merges (`tests/sentry/_ratchet.py`). Without it, the ANN401 split would need an `approved_growth` row.
+- `split_from` (`tests/sentry/_ratchet.py`). Satisfied: #411 merged to main as `d0826aa9`; between the #411 head these plans read (`301e703c`) and main, nothing changed that alters a fact in this plan.
 - S2 makes the module-size meta-tests synthetic. Without that, deleting the `fit.py` entry turns the meta-tests red.
 - S2 sets package-fanout to 27 and creates `tests/unit/test_cli_split_imports.py`, both of which S3 edits.
 - All three slices edit the same ledgers: `lint-debt.json`, `module-size.json`, `package-fanout.json`, `allowlist-before.json`. S2 and S3 also both edit `engine-reason-code-copies.json`; #411 does not touch it (its fit entries at L37 and L41 are unchanged there).
 
 Order: build S3 from `origin/main` after S2 merges. If the builder starts earlier, it branches from the S2 branch and opens its PR against `main` only after S2 has merged and the branch is rebased onto main (`git rebase --onto origin/main <S2 head> <S3 branch>`). A PR based on the S2 or #411 branch is not allowed: a PR merged into a non-main base never ships (#749 on 2026-11-22).
 
-Open PRs on 2026-11-25 (`gh pr list -R decoy-data/decoy --state open`, 16 open): only #411 touches `fit.py` or the ledgers above. Every remote branch with commits after 2026-11-10 that touches `fit.py` is merged. On a rebase conflict in a shared ledger, keep both sides, then re-run the ratchet check.
+Open PRs on 2026-11-25 (`gh pr list -R decoy-data/decoy --state open`, 16 open, before #411 merged): only #411 touched `fit.py` or the ledgers above. Every remote branch with commits after 2026-11-10 that touches `fit.py` is merged. On a rebase conflict in a shared ledger, keep both sides, then re-run the ratchet check.
 
 Builders of any row launched while S3 is open wait for it if the row edits `fit.py`.
 
@@ -247,6 +248,8 @@ The branch merges squashed. Commits 1 and 2 can leave sentries red until commit 
 
 ## Owner decisions
 
-None needed for this slice. One follow-up to schedule:
+Defaults taken, open to change in review, and one follow-up:
 
-1. `fit` is 556 lines in one function, with 6 lint-debt hits. Extract Function on it (read, fit exact, fit DP, write, report) would bring `_command.py` well under the cap and clear C901, PLR0912 and PLR0915. That changes code, so it needs its own plan and its own golden check. Default: record it as a follow-up row, not part of CLI-SPLIT.
+1. The package keeps every non-underscore name the old module bound, imported names included, for named and wildcard import parity (Guarantee). The owner can narrow it to `fit` and `FIT_EPILOG` later; that is a separate, visible API change.
+
+2. `fit` is 556 lines in one function, with 6 lint-debt hits. Extract Function on it (read, fit exact, fit DP, write, report) would bring `_command.py` well under the cap and clear C901, PLR0912 and PLR0915. That changes code, so it needs its own plan and its own golden check. Default: record it as a follow-up row, not part of CLI-SPLIT.
