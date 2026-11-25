@@ -92,7 +92,7 @@ def test_an_unreadable_url_like_path_does_not_leak_through_the_error(
     def deny(self: Path, mode: str = "r", *args: object, **kwargs: object) -> IO[Any]:
         if CANARY in str(self):
             raise PermissionError(13, "Permission denied", str(self))
-        return real_open(self, mode, *args, **kwargs)  # type: ignore[arg-type]
+        return real_open(self, mode, *args, **kwargs)  # type: ignore[call-overload]
 
     monkeypatch.setattr(Path, "open", deny)
     url = f"https://user:{CANARY}@example.invalid/data/in.csv"
