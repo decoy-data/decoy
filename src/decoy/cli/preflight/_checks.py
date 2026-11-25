@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from decoy.cli.io import redact_urls
+from decoy.cli.io import redact_url
 from decoy.cli.preflight._result import _PreflightAccumulator
 
 
@@ -48,7 +48,7 @@ def _check_source_files(raw: dict[str, Any], base_dir: Path, acc: _PreflightAccu
             )
             continue
 
-        shown = redact_urls(str(src_path_str))
+        shown = redact_url(str(src_path_str))
         src_path = Path(src_path_str)
         if not src_path.is_absolute():
             src_path = base_dir / src_path
@@ -75,7 +75,7 @@ def _check_source_files(raw: dict[str, Any], base_dir: Path, acc: _PreflightAccu
         except OSError as exc:
             acc.add_fail(
                 name=f"source.{table_name}.readable",
-                message=f"Source file not readable: {shown}: {redact_urls(str(exc))}",
+                message=f"Source file not readable: {shown} ({type(exc).__name__})",
                 location=f"sources.{table_name}.path",
             )
             continue
