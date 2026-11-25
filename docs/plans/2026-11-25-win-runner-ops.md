@@ -2,7 +2,7 @@ Status: plan
 
 # WIN-RUNNER ops: nightly Windows runs, node-watch entry, runbook (roadmap row 6)
 
-Owner: Cam. Author: Opus planner. Date: 2026-11-25. Revision 5 (Dennis R1, R2, Codex R1 and R2 folded).
+Owner: Cam. Author: Opus planner. Date: 2026-11-25. Revision 6 (Dennis R1, R2, Codex R1 and R2 folded, Codex R3 folded by codex-fix).
 
 Rules consulted: `dev-rules/README.md`, `00-universal.md`, `development-loop.md`,
 `risk-and-exceptions.md`, `autonomous-operation.md`, `observability-and-resilience.md`,
@@ -56,6 +56,10 @@ comparison, and node-watch tracks its local event and its Slack send apart; node
 its event lines before it moves the offset; the `in` digest covers the stall, timeout and
 memory limits; the failing-test digest is taken from the full node id inside pytest; AT-4 and
 M-20 are corrected.
+
+Revision 6 changes (Codex R3): fresh completion evidence distinguishes collection failures from refusals.
+The plugin hashes failed collection IDs. Recovery preserves final rows and replays alerts from a durable cursor.
+Missed slots get one row per enabled job, starting at the first expected cron slot. M-20 now uses raw rc 0 and final rc 255.
 
 ## 0. Summary for the owner
 
@@ -126,18 +130,18 @@ After this plan:
 |---|---|---|---|
 | FM1 | The nightly tests a stale `origin/main` (the CLI clone once lacked a fetch refspec) | WL2 | `ls-remote` compare, AT-6 |
 | FM2 | A catalog path is missing at the head (moved or deleted tests) and the nightly runs less, or pytest exits 4 | WL2 | every catalog path must exist; a missing one is red until `jobs.json` changes, AT-7 |
-| FM3 | A run that `win-run` counted as failed reads as green (log ends `EXIT 0`, `win-run` returns 1 from line 83), or a run with zero passed tests reads as green | WL1, WL2 | `decide(rc, log, reason)`, AT-5 |
+| FM3 | A run that `win-run` counted as failed reads as green (log ends `EXIT 0`, `win-run` returns 1 from line 83), or a run with zero passed tests reads as green, or a collection error reads as a refusal | WL1, WL2 | `decide(rc, log, reason)`, fresh DONE and final EXIT for rc 2, AT-5 and AT-9 |
 | FM4 | Low Windows memory (75) or a stall (124) reads as a pass or as a test failure | WL2 | verdict table, AT-5 |
 | FM5 | The `DONE` line goes to a dead file and nobody wakes | WL1 | lane event log, AT-1 |
 | FM6 | Retry chains (attempt 3), a retry on another SHA or with other inputs, two retries started together, or a reused label overwriting the first attempt | WL1 | label reservation and retry claim under the devbox lock, retry bound to repo, full SHA and `in` digest, AT-2, AT-4 |
 | FM7 | Two nightlies overlap after a slow night | WL2 | non-blocking nightly lock, AT-8 |
-| FM8 | The devbox cron or the devbox is down and no nightly runs, or a nightly is killed part way, unnoticed | WL2, WL3 | dated run records, NIGHTLY-MISSED per date, NIGHTLY-INCOMPLETE and reconcile, AT-8, AT-13 (node-watch runs on the devbox, so a devbox outage shows only once it is back) |
+| FM8 | The devbox cron or the devbox is down and no nightly runs, or a nightly is killed part way, unnoticed | WL2, WL3 | first expected slot in `armed`, NIGHTLY-MISSED per date, NIGHTLY-INCOMPLETE and locked reconcile that fills only missing final rows, AT-8, AT-13 (node-watch runs on the devbox, so a devbox outage shows only once it is back) |
 | FM9 | The update pause ends and Windows reboots (killing the WSL CI runners too) without warning | WL3 | PAUSE event, AT-13 |
 | FM10 | A failed or killed `win-run` leaves `current.json` behind, or a kill no longer stops the job | WL1 | one cleanup function and signal handlers, AT-3 |
 | FM11 | The node-watch probe hangs or two polls overlap and double-report | WL3 | timeouts and a poll lock, AT-12, AT-13 |
 | FM12 | A nightly red repeats on Slack every night and Cam stops reading it | WL2 | change-only Slack, AT-9 |
 | FM13 | Test output text or parametrised test ids (which can hold data values) leak into Slack, the results file or `cron.log`, or lane files are readable by other users | WL1, WL2 | ids stored only as digests, fixed reason words, `umask 077` and 0700 folders, `win-run` output to `/dev/null` under cron, AT-9, AT-10 |
-| FM15 | A Slack alert is lost (missing webhook, network error) and marked as sent | WL2, WL3 | `lane_slack.py` returns non-zero; mark as sent only after a zero return, AT-9, AT-13 |
+| FM15 | A crash before enqueue or a failed send loses a Slack alert | WL2, WL3 | replay final rows, save cursor and queue together, remove only after send succeeds, AT-9, AT-13 |
 | FM16 | A poll between a failed attempt 1 and a green attempt 2 reports a red, or a short job between two polls is missed | WL2, WL3 | `final` column; `START` event line read through the offset, AT-13 |
 | FM14 | A live edit to `win-run` or `node-watch` breaks a running job or a cron poll | all | atomic edit rule, section 11 |
 
@@ -195,7 +199,8 @@ existing tools. Each fact has one home: the job list in `jobs.json`, the verdict
   the devbox logs. Ends before the devbox lock (usage exits at lines 27 to 31, a dirty worktree
   at line 32, a bad `WINRUN_LABEL`) and refusals right after the lock (a taken label, a refused
   retry; both exit 2 before the cleanup is armed) write no event line; they report through
-  the process rc and stderr only, and the nightly reads them as "no DONE line".
+  the process rc and stderr only. A pytest collection failure can also exit 2. It writes DONE
+  with reason `tests` and ends its log with `EXIT 2`.
 - **Lane event log.** `win-run` writes one line per end after the lock to
   `~/.cache/win-run/events.log`:
   `START <label> repo=<r> sha=<40 hex> in=<12 hex> retry_of=<label|-> <UTC time>` once the
@@ -231,9 +236,9 @@ existing tools. Each fact has one home: the job list in `jobs.json`, the verdict
   armed and before any ssh call. A taken label exits 2 and writes nothing,
   so the first attempt's event lines and log stay the only ones for that label, even when that
   attempt had no log (an `ssh` end). The nightly uses
-  `n<YYYYMMDD>t<HHMMSS>-<run>-<job>-a<attempt>`, where `<run>` is 4 random hex chosen once per
-  `win-nightly` process, so two runs in the same second still differ (at most 41 characters for
-  the current job names).
+  `n<YYYYMMDD>t<HHMMSS>-<run>-<job>-a<attempt>`, where `<run>` is a four-hex suffix for this run (within the 48-character limit for
+  the current job names). Use the full timestamp and suffix as the stored run ID.
+  Under the nightly lock, choose another suffix if a run record already has that ID.
 - **Retry.** `WINRUN_RETRY_OF=<label>` marks a call as attempt 2. The checks run after
   `flock 9`, so a retry started while the first attempt runs waits for it, then is checked
   against its `DONE` line (allowed after a red end, refused after a green one):
@@ -259,17 +264,19 @@ existing tools. Each fact has one home: the job list in `jobs.json`, the verdict
   the call, and only when its `rc` equals the process exit code; anything else is
   `no-result`) and log, decide the verdict, retry where section 4.3 allows, and write the results.
 - **Job catalog.** `B:win-run.d/jobs.json` is the one registry of lane jobs: `name`, `repo`,
-  `paths` (repo-relative, each must match `^[A-Za-z0-9_./-]+$`), `command` (with a `{paths}`
+  `paths` (repo-relative, use `re.fullmatch(r"[A-Za-z0-9_./-]+", path)` and reject absolute paths and parent segments), `command` (with a `{paths}`
   slot), optional `disabled` (a reason) and optional `green` (`"exit0"` for a non-pytest job).
   `jobs.json` lives in `~/bin`, not in a product repo, so the builder of a row 89 slice edits it
   right after that slice merges; one red `catalog-path-missing` night in between is expected. `win-nightly --print-cmd <job>` prints the `win-run` command, so
   gate readers can use the same entries.
 - **Results.** One TSV row per job attempt in `~/.local/state/win-nightly/results.tsv`, and
   `~/.local/state/win-nightly/fails/<label>.txt` with one digest per failing test. The digest is
-  taken inside pytest, from the full node id: WL2 adds a `pytest_runtest_logreport` hook to
-  `winrun_plugin.py` (about 8 lines; the plugin is copied to Windows on every run, `B:win-run`
-  line 50) that prints `WINRUN FAILID <16 hex>` (first 16 hex of sha256 of `nodeid`) for each
-  failed report and for each windows-marked skip. `fail_ids()` reads only those lines, so
+  taken inside pytest, from the full node id: WL2 adds `pytest_runtest_logreport` and `pytest_collectreport` hooks to
+  `winrun_plugin.py` (the plugin is copied to Windows on every run, `B:win-run`
+  line 50). Both hooks record failed reports. The existing marker check also records skipped Windows tests.
+  One helper hashes the full node ID with SHA-256. The terminal summary prints one
+  `WINRUN FAILID <16 hex>` per distinct digest, including failed collection reports.
+  Keep the fixed skip prefix that the wrapper reads at line 83. Drop the raw ID from that error. `fail_ids()` reads only complete digest lines, so
   `test_t[left - 1]` and `test_t[left - 2]` stay distinct and no id text leaves the log:
   pytest ids can carry parameter values (`test_x[value]`). The digest set only drives the
   "failing set changed" comparison; a human reads the ids in the private lane log.
@@ -277,23 +284,22 @@ existing tools. Each fact has one home: the job list in `jobs.json`, the verdict
   and its subfolders 0700 and the existing logs 0600; `win-nightly` creates
   `~/.local/state/win-nightly` as 0700 before writing anything. `win-nightly` sends `win-run`'s
   stdout and stderr to `/dev/null` (the job output is already in the lane log), so `cron.log`
-  holds only `win-nightly`'s own lines (labels, verdicts, reason words).
-- **Run records.** `win-nightly` writes `~/.local/state/win-nightly/runs/<YYYY-MM-DD>.json`
-  (`run`, `pid`, `start`, open job names) right after it holds the nightly lock, removes each
-  job from the open list when it writes that job's `final=1` row, and adds `end` last. INT, TERM
-  and HUP handlers write a `final=1` `not-run` row with reason `interrupted` for each open job,
-  then `end`. After a kill -9, a reboot or a devbox crash, the next `win-nightly` start (and
-  `win-nightly reconcile`, which node-watch calls when it finds a record without `end` and
-  `flock -n` on the nightly lock succeeds) writes those rows. Every scheduled date from the
-  `armed` date on has a record or counts as missed.
+  holds only `win-nightly`'s own lines (labels, verdicts, reason words). Capture git and sender
+  diagnostics too. Report fixed errors without subprocess output, webhook URLs or exception text.
+- **Run records.** Under the nightly lock, save the run ID, PID, UTC start and open jobs in
+  `runs/<YYYY-MM-DD>/<run>.json`. Replace the file atomically on each update. Commit the digest file
+  before the result row. Commit each final row before removing the job. Write `end` last.
+  Signal handlers, the next run and `win-nightly reconcile` use the same recovery code under
+  the same lock. For each open job, look for a complete `final=1` row with that run ID and job.
+  Keep the first final verdict. Append `not-run` with reason `interrupted` only if the row is absent.
+  Keep closed records when another run starts the same day. Reconcile also fills missed dates under section 4.6.
 - **Slack sender.** `B:win-run.d/lane_slack.py` (stdlib, about 40 lines) posts one text to the
   webhook read from `~/.config/win-lane/slack.env` (0600, `SLACK_WEBHOOK_URL=` copied from the
   hooks' setting) and returns non-zero on a missing webhook, a network error or a non-2xx
   answer. It is used instead of `slack-notify.sh`, which exits 0 on a missing webhook and hides
-  curl failures (`slack-notify.sh` lines 9 to 11 and 36). Each caller keeps unsent alerts in a
-  pending queue apart from the result comparison: an alert enters the queue when its change is
-  found and leaves it only after a zero return; every run (and every poll, for node-watch)
-  first sends what is pending.
+  curl failures (`slack-notify.sh` lines 9 to 11 and 36). One replay path in `win-nightly`
+  commits the row cursor and pending alerts together (section 4.5). Node-watch owns the
+  date-level alerts and keeps its pending sends in `state.json`. Sender errors use fixed text.
 - **Windows probe.** node-watch sends one short PowerShell script through
   `ssh dell-win powershell -NoProfile -EncodedCommand <b64>` (payload under cmd.exe's 8191
   characters), inside the existing `sh()` 40-second timeout and with `ConnectTimeout=8`. It prints
@@ -319,10 +325,11 @@ existing tools. Each fact has one home: the job list in `jobs.json`, the verdict
 One crontab line (the devbox clock is UTC):
 `30 7 * * * umask 077; mkdir -p $HOME/.local/state/win-nightly && $HOME/bin/win-nightly run >> $HOME/.local/state/win-nightly/cron.log 2>&1`.
 The WL2 install step also writes `~/.local/state/win-nightly/armed`, which turns on the
-missed-nightly check.
+missed-nightly check. At first install, store the next 07:30 UTC strictly after install in
+`armed`. Keep that timestamp on reinstall.
 07:30 UTC is 01:30 CST (02:30 CDT in summer). The engine runs first, then the CLI, inside one
-process. `win-nightly` writes its dated run record only after it holds the nightly lock; a
-refused overlapping run writes none (`last-start` from revision 4 is replaced by the run
+process. Capture the start time when the lock is acquired, before recovery or alert sends.
+Write the dated record before any slow work. A refused overlapping run writes none (`last-start` from revision 4 is replaced by the run
 records). A nightly can wait on the devbox `win-run` lock behind a gate job; that is normal.
 
 ### 4.2 Job catalog (initial content)
@@ -346,15 +353,17 @@ it joins the catalog with the row 89 slice that makes it so.
 and the log (which may be missing).
 
 An attempt counts only with a matching `DONE` event line: same label, repo, SHA and `in`,
-appended during this call, with `rc` equal to the `win-run` exit code. A `win-run` exit 2 is
-always `no-result`.
+appended during this call, with `rc` equal to the `win-run` exit code. For rc 2, require both this fresh DONE and a log ending `EXIT 2`.
+Then apply the reason below. A failed collection with `tests` is red. Missing evidence gives
+`not-run` with reason `no-result` on either attempt. Read digests only after the evidence check passes.
 Attempt 2 applies the same rules as attempt 1 with no further retry: a word that would retry
 becomes the "Attempt 2" entry below; every other word gets its attempt 1 verdict.
 
 | rc and reason | Attempt 1 | Attempt 2 |
 |---|---|---|
-| 0, `ok`, log ends `EXIT 0`, head-proof line shows the expected SHA, no `WINRUN FAIL`, pytest summary shows at least 1 passed | green | green, row notes "green on retry" |
+| 0, `ok`, log ends `EXIT 0`, head-proof line shows requested and observed SHA equal the expected SHA and the tree is clean, no `WINRUN FAIL`, pytest summary shows at least 1 passed | green | green, row notes "green on retry" |
 | 0 but any green condition above is false | red, reason `logcheck` | red |
+| non-zero, `ok` | red, reason `logcheck` | red |
 | any rc, `stall` | retry at once | red |
 | any rc, `memory` | retry after 20 minutes | not-run: `memory` |
 | any rc, `ssh` | retry after 5 minutes | not-run: `ssh` |
@@ -366,6 +375,7 @@ becomes the "Attempt 2" entry below; every other word gets its attempt 1 verdict
 | 130/143, `killed` | not-run, no retry | not-run |
 | any rc, `unknown` | red (someone must look) | red |
 | no matching `DONE` line (includes rc 2 refusals) | not-run: `no-result` | not-run: `no-result` |
+| scheduled date missed | not-run: `missed` for each enabled job | no retry |
 | nightly ended before the job's final row | not-run: `interrupted` (written by the handler or by reconcile) | not-run: `interrupted` |
 
 A job whose `jobs.json` entry sets `"green": "exit0"` (for a non-pytest job such as `demo-win`)
@@ -386,20 +396,30 @@ night until `jobs.json` is changed, so a moved or deleted test folder cannot go 
 
 `results.tsv` columns, tab-separated, one row per attempt: `date_utc`, `repo`, `job`, `sha`,
 `label`, `attempt`, `retry_of`, `rc`, `verdict`, `reason`, `fail_count`, `missing`,
-`windows_build`, `final`. `win-nightly` alone owns the final verdict: it sets `final=1` on the
+`windows_build`, `final`, `run`. Store the run ID even on rows without an attempt label. `win-nightly` alone owns the final verdict: it sets `final=1` on the
 last row of each job once no retry is pending (`final=0` on a row that waits for its retry).
-The Slack comparison, the exit code and node-watch read only `final=1` rows. A refused overlapping nightly writes one run-level row with `job=*` and reason
-`overlap`; the change comparison ignores `job=*` rows.
+The Slack comparison, the exit code and node-watch read only `final=1` job rows.
+Compute the exit code from this run ID alone. A refused overlapping nightly writes one run-level row with `job=*` and reason
+`overlap`; the change comparison ignores `job=*` rows. Serialize all TSV appends, including overlap rows, under a
+short file lock. Before appending, discard any incomplete trailing row under that lock. Commit
+each complete row to disk before advancing dependent state. Use same-directory temp files,
+flush to disk, rename and sync the directory for durable JSON and digest files.
 
 `win-nightly run` exits 0 when every enabled job is green, 1 when any is red, 3 when none is red
-but any is not-run, 2 on a usage error. After the run it compares each job's final verdict and
-failing-digest set with that job's previous final row. Only on a change (a new red, a new
-not-run, a changed failing set, or red turning green) does it send one Slack line through
-`lane_slack.py`, in plain words built only from fixed fields: the job name, verdict, fail count
-and a fixed phrase per reason word. The alert goes into the pending queue in
-`~/.local/state/win-nightly/notified.json` when the change is found, and leaves it only after a
-zero return; each run sends the pending queue first, so a red whose first send failed is still
-sent when the next night is an unchanged red. For example: "Windows nightly: the CLI Windows
+but any is not-run, 2 on a usage error. Under the nightly lock, replay results at every run
+start, at every reconcile and after new final rows. Start after the last complete row counted
+in `~/.local/state/win-nightly/notified.json` (zero on first use). Read rows in order.
+For each final job row, compare with the preceding final row for that job, including history
+before the cursor. Queue a first or changed red or not-run, a changed failing set on red, or a red-to-green recovery.
+Suppress repeated not-run with the same reason.
+Use the saved digest files for both rows. Ignore disabled and run-level rows for alerts.
+For `missed`, node-watch sends the date-level alert once for all jobs.
+
+Save the new row cursor and the pending queue together in one atomic replacement of
+`notified.json`. Include earlier unsent entries. Send only after the save succeeds. Use the
+job name, verdict, fail count and a fixed phrase per reason. Bound the sender timeout. Keep each entry until the sender
+returns zero, then save the remaining queue with the same cursor. A crash after Slack accepts
+a message but before the save can repeat that message. For example: "Windows nightly: the CLI Windows
 tests started failing tonight (3 tests). The engine Windows tests pass." A disabled job never
 triggers Slack.
 
@@ -422,13 +442,23 @@ triggers Slack.
   - `UNREACHABLE dell-win` when the probe returns nothing, once per outage.
   - `PAUSE dell-win ends <date>` when the update pause ends within 3 days, and
     `PAUSE dell-win ended` once it has passed; at most once per UTC day.
-  - `NIGHTLY-MISSED dell-win <date>` for each scheduled date from the `armed` date on that has
-    no run record by 08:30 UTC of that date. node-watch keeps `nightly_checked_through` in
-    `state.json` and walks every date after it, so a day lost to a devbox outage is reported
-    once the devbox is back. `NIGHTLY-INCOMPLETE dell-win <date>` when a record has no `end` and
-    the nightly lock is free (node-watch then calls `win-nightly reconcile`). The local event is
-    raised once (`alerted`); its Slack send is a separate pending entry in `state.json`, retried
-    each poll until a zero return, without raising the event again.
+  - `NIGHTLY-MISSED dell-win <date>` for each expected slot without a scheduled start between 07:30 and 08:30 UTC.
+    Mark manual runs (`--now`) in their records so they cannot mask a missed cron slot.
+    Start the date walk at the slot stored in `armed`. Skip all earlier dates. Compare run
+    start times with each deadline, so a later start cannot hide a missed slot.
+    On each armed poll call `win-nightly reconcile`. It takes the nightly lock without waiting.
+    If busy, retry next poll and keep the date checkpoint. For each due missed date, reconcile
+    checks `results.tsv` by UTC date and job for a final `missed` row. Append the absent rows,
+    one per enabled job for that slot, with verdict `not-run`, reason `missed` and a stable missed-slot run ID.
+    Keep the missed slot and its enabled job list in a dated recovery record before its first row.
+    Distinguish this record from a scheduled start. Reuse that list on retry.
+    Finish partial dates before reporting success. After saving its own record, a run start repairs earlier records and fills missed slots
+    before launching jobs. Exclude the active run from interrupted-run recovery. Node-watch reads the reconciled dates and advances `nightly_checked_through`
+    only after it records each local event and pending send, including after a devbox outage.
+  - `NIGHTLY-INCOMPLETE dell-win <date>` for an unfinished run once its lock is free.
+    Preserve an interrupted marker in the closed record so a later poll can report recovery.
+    For both date events, append the local event before saving its dedupe key and pending send
+    together in `state.json`. Retry pending sends each poll until success.
   - `NIGHTLY dell-win <job> <verdict>` when a `final=1` row changes a job's verdict.
 - The documented Monitor grep gains `PAUSE|NIGHTLY` (runbook and memory note, WL4).
 
@@ -446,7 +476,7 @@ triggers Slack.
 ### 6.1 Exit paths
 
 - `win-run`: 0 or the job's own code; 124 stall or timeout; 75 low memory; 255 setup, proof,
-  ssh or log-check failure; 1 when a log ending `EXIT 0` carries `WINRUN FAIL`; 2 usage, a bad
+  ssh or log-check failure; 1 when a log ending `EXIT 0` carries `WINRUN FAIL`; 2 for a pytest collection failure (`tests`, `EXIT 2`) or for usage, a bad
   `WINRUN_LABEL`, a taken label or a refused retry (new, no event line); 130 or 143 on INT or TERM (new). The old list is in
   the `B:win-run` header (line 18) and `winrun.ps1` line 4.
 - `win-nightly run`: 0 all green; 1 any red; 3 not-run without red; 2 usage. A refused second
@@ -469,8 +499,8 @@ triggers Slack.
 - `current.json`: `label`, `pid`, `repo`, `sha`, `log`, `started`, `retry_of`.
 - Lane event lines: `START`, label, `repo=`, `sha=` (40 hex), `in=` (12 hex), `retry_of=`, UTC
   time; `DONE`, label, `rc=`, `reason=`, `repo=`, `sha=`, `in=`, `retry_of=`, UTC time.
-- `results.tsv`: the 14 columns of section 4.5 (`final` added in revision 4).
-- `jobs.json`: `name`, `repo`, `paths`, `command`, `disabled`.
+- `results.tsv`: the 15 columns of section 4.5.
+- `jobs.json`: `name`, `repo`, `paths`, `command`, `disabled`, `green`.
 - Probe lines: `CDISK`, `BUILD`, `PAUSE`.
 
 ### 6.4 FK shapes
@@ -484,7 +514,7 @@ their logs.
   and `~/.cache/win-run/claims/<label>/`.
 - `~/.cache/win-run/events.log` and `~/.cache/win-run/current.json` (new).
 - `~/.local/state/win-nightly/results.tsv`, `fails/<label>.txt` (digests only), `notified.json`,
-  `runs/<date>.json`, `armed` and `cron.log` (new, folder 0700).
+  `runs/<date>/<run>.json`, `armed` and `cron.log` (new, folder 0700).
 - `~/.cache/node-watch/status.txt` and `events.log` (new `dell-win` lines).
 - Slack: one plain-language line on change, through `lane_slack.py`.
 - The vault runbook and the CLI record (WL4). Row 6 itself sits at `docs/roadmap/groups/release.md:19`.
@@ -493,9 +523,9 @@ their logs.
 
 | # | Class | Applies | Closing structure | Sentry or test | Mutation |
 |---|---|---|---|---|---|
-| 1 | value-free text | yes: results, Slack, `cron.log`, file modes | ids hashed at once; Slack text built from fixed fields; private files | AT-9, AT-10 | M-11 copy the log tail into the Slack text; M-17 store the raw id; M-22 send `win-run` output to `cron.log` |
+| 1 | value-free text | yes: results, Slack, `cron.log`, file modes | test and collection IDs hashed inside pytest; Slack text built from fixed fields; private files | AT-9, AT-10 | M-11 copy the log tail into the Slack text; M-17 store the raw id; M-22 send `win-run` output to `cron.log` |
 | 2 | cleanup | yes: holder file, nightly worktrees | one `cleanup` after the lock, pid-checked; resets limited to `~/decoy-nightly/win/` | AT-3, AT-8 | M-3 keep the line 54 bundle-only trap |
-| 3 | state | yes: verdicts, dedupe, alert delivery | one `decide()` table; `final` rows; `alerted` set and `notified.json` written only after a sent alert; stored offsets; poll lock on both writer routes | AT-5, AT-9, AT-13 | M-6 map 75 to green; M-18 ignore `rc`; M-23 mark an alert sent on a non-zero send; M-24 read non-final rows |
+| 3 | state | yes: verdicts, dedupe, alert delivery | one evidence check and verdict table, locked recovery by run/job or missed date/job, first slot in `armed`, atomic cursor and queue, stored offsets and poll lock on both writer routes | AT-5, AT-8, AT-9, AT-13 | M-6 map 75 to green; M-18 ignore `rc`; M-23 mark an alert sent on a non-zero send; M-24 read non-final rows, M-29 to M-34 |
 | 4 | route | yes: gate, retry, nightly, watch | every route goes through `win-run`; the nightly never talks to Windows itself | AT-6, AT-10 | M-8 skip the `ls-remote` compare |
 | 5 | referential | yes: labels and retry links | every label reserved with `mkdir` under the lock; `retry_of` must name a failed first attempt with the same repo, full SHA and `in`; retry claimed with `mkdir` under the lock | AT-2, AT-4 | M-5 drop the retry claim; M-25 drop the label reservation; M-26 skip the `in` compare |
 | 6 | untrusted input | yes: `WINRUN_LABEL`, catalog paths | label regex; path regex and `git cat-file` | AT-2, AT-7 | M-2 skip the label check |
@@ -513,19 +543,19 @@ lines and rows. Fixtures for log parsing are cut from real lane logs in `~/.cach
 | AT | Slice | Kind | Behaviour | Red today because | Mutation |
 |---|---|---|---|---|---|
 | AT-1 | WL1 | live | each `win-run` run appends one `START` line once the holder is set and each end one `DONE` line with label, final rc, reason word, repo, 40-hex SHA and `in` digest to `~/.cache/win-run/events.log`, for a green run, a `tests` run and an `ssh` end (bad host; also a unit case in the bash test with a failing ssh stub at line 44, which must not abort cleanup under `set -u`); with `WINRUN_QUEUE_LOG` set the old line also goes there; with it unset nothing is written under `/tmp/claude-1000/`; `~/.cache/win-run` and its subfolders are 0700 and new logs 0600 | the line goes to the hard-coded scratchpad path | M-1 keep the hard-coded path |
-| AT-2 | WL1 | unit (bash) | `WINRUN_LABEL=n20261125t0730-cli-win-a1` names the log; `../x`, an upper-case label and a 49-character label exit 2 before the lock; a taken label exits 2 after the lock, before any ssh call, and writes no event line; a label used by a run that ended `ssh` (no log) is still refused on reuse; a label that has a log from before WL1 and no claim folder is refused; of two queued callers with the same label, the second exits 2 and the first's log and event lines are intact (an ssh stub on `PATH` records calls) | no override exists | M-2 skip the regex check; M-25 drop the reservation |
+| AT-2 | WL1 | unit (bash) | `WINRUN_LABEL=n20261125t0730-cli-win-a1` names the log; `../x`, an upper-case label and a label with a trailing newline and a 49-character label exit 2 before the lock; a taken label exits 2 after the lock, before any ssh call, and writes no event line; a label used by a run that ended `ssh` (no log) is still refused on reuse; a label that has a log from before WL1 and no claim folder is refused; of two queued callers with the same label, the second exits 2 and the first's log and event lines are intact (an ssh stub on `PATH` records calls) | no override exists | M-2 skip the regex check; M-25 drop the reservation |
 | AT-3 | WL1 | live | `current.json` exists while the job holds the lock; after a normal end, an `ssh` end and a `kill -TERM` of `win-run` during the job pipeline it is gone, the devbox process has ended within 10 seconds of the signal and the event line says `killed`; a queued waiter killed with TERM leaves the holder's file in place; the record notes whether the Windows side kept running | no holder file | M-3 keep the line 54 trap |
 | AT-4 | WL1 | unit (bash) and live | refused with exit 2 and no event line: a first attempt with `rc=0`, a first attempt on a different SHA, another repo, a narrower command (different `in`), a first attempt that is itself a retry, a second retry of the same label, a retry with a changed `WINRUN_STALL_MIN`, `WINRUN_TIMEOUT_MIN` or `WINRUN_MIN_FREE_GB`, a retry started while a green first attempt still holds the lock (it waits, then is refused), and one of two retries started together; allowed: a retry with the original command, a retry started while a red first attempt holds the lock (it waits, then runs), and a retry of a first attempt that has no log (`ssh` end); live: a retry of a red first label runs and its log starts `win-run: retry of <label> attempt 2` | no retry link | M-4 allow a retry of a retry; M-5 drop the claim; M-19 check before the lock; M-26 skip the `in` compare |
-| AT-5 | WL2 | unit | `decide()` returns the section 4.3 verdict and retry for every row, including: the recorded rc 1 log ending `EXIT 1` with a windows-marked skip turned into a failure (red, `tests`); a synthetic log ending `EXIT 0` with a `WINRUN FAIL` line and rc 1 (red); rc 255 `logcheck` with a log ending `EXIT 0` (red); rc 0 with all tests skipped (red); rc 0 with a wrong-SHA proof line (red); rc 75 with no `lock` or `running:` line (retry, then not-run); every attempt 2 row of section 4.3; no `DONE` line (not-run); a `DONE` line whose `in` differs from the run's (not-run); an older green `DONE` line for the same label from before the call with `win-run` exit 2 (not-run, `no-result`); a `DONE` line whose `rc` differs from the exit code (not-run); M-18 case: otherwise green evidence with only the rc changed to 1 (red) | no runner | M-6 map 75 to green; M-7 retry on `tests`; M-18 ignore `rc` |
-| AT-5b | WL1 | unit (bash) | `classify()` returns the section 3 word for: the real log w96727b-3812486 (PowerShell error, no `running:`, no `EXIT`: `setup`), a 255 log with a uv sync failure (`deps`), the same truncated log (`running:`, no `EXIT`) with raw rc 255 (`ssh`) and with raw rc 0 (`logcheck`), a `WINRUN STALLED` log (`stall`), rc 143 (`killed`), a log ending `EXIT 0` with `WINRUN FAIL` (`logcheck`), and an unmatched end (`unknown`); the order in the table holds when two rules match | no classifier | M-20 make rule 11 read the final rc instead of the raw rc (the raw rc 255 fixture then reads `logcheck`); M-21 drop the `unknown` fallback |
+| AT-5 | WL2 | unit | `decide()` returns the section 4.3 verdict and retry for every row, including: the recorded rc 1 log ending `EXIT 1` with a windows-marked skip turned into a failure (red, `tests`); a synthetic log ending `EXIT 0` with a `WINRUN FAIL` line and rc 1 (red); rc 255 `logcheck` with a log ending `EXIT 0` (red); rc 0 with all tests skipped (red); rc 0 with a wrong-SHA proof line (red); rc 75 with no `lock` or `running:` line (retry, then not-run); every attempt 2 row of section 4.3; no `DONE` line (not-run); a `DONE` line whose `in` differs from the run's (not-run); an older green `DONE` line for the same label from before the call with `win-run` exit 2 (not-run, `no-result`); a failed collection with fresh matching DONE rc 2, reason `tests` and final `EXIT 2` (red, no retry); rc 2 with no fresh DONE despite an old matching rc 2 and log (not-run, `no-result`); a `DONE` line whose `rc` differs from the exit code (not-run); M-18 case: otherwise green evidence with a fresh DONE rc 1 matching the process, reason `ok` and log ending `EXIT 0` (red, `logcheck`) | no runner | M-6 map 75 to green; M-7 retry on `tests`; M-18 ignore `rc`; M-29 treat every rc 2 as a refusal |
+| AT-5b | WL1 | unit (bash) | `classify()` returns the section 3 word for: the real log w96727b-3812486 (PowerShell error, no `running:`, no `EXIT`: `setup`), a 255 log with a uv sync failure (`deps`), the same truncated log (`running:`, no `EXIT`) with raw rc 255 (`ssh`) and with raw rc 0 and wrapper final rc 255 (`logcheck`), a `WINRUN STALLED` log (`stall`), rc 143 (`killed`), a log ending `EXIT 0` with `WINRUN FAIL` (`logcheck`), and an unmatched end (`unknown`); the order in the table holds when two rules match | no classifier | M-20 pass final rc as the raw input to classify: the truncated raw rc 0 / final rc 255 fixture changes from `logcheck` to `ssh`; M-21 drop the `unknown` fallback |
 | AT-6 | WL2 | unit | when `origin/main` after fetch differs from `ls-remote` main, the repo's jobs are `not-run: stale-main` and `win-run` is never called | no runner | M-8 skip the compare |
-| AT-7 | WL2 | unit | a catalog path missing at the head makes the job red with `missing=` and no `win-run` call, on this night and the next; a path failing the regex is a usage error | no runner | M-9 run with the paths that exist |
-| AT-8 | WL2 | unit | a second `win-nightly run` while the first holds `~/.cache/win-nightly.lock` writes no run record, writes one `job=*` `overlap` row and exits 3 within 5 seconds (test timeout 10 seconds); the next run's change comparison ignores that row; a worktree path outside `~/decoy-nightly/win/` is refused; a nightly sent TERM during the 20-minute memory backoff writes `interrupted` final rows for the open jobs; a run record left without `end` (kill -9) gets those rows from `win-nightly reconcile` and from the next start, once each; two runs started in the same second get different labels | no runner | M-10 block on the lock; M-27 skip reconcile |
-| AT-9 | WL2 | unit | from a real lane log plus a planted `FAILED tests/x.py::t - assert 'SECRET-VALUE-7731' == ...` line, a planted `FAILED tests/x.py::t[SECRET-PARAM-5521]` line and a planted skip id `tests/x.py::s[SECRET-SKIP-8812]`, `fail_ids()` returns digests only (from `WINRUN FAILID` lines; `test_t[left - 1]` and `test_t[left - 2]` give two digests) and none of the three sentinels is in `results.tsv`, `fails/`, `notified.json`, `cron.log` or the Slack text; Slack fires on a new red, a new not-run, a changed failing set or red to green, and not for an unchanged red or a disabled job; with the sender stubbed to fail, the alert stays pending and the next run sends it even when that night is an unchanged red | no runner | M-11; M-12 alert on every red; M-17; M-22; M-23 |
-| AT-10 | WL2 | live | `win-nightly run --now` writes rows whose SHAs equal `ls-remote` main for both repos, whose logs have the SHA line and a final `EXIT` line, and whose verdicts match `decide()` on the event lines; a `tests` row has `fail_count` > 0; `crontab -l` has exactly one `win-nightly` line; `~/.local/state/win-nightly` is 0700 and its files 0600 | no nightly | none of its own; AT-5 and AT-9 hold the logic mutations |
+| AT-7 | WL2 | unit | a catalog path missing at the head makes the job red with `missing=` and no `win-run` call, on this night and the next; a path with a trailing newline, an absolute path or a parent segment is a usage error | no runner | M-9 run with the paths that exist |
+| AT-8 | WL2 | unit | a second `win-nightly run` while the first holds `~/.cache/win-nightly.lock` writes no run record, writes one `job=*` `overlap` row and exits 3 within 5 seconds (test timeout 10 seconds); the next run's change comparison ignores that row; a worktree path outside `~/decoy-nightly/win/` is refused; a nightly sent TERM during the 20-minute memory backoff writes `interrupted` final rows for the open jobs; a run record left without `end` (kill -9) gets those rows from `win-nightly reconcile` or from the next start (test both recovery routes); interrupt after a final red row and before removing its job, then reconcile twice: exactly one final row for that run and job retains the original red; after two poll calls to reconcile, each enabled job has exactly one final not-run row with reason `missed` for each missed date, including a date with a partial set of rows; two runs started in the same second get different labels | no runner | M-10 block on the lock; M-27 skip reconcile; M-30 omit the existing final-row check; M-31 append missed rows without checking date and job |
+| AT-9 | WL2 | unit | from a real lane log plus a planted `FAILED tests/x.py::t - assert 'SECRET-VALUE-7731' == ...` line, a planted `FAILED tests/x.py::t[SECRET-PARAM-5521]` line and a planted skip id `tests/x.py::s[SECRET-SKIP-8812]`, `fail_ids()` returns digests only (from `WINRUN FAILID` lines; `test_t[left - 1]` and `test_t[left - 2]` give two digests) and none of the three sentinels is in `results.tsv`, `fails/`, `notified.json`, `cron.log` or the Slack text; Slack fires on a new red, a new not-run, a changed failing set or red to green, and not for an unchanged red or a disabled job; a real failed collect report emits the expected digest and no raw ID in the marker; fresh matching DONE rc 2 with `tests` and `EXIT 2` queues red with that digest; rc 2 without fresh DONE queues a new not-run with no stale digest; kill after committing a red row and before enqueue, then replay by reconcile and separately by run start: each queues and sends the lost alert once; inject failure during atomic replacement and recover the alert from the old cursor; with the sender stubbed to fail, the alert stays pending and the next run sends it even when that night is an unchanged red | no runner | M-11; M-12 alert on every red; M-17; M-22; M-23; M-32 advance the cursor before saving the queue; M-33 omit failed collection reports |
+| AT-10 | WL2 | live | `win-nightly run --now` writes rows whose SHAs equal `ls-remote` main for both repos, whose logs have the SHA line and a final `EXIT` line, and whose verdicts match `decide()` on the event lines; a row with a failed test or collection report has `fail_count` > 0; `crontab -l` has exactly one `win-nightly` line; `~/.local/state/win-nightly` is 0700 and its files 0600 | no nightly | none of its own; AT-5 and AT-9 hold the logic mutations |
 | AT-11 | WL2 | live | a test catalog job that sleeps, run with `WINRUN_STALL_MIN=1`, gives two logs, rows `attempt 1` and `attempt 2 retry_of=<label 1>` with `final=0` then `final=1`, and a final red | no nightly | none of its own; M-4 sits in AT-4 |
 | AT-12 | WL3 | unit | `parse_win_probe()` reads `CDISK`, `BUILD`, `PAUSE`, ignores bad lines and returns None for empty output; the probe call carries `ConnectTimeout=8` and the 40-second timeout; the encoded payload is under 8191 characters | no Windows node | M-13 raise on a bad line |
-| AT-13 | WL3 | unit | given state before and after, `win_events()` raises each section 4.6 event once: START; DONE from new event lines (offset kept, truncated file restarts at 0); STALLED only after a `running:` line and 10 minutes without growth; UNREACHABLE once per outage; PAUSE at most daily; NIGHTLY-MISSED per date with no run record after 08:30 UTC only when `armed` exists, for both deployment orders (WL3 before WL2, WL2 before WL3), and for a date skipped wholly by a devbox outage; several polls with a failing sender raise exactly one local MISSED event and keep retrying the send; NIGHTLY-INCOMPLETE for a record without `end` and a free nightly lock; a nightly that overlaps the next night's start does not count as that night's start; an event-log append failure leaves the offset in place and a fresh poll raises the lines; START and DONE for a job that starts and ends between two polls; a poll between a red attempt 1 and a green attempt 2 raises no red NIGHTLY; NIGHTLY on a verdict change; no IDLE event for `dell-win`; a half-written last event line is not read and the offset stops before it; a second poll holding no lock emits nothing, for both the bare and the `poll` route | no Windows node | M-14 drop the dedupe; M-15 raise STALLED during a lock wait; M-23; M-24; M-28 write `state.json` before the event append |
+| AT-13 | WL3 | unit | given state before and after, `win_events()` raises each section 4.6 event once: START; DONE from new event lines (offset kept, truncated file restarts at 0); STALLED only after a `running:` line and 10 minutes without growth; UNREACHABLE once per outage; PAUSE at most daily; NIGHTLY-MISSED per date with no run record after 08:30 UTC only when `armed` exists, for both deployment orders (WL3 before WL2, WL2 before WL3), and for a date skipped wholly by a devbox outage; install after 08:30 UTC, poll twice and see no event, send or missed row that day; after the first expected slot is missed, two polls leave exactly one final not-run row per enabled job with reason `missed` and one date alert; several polls with a failing sender raise exactly one local MISSED event and keep retrying the send; NIGHTLY-INCOMPLETE for a record without `end` and a free nightly lock; a nightly that overlaps the next night's start does not count as that night's start; an event-log append failure leaves the offset in place and a fresh poll raises the lines; START and DONE for a job that starts and ends between two polls; a poll between a red attempt 1 and a green attempt 2 raises no red NIGHTLY; NIGHTLY on a verdict change; no IDLE event for `dell-win`; a half-written last event line is not read and the offset stops before it; a second poll holding no lock emits nothing, for both the bare and the `poll` route | no Windows node | M-14 drop the dedupe; M-15 raise STALLED during a lock wait; M-23; M-24; M-28 write `state.json` before the event append; M-31; M-34 start the walk on the install date |
 | AT-14 | WL3 | unit | the status table has the `dell-win` line with the section 4.6 fields for busy, idle, stale-holder and unreachable states | no Windows node | M-16 print BUSY for a dead holder pid |
 | AT-15 | WL3 | live | with cron running, a real `win-run` job shows `START dell-win` and `DONE dell-win ... rc=` in `~/.cache/node-watch/events.log`, each within 4 minutes, and no IDLE line for `dell-win` | no Windows node | none of its own; the unit mutations M-14 to M-16 cover the logic |
 | AT-16 | WL4 | doc | the runbook is in the vault, `qmd search "windows lane runbook"` finds it, it names every exit code of section 6.1, every reason word of section 3 and every event of section 4.6, and the memory note's Monitor grep includes the new event names | no runbook | n/a (reviewer doc check) |
@@ -538,7 +568,7 @@ the nightly logs.
 - `B:win-run` and `B:win-run.d/winrun.ps1`: exact-head proof, lock-keyed venv, one-job locks,
   memory gate, stall guard and the AT-LANE-1 log check. WL1 adds about 60 lines. `winrun.ps1`
   does not change.
-- `B:win-run.d/winrun_plugin.py`: unchanged.
+- `B:win-run.d/winrun_plugin.py`: WL2 reuses the skipped-test check and terminal summary for failure digests.
 - `B:node-watch`: `sh()` with timeouts, the thread pool in `poll()`, the `state.json` store, the
   `alerted` dedupe set, and the events and status files.
 - The webhook setting used by `~/.claude/scripts/slack-notify.sh`: `lane_slack.py` reads a copy
@@ -565,14 +595,14 @@ environment variables, except the event line, which is always written.
 |---|---|---|---|---|
 | `B:win-run` | WL1 | edit | 85 to about 185 lines | itself |
 | `B:win-run.d/tests/test_win_run.sh` | WL1 | new | about 190 lines (AT-2, AT-4, AT-5b with an ssh stub) | `winrun.ps1` |
-| `B:win-nightly` | WL2 | new, Python stdlib | about 320 lines (run records and reconcile) | `B:win-run` |
-| `B:win-run.d/winrun_plugin.py` | WL2 | edit | 21 to about 30 lines (`WINRUN FAILID`) | itself |
+| `B:win-nightly` | WL2 | new, Python stdlib | about 350 lines (run records, reconcile and alert replay) | `B:win-run` |
+| `B:win-run.d/winrun_plugin.py` | WL2 | edit | 22 to about 42 lines (`WINRUN FAILID`) | itself |
 | `B:win-run.d/lane_slack.py` | WL2 | new, Python stdlib | about 40 lines | `jobs.json` |
 | `~/.config/win-lane/slack.env` | WL2 | new, 0600, not in `agent-config` | one line | n/a |
 | `B:win-run.d/jobs.json` | WL2 | new | about 40 lines | `winrun_plugin.py` |
-| `B:win-run.d/tests/test_win_nightly.py` | WL2 | new | about 280 lines | the bash test |
+| `B:win-run.d/tests/test_win_nightly.py` | WL2 | new | about 315 lines | the bash test |
 | `B:node-watch` | WL3 | edit | 373 to about 480 lines | itself |
-| `B:node-watch.d/tests/test_win_lane.py` | WL3 | new | about 160 lines | new folder, same pattern as `win-run.d/` |
+| `B:node-watch.d/tests/test_win_lane.py` | WL3 | new | about 175 lines | new folder, same pattern as `win-run.d/` |
 | `~/obsidian-vault/10_Projects/decoy/guides/2026-11-25-windows-lane-runbook.md` | WL4 | new | about 170 lines | `decoy-report-and-v1-commands.md` |
 | `C:docs/records/2026-11-25-win-lane-ops.md` | WL4 | new record | about 90 lines | `2026-11-18-win-lane.md` |
 | `C:docs/roadmap/groups/release.md` row 6 | WL4 | edit | one row | n/a |
@@ -597,8 +627,8 @@ Build rules for every slice:
 | Slice | Where | Content | Size | Review tier | Depends on |
 |---|---|---|---|---|---|
 | WL1 | devbox `~/bin` | `win-run`: `classify()` and reason words, lane event line and `WINRUN_QUEUE_LOG`; `WINRUN_LABEL`; `current.json` with one cleanup function; background job pipeline with INT/TERM handlers; `WINRUN_RETRY_OF` checks and claim after the lock; header lines; header comment updated; memory note `win-run-dell-windows-lane.md` tells gate readers to read rc and reason from `events.log` and to retry with `WINRUN_RETRY_OF` | about 90 changed lines, 160 test lines | Dennis then Codex (gate machinery) | none |
-| WL2 | devbox `~/bin`, crontab | `win-nightly` (worktrees, `ls-remote` check, path check, `decide()`, retries, results, change-only Slack with a pending queue, overlap lock, run records and `reconcile`, `--print-cmd`); `lane_slack.py`; the `WINRUN FAILID` hook in `winrun_plugin.py`; `jobs.json`; one crontab line and the `armed` file | about 370 lines plus 280 test lines | Codex | WL1 |
-| WL3 | devbox `~/bin` | node-watch Windows probe, `dell-win` status line, `win_events()`, event-log reader, poll lock, atomic `state.json` | about 110 lines plus 160 test lines | Codex | WL1; its NIGHTLY events read WL2's files and stay quiet until they exist |
+| WL2 | devbox `~/bin`, crontab | `win-nightly` (worktrees, `ls-remote` check, path check, `decide()`, retries, results, change-only Slack with a pending queue, overlap lock, run records and `reconcile`, `--print-cmd`); `lane_slack.py`; the `WINRUN FAILID` hook in `winrun_plugin.py`; `jobs.json`; one crontab line and the `armed` file | about 450 lines plus 315 test lines | Codex | WL1 |
+| WL3 | devbox `~/bin` | node-watch Windows probe, `dell-win` status line, `win_events()`, event-log reader, poll lock, atomic `state.json` | about 110 lines plus 175 test lines | Codex | WL1; its NIGHTLY events read WL2's files and stay quiet until they exist |
 | WL4 | vault, CLI docs | dated runbook; CLI record of what was built and the first two real nightly results; row 6 text and status; memory note and Monitor grep | about 280 doc lines | Codex low | WL1, WL2, WL3 |
 
 ### 12.1 Test depth per slice
