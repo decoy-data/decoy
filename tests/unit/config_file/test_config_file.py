@@ -69,6 +69,16 @@ def test_a_parse_failure_names_a_coordinate_never_the_line(tmp_path: Path) -> No
     assert SECRET not in exc.message
 
 
+# A tag constructor fails with ValueError, KeyError or, for a `!!timestamp` that does not
+# match its pattern, AttributeError. Each is malformed input and must not reach the crash guard.
+@pytest.mark.parametrize("tag", ["!!int", "!!bool", "!!timestamp", "!!float"])
+def test_a_bad_tagged_scalar_is_a_parse_error_without_the_scalar(tmp_path: Path, tag: str) -> None:
+    exc = _refusal(tmp_path, f"value: {tag} x{SECRET}\n".encode())
+
+    assert exc.code == "yaml.parse_error"
+    assert SECRET not in str(exc) + repr(exc) + exc.message
+
+
 def test_a_mapping_loads_and_a_bom_is_stripped(tmp_path: Path) -> None:
     path = _write(tmp_path, b"\xef\xbb\xbfversion: 2\n")
 
