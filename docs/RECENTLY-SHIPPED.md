@@ -80,7 +80,7 @@ Other merges:
 
 ## 2026-11-24: engine 0.28.4 repin (CLI)
 
-- **CLI**: the engine repin to 0.28.4 (tag `v0.28.4`, `19aabbfa9`). `requirements-certified.txt` drops `jsonpath-ng` (69 pins); fingerprint is now `a4aad6c7...`, a certified row in the engine.
+- **CLI**: the engine repin to 0.28.4 (tag `v0.28.4`, `19aabbfa9`). `requirements-certified.txt` keeps its 70 pins, `jsonpath-ng` included; fingerprint is now `a4aad6c7...`, a certified row in the engine. The engine dropped `jsonpath-ng` but stamped that row from the 0.28.3 set, so the pin stays until the engine certifies a 69-pin row.
 
 ## 2026-11-22: engine 0.28.3 repin (CLI)
 
