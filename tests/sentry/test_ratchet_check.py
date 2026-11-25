@@ -290,6 +290,8 @@ def test_two_new_keys_naming_one_old_key_fail(repo: Path) -> None:
     entries = {"m::f": _entry(), "n::g": _entry(), "o::g": _entry()}
     _write(repo, A, _moved(entries, {"n::g": "m::g", "o::g": "m::g"}))
     _assert_red(repo, "moved_from names m::g for both")
+    res = _run(repo)
+    assert (res.stdout + res.stderr).count("m::g") == 1, "one problem, one finding"
 
 
 def test_move_from_a_key_not_in_the_base_fails(repo: Path) -> None:
@@ -496,7 +498,7 @@ def test_one_old_key_both_moved_and_split_fails(repo: Path) -> None:
     doc = json.loads(_split(entries, _SPLIT))
     doc["moved_from"] = {"p::f": "m::f"}
     _write(repo, A, json.dumps(doc))
-    _assert_red(repo, "old key m::f is consumed more than once")
+    _assert_red(repo, "old key m::f is consumed by both moved_from and split_from")
 
 
 def test_one_old_key_in_two_split_groups_fails(repo: Path) -> None:
@@ -512,7 +514,7 @@ def test_one_old_key_in_two_split_groups_fails(repo: Path) -> None:
     text = _split(entries, {"m::f": ["n::f", "o::f"]})
     text = text.replace('"split_from": {', '"split_from": {"m::f": ["p::f", "q::f"], ', 1)
     _write(repo, A, text)
-    _assert_red(repo, "old key m::f is consumed more than once")
+    _assert_red(repo, "JSON key m::f is repeated inside one object")
 
 
 @pytest.mark.parametrize(
@@ -788,3 +790,28 @@ def test_a_row_on_another_baseline_gives_no_exemption(repo: Path) -> None:
     res = _run(repo)
     out = res.stdout + res.stderr
     assert res.returncode == 1 and "a: baseline gained key(s)" in out and "m::new" in out
+
+
+def test_a_move_that_changes_only_the_rule_fails(repo: Path) -> None:
+    """``m::g`` -> ``m::h``: the count would pay for a different rule."""
+    _write(repo, A, _moved({"m::f": _entry(), "m::h": _entry()}, {"m::h": "m::g"}))
+    _assert_red(repo, "moved entry m::h changes the rule after :: of m::g")
+
+
+def test_a_move_from_one_json_type_to_another_fails(repo: Path) -> None:
+    """``1`` -> ``true`` is equal in Python; a moved entry must keep its JSON types."""
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
+    base = {"sentry_id": "a", "created_in": "S0", "entries": {"m::f": _entry(count=1)}}
+    _write(repo, A, json.dumps(base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "counted base")
+    _write(repo, A, _moved({"n::f": _entry(count=True)}, {"n::f": "m::f"}))
+    _assert_red(repo, "moved entry n::f differs from m::f in the merge base")
+
+
+def test_a_split_that_changes_only_the_rule_fails(repo: Path) -> None:
+    """``m::f`` -> ``n::g`` and ``o::g`` keeps the total but lets one rule pay for another."""
+    _split_repo(repo)
+    entries = {"n::g": _entry(count=2), "o::g": _entry(count=3), "m::g": _entry()}
+    _write(repo, A, _split(entries, {"m::f": ["n::g", "o::g"]}))
+    _assert_red(repo, "changes the rule after :: of m::f")

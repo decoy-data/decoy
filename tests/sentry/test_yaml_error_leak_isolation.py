@@ -110,3 +110,30 @@ def test_yaml_parse_error_does_not_leak_source_line(label: str, tmp_path: Path) 
         f"`decoy {' '.join(argv)}` did not reach the sanitized YAML-parse path; "
         f"the sentry would pass vacuously. Output:\n{combined}"
     )
+
+
+# A tag constructor (`!!int marker`) fails with ValueError, not YAMLError, and the text of that
+# error quotes the scalar. Each entry pairs the command with the exit code it had before the fix.
+_TAG_MARKER = "TAGLEAK_MARKER_" + "Q" * 8
+_TAG_COMMANDS: dict[str, tuple[Callable[[str, str, str], list[str]], int]] = {
+    "report fidelity --policy": (_COMMANDS["report fidelity --policy"], 1),
+    "report integrity --config": (_COMMANDS["report integrity --config"], 3),
+}
+
+
+@pytest.mark.parametrize("label", list(_TAG_COMMANDS))
+def test_yaml_tag_constructor_error_does_not_leak_scalar(label: str, tmp_path: Path) -> None:
+    cfg_path = tmp_path / "tag.yaml"
+    cfg_path.write_text(f"version: !!int {_TAG_MARKER}\n", encoding="utf-8")
+    src = tmp_path / "src.csv"
+    src.write_text("email\na@b.com\n", encoding="utf-8")
+    out = tmp_path / "out.csv"
+    out.write_text("email\nx@y.com\n", encoding="utf-8")
+
+    build, exit_code = _TAG_COMMANDS[label]
+    argv = build(str(cfg_path), str(src), str(out))
+    result = runner.invoke(app, argv, env=_WIDE_ENV, catch_exceptions=False)
+    combined = (result.stdout or "") + (result.stderr or "")
+    assert _TAG_MARKER not in combined, f"`decoy {' '.join(argv)}` echoed the scalar:\n{combined}"
+    assert "could not parse YAML" in combined
+    assert result.exit_code == exit_code

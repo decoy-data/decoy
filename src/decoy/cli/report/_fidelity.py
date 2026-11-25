@@ -262,11 +262,13 @@ def _fidelity(
     if policy is not None:
         try:
             policy_config = _yaml.safe_load(policy.read_text(encoding="utf-8")) or {}
-        except _yaml.YAMLError as exc:
-            _emit_error(sanitize_yaml_error(exc))
+        except OSError:
+            _emit_error(f"could not read --policy {policy}.")
             raise typer.Exit(code=EXIT_USAGE)
         except Exception as exc:
-            _emit_error(f"could not parse --policy {policy}: {exc}")
+            # A tag constructor (`!!int x`) raises ValueError, not YAMLError, and its text
+            # quotes the scalar. sanitize_yaml_error reads only the error mark.
+            _emit_error(sanitize_yaml_error(exc))
             raise typer.Exit(code=EXIT_USAGE)
         if not isinstance(policy_config, dict):
             _emit_error(f"--policy {policy} must be a YAML/JSON mapping.")

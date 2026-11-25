@@ -30,8 +30,9 @@ A code split moves one counted key's hits into several files. A baseline may car
 the old key was in the merge base and is gone from the head, every listed new key is a head entry,
 each new entry equals the old one apart from its ceilings, and each ceiling the old entry held
 sums across the new entries to exactly the old value, with each part in ``0..old``. A new key
-named by both maps is a finding, and so is an old key consumed more than once (by a move and a
-split, or by a split group repeated in the JSON). A split whose new keys are all already in the
+named by both maps is a finding, and so is an old key consumed by both a move and a split. A
+move or split must keep the part of the key after the last ``::`` (the lint rule), so one rule
+cannot pay for another, and a moved entry keeps its JSON types (``1`` is not ``true``). A split whose new keys are all already in the
 base is a leftover of a merged split and is ignored. Only a registry row marked ``split = true``
 may carry ``split_from``: the parts of an additive count (lint-debt hits) sum across files, but
 a module size does not, so one oversize ``max`` could otherwise become several.
@@ -253,6 +254,22 @@ def _base_baseline(root: Path, ref: str, path: str) -> Baseline | None:
     return parse_baseline(text) if text is not None else None
 
 
+def _same_json(a: object, b: object) -> bool:
+    """JSON equality that keeps types apart: ``1`` is not ``true`` and ``1`` is not ``1.0``."""
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(_same_json(a[k], b[k]) for k in a)
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(_same_json(x, y) for x, y in zip(a, b))
+    return a == b
+
+
+def _rule_of(key: str) -> str | None:
+    """The part after the last ``::`` (a lint rule or a symbol), or None for a key without one."""
+    return key.rpartition("::")[2] if "::" in key else None
+
+
 def move_findings(
     path: str, head: Baseline, base: Baseline | None, gained: frozenset[str]
 ) -> tuple[list[str], frozenset[str]]:
@@ -288,7 +305,9 @@ def move_findings(
             findings.append(f"{path}: moved_from old key {old} was not in the merge base")
         elif old in head.keys:
             findings.append(f"{path}: moved_from old key {old} is still in the head")
-        elif base_entries[old] != head.reasons[new]:
+        elif _rule_of(old) != _rule_of(new):
+            findings.append(f"{path}: moved entry {new} changes the rule after :: of {old}")
+        elif not _same_json(base_entries[old], head.reasons[new]):
             findings.append(f"{path}: moved entry {new} differs from {old} in the merge base")
         else:
             admitted.add(new)
@@ -316,6 +335,9 @@ def _split_entry_finding(
             or any(_int_field(entry, f) is None for f in held)
         ):
             return f"{path}: split entry {new} differs from {old} in the merge base"
+    for new in news:
+        if _rule_of(new) != _rule_of(old):
+            return f"{path}: split entry {new} changes the rule after :: of {old}"
     for field in held:
         why = _split_field_finding(path, old, _int_field(old_entry, field) or 0, field, news, head)
         if why is not None:
@@ -340,20 +362,16 @@ def _split_field_finding(
 
 
 def double_spend_findings(path: str, head: Baseline) -> list[str]:
-    """An old key that ``moved_from`` and ``split_from`` consume more than once, in one pass."""
-    uses: dict[str, int] = {}
+    """An old key named by both ``moved_from`` and ``split_from``. A key named twice inside one
+    map is the move check's finding (or the repeated-key finding), so it is not repeated here."""
     moved, split = head.moved_from, head.split_from
-    if isinstance(moved, dict):
-        for old in moved.values():
-            if isinstance(old, str):
-                uses[old] = uses.get(old, 0) + 1
-    if isinstance(split, dict):
-        for old in [*split, *getattr(split, "dupes", ())]:
-            if isinstance(old, str):
-                uses[old] = uses.get(old, 0) + 1
+    if not isinstance(moved, dict) or not isinstance(split, dict):
+        return []
+    split_olds = {k for k in [*split, *getattr(split, "dupes", ())] if isinstance(k, str)}
+    shared = {v for v in moved.values() if isinstance(v, str)} & split_olds
     return [
-        f"{path}: old key {old} is consumed more than once by moved_from and split_from"
-        for old in sorted(k for k, n in uses.items() if n > 1)
+        f"{path}: old key {old} is consumed by both moved_from and split_from"
+        for old in sorted(shared)
     ]
 
 
