@@ -249,4 +249,8 @@ def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
 
     assert schema(lazy).field("i").type == pa.int64()
     assert schema(base).field("i").type == pa.null()
-    assert schema(lazy).field("s").type == schema(base).field("s").type
+    # Engine 0.28.4 (#770) writes an untouched column as the source holds it, a zero-row column
+    # included. The resident read of the empty file holds every column as `null`, so `s` stays
+    # `null` there; before, the engine cast it to `string`. The lazy source reports the layout.
+    assert schema(lazy).field("s").type == pa.string()
+    assert schema(base).field("s").type == pa.null()
