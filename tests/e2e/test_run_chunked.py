@@ -146,6 +146,26 @@ class TestRunChunked:
         assert result.exit_code == 0, result.output
         assert (tmp_path / "out.csv").read_bytes() == plain
 
+    def test_nondeterministic_categorical_with_numeric_categories_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        """Engine 0.28.4 admits a categorical column to --chunked only when it is deterministic,
+        or non-deterministic with a namespace and string categories. The help, `decoy explain
+        chunked` and the reference say so; this pins the refused case they describe."""
+        columns = [
+            {
+                "name": "email",
+                "strategy": "categorical",
+                "namespace": "cat_ns",
+                "provider_config": {"categories": [1, 2]},
+            }
+        ]
+        cfg = _pipeline(tmp_path, columns)
+        result = runner.invoke(app, ["run", str(cfg), "--chunked", "--chunk-size", "33"])
+        assert result.exit_code == EXIT_USAGE, result.output
+        assert "categorical_nondeterministic_not_chunk_safe" in result.output
+        assert not (tmp_path / "out.csv").exists()
+
 
 _CHUNKED_VAULT_REFUSAL = (
     "chunked runs cannot write a token vault; rerun without --chunked or without --vault"
