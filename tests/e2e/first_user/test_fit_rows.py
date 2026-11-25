@@ -336,16 +336,17 @@ def test_quoted_multiline_cells_count_as_one_record(tmp_path: Path) -> None:
 def test_a_bad_setting_error_carries_no_exception_context(
     tmp_path: Path, _home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from decoy.cli import fit as fit_module
+    from decoy.cli.fit import _args, _command
 
     raised: list[BaseException] = []
 
-    class Recording(fit_module._FitUsageError):
+    class Recording(_args._FitUsageError):
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             raised.append(self)
 
-    monkeypatch.setattr(fit_module, "_FitUsageError", Recording)
+    # On this path `_command` both raises and catches the error, so one patch covers it.
+    monkeypatch.setattr(_command, "_FitUsageError", Recording)
     _home.mkdir()
     (_home / "settings.json").write_text(
         json.dumps({"schema_version": "1.0", "fit": {"max_rows": 0}})

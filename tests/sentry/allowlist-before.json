@@ -58,8 +58,8 @@
   "_mask_secret_guidance.py::secret_provider_unknown": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "_mask_secret_guidance.py::weak_mask_secret": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/extras.py::ner_spacy_not_installed": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
-  "cli/fit.py::dp_numeric_domain_invalid": {"count": 2, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
-  "cli/fit.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
+  "cli/fit/_args.py::dp_numeric_domain_invalid": {"count": 2, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
+  "cli/fit/_command.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/gen/_preview.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/gen/_scaffold.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/preflight.py::capacity_source_unprofilable": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
@@ -128,7 +128,6 @@
   "src/decoy/cli/report/_compare.py::compare_manifests::_fp_changes": {"reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."}
  },
  "module-size": {
-  "src/decoy/cli/fit.py": {"max": 811, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
   "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
  },
  "output-name-allow": {
@@ -140,7 +139,7 @@
   "cli/run/_context.py::output_placement": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
  },
  "package-fanout": {
-  "src/decoy/cli": {"max": 28, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
+  "src/decoy/cli": {"max": 27, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
  },
  "readme-table-omitted": {
   "doctor": {"reason": "real command the README Common commands table deliberately does not repeat; the table points readers to decoy --help"},

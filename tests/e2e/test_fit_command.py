@@ -32,7 +32,7 @@ from typer.testing import CliRunner
 
 from decoy.__main__ import app
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
-from decoy.cli.fit import _build_typed_frame, _map_flag_token
+from decoy.cli.fit._args import _build_typed_frame, _map_flag_token
 from tests.dp_env import expected_dp_refusal_code_required, foreign_platform
 
 runner = CliRunner()
@@ -1052,8 +1052,15 @@ class TestFitDpGate:
 
         import decoy.cli.fit as fit_module
 
-        tree = ast.parse(Path(fit_module.__file__).read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
+        package = Path(fit_module.__file__).parent
+        # The engine call sites live in `_command.py`; the private-import rule covers every module.
+        tree = ast.parse((package / "_command.py").read_text(encoding="utf-8"))
+        every_node = [
+            node
+            for path in sorted(package.glob("*.py"))
+            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        ]
+        for node in every_node:
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
                 "decoy_engine.quality"
             ):

@@ -101,7 +101,9 @@ def test_allowlist_has_reasons_and_unique_identities() -> None:
 # The callers of `cli/gen/_fit.py::read_fit_csv`, pinned by (file, function). The allowlist above
 # covers the one pandas call inside it; this pins who may reach that call.
 FIT_READER = "read_fit_csv"
-FIT_READER_CALLERS = frozenset({("cli/fit.py", "fit"), ("cli/gen/_fit.py", "fit_exact_snapshot")})
+FIT_READER_CALLERS = frozenset(
+    {("cli/fit/_command.py", "fit"), ("cli/gen/_fit.py", "fit_exact_snapshot")}
+)
 
 
 def fit_reader_callers(root: Path) -> set[tuple[str, str]]:

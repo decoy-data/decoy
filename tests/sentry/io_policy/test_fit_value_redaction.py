@@ -8,8 +8,8 @@ engine's sensitivity profile flags. Two rules, both read off the syntax tree:
   import, an `as` alias (the import still names the original), a module attribute
   (`snapshot.compute_distribution_snapshot`), the lazy export on `decoy_engine` or
   `decoy_engine.quality`, or a string handed to `getattr`;
-- `cli/fit.py` does not re-derive sensitivity: it names neither `pii_score` nor
-  `is_value_sensitive`. It reads `redacted_columns` from the document the engine built.
+- no module in `cli/fit/` re-derives sensitivity: none names `pii_score` or
+  `is_value_sensitive`. The command reads `redacted_columns` from the document the engine built.
 
 Named limit: a name assembled at run time (`"compute_" + "distribution_snapshot"`) is not seen.
 """
@@ -21,7 +21,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 SRC = ROOT / "src" / "decoy"
-FIT = SRC / "cli" / "fit.py"
+FIT_PACKAGE = SRC / "cli" / "fit"
+FIT_COMMAND = FIT_PACKAGE / "_command.py"
 
 RAW_WRITER = "compute_distribution_snapshot"
 SENSITIVITY_NAMES = frozenset({"pii_score", "is_value_sensitive"})
@@ -55,12 +56,20 @@ def test_no_module_calls_the_raw_snapshot_writer() -> None:
 
 
 def test_fit_does_not_rederive_sensitivity() -> None:
-    lines = named_hits(FIT.read_text(encoding="utf-8"), SENSITIVITY_NAMES)
-    assert lines == [], f"cli/fit.py re-derives sensitivity at lines {lines}"
+    found = {
+        p.name: lines
+        for p in sorted(FIT_PACKAGE.glob("*.py"))
+        if (lines := named_hits(p.read_text(encoding="utf-8"), SENSITIVITY_NAMES))
+    }
+    assert not found, f"cli/fit/ re-derives sensitivity: {found}"
 
 
 def test_fit_reads_the_document_policy() -> None:
-    assert "redacted_columns" in FIT.read_text(encoding="utf-8")
+    # A string constant in the code, not a text match: the package docstring names it too.
+    tree = ast.parse(FIT_COMMAND.read_text(encoding="utf-8"))
+    assert any(
+        isinstance(n, ast.Constant) and n.value == "redacted_columns" for n in ast.walk(tree)
+    )
 
 
 _BITE_SPELLINGS = {
