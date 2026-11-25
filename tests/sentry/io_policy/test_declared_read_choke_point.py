@@ -126,7 +126,10 @@ CALLER_NAMED: dict[tuple[str, str], str] = {
         "cli/tokenize.py",
         "detokenize",
     ): "reads the tokenized file the caller named; no declared source",
-    ("cli/report/_compare.py", "compare_data"): "reads the output files two evidence manifests recorded",
+    (
+        "cli/report/_compare.py",
+        "compare_data",
+    ): "reads the output files two evidence manifests recorded",
 }
 
 REQUIRED: tuple[tuple[str, str], ...] = (

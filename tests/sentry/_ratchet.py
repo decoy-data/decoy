@@ -32,7 +32,12 @@ each new entry equals the old one apart from its ceilings, and each ceiling the 
 sums across the new entries to exactly the old value, with each part in ``0..old``. A new key
 named by both maps is a finding, and so is an old key consumed more than once (by a move and a
 split, or by a split group repeated in the JSON). A split whose new keys are all already in the
-base is a leftover of a merged split and is ignored.
+base is a leftover of a merged split and is ignored. Only a registry row marked ``split = true``
+may carry ``split_from``: the parts of an additive count (lint-debt hits) sum across files, but
+a module size does not, so one oversize ``max`` could otherwise become several.
+
+A JSON object that repeats a key anywhere in a baseline is a finding: ``json`` would keep only the
+last copy and hide the other.
 """
 
 from __future__ import annotations
@@ -81,6 +86,7 @@ class Baseline:
     reasons: dict[str, object]
     moved_from: object = None  # raw top-level map; validated in ``move_findings``
     split_from: object = None  # raw top-level map; validated in ``split_findings``
+    duplicate_keys: tuple[str, ...] = ()  # keys repeated inside any object of the document
 
 
 def parse_registry(text: str) -> tuple[dict[str, str], list[str]]:
@@ -108,6 +114,15 @@ def load_allowlist(sentry_id: str, root: Path | None = None) -> dict[str, dict[s
     registered, _ = parse_registry((base / REGISTRY).read_text(encoding="utf-8"))
     doc = json.loads((base / registered[sentry_id]).read_text(encoding="utf-8"))
     return dict(doc["entries"])
+
+
+def parse_split_ids(text: str) -> frozenset[str]:
+    """Ids of the registry rows marked ``split = true``: the rows whose ceilings add across files."""
+    return frozenset(
+        str(row.get("id", ""))
+        for row in tomllib.loads(text).get("sentry", [])
+        if row.get("split") is True
+    )
 
 
 def parse_approvals(text: str) -> tuple[dict[str, dict[str, str]], list[str]]:
@@ -150,6 +165,20 @@ def _pairs(items: list[tuple[str, object]]) -> _Pairs:
     return out
 
 
+def _repeated_keys(node: object) -> set[str]:
+    """Every key that some object in the parsed document repeats."""
+    found: set[str] = set()
+    if isinstance(node, _Pairs):
+        found.update(node.dupes)
+    if isinstance(node, dict):
+        for child in node.values():
+            found |= _repeated_keys(child)
+    elif isinstance(node, list):
+        for child in node:
+            found |= _repeated_keys(child)
+    return found
+
+
 def parse_baseline(text: str) -> Baseline:
     data = json.loads(text, object_pairs_hook=_pairs)
     entries = data.get("entries", {})
@@ -161,6 +190,7 @@ def parse_baseline(text: str) -> Baseline:
         entries,
         data.get("moved_from"),
         data.get("split_from"),
+        tuple(sorted(_repeated_keys(data))),
     )
 
 
@@ -353,12 +383,23 @@ def _split_shape_finding(
 
 
 def split_findings(
-    path: str, head: Baseline, base: Baseline | None, gained: frozenset[str]
+    path: str,
+    head: Baseline,
+    base: Baseline | None,
+    gained: frozenset[str],
+    additive: bool = False,
 ) -> tuple[list[str], frozenset[str]]:
-    """Validate ``split_from`` against the base; return findings and the admitted new keys."""
+    """Validate ``split_from`` against the base; return findings and the admitted new keys.
+
+    ``additive`` is the registry row's ``split = true``: without it no split is admitted.
+    """
     raw = head.split_from
     if raw is None:
         return [], frozenset()
+    if not additive:
+        return [f"{path}: split_from is not allowed here, the registry row has no split = true"], (
+            frozenset()
+        )
     if not isinstance(raw, dict):
         return [f"{path}: split_from is not an object"], frozenset()
     findings: list[str] = []
@@ -398,6 +439,7 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
     reg_text = reg_file.read_text(encoding="utf-8") if reg_file.exists() else ""
     head, findings = parse_registry(reg_text)
     approvals, approval_findings = parse_approvals(reg_text)
+    split_ids = parse_split_ids(reg_text)
     findings += approval_findings
     base_text = _git_show(root, base_ref, REGISTRY)
     base_reg = parse_registry(base_text)[0] if base_text is not None else {}
@@ -413,17 +455,21 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
         if not file.exists():
             findings.append(f"{sid}: registry points at {path} but there is no baseline file")
             continue
-        loaded[sid] = base = parse_baseline(file.read_text(encoding="utf-8"))
-        if base.sentry_id != sid:
+        loaded[sid] = head_doc = parse_baseline(file.read_text(encoding="utf-8"))
+        if head_doc.sentry_id != sid:
             findings.append(
-                f"{path}: sentry_id {base.sentry_id!r} does not match registry id {sid}"
+                f"{path}: sentry_id {head_doc.sentry_id!r} does not match registry id {sid}"
             )
-        if not base.created_in.strip():
+        if not head_doc.created_in.strip():
             findings.append(f"{path}: created_in is missing or not a non-empty string")
-        findings += reason_findings(path, base)
+        findings += reason_findings(path, head_doc)
+        findings += [
+            f"{path}: JSON key {key} is repeated inside one object"
+            for key in head_doc.duplicate_keys
+        ]
         findings += [
             f"{sid}: stale approved_growth, {key} is not in {path}"
-            for key in sorted(set(approvals.get(sid, {})) - base.keys)
+            for key in sorted(set(approvals.get(sid, {})) - head_doc.keys)
         ]
 
     removed = set(base_reg) - set(head)
@@ -435,20 +481,22 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
     old_union = frozenset(old_entries)
     new_union: frozenset[str] = frozenset()
     replaced_raised: set[str] = set()
-    for sid, base in sorted(loaded.items()):
+    for sid, head_doc in sorted(loaded.items()):
         path = head[sid]
-        report.append(f"{sid}: {len(base.keys)} key(s) in {path}")
+        report.append(f"{sid}: {len(head_doc.keys)} key(s) in {path}")
         if sid in base_reg:
             if base_reg[sid] != path:
                 findings.append(f"{sid}: baseline moved from {base_reg[sid]} to {path}")
                 continue
             base_doc = _base_baseline(root, base_ref, path)
-            grown = base.keys - (base_doc.keys if base_doc is not None else frozenset())
-            moved_f, admitted = move_findings(path, base, base_doc, grown)
+            grown = head_doc.keys - (base_doc.keys if base_doc is not None else frozenset())
+            moved_f, admitted = move_findings(path, head_doc, base_doc, grown)
             findings += moved_f
             grown -= admitted
-            split_f, split_admitted = split_findings(path, base, base_doc, grown)
-            findings += split_f + double_spend_findings(path, base)
+            split_f, split_admitted = split_findings(
+                path, head_doc, base_doc, grown, sid in split_ids
+            )
+            findings += split_f + double_spend_findings(path, head_doc)
             grown -= split_admitted
             approved = grown & frozenset(approvals.get(sid, {}))
             report += [
@@ -461,23 +509,23 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
                 )
             old = base_doc.reasons if base_doc is not None else {}
             raised = sorted(
-                k for k in base.keys & old.keys() if max_raised(base.reasons[k], old[k])
+                k for k in head_doc.keys & old.keys() if max_raised(head_doc.reasons[k], old[k])
             )
             if raised:
                 findings.append(f"{sid}: max raised or dropped for key(s): {', '.join(raised)}")
         elif removed:
-            new_union |= base.keys
+            new_union |= head_doc.keys
             replaced_raised |= {
                 k
-                for k in base.keys & old_union
-                if any(max_raised(base.reasons[k], old) for old in old_entries[k])
+                for k in head_doc.keys & old_union
+                if any(max_raised(head_doc.reasons[k], old) for old in old_entries[k])
             }
         else:
             # Newly registered in this diff: the one way a first inventory is admitted.
-            report.append(f"{sid}: first inventory, {len(base.keys)} key(s), review required")
-            if slice_name is not None and base.created_in != slice_name:
+            report.append(f"{sid}: first inventory, {len(head_doc.keys)} key(s), review required")
+            if slice_name is not None and head_doc.created_in != slice_name:
                 findings.append(
-                    f"{sid}: created_in {base.created_in!r} is not slice {slice_name!r}"
+                    f"{sid}: created_in {head_doc.created_in!r} is not slice {slice_name!r}"
                 )
     grown = new_union - old_union
     if removed and grown:

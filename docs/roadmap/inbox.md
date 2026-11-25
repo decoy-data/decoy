@@ -124,3 +124,4 @@ Carried whole from the old section 5.6.
 - Still open from earlier: the SBOM lock-mode refusal that prints lock package names; the engine
   `vault_key_mismatch` message still says "the config's seed does not decrypt this vault"
   (`vault.py:520-524`).
+- 2026-11-25, V2-LOG, CLI-SPLIT S1: `cli/report/_compare.py` builds its warning set-diff key with a local `json.dumps(sort_keys=True)`; fold it into the one canonical-bytes helper once that helper sits outside `distribution/signing.py`, which the CLI report package should not import. Entry stays in `canonical-json-allow.json` until then.

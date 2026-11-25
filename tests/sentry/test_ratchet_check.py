@@ -43,8 +43,13 @@ def _baseline(
     return json.dumps(doc)
 
 
-def _registry(rows: dict[str, str]) -> str:
-    return "".join(f'[[sentry]]\nid = "{i}"\nbaseline = "{p}"\n\n' for i, p in rows.items())
+def _registry(rows: dict[str, str], split: frozenset[str] = frozenset()) -> str:
+    return "".join(
+        f'[[sentry]]\nid = "{i}"\nbaseline = "{p}"\n'
+        + ("split = true\n" if i in split else "")
+        + "\n"
+        for i, p in rows.items()
+    )
 
 
 def _write(repo: Path, rel: str, text: str) -> None:
@@ -354,7 +359,8 @@ def test_a_merged_move_left_in_the_map_is_ignored(repo: Path) -> None:
 
 
 def _split_repo(repo: Path, count: int = 5) -> None:
-    """Base: ``m::f`` with a counted ceiling, plus ``m::g``."""
+    """Base: ``m::f`` with a counted ceiling, plus ``m::g``; row ``a`` is marked ``split = true``."""
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
     doc = {
         "sentry_id": "a",
         "created_in": "S0",
@@ -462,6 +468,7 @@ def test_a_split_that_breaks_a_rule_fails(
 
 
 def test_a_split_of_an_entry_with_no_ceiling_fails(repo: Path) -> None:
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
     entries = {"m::f": _entry(), "n::g": _entry(), "o::g": _entry()}
     _write(repo, A, _split(entries, {"m::g": ["n::g", "o::g"]}))
     _assert_red(repo, "split of m::g needs a counted entry")
@@ -528,6 +535,44 @@ def test_a_merged_split_left_in_the_map_is_ignored(repo: Path) -> None:
     _git(repo, "commit", "-q", "-m", "split merged")
     res = _run(repo)
     assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_a_split_on_a_row_without_the_split_flag_fails(repo: Path) -> None:
+    """Module-size style rows (``max``) do not add across files: no split_from there."""
+    doc = {
+        "sentry_id": "a",
+        "created_in": "S0",
+        "entries": {"m::f": {"reason": REASON, "max": 900}, "m::g": _entry()},
+    }
+    _write(repo, A, json.dumps(doc))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "max base")
+    entries = {
+        "n::f": {"reason": REASON, "max": 450},
+        "o::f": {"reason": REASON, "max": 450},
+        "m::g": _entry(),
+    }
+    _write(repo, A, _split(entries, _SPLIT))
+    _assert_red(repo, "split_from is not allowed here")
+
+
+def test_a_repeated_key_in_entries_fails(repo: Path) -> None:
+    text = (
+        '{"sentry_id": "a", "created_in": "S0", "entries": {'
+        f'"m::f": {{"reason": "{REASON}"}}, "m::g": {{"reason": "{REASON}"}}, '
+        f'"m::f": {{"reason": "{REASON}"}}}}}}'
+    )
+    _write(repo, A, text)
+    _assert_red(repo, "JSON key m::f is repeated inside one object")
+
+
+def test_a_repeated_key_inside_an_entry_fails(repo: Path) -> None:
+    text = (
+        '{"sentry_id": "a", "created_in": "S0", "entries": {'
+        f'"m::f": {{"reason": "{REASON}", "max": 5, "max": 9}}, "m::g": {{"reason": "{REASON}"}}}}}}'
+    )
+    _write(repo, A, text)
+    _assert_red(repo, "JSON key max is repeated inside one object")
 
 
 # --- numeric ``max`` entries: a head value above its base value is growth --------------------
