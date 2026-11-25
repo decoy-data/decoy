@@ -2,20 +2,27 @@ Status: plan
 
 # INIT-SCAN-SCAFFOLD: `decoy init SOURCES...` scans and writes a reviewable scaffold
 
-Owner: Cam. Author: Opus plan agent. Date: 2026-11-25 (first written 2026-11-23). Revision: 6 (Codex R2 fixes on revision 5; see "Rev changes"). Copied from `origin/plan/init-scan-scaffold` revision 3. Roadmap row: INIT-SCAN-SCAFFOLD (new V1 row, owner direction 2026-11-23). Related rows: SCAN-MULTI row 27 (S1c.2a merged as CLI #400; S1c.2b not started and not on the 1.0 list), SCAN-MULTI row 29 S3-cli (moved to 1.1 on 2026-11-22), DECOY-LANG S4, S6 and S8 (`docs/plans/2026-11-19-decoy-language-commands.md`, revision 3), INIT-WIZARD row 32b (stopped 2026-11-19), PRE-SCAN-RUN, COLUMN-SHAPE-RULE.
+Owner: Cam. Author: Opus plan agent. Date: 2026-11-25 (first written 2026-11-23). Revision: 7 (Codex R3 fixes on revision 6; see "Rev changes"). Copied from `origin/plan/init-scan-scaffold` revision 3. Roadmap row: INIT-SCAN-SCAFFOLD (new V1 row, owner direction 2026-11-23). Related rows: SCAN-MULTI row 27 (S1c.2a merged as CLI #400; S1c.2b not started and not on the 1.0 list), SCAN-MULTI row 29 S3-cli (moved to 1.1 on 2026-11-22), DECOY-LANG S4, S6 and S8 (`docs/plans/2026-11-19-decoy-language-commands.md`, revision 3), INIT-WIZARD row 32b (stopped 2026-11-19), PRE-SCAN-RUN, COLUMN-SHAPE-RULE.
 
 Anchors: `C:` is the CLI repo at `origin/main` `fffca916` (2026-11-25). `E:` is the engine at `origin/main` `2b8a47fbe` (2026-11-24). The CLI pins `decoy-engine` 0.28.3; CLI PR #408 (open) moves the pin to 0.28.4, which is tagged. Row 27 S1c.2a is merged (CLI #400). PRE-SCAN-RUN's verdict is merged (engine #764), so its second copy of the regex rule is now on engine main.
 
 Rules consulted: dev-rules `README.md`, `00-universal.md`, `risk-and-exceptions.md`, `development-loop.md` (PLAN, Proportion), `api-and-compatibility.md`, `cross-cutting-concerns.md`, `proportionality.md`, `security.md`, `testing.md` (Test depth), `workspace-and-vcs.md` (Commit messages), `catalogs/recurring-defects.md` (classes 1 to 11). CLI `CODEMAP.md` "Where Things Go", `tests/fixtures/release_freeze/json-shapes.json`, `tests/sentry/release/test_default_command_flags.py` (#381). Engine row 27 plan revision 8.3 (S1c, S3-engine, S3a.1). The stopped wizard plans `C:docs/plans/2026-11-08-init-wizard-phase-1a.md` and `C:origin/plan/init-wizard-v1-rest:docs/plans/2026-11-17-init-wizard-v1-rest.md`.
 
-Risk: R2 overall. E1 turns a frozen refusal into a normalization. C3 deletes a CLI module and changes the scaffold bytes of `decoy init FILE`. Plan review: Dennis, then Codex. Code gate: Codex plus Dennis on E1, E2, C3 and C5a; Codex only on the rest. Tests: T0 per edit, T1 per commit, the T2 set on each merge head. Full-suite triggers: E1 (frozen refusal), C1 (version pin), C3 (moved and deleted tests).
+Risk: R2 overall. E1 turns a frozen refusal into a normalization. C3 deletes a CLI module and changes the scaffold bytes of `decoy init FILE`. Plan review: Dennis, then Codex. Code gate: Codex plus Dennis on E1, E2, C3 and C5a; Codex only on the rest. Tests: T0 per edit, T1 per commit, the T2 set on each merge head. Section 5 lists the full-suite triggers for each slice.
 
 ## Rev changes
 
-Rev 2 fixed Dennis R1 (H, M, L rows below). Rev 3 fixes Dennis R2 (R2- rows).
+The R3 rows describe revision 7. Earlier rows record the decision at that revision.
 
 | Finding | Fix | Sections |
 |---|---|---|
+| Codex R3-1 (V1) | Register the scaffold as a protected side output that follows the final link. Exercise the actual init writer path with `--yes`. | 4.6, 4.10, AT-C3r |
+| Codex R3-2 (V1) | C3a depends on C1 and C2. It exports the detector helpers and adds the preflight keyword before init calls it. Test the real preflight. | 2, 4.8, 5, AT-C3i |
+| Codex R3-3 (V1) | Validate the derived member slug with the engine rule. Use `pipeline` if the slug fails. Keep the explicit NAME refusal. | 4.6, AT-C3t |
+| Codex R3-4 (DESIGN) | Share the anchored layout URI check. Refuse both raw source spellings before placement. | 4.6, 11, AT-C3s |
+| Codex R3-5 (V1) | Pass the starter's candidate tuple to each renderer in C6. Compare empty and populated tuples against the same config. | 4.5, 4.8, 4.9, AT-C6a |
+| Codex R3-6 (V2-LOG) | Mutate a shown field at the boundary that can read a profile sample. Check both card and JSON output. | 4.7, AT-C2c, M-C2c |
+| Codex R3-7 (V1) | Update both writer guards in C3a and register a successful owner-only write. Count mechanical deletions in the C3c estimate. | 4.8, 5, AT-C3g |
 | H1 header-suspect names leak cell values | C3 refuses with exit 1 and fixed text (`init.header_suspect`, hint `--no-header`) before rendering; G6 restated | 4.1 G6, 4.8, 9.2 row 1, 10.1, AT-C3l, M-C3l |
 | H2 source paths become absolute | C3 rewrites each file source with `source_text(path, destination)`; named; pinned in the golden | 4.8, 8, AT-C3m, AT-C3n |
 | H3 init would need a header flag | (superseded in revision 5 by Codex R1-1 and O2) init defaults to a header row when no header flag is given; H1's refusal is the safety net; AT-C3k relabeled green | 4.6, 8, AT-C3k, M-C3k |
@@ -62,11 +69,11 @@ Rev 2 fixed Dennis R1 (H, M, L rows below). Rev 3 fixes Dennis R2 (R2- rows).
 | Codex R2-1 `--source` is a Typer `Path`, so a URI reaches placement errors first | both source spellings are typed `str`; the URI check runs on the raw string before any `Path`, placement or error is built; AT-C3s also spies on placement | 4.6, 4.8, AT-C3s |
 | Codex R2-2 failure tests changed exit 3 to 1 | unexpected engine and write failures keep `EXIT_RUNTIME` (3) in plain, `-v` and `--json`; input refusals keep 1 | 4.7, 4.8, 10.1, AT-C2e, AT-C3h |
 | Codex R2-3 evidence lines would trip the control-character refusal | a note is one line: evidence parts joined with `; `; the refusal applies to input names and to any control character the engine still emits (an engine bug); AT-C3v | 4.4, 4.8, AT-E2c, AT-C3v |
-| Codex R2-4 member name from a table name can be invalid | the member name comes from `name_slug(stem)`, the placement rule, with `pipeline` when empty | 4.6, AT-C3t |
+| Codex R2-4 member name from a table name can be invalid | the member name comes from `name_slug(stem)`, the placement rule, with the R3-3 validation and fallback | 4.6, AT-C3t |
 | Codex R2-5 `suggestion_counts` by strategy is wrong | E2 adds `ColumnSuggestion.decided_by`; init counts by it | 4.4, 4.6, AT-E2i |
 | Codex R2-6 second protected-input comparison | init calls the exported `resolved_output_collisions(outputs, protected=...)` | 4.6, 11, AT-C3r |
 | Codex R2-7 to R2-11 test cells | `--has-header` in success commands; fake model fixtures defined; AT-E1e base hit corrected; AT-C2d against the real release script; AT-C3h red on base; M-C3p split; fan-out pin 28 to 27 in C3c | 6, 7, 4.8 |
-| Codex R2-12 C3a size and full-suite triggers | C3a moves the facade exports and `preflight(command=)` to C3b; C3a, C3b and C5a run the full suite (scaffold serialization and public output contract); E3 depends on rel1 | 5 |
+| Codex R2-12 C3a size and full-suite triggers | revision 6 assigned the exports and keyword to C3b (superseded by R3-2); C3a, C3b and C5a run the full suite (scaffold serialization and public output contract); E3 depends on rel1 | 5 |
 | Codex R1-1 an implicit header can publish a free-text first row | init needs an explicit header flag for delimited files, the same rule as scan (owner call O2, default); the header-suspect refusal stays as a second net; warnings are matched by `SCAN_HEADER_SUSPECT.spec.ref` | 4.1 G6, 4.4, 4.6, 8, 14, AT-C3k, AT-C3l |
 | Codex R1-2 `--yes` can replace a source | the output is refused when its destination key equals any input's (source, layout, sources file), with or without `--yes`; `CREATE_ONCE` returning False maps to `init.output_exists` | 4.6, 4.8, 10.1, AT-C3r, M-C3r |
 | Codex R1-3 C3 calls `link_candidates=` before release 2 | C3 calls `starter_config(run.result, targets=...)`; `link_candidate_count` is 0 until C6, which adds the keyword after the release-2 pin | 4.6, 4.8, 5 |
@@ -79,7 +86,7 @@ Rev 2 fixed Dennis R1 (H, M, L rows below). Rev 3 fixes Dennis R2 (R2- rows).
 | Codex R1-10 mixed-date precedence | one shared `confident_matches` decides "confident regex"; a confident date match without a format stays `redact`; `suggestion_counts` keys defined | 4.4, 4.6, AT-E2i |
 | Codex R1-11, R1-12 tests that cannot fail | engine and CLI cells restated with real inputs, spies and injected failures | 6, 7 |
 | Codex R1-13 sizes and test depth | C3 split into C3a, C3b, C3c up front; test audit moved before E2; full suite added to E2, C2 and C6 | 5 |
-| Codex R1-14 anchors and live guards | anchors fixed; C3c updates the four guard files | 1.2, 4.7, 4.8, 11 |
+| Codex R1-14 anchors and live guards | anchors fixed; C3c updates the deletion guards (writer guards moved to C3a in R3-7) | 1.2, 4.7, 4.8, 11 |
 | Rev 4 A6 stale CLI PR #68 edits `init.py` and `_init_inference.py` | named as a conflict; C3 deletes `_init_inference.py`, so #68 must rebase or drop its hunk there | 2, 12 |
 
 ## 1. Frame
@@ -134,10 +141,10 @@ Order:
 1. E1 and E2 in parallel (engine), then engine release 1 (E1 + E2 only, so C1 and C3 do not wait on foreign-key work).
 2. C1 = the CLI re-pin to release 1 plus the detectors text, in one CLI PR (H4). The re-pin alone would turn the old refusal cells red.
 3. C2 can start now (S1c.2a is merged; nothing open edits `_multi.py`).
-4. C3 after C1 merges.
+4. C3a starts after C1 and C2 merge. It uses the C2 model fixtures.
 5. C4 after S1c.2b and C3, if owner call O1 keeps it in V1.
 6. C5a after C3 and DECOY-LANG S2, S3, S4. C5b after C5a.
-7. E3 (owner said yes to Q2, level A) after E2, then engine release 2 and C6 (re-pin plus link comments) after C3.
+7. E3 follows release 1. Release 2 includes E3. C6 follows release 2 and C5a so it can test both renderers.
 
 ## 3. Established solutions
 
@@ -216,6 +223,8 @@ E2 step 0: before any E2 code, compare each cell of `C:tests/unit/test_init_infe
 
 `starter_config(..., link_candidates=True)` runs a name-only rule in a new module `E:src/decoy_engine/profiling/_starter_links.py`. It does not call `walks.inference.infer_edges`: `profiling` sits below `walks` in the import contract (`E:.importlinter:20`), and the walk rule needs a primary-key flag, accepts qualified names such as `parent_team_id` and allows a self reference (`E:src/decoy_engine/walks/inference.py:55,60,104,117`), none of which a scan can supply or a starter wants. The starter rule: a column whose whole name is `<t>_id` (case-sensitive, no prefix) in a child table, where `<t>` or `<t>s` is another scanned table that has a column named exactly `id`. A child equal to the parent table gives nothing. At most one candidate per child column (the plural name wins when both tables exist). The source pattern is SDV's name-based key detection (cited in the module docstring). The function returns `StarterConfig.link_candidates: tuple[LinkCandidate, ...]`, where `LinkCandidate(parent_table, parent_column, child_table, child_column, namespace)`. The namespace is `link-<parent_table>-<parent_column>`. Names only: no value read, no containment test, no effect on any written entry. New public names: `LinkCandidate`, one keyword, one field.
 
+C6 requests candidates once with `starter_config(..., link_candidates=True)`. Set `links = starter.link_candidates` and `link_candidate_count = len(links)`. Pass that tuple to `render_scaffold(config, notes, header=header, links=links)` for YAML. For Decoy pass it to `decoy_scaffold(config, review, links=links)`, which forwards it to `convert_config(config, review=review, links=links)`. All three functions gain the keyword-only default `links=()` in C6. Neither renderer infers links from the config. An empty tuple adds no candidate comments.
+
 How C6 prints a candidate (R2-M5). A key entry belongs under `tables[].columns`, and both columns already have an entry there (`orders.customer_id` usually `redact`, `customers.id` `hash`). A relationship belongs under top-level `relationships:`. So one block cannot hold both. C6 prints:
 
 - under `relationships:` a commented relationship: parent `customers.id`, child `orders.customer_id`, `namespace: link-customers-id`, and an `orphan_policy` line for the user to choose;
@@ -244,15 +253,15 @@ decoy init SOURCE [SOURCE ...]
 ```
 
 - Source flags mean what they mean on `decoy scan`: the same option objects, `--format` enum and `resolve_sources` (`C:src/decoy/cli/scan.py:73`). A delimited file needs `--has-header` or `--no-header` (with `--column-names` for one file), as on scan (owner call O2, default; revision 3 kept today's silent header default, which Codex R1-1 showed can publish a free-text first row). Without either flag init exits 2 with the scan hint text before any read. C3a updates the callers that rely on the old default: `README.md:88`, `docs/cli-reference.md:519`, `docs/project-layout.md:41,61`, QA PROJ-05 and the e2e tests that call `decoy init FILE.csv`. If the scan flags `scan_header_suspect` after `--has-header`, init refuses (H1).
-- Sources are local files. Both source spellings (positional and `--source`) are declared as `str`, not `Path`: Typer's `Path` conversion turns `https://` into `https:/`, and the placement missing-file error then prints it (`C:src/decoy/cli/init.py:422`, `C:src/decoy/cli/project/_scaffold.py:93`, `C:src/decoy/cli/io/_layout.py:66`). The first statement of the command tests each raw string for a URI (`scheme://`, the same test as `C:src/decoy/cli/project/_scaffold.py:97`) and exits 1 with `init.remote_source` and fixed text that names nothing, before any `Path`, placement, logging or `--json` context is built. Only then are the strings turned into paths. Cloud sources for init are 1.x.
+- Sources are local files. Both source spellings (positional and `--source`) are declared as `str`, not `Path`: Typer's `Path` conversion turns `https://` into `https:/`, and the placement missing-file error then prints it (`C:src/decoy/cli/init.py:422`, `C:src/decoy/cli/project/_scaffold.py:93`, `C:src/decoy/cli/io/_layout.py:66`). C3a exposes `is_uri(raw: str) -> bool` through `decoy.cli.io`. Its owner, `_layout.py:66,727`, uses `_URL_PATH.match(raw) is not None`. Both `is_placed_relative` and init call this predicate. Keep the module at or below its current 800 lines by consolidating the existing URI docstring. At command entry, init checks every raw positional string and the raw `--source` string. On a match it exits 1 with `init.remote_source` and fixed text that names nothing, before any `Path`, placement, logging or `--json` context is built. Only then are the strings turned into paths. Cloud sources for init are 1.x.
 - A fixed-width file needs `--layout`; the old init precheck that refuses fixed width (`C:src/decoy/cli/init.py:469`, `_supported_format`) is replaced on the scan path by `resolve_sources`. Scan-only flags (`--detectors`, `--rows`, `--layout`, header and format flags) given with `--preset` exit 2.
 - Mixed dialects use `--config` (C4), the S1c.2b sources file. `--column-names` is for one headerless CSV, as on scan.
 - `--rows`: default 10,000 (`DEFAULT_SCAN_ROWS`, the same as scan and as today's init). `--rows 0` reads every row.
 - `--detectors`, `--ner-model`: the shared `DETECTORS_OPTION` and `resolve_pre_scan`. They choose the detectors of the init scan only. The scaffold gets no `pre_scan` block (M8). The detectors that ran are named in the scaffold header comment and in `--json`.
 - Output kind (C5a, DECOY-LANG S6 rules, unchanged): member default `.decoy`; `-o x.yaml` or `.yml` writes YAML; `-o x.decoy` writes Decoy; any other suffix exits 2; `-o -` writes Decoy unless `--yaml`; `--yaml -o x.decoy` exits 2. Until C5a merges, init writes YAML everywhere.
 - Positional tokens: one bare token with no data suffix that is not an existing file is a pipeline NAME (preset path, unchanged). A NAME mixed with data files exits 2. `--source` (today's one-file option beside NAME) still names one source.
-- Member name with several sources and no `-o`: `name_slug` of the first source's stem (`C:src/decoy/cli/io/_layout.py:289`, the rule placement already uses), or `pipeline` when the slug is empty, passed to `member_placement`; the table names stay `table_name_from_path`, which can differ (`_people.csv` gives table `_people`, member `people`; a 65-character stem is cut to 56); init never prompts for a name on the scan path (today's prompt at `C:src/decoy/cli/init.py` after `resolve_destination` stays on the preset path only). `NAME --source FILE` keeps working: one source, member `NAME`.
-- Same destination: before any read, init calls the exported `resolved_output_collisions(outputs, protected=...)` (`C:src/decoy/cli/io/_placement.py:274`, exported from `decoy.cli.io`), the same check `run` uses, with the scaffold as the one output and every input (each source, layout and sources file) as protected. It compares `_destination_key` values, so links and hard links are covered; init adds no second comparison. A collision exits 1 with `init.output_is_input` and fixed text, with or without `--yes`. Placement keys cover links, dot segments, hard links and case folding, so `-o p.yaml` where `p.yaml` links to `b.csv` is caught.
+- Member name with several sources and no `-o`: `name_slug` of the first source's stem (`C:src/decoy/cli/io/_layout.py:289`, the rule placement already uses), checked with `decoy.cli.io.is_valid_name` (the engine rule at `E:src/decoy_engine/config/_pipeline.py:82`). Pass the slug to `member_placement` if valid. Otherwise pass `pipeline`, including for an empty slug or `CON`. Apply the fallback only when deriving a scan member name. An explicit invalid NAME goes to the existing `layout.pipeline_name_invalid` refusal; the table names stay `table_name_from_path`, which can differ (`_people.csv` gives table `_people`, member `people`; a 65-character stem is cut to 56); init never prompts for a name on the scan path (today's prompt at `C:src/decoy/cli/init.py` after `resolve_destination` stays on the preset path only). `NAME --source FILE` keeps working: one source, member `NAME`.
+- Same destination: before any read, init calls the exported `resolved_output_collisions(outputs, protected=...)` (`C:src/decoy/cli/io/_placement.py:274`, exported from `decoy.cli.io`), the same check `run` uses, with one file output: `RunOutput("-o", OutputKind.SCAFFOLD, destination_path, replaces_final=False)`. C3a adds `SCAFFOLD` to `_run_outputs.py:47`, exports `OutputKind` beside `RunOutput` through `decoy.cli.io`, and includes the new kind in `_placement.py:244` (`_SIDE_KINDS`). The protected loop at line 308 then checks the final link target, as `write_local_target(..., REPLACE)` does at `C:src/decoy/_atomic.py:192`. Pass every local source and layout as protected inputs, plus the sources file and its declared local inputs in C4. Skip file collision checks for stdout. C5a checks the actual destination after selecting the member filename and gives input collisions precedence over suffix errors. It compares `_destination_key` values, so links and hard links are covered; init adds no second comparison. A collision exits 1 with `init.output_is_input` and fixed text, with or without `--yes`. Placement keys cover links, dot segments, hard links and case folding, so `-o p.yaml` where `p.yaml` links to `b.csv` is caught.
 - `--yes`: overwrite an existing output. Without it, init checks for an existing output right after placement, before any source is read or model loaded, and exits 1 with `init.output_exists` (fixed text naming `--yes`). The write itself uses `CREATE_ONCE`, so a file created during the scan is still refused (L6): `write_local_target` returning False (`C:src/decoy/_atomic.py:178,192`) maps to `init.output_exists`. Placement only resolves paths; `prepare` (which makes a project member folder) runs at write time, so every refusal before the write leaves no folder behind. No question is asked on this path. The preset path keeps `_confirm_overwrite` (M6).
 - `--json` (scaffold mode, C3): `{command: "init", status, out, mode: "scaffold-from-sources", sources: [str], table_count, column_count, suggestion_counts: {regex, classifier, declared_key, integer_key, fallback}, review_count, link_candidate_count, detectors: [{source, model_id, model_version}], **placed_members}`. `sources` replaces `source`; `mode` was `scaffold-from-file` (section 8). `suggestion_counts` counts columns by `ColumnSuggestion.decided_by` (4.4), never by strategy. The five add up to `column_count`. `link_candidate_count` is 0 until C6.
 
@@ -265,22 +274,24 @@ Recommendation, kept by the owner's "go with recommended": per-field evidence li
 - Card with `--show-fields`: one evidence line per hit under the field's row, regex first: `regex: email`, then `classifier lgbm-v1 0.1.0: email (band high)`, `ner en_core_web_sm 3.8.0: person_name (rate >=50%)`. Without `--show-fields`, the card adds one summary line `Model hits  3 fields (classifier 2, ner 1)` when a model ran.
 - `--json`: `safe_field_record` keeps `model_hits` (the `ModelHitCore` dicts, already value-free) wherever field records are emitted. The top level gains `model_hit_count` (fields with at least one model hit). The `scan` snapshot entry has no `/fields` paths, so the per-field change moves no snapshot path; `model_hit_count` adds one.
 - Saved scan (`--output`): unchanged. The core already holds `model_hits`; `scan show --json` prints them.
+- `_table_summary` receives both the safe core and the in-memory profile. Build shown fields from the core. AT-C2c checks the same fields on the card and in JSON when a profile sample contains a marker.
 - Failure under `-v`: C2 replaces the traceback print at `C:src/decoy/cli/scanning/_multi.py:617-622` with the value-free refusal plus the exception's class name and code (no message, no frames). The exit code does not change: a handled unexpected failure stays `EXIT_RUNTIME` (3, `C:src/decoy/cli/exit_codes.py:66`) in plain, `-v` and `--json` modes. `decoy scan -v` keeps its detector diagnostic line. A developer who needs frames uses `DECOY_DEBUG` or the Python API (unchanged).
 
 Stability constraint (owner 11-23): the saved scan is the artifact 1.x scan-to-scan diffs will read for flags and notifications. C2 changes nothing in the saved core. Any later change to `scan-set/v1` follows its versioned read model (catalog class 4): additive minors only, no renamed or retyped member. Section 13 lists what the 1.x diff row needs.
 
 ### 4.8 C3: the init rewrite (from row 29 S3a.1, trimmed)
 
-Flow: URI refusal -> `resolve_destination` (placement; member name rule above; no prompt) -> same-destination refusal -> early output-exists check -> `resolve_sources` (header flag required) -> `scan_prepared_sources` -> `preflight(..., command="init")` (models) -> `run = scan_descriptors(prepared, rows=..., strategy=..., pre_scan=...)` -> `starter_config(run.result, targets=...)` (refuses a header-suspect table, E2; `ScanRun.result` is the `ScanSet`, `C:src/decoy/cli/scanning/_engine_call.py:40`) -> source path rewrite -> render -> `parse_pipeline_config` round trip -> one atomic `CREATE_ONCE` or `REPLACE` write. C6 adds `link_candidates=True` after the release-2 pin.
+Flow: URI refusal -> `resolve_destination` (placement; member name rule above; no prompt) -> same-destination refusal -> early output-exists check -> `resolve_sources` (header flag required) -> `scan_prepared_sources` -> `preflight(..., command="init")` (models) -> `run = scan_descriptors(prepared, rows=..., strategy=..., pre_scan=...)` -> `starter_config(run.result, targets=...)` (refuses a header-suspect table, E2; `ScanRun.result` is the `ScanSet`, `C:src/decoy/cli/scanning/_engine_call.py:40`) -> source path rewrite -> render -> `parse_pipeline_config` round trip -> one atomic `CREATE_ONCE` or `REPLACE` write. C6 adds `link_candidates=True` after the release-2 pin and passes the returned tuple through the renderer calls in 4.5.
 
-Boundaries (Codex R1-9): C3a exports `resolve_pre_scan`, `preflight` and `detectors_line` from `decoy.cli.scanning` (`__init__.py`), and `preflight` gains a `command` keyword so its error envelope says `init` instead of the fixed `"scan"` (`C:src/decoy/cli/scanning/_detectors.py:97`). Under `-v` init prints no traceback: the same value-free refusal as without `-v`, plus the class name and code. Exit codes keep today's split: input refusals 1, a handled unexpected engine or write failure 3 (`EXIT_RUNTIME`, as `C:src/decoy/cli/init.py:372` does today).
+C3a exports `resolve_pre_scan`, `preflight` and `detectors_line` from `decoy.cli.scanning` (`__init__.py`), and `preflight` gains a keyword-only `command="scan"` default. Init passes `command="init"` and scan keeps its existing error envelope (`C:src/decoy/cli/scanning/_detectors.py:97`). Under `-v` init prints no traceback: the same value-free refusal as without `-v`, plus the class name and code. Exit codes keep today's split: input refusals 1, a handled unexpected engine or write failure 3 (`EXIT_RUNTIME`, as `C:src/decoy/cli/init.py:372` does today).
 
 - Header refusal (H1, R2-M2, R2-M3): the engine refuses (E2). Init maps the `starter_header_suspect` code to exit 1, code `init.header_suspect`, and fixed text: "A file looks like it has no header row. For one file, run again with --no-header and --column-names A,B,... (one name per column)." C4 adds a second sentence: "With several files, give each file's header rule in a sources file and pass --config." The text names no table, column or path. With a single header flag for all files, a multi-file run whose files differ in header rule has no route until C4 (section 12); the user scaffolds the odd file alone.
 - Source paths (H2, R2-M1): every file source `path` in `StarterConfig.config` is replaced by `source_text(Path(shown[name]), destination)` (`C:src/decoy/cli/project/_scaffold.py:186`), where `shown` is the second value `resolve_sources` returns: the path as the user typed it. The resolved path in the descriptor is never passed, so `-o -` (which returns `source.as_posix()`) prints the path as typed. For a project member, a source outside the project stays absolute, as `source_text` does today (`_scaffold.py:196`); AT-C3m pins both.
 - Targets (R2-H2, L7): one target per source, path `target_text(Path(shown[name]), format)` unchanged (`_scaffold.py:205-208`): the bare name `<stem>.masked.csv`, or `<stem>.masked.parquet` for Parquet. `run` places it in the pipeline's run folder, as today. TSV and fixed-width sources get a CSV target, as today.
 - Comment lines (R2-M6): every comment the scaffold writes (header, `# REVIEW:` notes, keyed-column list, detector line, link comments) goes through one helper, `comment_text(template, **names)` in `_columns.py`. It renders each name with `json.dumps` and refuses any control character in a name (input) or in a note from the engine (a note never holds one after E2, so this is a guard against an engine bug), with exit 1, code `init.unsafe_name` and fixed text that names nothing. The `.decoy` path (C5a) checks and encodes each note with the same helper in the CLI before it passes the notes to `decoy.lang.convert_config`, so `decoy.lang` never imports CLI code. YAML values still go through `yaml.safe_dump`.
 - Renderer (M5): `render_scaffold(config, notes, *, header) -> str` in `C:src/decoy/cli/project/_columns.py` (CODEMAP line 56: "the column YAML text of that scaffold"). It renders each block (top level, each source, each target, each table's columns one by one) with `yaml.safe_dump(..., sort_keys=False)`, and writes the `# REVIEW:` lines and header comments between blocks. No hand quoting. `_columns.py` keeps `yaml_quote`, `yaml_scalar` and `wrap_review_comment` for the preset path (`init.py:157,246-247,272`) and its exports in `project/__init__.py`; only `emit_column_yaml`, its export, the `Inference` import and `_NAMESPACE_REQUIRED_STRATEGIES` (`_columns.py:55-56`, used only by `emit_column_yaml` at `_columns.py:92`) go.
-- Deleted in C3c (after C3a switches init to the new path): `C:src/decoy/cli/_init_inference.py`, `_NAMESPACE_REQUIRED_STRATEGIES`, `_load_dataframe`, `_scaffold_from_file`, `_build_scaffold_yaml`, `emit_column_yaml`, `C:tests/unit/test_init_inference.py`, and the `cli/init.py::_scaffold_from_file` entry in `C:tests/sentry/baselines/scan-call-allow.json` (L2). C3c also updates the live guards that name the deleted code: the exact allowlist assertion `C:tests/sentry/scan/test_one_scan_call.py:97`, the reader exception `C:tests/sentry/io_policy/test_declared_read_choke_point.py:119`, and the entries `C:tests/sentry/baselines/config-load-allow.json:14` and `C:tests/sentry/io_policy/file_sinks.toml:114`. Each only shrinks. C3c also lowers the CLI package fan-out pin from 28 to 27 (`C:tests/sentry/baselines/package-fanout.json:5`), since the sentry fails when a pin exceeds the measured count. The cell audit of the deleted unit test is E2 step 0.
+- C3a replaces the scan branch's `_init` write at `C:src/decoy/cli/init.py:514`. Remove the first public `write_text` row in `C:tests/sentry/io_policy/file_sinks.toml:114`. Renumber the three surviving preset rows from 2 through 4 to 1 through 3. In `C:tests/sentry/io_policy/test_private_files.py:129`, map the scan writer site `cli/init.py::_init::write_local_target::1` (use its actual function name if extracted) in `PRIVATE_CASES` to `e2e:test_private_surfaces.py::test_init_scaffold_is_private` (AT-C3g). Run the live P1 and P1b checks in C3a. P1b requires a test for the private writer.
+- Deleted in C3c (after C3a switches init to the new path): `C:src/decoy/cli/_init_inference.py`, `_NAMESPACE_REQUIRED_STRATEGIES`, `_load_dataframe`, `_scaffold_from_file`, `_build_scaffold_yaml`, `emit_column_yaml`, `C:tests/unit/test_init_inference.py`, and the `cli/init.py::_scaffold_from_file` entry in `C:tests/sentry/baselines/scan-call-allow.json` (L2). C3c also updates the live guards that name the deleted code: the exact allowlist assertion `C:tests/sentry/scan/test_one_scan_call.py:97`, the reader exception `C:tests/sentry/io_policy/test_declared_read_choke_point.py:119`, and the entry in `C:tests/sentry/baselines/config-load-allow.json:14`. Each only shrinks. C3c also lowers the CLI package fan-out pin from 28 to 27 (`C:tests/sentry/baselines/package-fanout.json:5`), since the sentry fails when a pin exceeds the measured count. The cell audit of the deleted unit test is E2 step 0.
 - Keyed guidance: the scaffold header names the keyed columns from `keyed_columns_for_config(config)` (frozen, #407).
 - Errors: scan-gate refusals pass through as raised (coded and value-free since S1c.2a). A starter refusal (`PipelineConfigError`) goes through the VALUE-FREE-ERRORS converter.
 
@@ -288,7 +299,7 @@ Boundaries (Codex R1-9): C3a exports `resolve_pre_scan`, `preflight` and `detect
 
 C5 builds the S6 mechanism as the S6 plan states it (`C:docs/plans/2026-11-19-decoy-language-commands.md`, "S6 mechanism"), with one change: the `review` input is `StarterConfig.notes`, not `_init_inference` notes.
 
-- C5a: `convert_config(config, *, review: Mapping[tuple[str, str], str] | None = None) -> str`. A `(table, column)` in `review` prints with a trailing `?` and a `# REVIEW: <note>` line above it, through the printer's `Notes`. A `(table, "")` note prints above the table. A column in `review` is never merged with a neighbour into one statement, even when the treatments are equal: the converter merges adjacent equal treatments (`C:src/decoy/lang/_convert.py:73,239`) and the printer finds notes by span (`C:src/decoy/lang/_print.py:178,189`), where generated nodes share `NOWHERE`. C5a gives each reviewed column its own statement and keys its note by `(table, column)`, not by span (AT-C5g). `C:src/decoy/cli/lang/_scaffold.py:decoy_scaffold(config, review) -> str` is the one init entry to the converter (S6 placement; CODEMAP line 67). Output-kind rules from 4.6. The relationship template and link candidates print as comment lines: `link` has no review mark in the grammar (`C:src/decoy/lang/_grammar.py:92`), and an uncommented link would change masking.
+- C5a: `convert_config(config, *, review: Mapping[tuple[str, str], str] | None = None) -> str`. A `(table, column)` in `review` prints with a trailing `?` and a `# REVIEW: <note>` line above it, through the printer's `Notes`. A `(table, "")` note prints above the table. A column in `review` is never merged with a neighbour into one statement, even when the treatments are equal: the converter merges adjacent equal treatments (`C:src/decoy/lang/_convert.py:73,239`) and the printer finds notes by span (`C:src/decoy/lang/_print.py:178,189`), where generated nodes share `NOWHERE`. C5a gives each reviewed column its own statement and keys its note by `(table, column)`, not by span (AT-C5g). `C:src/decoy/cli/lang/_scaffold.py:decoy_scaffold(config, review) -> str` is the one init entry to the converter (S6 placement; CODEMAP line 67). Output-kind rules from 4.6. C5a prints the relationship template as comments. C6 adds the `links=` path from 4.5 for candidate comments: `link` has no review mark in the grammar (`C:src/decoy/lang/_grammar.py:92`), and an uncommented link would change masking.
 - C5b: presets write `.decoy` through `decoy_scaffold(config, review={})`, `Template.decoy_body`, `show template --yaml`, as S6 lists.
 
 ### 4.10 Choke points
@@ -301,8 +312,10 @@ C5 builds the S6 mechanism as the S6 plan states it (`C:docs/plans/2026-11-19-de
 | Init YAML scaffold text | `project/_columns.render_scaffold` | G-ONE-EMITTER (AT-C3d) | M-C3d |
 | Scaffold comment lines | `project/_columns.comment_text` | AT-C3q | M-C3q |
 | Header-suspect rule | engine `starter_config` | AT-E2h, AT-C3l | M-E2h, M-C3l |
-| `.decoy` scaffold text | `decoy_scaffold` -> `convert_config` | AT-C5d | M-C5d |
+| `.decoy` scaffold text | `decoy_scaffold` -> `convert_config` | AT-C5d, AT-C6a | M-C5d, M-C6c |
 | Field record for card and `--json` | `safe_field_record` | existing H5 test, extended (AT-C2a) | M-C2a |
+| URI source refusal | `io.is_uri` on raw strings before placement | AT-C3s | M-C3s, M-C3s2 |
+| Output on input | `resolved_output_collisions` with the registered scaffold kind | AT-C3r | M-C3r, M-C3r2 |
 | Atomic write and overwrite rule | `_atomic.write_local_target(..., CREATE_ONCE or REPLACE)` | AT-C3f, AT-C3g, AT-C3o | M-C3f, M-C3g, M-C3o |
 
 AT-C3c shapes (H6). The sentry walks every module under `src/decoy/cli/` with `ast`. For each container literal (dict, tuple, list, set, `frozenset(...)` call) it collects catalog strategy names (`strategy_catalog()`) found as:
@@ -338,15 +351,16 @@ G-ONE-EMITTER shapes (M5). Scope: `src/decoy/cli/init.py` and `src/decoy/cli/pro
 | C1 change, pin | `C:src/decoy/cli/scanning/_detectors.py`, `C:pyproject.toml` | line 53 | | +5 -8 |
 | C2 change | `C:src/decoy/cli/scanning/_multi.py` and the card renderer | line 53 | | +90 |
 | C3a, C3b changes (no new module) | `C:src/decoy/cli/project/_columns.py`, `C:src/decoy/cli/init.py`, `C:src/decoy/cli/scanning/__init__.py`, `_detectors.py`, `C:src/decoy/cli/scan.py` (C2: `-v` path in `_multi.py`) | line 56 | `_scaffold.py` | +420 |
-| C3c deletions and guard updates | `C:src/decoy/cli/`, `C:tests/sentry/` | line 56, 73 | | +120 -520 |
+| C3a placement and writer policy | `C:src/decoy/cli/io/{__init__,_layout,_placement,_run_outputs}.py`, `C:tests/sentry/io_policy/`, `C:tests/e2e/private_file/test_private_surfaces.py` | existing owners | see 4.6 and 4.8 | included in C3a |
+| C3c deletions and guard updates | `C:src/decoy/cli/`, `C:tests/sentry/` | line 56, 73 | | ~240 added, ~520 deleted |
 | C3c new baseline | `C:tests/sentry/baselines/strategy-literal-allow.json` | line 73 | `scan-call-allow.json` | small |
 | C4 change | `C:src/decoy/cli/init.py` | line 50 | | +60 |
 | C5a new `_scaffold.py` | `C:src/decoy/cli/lang/` (created by DECOY-LANG S5 if it lands first, else by C5a) | line 67 | | +160 |
 | C5a change | `C:src/decoy/lang/_convert.py` | line 67 | `_print.py` | +40 |
 | C5b changes | `C:src/decoy/templates/__init__.py`, `C:src/decoy/cli/templates.py`, `C:src/decoy/cli/reference.py` | S6 list | | +120 |
-| C6 change | `_columns.py`, `_convert.py` comment path | as above | | +100 |
+| C6 change | init, `project/_columns.py`, `cli/lang/_scaffold.py`, `lang/_convert.py` | as above | | +100 |
 
-No new module in the flat `src/decoy/cli/` folder (frozen at 30). `init.py` only shrinks (739 lines today).
+No new module in the flat `src/decoy/cli/` folder (frozen at 30). Keep `init.py` within the 800-line sentry at each slice head. C3c removes the old helpers.
 
 ### 4.12 Design notes
 
@@ -364,20 +378,22 @@ No new module in the flat `src/decoy/cli/` folder (frozen at 30). `init.py` only
 | rel1 | engine | engine release 1 | E1, E2 | R1 | small | release set |
 | rel2 | engine | engine release 2 | E3 | R1 | small | release set |
 | C1 | CLI | re-pin to release 1 plus the detectors text in one PR: `_BAD_LIST` and help; e2e cells flip; `docs/cli-reference.md`; the re-pin checklist | rel1; rebase on #408 if open | R1 | ~15 + 60 plus pin files | T1, full suite (version pin) |
-| C2 | CLI | model hits in card, `--show-fields`, `--json`; value-free `-v` failure on scan; shape snapshot and CHANGELOG | none | R2 | ~110 + 200 | T1, T2 set, full suite (frozen snapshot) |
-| C3a | CLI | init over `scan_descriptors` and `starter_config(run.result, targets=...)`; required header flag and the mapped header refusal; URI refusal; same-destination refusal; early and atomic overwrite rule; relative source paths, unchanged targets; `render_scaffold` and `comment_text`; doc and e2e callers of the old header default | C1 | R2 | ~260 + 300 | T1, T2 set, full suite (scaffold serialization) |
-| C3b | CLI | `--json` envelope, multi-source member naming, format enum and fixed width, `--preset` flag refusals, `decoy.cli.scanning` facade exports and `preflight(command=)`, YAML golden | C3a | R1 | ~160 + 240 | T1, T2 set, full suite (public `--json` contract) |
-| C3c | CLI | deletions (`_init_inference.py`, `emit_column_yaml`, `_load_dataframe`, the CLI unit test) and the guard updates of 4.8; strategy-literal and G-ONE-EMITTER sentries | C3b; E2 step 0 merged | R1 | ~120 + 120 (deletes ~520) | T1, full suite (deleted tests); the mechanical-deletion exception applies |
+| C2 | CLI | model hits in card, `--show-fields`, `--json`; value-free `-v` failure on scan; shape snapshot, shared model fixtures and CHANGELOG | none | R2 | ~110 + 200 | T1, T2 set, full suite (frozen snapshot) |
+| C3a | CLI | init over `scan_descriptors` and `starter_config(run.result, targets=...)`; required header flag and the mapped header refusal; URI refusal; same-destination refusal; early and atomic overwrite rule; relative source paths, unchanged targets; `render_scaffold` and `comment_text`; doc and e2e callers of the old header default, detector facade exports, preflight keyword and both writer guards | C1 and C2 | R2 | ~275 + 315 including docs and guard edits | T1, T2 set, full suite (scaffold serialization) |
+| C3b | CLI | `--json` envelope, multi-source member naming, format enum and fixed width, `--preset` flag refusals, YAML golden | C3a | R1 | ~160 + 240 | T1, T2 set, full suite (public `--json` contract) |
+| C3c | CLI | deletions (`_init_inference.py`, `emit_column_yaml`, `_load_dataframe`, the CLI unit test) and the guard updates of 4.8; strategy-literal and G-ONE-EMITTER sentries | C3b; E2 step 0 merged | R1 | ~760 gross (~120 source and ~120 test additions plus ~520 deletions) | T1, full suite (deleted tests); the mechanical-deletion exception applies |
 | C4 | CLI | `--config` sources file on init; second sentence of the header refusal (owner call O1: default 1.1) | row 27 S1c.2b (not started); C3c | R1 | ~60 + 140 | T1 |
 | C5a | CLI | `.decoy` output for scan scaffolds: `convert_config(review=)` with unmerged reviewed columns, `decoy_scaffold`, output-kind rules, member default; `.decoy` golden | C3c; DECOY-LANG S2, S3, S4 | R2 | ~220 + 280 | T1, T2 set, full suite (scaffold serialization) |
 | C5b | CLI | presets and templates write `.decoy` (rest of S6) | C5a | R1 | ~120 + 150 | T1 |
-| C6 | CLI | re-pin to release 2; `link_candidates=True`; candidates as a commented relationship plus key-entry comments, both formats | C3c; rel2; C5a for the `.decoy` half | R1 | ~100 + 140 | T1, full suite (version pin) |
+| C6 | CLI | re-pin to release 2; `link_candidates=True`; forward the tuple via `links=` to both renderers and the converter, with candidate comments in both formats | rel2 and C5a (includes C3c) | R1 | ~100 + 140 | T1, full suite (version pin) |
 
-Every slice is under 600 changed lines. C3 is split before the build so each part has its own gate.
+The estimates stay below 600 changed lines except for C3c. Its ~520 mechanical deletions bring the gross estimate to ~760. C3 is split before the build so each part has its own gate.
 
 ## 6. Acceptance tests
 
-Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftest.py` (today's tests there only inject loader failures, `test_scan_detectors.py:49,150`): a fake `preflight` that passes, and a fake engine scorer that returns fixed `ModelHit`s (`lgbm-v1 0.1.0`, band `high`; `en_core_web_sm 3.8.0`, bucket `>=50%`). Each model cell first asserts a positive hit, then checks marker absence. Markers live in raw cells, profile samples and upstream entity text, never in `ModelHit` metadata, which E2 prints by design. `names.csv` (first row `Alice Smith,London`, free text). `people.csv` (id, email, dob ISO, notes free text; 200 rows), `orders.csv` (order_id, customer_id, amount), `customers.parquet` (id, full_name, phone), a headerless PII CSV `raw.csv` (email, SSN-shaped and date values, no header), a CSV with hostile column names (`a: b # c`, `-x`, `"q"`), a marker CSV whose every cell is `MARKER-7f3a`, and a fixed-width file with a layout. Model e2e cells use the existing fake classifier and NER loaders (`C:tests/e2e/scan_models/`). E2 unit cells build `TableScan.model_hits` directly.
+C2 adds opt-in fixtures in the shared `C:tests/e2e/conftest.py` so both scan and init tests can request them. Fake `load_detector_set` where the real preflight looks it up. Return the successful loader pair with refusal set to None and record the call. Fake the engine scorer to supply fixed classifier and NER hits. Use model metadata `lgbm-v1 0.1.0` (band `high`) and `en_core_web_sm 3.8.0` (bucket `>=50%`). Success tests assert positive evidence before checking marker absence. For the refusal test, return the missing-model status from the loader. Put markers in raw cells, profile samples and upstream entity text. C1 uses its existing model setup independently of C2. C2 names regex explicitly so it can run before C1.
+
+`names.csv` (first row `Alice Smith,London`, free text). `people.csv` (id, email, dob ISO, notes free text; 200 rows), `orders.csv` (order_id, customer_id, amount), `customers.parquet` (id, full_name, phone), a headerless PII CSV `raw.csv` (email, SSN-shaped and date values, no header), a CSV with hostile column names (`a: b # c`, `-x`, `"q"`), a marker CSV whose every cell is `MARKER-7f3a`, and a fixed-width file with a layout. E2 unit cells build `TableScan.model_hits` directly.
 
 "Red on base" says whether the test fails on the slice's base. A "green" cell is a control or characterization cell; its named mutation must turn it red.
 
@@ -404,18 +420,18 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | AT-C1c | C1 | the refusal prints the new `_BAD_LIST` text, and `decoy scan --help` shows the new `--detectors` help without "must include regex" | red | M-C1a |
 | AT-C2a | C2 | `--show-fields --json` field records hold `model_hits` equal to the saved core's; the card shows one evidence line per hit with the real bucket label | red | M-C2a |
 | AT-C2b | C2 | `--json` without `--show-fields` has `model_hit_count`, and a field with two hits (classifier and NER) counts once; the card has the summary line only when a model ran | red | M-C2b |
-| AT-C2c | C2 | marker CSV with classifier and NER: no marker in card, `--json`, `-v` stderr or saved core | green | M-C2c |
+| AT-C2c | C2 | Scan the marker CSV with classifier and NER. Verify that the in-memory profile contains the marker. Run both the `--show-fields` card and `--show-fields --json`. Assert both show the field and its model evidence, and neither contains the marker. Check verbose stderr and saved core bytes for the same marker. | green for marker absence on base, red for visible model evidence | M-C2c |
 | AT-C2e | C2 | a scan whose engine call raises an exception carrying `MARKER-7f3a` in its message and a frame local: plain, `-v` and `-v --json`, each exit 3, the class name and code printed, no marker and no `Traceback` in stdout or stderr | red (today prints the traceback) | M-C2e |
-| AT-C2d | C2 | shape snapshot regenerated; `C:tests/unit/release/test_check_shape_changelog.py` the release shape-changelog script itself (not its unit test, which builds a temporary repo) passes against the PR base; the saved core bytes for a fixed scan equal a committed normalized base fixture (`scanned_at` and `engine_version` normalized) | red | snapshot test; M-C2d |
+| AT-C2d | C2 | shape snapshot regenerated; `C:scripts/release/check_shape_changelog.py` passes against the PR base; the saved core bytes for a fixed scan equal a committed normalized base fixture (`scanned_at` and `engine_version` normalized) | red | snapshot test; M-C2d |
 | AT-C3a | C3a | `decoy init people.csv orders.csv customers.parquet --has-header -o p.yaml` writes one pipeline with tables `people`, `orders`, `customers` and every column; `parse_pipeline_config` and `compile_plan` pass; afterwards the folder holds the inputs plus `p.yaml` only (no scan-core JSON, no `.decoy/` library record) | red | M-C3a, M-C3a2 |
 | AT-C3b | C3c | G-ONE-SCAN-CALL with the `init.py` entry gone: a seeded `profile_columns` import or call in `init.py` fails it (direct, alias, module-qualified) | red | M-C3b |
 | AT-C3c | C3c | the strategy-literal sentry (shapes 1 to 4 in 4.10, a seeded case each) passes at C3 head with only the two baseline sites; `_init_inference.py` is gone | red | M-C3c, M-C3c2 |
 | AT-C3d | C3c | G-ONE-EMITTER (shapes and exemptions in 4.10) passes; seeded cases fail | red | M-C3d |
 | AT-C3e | C3a | ISO `dob` gets `date_shift` with `date_format: "%Y-%m-%d"` and no `min_days` or `max_days`; a mixed-format date column gets `redact` | red (today writes min and max days) | M-C3e |
 | AT-C3f | C3a | existing output, no `--yes`: exit 1, `init.output_exists`, bytes unchanged, stdin closed and never read, and no scan call made (spy on `scan_descriptors`) | red (today prompts) | M-C3f |
-| AT-C3g | C3a | a write failure injected after the temp file is staged (patched `os.replace`) leaves no temp file and no partial output, and an existing output under `--yes` keeps its old bytes; the written file is owner-only | red | M-C3g |
+| AT-C3g | C3a | a write failure injected after the temp file is staged (patched `os.replace`) leaves no temp file and no partial output, and an existing output under `--yes` keeps its old bytes; in a separate successful invocation under umask 000, `test_init_scaffold_is_private` checks exit 0, rendered bytes and mode 0600 on POSIX | red | M-C3g |
 | AT-C3h | C3a | marker CSV: no marker in the scaffold, `--json`, `-v` stderr or any error text; a seeded `scan_descriptors` exception and a seeded starter exception, each carrying the marker and each asserted reached: exit 3, no marker, no `Traceback` with `-v`; relayed errors have `__cause__` and `__context__` None; hostile names round-trip through `parse_pipeline_config` | red (the new path does not exist on base) | M-C3h |
-| AT-C3i | C3a | `--detectors ner,classifier`: notes carry the model evidence, the header comment names the detectors, and the scaffold has no `pre_scan` key | red | M-C3i |
+| AT-C3i | C3a | Run `decoy init people.csv --has-header --detectors ner,classifier -o p.yaml` through the real preflight and C2's fake loader. Assert the loader received the chosen detectors, exit 0, model evidence in notes, detector names in the header, and no `pre_scan` key | red (base has no init model option) | M-C3i, M-C3i2 |
 | AT-C3j | C3b | `--json` keys and types as in 4.6; `sources` lists the inputs in order | red | M-C3j |
 | AT-C3k | C3a | `decoy init people.csv` with no header flag and `-o p.yaml` exits 2 with the scan hint and reads no data (`resolve_sources` runs, since it owns the refusal; the spy is on descriptor preparation and the data reader); `names.csv` whose first row is `Alice Smith,London` and no flag likewise exits 2, with no `Alice` anywhere; with `--has-header` it writes a scaffold | red (today reads the first row as names) | M-C3k |
 | AT-C3l | C3a | `decoy init raw.csv --has-header` (headerless PII, the wrong flag): exit 1, `init.header_suspect`, the fixed text, no file written, no project member folder created (also with a member destination), and no cell value in stdout, stderr, `--json` or `-o -`; `decoy init raw.csv --no-header --column-names email,ssn,dob` succeeds with those names | red (today writes cell values as names) | M-C3l |
@@ -425,21 +441,21 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | AT-C3p | C3a | a TSV source gets the target `<stem>.masked.csv`; a Parquet source gets `<stem>.masked.parquet` (`target_text` unchanged) | green (today's rule) | M-C3p |
 | AT-C3p2 | C3b | `decoy init w.txt --format fixed-width --layout w.layout.yaml -o p.yaml` exits 0 with target `w.masked.csv` | red (today's `_supported_format` refuses it) | M-C3p2 |
 | AT-C3q | C3a | a CSV whose header holds a column name with a newline, and a file named with a newline: exit 1, `init.unsafe_name`, no file written, no name in any output; a hostile but printable name (`a: b # c`) appears in comments only as a JSON-quoted string and the scaffold parses | red | M-C3q |
-| AT-C3r | C3a | `-o b.csv` where `b.csv` is a source, `-o L` where `L` is a final symlink to a source, `-o d/b.csv` where `d` links to the source folder, `-o H` where `H` is a hard link to a source, `-o lay.yaml` where it is the layout: each exits 1 with `init.output_is_input`, with and without `--yes`, and the input bytes are unchanged; `-o other.yaml --yes` over an unrelated file replaces it | red (today can overwrite) | M-C3r |
-| AT-C3s | C3a | `decoy init s3://u:MARKERPW@bucket/k.csv` and `--source https://u:MARKERPW@h/x.csv`: exit 1, `init.remote_source`, no `MARKERPW` in stdout, stderr, `--json` or logs, no network or filesystem call (spy on `resolve_sources`) | red | M-C3s |
-| AT-C3t | C3b | `decoy init a.csv b.csv --has-header` into a project with no `-o`: member `a`, no prompt (stdin closed); first source `_people.csv` gives member `people`; a 65-character stem gives a 56-character member that the engine member validator accepts; `decoy init NAME --source a.csv --has-header` gives member `NAME`; `--preset X --detectors ner` exits 2 | red | M-C3t |
-| AT-C3u | C3b | `decoy init people.csv --has-header --detectors ner --ner-model missing_model --json`: exit 1, the envelope `command` is `init` and the code is the preflight model code | red (today `scan`) | M-C3u |
+| AT-C3r | C3a | `-o b.csv` where `b.csv` is a source, `-o L` where `L` is a final symlink to a source, `-o d/b.csv` where `d` links to the source folder, `-o H` where `H` is a hard link to a source, `-o lay.yaml` where it is the layout: invoke init with valid source options in each case. A forwarding spy asserts the shared checker receives the one `RunOutput("-o", OutputKind.SCAFFOLD, destination_path, replaces_final=False)` and the protected inputs, then runs the real check. Each invocation exits 1 with `init.output_is_input`, with and without `--yes`. Compare the original source and layout bytes after every invocation, including the final-link case under `--yes`; `-o other.yaml --yes` over an unrelated file replaces it | red (today can overwrite) | M-C3r, M-C3r2 |
+| AT-C3s | C3a | `decoy init s3://u:MARKERPW@bucket/k.csv` and `--source https://u:MARKERPW@h/x.csv`: exit 1, `init.remote_source`, no `MARKERPW` in stdout, stderr, `--json` or logs. For each spelling assert zero calls to both `resolve_destination` and `resolve_sources`. Include a URI after a valid positional source. A forwarding spy records each raw source at the shared predicate. Check the predicate accepts a scheme at offset zero and treats `dir/s3://part` as local | red | M-C3s, M-C3s2 |
+| AT-C3t | C3b | `decoy init a.csv b.csv --has-header` into a project with no `-o`: member `a`, no prompt (stdin closed); first source `_people.csv` gives member `people`; a 65-character stem gives a 56-character member that the engine member validator accepts; `decoy init NAME --source a.csv --has-header` gives member `NAME`. With `CON.csv` first, the member is `pipeline`. On Windows, supply that stem to placement without creating a reserved device file. Explicit `CON --source a.csv --has-header` exits 1 with the existing invalid-name refusal and makes no member. `--preset X --detectors ner` exits 2 | red | M-C3t, M-C3t2 |
+| AT-C3u | C3a | `decoy init people.csv --has-header --detectors ner --ner-model missing_model --json`: exit 1, the envelope `command` is `init` and the code is the preflight model code | red (base init has no model option or init preflight path) | M-C3u |
 | AT-C3v | C3a | one column with a classifier and an NER hit (fake loaders): exit 0; the YAML comment and the `.decoy` note (C5a cell) carry both parts on one line; a column name with a newline still exits 1 `init.unsafe_name` | red | M-C3v |
 | AT-C4a | C4 | `--config sources.yaml` with one TSV and one headerless CSV scaffolds both with their own dialects | red | M-C4a |
 | AT-C4b | C4 | a two-file run with one headerless CSV and no `--config`: the refusal text has the `--config` sentence | red | M-C4b |
 | AT-C5a | C5a | `decoy init a.csv b.csv --has-header -o p.decoy`: every mask line ends with `?` and has its note above it; `decoy validate p.decoy` reports `lang.unreviewed` per line; with every `?` removed it validates and runs | red | M-C5a |
 | AT-C5b | C5a | the output-kind matrix of 4.6 (eight cells, exit 0 or 2) | red | M-C5b |
 | AT-C5c | C5a | the member default writes `pipelines/<name>/pipeline.decoy`; `--yaml` writes `pipeline.yaml` | red | M-C5c |
-| AT-C5d | C5a | with a spy on `convert_config`: init calls it once with the scan's config and the CLI-checked notes, and the `.decoy` body (the text after the header comment block) equals that call's return; the header is compared on its own | red | M-C5d |
+| AT-C5d | C5a | At C6 extend this spy to accept and check `links=` as in AT-C6a. In C5a, with a spy on `convert_config`: init calls it once with the scan's config and the CLI-checked notes, and the `.decoy` body (the text after the header comment block) equals that call's return; the header is compared on its own | red | M-C5d |
 | AT-C5g | C5a | two adjacent columns both `redact` with different notes: two statements, each with its own `?` and note; removing one `?` leaves exactly one `lang.unreviewed` | red | M-C5g |
 | AT-C5e | C5b | the S6 preset cells as written in the S6 plan ("S6 acceptance") | red | S6 mutations |
 | AT-C5f | C5a | golden: the three-source `.decoy` scaffold equals `C:tests/fixtures/init_scaffold/three-sources.decoy`; it has no `scan before` | red | any byte change |
-| AT-C6a | C6 | the `orders.customer_id` candidate prints, in YAML and `.decoy`, as a commented relationship under `relationships:` (`namespace: link-customers-id`, orphan policy left for the user) and one comment beside each of the `customers.id` and `orders.customer_id` entries; uncommenting the relationship, choosing an orphan policy and editing the two entries as the comments say gives a config that validates and compiles; with no candidate nothing prints | red | M-C6a, M-C6b |
+| AT-C6a | C6 | Run init with the same config and notes in both formats. Vary only the starter result's tuple: first empty, then one `orders.customer_id -> customers.id` candidate. Check `link_candidate_count` is 0 or 1. Extend the AT-C5d forwarding spy to check the exact `links=` tuple, checked review notes and returned body in both Decoy cases. Check the YAML renderer receives the same tuple. Empty adds no candidate comments. Populated adds a commented YAML relationship or Decoy `link` and comments beside both existing key entries. Check namespace `link-customers-id` and orphan-policy guidance. After review, activate the relationship and apply the suggested key edits. Validate and compile both configs. | red (base has no candidate input to either renderer) | M-C6a, M-C6b, M-C6c |
 
 ## 7. Named mutations
 
@@ -467,7 +483,7 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | M-C1b | C1 | map a parse refusal to exit 0 | AT-C1b |
 | M-C2a | C2 | drop `model_hits` in `safe_field_record` (today's code) | AT-C2a |
 | M-C2b | C2 | count hits, not fields, in `model_hit_count` | AT-C2b |
-| M-C2c | C2 | emit a profile sample in the evidence line (`safe_field_record` passes the sample through) | AT-C2c |
+| M-C2c | C2 | In `_table_summary` (`C:src/decoy/cli/scanning/_multi.py:368`), copy a sample from the matching in-memory profile field (its first top value) into the shown field name after `safe_field_record` returns. The card and JSON both print that name. | AT-C2c |
 | M-C2d | C2 | change one normalized byte of the saved core (a key name) | AT-C2d |
 | M-C2e | C2 | keep the `-v` traceback print | AT-C2e |
 | M-C3a | C3a | keep the table name `data` | AT-C3a |
@@ -481,6 +497,7 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | M-C3g | C3a | write with `Path.write_text` | AT-C3g |
 | M-C3h | C3a | include the exception text in the relayed error | AT-C3h |
 | M-C3i | C3a | write `pre_scan.detectors` into the scaffold | AT-C3i |
+| M-C3i2 | C3a | Skip the init preflight call. The loader spy records no preflight load. | AT-C3i |
 | M-C3j | C3b | keep `source` (singular) in the envelope | AT-C3j |
 | M-C3k | C3a | default to a header row when no flag is given | AT-C3k |
 | M-C3l | C3a | map the engine's `starter_header_suspect` to the generic starter error | AT-C3l |
@@ -490,10 +507,13 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | M-C3p | C3a | give a TSV source a target in its own format | AT-C3p |
 | M-C3p2 | C3b | keep the `_supported_format` precheck on the scan path | AT-C3p2 |
 | M-C3q | C3a | write a name into a comment without the helper | AT-C3q |
-| M-C3r | C3a | compare output and source by `Path` equality instead of `resolved_output_collisions` | AT-C3r |
-| M-C3s | C3a | let a URI reach `resolve_sources` | AT-C3s |
+| M-C3r | C3a | Remove `OutputKind.SCAFFOLD` from `_SIDE_KINDS`. | AT-C3r |
+| M-C3r2 | C3a | Set the scaffold output's `replaces_final=True`. The final symlink can then hide its source target from the check. | AT-C3r |
+| M-C3s | C3a | Move the raw URI check after `resolve_destination`. | AT-C3s |
+| M-C3s2 | C3a | Replace the call to the shared predicate in init with a local copy of the regex. The spy misses the raw source. | AT-C3s |
 | M-C3t | C3b | keep the name prompt for a multi-source member | AT-C3t |
-| M-C3u | C3b | keep `"scan"` fixed in `preflight` | AT-C3u |
+| M-C3t2 | C3b | Fall back only for an empty slug. The derived name from `CON.csv` reaches the device-name refusal. | AT-C3t |
+| M-C3u | C3a | keep `"scan"` fixed in `preflight` | AT-C3u |
 | M-C3v | C3a | join evidence parts with a newline | AT-C3v |
 | M-C4a | C4 | apply the first source's dialect to all | AT-C4a |
 | M-C4b | C4 | keep the C3 refusal text | AT-C4b |
@@ -503,6 +523,7 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | M-C5d | C5a | build `.decoy` text from the scan directly, not from config plus notes | AT-C5d |
 | M-C5g | C5a | let the converter merge reviewed columns with equal treatments | AT-C5g |
 | M-C6a | C6 | print the candidate uncommented | AT-C6a |
+| M-C6c | C6 | Drop the `links=` argument at each forwarding site in turn. The populated case must fail for that path. | AT-C6a |
 | M-C6b | C6 | leave out the comment beside a key entry, or print the key entries as a second `columns` block | AT-C6a |
 
 ## 8. Frozen contracts and byte changes
@@ -520,8 +541,10 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
   - YAML text comes from `yaml.safe_dump`, so quoting and key order may differ from the hand-written text;
   - no `pre_scan` block is written, with or without `--detectors` (M8). Today's init writes none either; this pins it.
   - Pinned by the golden `C:tests/fixtures/init_scaffold/three-sources.yaml`.
-- C3a, behavior: `decoy init FILE.csv` needs `--has-header` or `--no-header` (O2 default), as `decoy scan` does; without one it exits 2. The README, CLI reference, project-layout doc, QA PROJ-05 and e2e callers change in C3a. A file passed with `--has-header` that looks headerless exits 1 (`init.header_suspect`). An output equal to an input is refused (`init.output_is_input`); a URI source is refused (`init.remote_source`). The scan path asks no overwrite question (exit 1 without `--yes`); the preset path is unchanged. Scaffold-mode `--json` changes `mode` and replaces `source` with `sources`. The frozen `init` snapshot entry is the `--preset` document and does not change. Cells in `C:tests/e2e/test_init_command.py` and `C:tests/e2e/test_init_scaffold_roundtrip.py` that pin `data` or the CLI notes are updated as named characterization changes; the other e2e tests that call init on a CSV keep passing because the header default is kept.
+- C3a, behavior: `decoy init FILE.csv` needs `--has-header` or `--no-header` (O2 default), as `decoy scan` does; without one it exits 2. The README, CLI reference, project-layout doc, QA PROJ-05 and e2e callers change in C3a. A file passed with `--has-header` that looks headerless exits 1 (`init.header_suspect`). An output equal to an input is refused (`init.output_is_input`); a URI source is refused (`init.remote_source`). The scan path asks no overwrite question (exit 1 without `--yes`); the preset path is unchanged.
+- C3b validates derived member names and falls back to `pipeline` for invalid slugs. Explicit member names still require validation. C3b scaffold-mode `--json` changes `mode` and replaces `source` with `sources`. The frozen `init` snapshot entry is the `--preset` document and does not change. Cells in `C:tests/e2e/test_init_command.py` and `C:tests/e2e/test_init_scaffold_roundtrip.py` that pin `data` or the CLI notes are updated as named characterization changes; successful CSV callers pass the appropriate header flag.
 - C5a: the member default becomes `pipeline.decoy` (owner call O4). Pinned by `C:tests/fixtures/init_scaffold/three-sources.decoy`.
+- C6 adds keyword-only `links=()` to both scaffold renderers and the converter. An empty tuple preserves the C5a bytes. A populated tuple adds only the candidate comments in 4.5. AT-C6a pins both cases. Update both three-source goldens in C6 for the candidate between `orders` and `customers`.
 - Experimental tier: this row calls no experimental-tier name and promotes nothing. `starter_config`, `ColumnSuggestion` and `detector_entry` are public names of `decoy_engine.profiling` (`E:docs/compatibility-contract.md:272`); E2 changes the documented meaning of `ColumnSuggestion.live` and says so in the contract note. `strategy_catalog` and `keyed_columns_for_config` are frozen top-level names (`E:docs/frozen-surfaces.md:103,107`). `column_entry`, `apply_review` and `finding_edits` are not used.
 
 ## 9. Class tables
@@ -540,7 +563,7 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | 8 | One trust class per entry | file names become table names | `table_name_from_path` unchanged; a collision is refused |
 | 9 | Mutations on the final head | all slices | the builder records the head per mutation |
 | 10 | Allowlisted helpers checked | G-ONE-SCAN-CALL | C3 removes the `cli/init.py::_scaffold_from_file` allowlist entry; `init.py` is then checked like any caller |
-| 11 | No raised caps | `init.py` shrinks; `_starter_config.py` grows; the new strategy-literal baseline | E2 splits at 650 lines; the new baseline starts at today's counts and may only shrink; the scan-call allowlist shrinks |
+| 11 | No raised caps | `init.py` shrinks; `_starter_config.py` grows; the new strategy-literal baseline | E2 checks the size estimate against the stop in section 12; the new baseline starts at today's counts and may only shrink; the scan-call allowlist shrinks |
 
 ### 9.2 Plan contract catalog (vault `Decoy-Plan-Contract-and-Defect-Catalog.md`, 10 classes)
 
@@ -549,8 +572,8 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | 1 | Value-bearing output | the starter names columns from the in-memory profile, so `starter_config` itself refuses a `scan_header_suspect` table with a value-free coded error (E2); everything else comes from the value-free core, detector descriptors and fixed text; relayed errors go through VALUE-FREE-ERRORS | AT-E2h, AT-C3l, AT-E2f, AT-C2c, AT-C3h, AT-C3q with seeded markers | M-E2h, M-C3l, M-E2f, M-C2c, M-C3h, M-C3q |
 | 2 | Cleanup missing on an exit path | nothing is written before one atomic write; `_atomic` removes its temp file on failure; every exit in 10.1 writes nothing else | AT-C3f, AT-C3g, AT-C3l | M-C3f, M-C3g |
 | 3 | State machine and concurrency | N/A: one linear flow, no shared state, no prompt loop in the scan path | AT-C3f (no stdin read) | N/A: no state added |
-| 4 | Route parity and silent fallback | one scan call for all four routes (10.2); one detector resolver for scan and init; a model that cannot load refuses before any read, never falls back to regex only | AT-C1a, AT-C3b; the existing `preflight` cells | M-C3b |
-| 5 | Referential integrity | declared relationship keys keep the shared-namespace rule (unchanged); a candidate is a commented relationship plus a comment beside each key entry, all naming one namespace | AT-C6a, AT-E3a | M-C6a, M-C6b |
+| 4 | Route parity and silent fallback | one scan call for all four routes (10.2); one detector resolver for scan and init; a model that cannot load refuses before any read, never falls back to regex only | AT-C1a, AT-C3b, AT-C3i, AT-C3u | M-C3b, M-C3i2, M-C3u |
+| 5 | Referential integrity | declared relationship keys keep the shared-namespace rule (unchanged); a candidate is a commented relationship plus a comment beside each key entry, all naming one namespace | AT-C6a, AT-E3a | M-C6a, M-C6b, M-C6c |
 | 6 | Untrusted producer | N/A: no child process or extension added; models load through `load_detector_set` | existing `preflight` cells | N/A |
 | 7 | Check then use on a path (TOCTOU) | the early output check is UX only; `write_local_target(..., CREATE_ONCE)` is the authority | AT-C3o | M-C3o |
 | 8 | Weak tests and overclaimed evidence | each AT records red on its named base; green cells name the mutation that turns them red; AT-E2d uses an input production makes (`NerRate.hit` true) | builder report with base SHA and red output | each mutation names its AT |
@@ -566,8 +589,9 @@ Fixtures: model cells use fakes that C2 adds to `C:tests/e2e/scan_models/conftes
 | success to a file | 0 | one atomic file |
 | success to stdout | 0 | nothing on disk |
 | bad flags, NAME mixed with files, output-kind mismatch, no header flag for a delimited file, scan flags with `--preset` | 2 | nothing; no source read |
-| a source is a URI | 1 | nothing; nothing named |
-| output is one of the inputs (any `--yes`) | 1 | nothing |
+| a raw positional or `--source` string starts with a URI scheme and `://` (before placement) | 1 | nothing; nothing named |
+| invalid explicit project member NAME (invalid derived slug uses `pipeline`) | 1 | nothing |
+| scaffold file aliases an input, including through a final symlink (any `--yes`) | 1 | nothing |
 | output exists without `--yes` (early check) | 1 | nothing; no source read |
 | scan-gate refusal (missing file, bad dialect, name collision) | 1 | nothing |
 | a model cannot load (`preflight`) | 1 | nothing |
@@ -615,7 +639,7 @@ The rule is E3's own (4.5), not the walk's. Shapes:
 - both `customer` and `customers` scanned: one candidate, to `customers`;
 - composite keys: none at level A.
 
-AT-E3a covers every shape but composite keys; E3's unit tests cover composite keys. AT-C6a covers how a candidate prints.
+AT-E3a covers every shape but composite keys; E3's unit tests cover composite keys. AT-C6a holds config and notes fixed while rendering empty and populated candidate tuples in both formats.
 
 ### 10.7 Fields
 
@@ -635,9 +659,9 @@ Fields the row adds or changes, all value-free:
 | scan card | summary line; evidence lines with `--show-fields` | none |
 | scan `--json` | `model_hit_count`; `model_hits` per field record | none |
 | saved scan | unchanged (already present) | none |
-| init YAML | `# REVIEW:` evidence lines; detectors in the header comment | none |
-| init `.decoy` | note comment and `?` | none |
-| init `--json` | `suggestion_counts`, `detectors` | none |
+| init YAML | `# REVIEW:` evidence, detectors in the header, C6 candidate comments | none |
+| init `.decoy` | note comment and `?`, C6 candidate comments | none |
+| init `--json` | `suggestion_counts`, `detectors`, `link_candidate_count` | none |
 | `-v` stderr | the existing `pre_scan.detectors` record; on failure the class name and code | none |
 
 ## 11. Reuse inventory
@@ -653,13 +677,13 @@ Fields the row adds or changes, all value-free:
 | Keyed columns (#407) | `keyed_columns_for_config` | engine top level, frozen |
 | Relative paths | `source_text(source, destination)` | `C:src/decoy/cli/project/_scaffold.py:186` |
 | YAML text | `yaml.safe_dump` per block | as `C:src/decoy/cli/gen/_scaffold.py:127` |
-| Converter and review mark | `convert_config` (+ `review`, C5a), `REVIEW_MARK`, `lang.unreviewed` | `C:src/decoy/lang/` |
+| Converter and review mark | `convert_config` (adds `review` in C5a and `links` in C6), `REVIEW_MARK`, `lang.unreviewed` | `C:src/decoy/lang/` |
 | Atomic write | `_atomic.write_local_target` | `C:src/decoy/_atomic.py` |
 | Placement | `resolve_destination`, `prepare` | `C:src/decoy/cli/project/` |
 | FK name rule (E3) | not reused: `walks.inference.infer_edges` sits above `profiling` and needs a PK flag (4.5); E3 follows the same `<t>_id` naming idea | `E:src/decoy_engine/walks/inference.py:33` |
-| Output-on-input check | `resolved_output_collisions(..., protected=)` | `C:src/decoy/cli/io/_placement.py:274` |
-| Member name | `name_slug` | `C:src/decoy/cli/io/_layout.py:289` |
-| URI test | the `://` check of `source_text` | `C:src/decoy/cli/project/_scaffold.py:97` |
+| Output-on-input check | `resolved_output_collisions(..., protected=)` with `OutputKind.SCAFFOLD` registered in `_SIDE_KINDS` | `C:src/decoy/cli/io/_placement.py:274` |
+| Member name | `name_slug` then `is_valid_name` for derived names | `C:src/decoy/cli/io/_layout.py:289` |
+| URI test | `decoy.cli.io.is_uri` shares the anchored `_URL_PATH.match` with placement | `C:src/decoy/cli/io/_layout.py:66,727` |
 
 The wizard's merged engine pieces:
 
@@ -676,7 +700,7 @@ Kept from the stopped wizard plans: the value-free relay through VALUE-FREE-ERRO
 - E1 changes what `evaluate_pre_scan` sees for a config with no `pre_scan` block. AT-E1f pins that regex still counts there. E1 runs the full suite.
 - CLI #408 and C1 both move the engine pin. Whichever merges second rebases; C1 runs the full suite (version pin).
 - Stale CLI #68 edits `_init_inference.py`, which C3 deletes. #68 rebases after C3; C3 does not wait for it.
-- The fake model loaders give no `high` band for the email fixture (Dennis did not check). E2 builds `model_hits` directly in unit tests. C2 and C3 e2e cells check the loader output first; if the email fixture is not `high`, the cell uses the fixture the loaders do flag.
+- E2 builds `model_hits` directly in unit tests. C2 and C3 model tests assert that the fake scorer produced the expected hit.
 - The header-suspect heuristic refuses a real file with a numeric-looking header. `--has-header` does not override it; the user passes `--no-header --column-names ...` or fixes the file. Rare, and the refusal is safe.
 - Between C3 and C4 (and for all of V1 if O1 keeps the default), a multi-file run with one headerless CSV has no route: `--column-names` applies to one file only. The user inits that file on its own. C4 closes this with `--config`. `decoy scan` on the files shows which one carries the warning.
 - Users run a `.decoy` scaffold and hit `lang.unreviewed`. The scaffold header says "remove each `?` after you check the line", and the gate message names the line.
@@ -684,6 +708,7 @@ Kept from the stopped wizard plans: the value-free relay through VALUE-FREE-ERRO
 
 ## 13. Follow-ups
 
+- V2-LOG: `C:tests/sentry/io_policy/test_private_files.py` has 869 lines at the CLI base. C3a adds one case to the existing map. Defer file cleanup to V2.
 - Row 29 (1.1) reuses `render_scaffold`.
 - DECOY-LANG S6 closes with C5b. DECOY-LANG S8 keeps its `decoy convert` half open (the roadmap row text changes when C5a merges).
 - Level B foreign-key candidates (containment checked) as a 1.x row.
@@ -703,9 +728,9 @@ The owner's "go with recommended" rule applies to Q1, Q3, Q4 and Q5. The coordin
 - Q4. A YAML scaffold does not block until reviewed; `.decoy` does. Decided.
 - Q5. A classifier `high` hit changes the entry when regex has no confident decision; NER hits add evidence only (H5). Decided.
 
-One open owner call, new in revision 4:
+Open owner calls with defaults:
 
-- O1 (OWNER CALL). `decoy init --config SOURCES.yaml` (C4) needs the scan sources file from row 27 S1c.2b, which has no 1.0 row and no PR. Default: C4 and S1c.2b go to 1.1. In V1, init takes positional sources with the header default, `--has-header`, or `--no-header --column-names` for one file; a mixed run with one headerless CSV is refused with a fixed hint, and the user scaffolds that file alone. The alternative is to add S1c.2b and C4 to 1.0 (about 600 lines over two slices).
+- O1 (OWNER CALL). `decoy init --config SOURCES.yaml` (C4) needs the scan sources file from row 27 S1c.2b, which has no 1.0 row and no PR. Default: C4 and S1c.2b go to 1.1. In V1, init takes positional sources with `--has-header` or `--no-header --column-names` for one file; a mixed run with one headerless CSV is refused with a fixed hint, and the user scaffolds that file alone. The alternative is to add S1c.2b and C4 to 1.0 (about 600 lines over two slices).
 
 New in revision 5:
 
