@@ -77,7 +77,7 @@ def read_spy(monkeypatch) -> list[str]:
 
 def install_read_spy(monkeypatch) -> list[str]:
     """The `read_spy` body, shared with `test_shared_destination_parity.py`."""
-    import decoy.cli.preflight as preflight
+    from decoy.cli.preflight import readiness as preflight
     from decoy.cli.run import _execute
 
     seen: list[str] = []
@@ -121,6 +121,19 @@ def test_validate_refuses_an_escaping_target_before_a_source_read(
     assert result.exit_code == EXIT_USAGE, result.output
     assert ESCAPES in _codes(result.output)
     assert read_spy == []
+
+
+@pytest.mark.parametrize("command", [["validate"], ["validate", "preflight"]])
+def test_the_read_spy_sees_both_checks_on_a_valid_input(
+    tmp_path: Path, command: list[str], read_spy: list[str]
+) -> None:
+    """Control for the refusal tests: a route that bypasses the spy would pass them empty."""
+    root = _project(tmp_path)
+    cfg = _write(root, "pipelines/orders/pipeline.yaml", _config(root))
+    result = runner.invoke(app, [*command, str(cfg), "--json"])
+    assert result.exit_code == EXIT_OK, result.output
+    assert "_check_source_files" in read_spy
+    assert "_check_capacity" in read_spy
 
 
 @pytest.mark.parametrize("target", BAD_TARGETS)
