@@ -2,7 +2,7 @@ Status: plan
 
 # EXAMPLES-README-FIX E1: the bundled mask example passes the gate, and the README names the real output paths
 
-Owner: Cam. Author: Opus plan agent. Date: 2026-11-25. Revision 1. Source: `docs/roadmap/inbox.md` items EXAMPLES-FIX and README-FIX (outside review, CLI PR #319). Repo: decoy (CLI). Branch: docs/plans-inbox-triage-1125. Read at CLI `origin/main` `fffca916`.
+Owner: Cam. Author: Opus plan agent. Date: 2026-11-25. Revision 2 (Codex R1 folded: mask secret, README review step, example selector, T1 and placement). Source: `docs/roadmap/inbox.md` items EXAMPLES-FIX and README-FIX (outside review, CLI PR #319). Repo: decoy (CLI). Branch: docs/plans-inbox-triage-1125. Read at CLI `origin/main` `fffca916`.
 
 Rules consulted: dev-rules `README.md`, `00-universal.md`, `risk-and-exceptions.md`, `development-loop.md` (PLAN, Proportion), `bugfix.md`, `testing.md` (Test depth), `documentation.md`.
 
@@ -10,16 +10,17 @@ Classification: 1.0 fix row for both items. A user who follows the shipped examp
 
 ## 1. Problem
 
-1. `examples/mask_example.yaml` fails `decoy validate config`: column `account_number` uses `strategy: hash` with no `namespace` (`examples/mask_example.yaml:64`), and the engine refuses it with `hash_requires_namespace`. The file's own header (`examples/mask_example.yaml:6`) tells the user to run `decoy validate config` on it. The full gate also fails, because `./input.csv` (`examples/mask_example.yaml:37`) is not in the repo. Reproduced on the Mac node: exit 1, `hash_requires_namespace`.
+1. `examples/mask_example.yaml` fails `decoy validate config`: column `account_number` uses `strategy: hash` with no `namespace` (`examples/mask_example.yaml:64`), and the engine refuses it with `hash_requires_namespace`. The file's own header (`examples/mask_example.yaml:6`) tells the user to run `decoy validate config` on it. The full gate also fails, because `./input.csv` (`examples/mask_example.yaml:37`) is not in the repo. Reproduced on the Mac node: exit 1, `hash_requires_namespace`. A namespace alone is not enough: `hash` is keyed, the example leaves `mask_secret_ref` commented out (`examples/mask_example.yaml:29`) and its header says the public seed is a fallback. There is no fallback: `decoy explain keys` (`src/decoy/cli/explain.py:210`) says a keyed strategy with no secret is refused, and `tests/e2e/test_keyed_secret_guidance.py:77` pins that `run` exits 1 with a namespace, seed 42 and no secret.
 2. `tests/unit/test_bundled_examples.py:56` only runs `PipelineConfig.model_validate`. It does not run the plan or preflight layers, so it missed item 1.
-3. `README.md:94-95` says `decoy run` writes to the path under `targets:`. A relative target goes to `out/<pipeline>/<run-id>/` with a `current` link (`open_run_layout`, `src/decoy/cli/io/_layout.py`). `README.md:147` scores `source.csv synthetic.csv`, but the scaffold writes `<stem>.synthetic.csv` into the run folder. The exit-code half of README-FIX is already done by RG-X (CLI #270) and guarded by `tests/sentry/cli_text/test_exit_code_docs.py`.
+3. The README generate block (`README.md:139-144`) runs `init` and then `run`. When `init` prints a NOTICE for a categorical column, `run` refuses the scaffold until the user edits that column or adds `allow_real_categories: true` (`tests/e2e/first_user/test_items_generate_init.py:395`); the README does not say so. G1 of the scaffold plan keeps that consent rule.
+4. `README.md:94-95` says `decoy run` writes to the path under `targets:`. A relative target goes to `out/<pipeline>/<run-id>/` with a `current` link (`open_run_layout`, `src/decoy/cli/io/_layout.py`). `README.md:147` scores `source.csv synthetic.csv`, but the scaffold writes `<stem>.synthetic.csv` into the run folder. The exit-code half of README-FIX is already done by RG-X (CLI #270) and guarded by `tests/sentry/cli_text/test_exit_code_docs.py`.
 
 ## 2. Behavior
 
-- `examples/mask_example.yaml`: `account_number` gets `namespace: account_identity`. A new `examples/input.csv` holds 20 synthetic rows with the six columns the example names, made with fixed fake values (no real data). The output target stays `./masked_output.csv`.
-- `decoy validate examples/mask_example.yaml` (full gate) and `decoy run examples/mask_example.yaml` both exit 0 from any working folder.
-- The bundled-examples test runs the full gate (config, compile, preflight) on every `examples/*.yaml`, so a new example that fails the gate fails CI.
-- `README.md`: the run paragraph says where output goes (`out/<pipeline>/<run-id>/`, the `current` link, and that an absolute target path is written as given). The generate block uses `decoy report fidelity source.csv out/pipeline/current/source.synthetic.csv --generate`. The "Status" version line is checked against `pyproject.toml` and corrected if it differs.
+- `examples/mask_example.yaml`: `account_number` gets `namespace: account_identity`. `global_settings.mask_secret_ref: "env:DECOY_MASK_SECRET"` is uncommented. The header drops the seed-fallback text and shows the two commands as `decoy explain keys` words them: `export DECOY_MASK_SECRET=$(openssl rand -hex 32)`, then `decoy validate examples/mask_example.yaml` and `decoy run examples/mask_example.yaml`. A new `examples/input.csv` holds 20 synthetic rows with the six columns the example names, made with fixed fake values (no real data). The output target stays `./masked_output.csv`.
+- With `DECOY_MASK_SECRET` set, `decoy validate examples/mask_example.yaml` (full gate) and `decoy run examples/mask_example.yaml` both exit 0 from any working folder.
+- The bundled-examples test runs the full gate (config, compile, preflight) on every pipeline example from `_example_paths()` (`tests/unit/test_bundled_examples.py:39`, which leaves out the `decoy-ci.yaml` manifest), so a new example that fails the gate fails CI.
+- `README.md`: the run paragraph says where output goes (`out/<pipeline>/<run-id>/`, the `current` link, and that an absolute target path is written as given). The generate block uses `decoy report fidelity source.csv out/pipeline/current/source.synthetic.csv --generate`, and one line after `init` says: if `init` prints a NOTICE that names columns, edit those columns in `pipeline.yaml` (or set `allow_real_categories: true` on them to reuse the source categories) before `run`. The "Status" version line is checked against `pyproject.toml` and corrected if it differs.
 - REL-DOCS (row 92) owns the public docs site. This row touches only `README.md` and `examples/`.
 
 Non-goals: no change to the run layout, the exit codes or the scaffold code.
@@ -50,21 +51,28 @@ Non-goals: no change to the run layout, the exit codes or the scaffold code.
 | AT | Test | Mutation that turns it red |
 |---|---|---|
 | AT-1 | `decoy validate config examples/mask_example.yaml` exits 0 (e2e, through the CLI runner). | Remove `namespace` from `account_number` |
-| AT-2 | `tests/unit/test_bundled_examples.py` gains a parametrized test: for each `examples/*.yaml`, copy `examples/` into `tmp_path`, `chdir` to another folder and run the full gate (`run_gate_on_config` or the `decoy validate` runner). No error findings. | Delete `examples/input.csv` |
-| AT-3 | `decoy run examples/mask_example.yaml` from a copy in `tmp_path` exits 0. The output CSV under `out/` has 20 rows, and no `ssn` value from `input.csv` appears in it. | Change `ssn` to `passthrough` |
-| AT-4 | A README test reads the generate block from `README.md` and runs it on a small CSV in `tmp_path`: `init --preset generate`, `run`, then the `report fidelity` line exactly as written. Each exits 0, and the file the README names exists. Depends on G1 of the scaffold plan, because the scaffold fails on many CSVs today. Until G1 merges, the test uses a CSV with numeric and category columns only. | Restore `synthetic.csv` in the README |
+| AT-2 | `tests/unit/test_bundled_examples.py` gains a test parametrized over `_example_paths()`: copy `examples/` into `tmp_path`, set `DECOY_MASK_SECRET` to a 64-hex test value, `chdir` to another folder and invoke `decoy validate <copied yaml>`. Exit 0 for each. A second case deletes the copied `input.csv` and asserts the mask example exits 1 with a source preflight finding. | Delete `examples/input.csv`; remove `mask_secret_ref` |
+| AT-3 | From another folder, with `DECOY_MASK_SECRET` set as the header says, `decoy run <tmp copy>/mask_example.yaml` (the header command with the copied path) exits 0. The output CSV under `out/` has 20 rows, and no `ssn` or `account_number` value from `input.csv` appears in it. Without the variable it exits 1 and names `decoy explain keys`. | Change `ssn` to `passthrough`; comment out `mask_secret_ref` |
+| AT-4 | A README test reads the four commands of the generate block from `README.md` and runs them in order from a fresh `tmp_path` holding `source.csv` in the numeric shape already proven to run (`_people`, `tests/e2e/first_user/test_items_generate_init.py:89`): `init --preset generate -o pipeline.yaml`, `run pipeline.yaml --rows 5`, `run pipeline.yaml`, then the `report fidelity` line. Each exits 0. A second case checks the NOTICE sentence is in the README next to `init`. | Restore `synthetic.csv` in the README (the fourth command fails, and only it) |
 | AT-5 | A text check: `README.md` names `out/<pipeline>/<run-id>/` in the run paragraph and the version on the Status line equals `pyproject.toml`. | Put "the path under `targets:`" back |
 
 ## 6. Files allowed to change
 
-`examples/mask_example.yaml`, new `examples/input.csv` (21 lines), `README.md`, `tests/unit/test_bundled_examples.py` (about 40 lines added; the file is under 100), one README e2e test file under `tests/e2e/first_user/`.
+`examples/mask_example.yaml`, new `examples/input.csv` (21 lines), `README.md`, `tests/unit/test_bundled_examples.py` (about 40 lines added; the file is under 100; `EXPECTED_EXAMPLES` at line 32 pins `*.yaml` only, so the CSV does not change it), new `tests/e2e/first_user/test_readme_generate_flow.py`.
+
+Placement:
+
+| New file | Directory | Map line | Sits beside |
+|---|---|---|---|
+| `examples/input.csv` (20 made-up rows) | `examples/` | `CODEMAP.md:23` (`examples/`, sample configs) | `mask_example.yaml`, which reads `./input.csv` |
+| `tests/e2e/first_user/test_readme_generate_flow.py` (about 60 lines) | `tests/e2e/first_user/` | `CODEMAP.md:58` (test home `tests/e2e/first_user/` for generation CLI flows) | `test_items_generate_init.py` |
 
 ## 7. Test selection
 
 - T0: `tests/unit/test_bundled_examples.py` and the new README test.
-- T1: those, plus `tests/e2e/first_user/test_items_generate_fk.py` (reads `examples/generate_example.yaml`), `tests/sentry/`, and import-impact selection.
+- T1: those, plus `tests/e2e/first_user/test_items_generate_fk.py` (reads `examples/generate_example.yaml`), `tests/e2e/first_user/test_items_di_text.py` (reads `examples/mask_example.yaml` at line 42; import-impact selection cannot see a YAML read), `tests/e2e/test_keyed_secret_guidance.py`, `tests/sentry/`, and import-impact selection.
 - T2 gate: T1 on the exact head with the mutations above.
-- Full suite: not triggered. No shared fixture, schema, pin or frozen surface changes. `examples/` is not a test fixture directory.
+- Full suite: not triggered at slice level. No shared fixture, schema, pin or frozen surface changes. `examples/` is not a test fixture directory, and its two direct readers are in T1. The merge train's full suite still runs once on the merge head.
 
 ## 8. Enumerations
 
@@ -85,6 +93,7 @@ N/A: the example has one table and no relations.
 ### Fields
 
 - `account_number.namespace` added in the example (`examples/mask_example.yaml:64`).
+- `global_settings.mask_secret_ref` uncommented (`examples/mask_example.yaml:29`).
 - Seven CSV columns in `examples/input.csv`: `first_name`, `last_name`, `email`, `phone`, `ssn`, `account_number`, `account_status`. The builder takes the list from the example's `columns:`, not from this line.
 
 ### Output surfaces
@@ -102,10 +111,11 @@ None change. The exit-code table in the README stays as RG-X left it and its sen
 
 ## 11. Slices
 
-One slice, E1, CLI repo, no source code, about 40 lines of docs and example and 80 lines of tests. AT-4 waits on scaffold slice G1 for its full CSV. If G1 has not merged, E1 merges with the reduced CSV and G1 widens AT-4. No open PR touches these files.
+One slice, E1, CLI repo, no source code, about 40 lines of docs and example and 80 lines of tests. AT-4 uses the numeric shape that runs today, so E1 does not wait on scaffold slice G1. G1 adds its own README-flow cases (scaffold plan AT-2). No open PR touches these files.
 
 ## 12. Pre-mortem
 
+- The builder sets `seed` instead of a secret ref to make `run` pass. AT-3 without the variable must exit 1.
 - The builder adds `input.csv` but leaves the test schema-only, and the next example breaks the same way. AT-2 runs the real gate.
 - The builder fixes the README by naming an absolute target path, which hides the run-folder behavior. AT-5 checks the run-folder text.
 - REL-DOCS rewrites the README at the same time. Whichever lands second rebases; AT-4 and AT-5 hold the facts.
