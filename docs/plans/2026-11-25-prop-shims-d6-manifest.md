@@ -1,7 +1,7 @@
 # 24zk PROP-SHIMS D6 manifest half: `report diff` refuses an evidence manifest entry with no `format`
 
 Status: plan
-Revision: 3
+Revision: 4
 Repo: decoy (CLI), branch `docs/plans-prop-shims-d6-manifest`, planned against CLI `origin/main`
 `fffca916`.
 Parent: engine `docs/plans/2026-11-16-prop-batch.md` (revision 7, branch
@@ -22,6 +22,9 @@ Revision 3 folds Codex R1 (2 V1, 1 DESIGN, 5 low): a one-sided table entry is ch
 side is checked on its own so the codes do not depend on argument order; the hint lives only in
 the exception message and one block records refused or unreadable paths; AT-4 covers human and
 JSON modes; M-1 and M-3 made executable; full run before the code gate; anchors corrected.
+Revision 4 folds Codex R2 (1 V1, 2 DESIGN, 1 low): refusal text only when there is a refusal;
+`compare_data` projects the two keys itself and keeps each side's resolved tuple or error (no
+whole-entry helper, so the path sentry holds); one `_skip` owns every skipped-path append.
 
 ## 1. Problem
 
@@ -94,20 +97,22 @@ format recording); re-run the pipeline to write a new manifest")`. Delete
 `_legacy_format_for_path` and the legacy sentence of the docstring (`_targets.py:307-308`).
 
 4.2 `src/decoy/cli/report/_compare.py` `compare_data` (`_compare.py:158`):
-- One local helper, `_entry_refusal(entry) -> TargetFormatError | None`, calls
-  `entry_format({k: entry[k] for k in ("format", "layout") if k in entry})` and returns the
-  error instead of raising. Each side is checked on its own, so a pair with one `format: xml`
-  side and one side with no `format` yields both codes in either argument order.
+- `compare_data` itself projects each present entry to its `format` and `layout` keys (as it does
+  today at `_compare.py:235`) and resolves that side once with `entry_format`, keeping either the
+  `(fmt, layout)` tuple or the `TargetFormatError`. No helper receives a whole entry, so the
+  manifest-path sentry (`tests/sentry/io_policy/test_manifest_path_resolution.py`) holds without
+  an allowlist change. Each side is resolved on its own, so a pair with one `format: xml` side
+  and one side with no `format` yields both codes in either argument order.
 - One-sided table (`_compare.py:201-216`): before recording the "only exists in one run" delta,
   the present entry is checked. A refusal records the refusal and its raw path and skips the
   delta; a current entry keeps the existing delta. Covers added and removed tables.
 - Two-sided table: after the path check (`_compare.py:225-232`), both sides are checked. Any
   refusal records every refusal and both raw paths, then `continue`; only when both pass are the
-  two `read_file` calls made, under the existing `except (OSError, ValueError, DecoyError)` arm.
+  two `read_file` calls made with the kept tuples, under the existing `except (OSError, ValueError, DecoyError)` arm.
 - One block records a skipped side: a local `_skip(raws, refusals=())` appends the raw paths to
   `missing_files` (deduplicated, as today at `_compare.py:242-244`) and adds each
-  `(err.code, str(err))` pair to a `refusals` set. Both the refusal path and the generic read arm
-  call it.
+  `(err.code, str(err))` pair to a `refusals` set. The missing-file branch
+  (`_compare.py:228-230`), the refusal path and the generic read arm all call it.
 - The result dict gains `"refusals": sorted(refusals)` (pairs of fixed code and fixed message).
   It is needed because the generic arm drops the code, and the code is the only thing that tells
   a user why the file was not compared.
@@ -116,7 +121,8 @@ format recording); re-run the pipeline to write a new manifest")`. Delete
 
 4.3 `src/decoy/cli/report/_diff.py`: one function `_refusal_text(refusals)` builds
 `"refused: " + "; ".join(f"{code}: {message}" ...)`. The remediation hint is only in the
-exception message (4.1), so every mode prints the same text. Append it with `"; "` to the
+exception message (4.1), so every mode prints the same text. Only when `refusals` is non-empty:
+append it with `"; "` to the
 `--require-data` message (`_diff.py:130-135`); set the existing skipped-branch `data_note` key
 (`_diff.py:162-167`) to it when there is no dependency error; in the human note
 (`_diff.py:221-229`) say "output files missing or refused (...)" and append it. Codes and
@@ -272,6 +278,9 @@ Written red first against `fffca916`:
   `--json` mode (the helper at `:324` passes `--json` only, so a human-mode call is added). The
   refusal text equals the fixed `code: message` text, and the cell sentinel `_CELL` is absent
   from stdout, stderr and JSON (the existing check at `:489`).
+- AT-4b (e2e, same file): a corrupt file with a valid `format` (B6) and a missing file (B4):
+  soft JSON has no `data_note` key, and human output and the `--require-data` error contain no
+  `refused:` marker. Mutation M-9 (render the refusal text unconditionally) turns it red.
 - AT-5 (sentry, `test_report_raw_value_isolation.py`): `_outputs(path, fmt)` records `format`;
   the CSV and Parquet cells assert `table_deltas` is non-empty before checking the sentinel is
   absent.
@@ -292,6 +301,7 @@ Written red first against `fffca916`:
 - M-6: restore read-then-check order (`read_file` for A before B is checked), or stop at the
   first side's refusal. AT-3 red.
 - M-8: drop the one-sided check. AT-3 one-sided cells red.
+- M-9: render the refusal text when `refusals` is empty. AT-4b red.
 - M-7: emit `refusals` as a JSON key on the skipped branch. AT-2 red.
 
 ## 9. Frozen contracts
@@ -314,7 +324,7 @@ every test file that imports `decoy.cli.report` or names `entry_format`, plus th
 tests. Full suite (serialization and frozen-contract trigger) at the slice head before the code
 gate, diffed against the saved main baseline; reused at merge if the merge head is the same
 tree, else re-run on the merge head. The Codex gate runs T2 on the head it records, and mutation
-evidence (M-1 to M-8) is from the final head.
+evidence (M-1 to M-9) is from the final head.
 
 ## 11. Pre-mortem
 
@@ -334,12 +344,13 @@ technical.
 
 ## 13. Done when
 
-- [ ] AT-1 to AT-5 green and the named real-run tests still green; M-1 to M-8 each turn a named
+- [ ] AT-1 to AT-5 and AT-4b green and the named real-run tests still green; M-1 to M-9 each turn a named
   test red.
 - [ ] `_legacy_format_for_path` and the `entry_format` `path` parameter gone; no caller of the
   fallback left; docstrings, comment and CHANGELOG no longer describe the suffix rule.
 - [ ] Source and test files stay under 800 lines.
 - [ ] T3 shows no new failing id against the main baseline.
-- [ ] The parent plan's D6 row, AT-D6 text, exit summary (`prop-batch.md:792`) and registry
-  summary (`prop-batch.md:896`) name `target_format_unrecorded` and exit 1 under
+- [ ] The parent plan's D6 row, AT-D6 text, frozen-contract row (`prop-batch.md:771`), exit
+  summary (`prop-batch.md:792`), registry summary (`prop-batch.md:896`) and new-code inventory
+  (`prop-batch.md:978`) name `target_format_unrecorded` and exit 1 under
   `--require-data`; row 24zk D6-manifest marked done in its post-1.0 rows.
