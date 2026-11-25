@@ -70,6 +70,8 @@ Owner 2026-11-22: the speed slots below that were 1.0.x or 1.1 (GEN-VECTOR-STREA
 | 1.3 | CHUNK-PARALLEL | [run](groups/run.md) |
 | 1.3 | 58b F25 quotas, opt-in with no default quota | [run](groups/run.md) |
 | 1.3 | 74b F26 `decoy cleanup` and stage reclaim | [run](groups/run.md) |
+| 1.x, any minor | TNR-TEST-SIZE, TNR-REL-FALLBACK; then TNR-PLAN, and after it TNR-ROUTES, TNR-DESCRIPTORS, TNR-REDACT-CATALOG, TNR-LIFECYCLE; TNR-API-MANIFEST after 1.0 (engine audit 2026-11-25) | [health](groups/health.md) |
+| 1.x, last | STRUCTURE-REVIEW (CLI pass; the engine pass ran 2026-11-25) | [health](groups/health.md) |
 | 1.3 | 61b DELIV best-effort and exit 6 (1.0 refuses `best_effort` at validate) | [run](groups/run.md) |
 | 1.x | PIP-NATIVE-EXTRA | [release](groups/release.md) |
 | 1.x | OOC-QUARANTINE, then OOC-DATE-BUCKET | [run](groups/run.md) |

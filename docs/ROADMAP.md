@@ -88,7 +88,7 @@ The reasons and the day-to-day steps are in the handoff
 
 ## 4. Scope by feature group
 
-60 rows block 1.0, 50 are Later and 13 are Maintenance (2026-11-24, after the owner added F31-AUDIT, POSTMASK-FAIL-CLOSED and RATCHET-GROWTH to 1.0 and TOKEN-VAULT-MAC to 1.x from the 2026-11-24 health review; 2026-11-23, after the owner moved rows 29, 32c and 36 and parts of rows 24q, 58, 61, 74, 79 and DECOY-LANG to 1.x, PROMO-VIDEO to the website roadmap, and added NESTED-FREEZE and FIT-CODES-TEXT in the V2-to-V1 cut). Each cell lists the row
+60 rows block 1.0, 59 are Later and 13 are Maintenance (2026-11-25, after the engine code-quality audit added STRUCTURE-REVIEW and eight TNR rows to 1.x; 2026-11-24, after the owner added F31-AUDIT, POSTMASK-FAIL-CLOSED and RATCHET-GROWTH to 1.0 and TOKEN-VAULT-MAC to 1.x from the 2026-11-24 health review; 2026-11-23, after the owner moved rows 29, 32c and 36 and parts of rows 24q, 58, 61, 74, 79 and DECOY-LANG to 1.x, PROMO-VIDEO to the website roadmap, and added NESTED-FREEZE and FIT-CODES-TEXT in the V2-to-V1 cut). Each cell lists the row
 number and short name; the row itself is in the group file. Each group file also lists its 1.x
 candidates that have no plan yet (90 in all), and the health file lists 31 maintenance candidates. The named 1.x slots (1.0.x to 1.3) are listed in [roadmap/post-1.0-plan.md](roadmap/post-1.0-plan.md). The 1.x program (the old V1+ and V2 branch work) and the order of the 1.x releases are in [roadmap/releases-1x.md](roadmap/releases-1x.md). PROMO-VIDEO is on the website roadmap (`decoy-web-docs/docs-src/ROADMAP.md`).
 
@@ -103,7 +103,7 @@ candidates that have no plan yet (90 in all), and the health file lists 31 maint
 | [Sources and targets](roadmap/groups/connect.md) | none | 64 CLI-CLOUD, 64b CLI-DB-SRC (1.1), 82 F07, 86 F01, 87 F02, AVRO-ORC (1.4), WAREHOUSE (1.5), CSV-TARGET-DIALECT | none |
 | [Quality and evidence](roadmap/groups/trust.md) | POSTMASK-FAIL-CLOSED | 68 F36, 69 F35, 70 F32 remainder, 72 F33 CLI verifier and engine signature, 78 F10, ANON (1.9) | none |
 | [Install, packaging and release](roadmap/groups/release.md) | 24zc CERT-PIN-CVES, 88 F44 CLI half, UPGRADE-KEY, 89 WIN-FEAS, 6 WIN-RUNNER, 90 REL-PKG, 91 REL-WEB, 92 REL-DOCS, 93 REL-GATE, 94 CLI-REL, EXPERIMENTAL-TIER, QA-BETA, PERF-GUIDE | 90a REL-IMAGE, PIP-NATIVE-EXTRA (1.x) | 24zr SETUP-NER-JSON |
-| [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, SIGNATURE-SENTRY, F31-AUDIT, RATCHET-GROWTH | none | ENGINE-ARCH, 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
+| [Codebase health and CI](roadmap/groups/health.md) | 3 CI-E2, 24zi PROP-FALLBACK, 24zj PROP-SURFACE, 24zk PROP-SHIMS, 24zo CI-SELECT-GAP, SIGNATURE-SENTRY, F31-AUDIT, RATCHET-GROWTH | TNR-PLAN, TNR-ROUTES, TNR-DESCRIPTORS, TNR-REDACT-CATALOG, TNR-LIFECYCLE, TNR-TEST-SIZE, TNR-API-MANIFEST, TNR-REL-FALLBACK, STRUCTURE-REVIEW (last) | ENGINE-ARCH, 24ze DUP-GUARDS, 24zl PROP-GUARDS, 46 H-1 C0, 47 H-1 C1, 48 H-1 E1.1, 49 H-1 E6a, 50 H-1 E0r, 51 H-1 E1.2, then E1.3, 52 H-1 E2 and E4, 53 H-1 C3, 54 H-1 E7 |
 
 Engine fast-path gaps are due 2026-12-15 (owner 2026-11-22). Every masking strategy and generation provider runs its fastest path by default in V1. The named pandas exceptions are shuffle, geo_generalize, joint_mask, nested and tokenize; they show on the run card.
 
