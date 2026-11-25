@@ -287,17 +287,25 @@ def _split_entry_finding(
         ):
             return f"{path}: split entry {new} differs from {old} in the merge base"
     for field in held:
-        cap = old_entry[field]
-        for new in news:
-            part = _int_field(head.reasons[new], field)
-            if part is None or not 0 <= part <= cap:
-                return f"{path}: split entry {new}: {field} {part} is outside 0..{cap}"
-        total = sum(_int_field(head.reasons[new], field) or 0 for new in news)
-        if total != old_entry[field]:
-            return (
-                f"{path}: split of {old}: {field} sums to {total},"
-                f" the merge base holds {old_entry[field]}"
-            )
+        why = _split_field_finding(path, old, _int_field(old_entry, field) or 0, field, news, head)
+        if why is not None:
+            return why
+    return None
+
+
+def _split_field_finding(
+    path: str, old: str, cap: int, field: str, news: list[str], head: Baseline
+) -> str | None:
+    """Each part of ``field`` must lie in ``0..cap`` and the parts must sum to ``cap``."""
+    parts: list[int] = []
+    for new in news:
+        entry = head.reasons[new]
+        part = _int_field(entry, field) if isinstance(entry, dict) else None
+        if part is None or not 0 <= part <= cap:
+            return f"{path}: split entry {new}: {field} {part} is outside 0..{cap}"
+        parts.append(part)
+    if sum(parts) != cap:
+        return f"{path}: split of {old}: {field} sums to {sum(parts)}, the merge base holds {cap}"
     return None
 
 
@@ -319,6 +327,31 @@ def double_spend_findings(path: str, head: Baseline) -> list[str]:
     ]
 
 
+def _split_shape_finding(
+    path: str, old: object, news: object, seen: set[str], moved: dict[str, str], head: Baseline
+) -> str | None:
+    """Why one ``split_from`` group is malformed, or None; records its new keys in ``seen``."""
+    if (
+        not isinstance(old, str)
+        or not old.strip()
+        or not isinstance(news, list)
+        or not news
+        or not all(isinstance(n, str) and n.strip() for n in news)
+    ):
+        return f"{path}: split_from needs non-empty string keys and lists of keys"
+    twice = sorted({n for n in news if n in seen or news.count(n) > 1})
+    if twice:
+        return f"{path}: split_from names {', '.join(twice)} twice"
+    seen.update(news)
+    both = sorted(n for n in news if n in moved)
+    if both:
+        return f"{path}: {', '.join(both)} is named by both moved_from and split_from"
+    missing = sorted(n for n in news if n not in head.keys)
+    if missing:
+        return f"{path}: split_from key {', '.join(missing)} is not an entry in the head"
+    return None
+
+
 def split_findings(
     path: str, head: Baseline, base: Baseline | None, gained: frozenset[str]
 ) -> tuple[list[str], frozenset[str]]:
@@ -334,29 +367,9 @@ def split_findings(
     moved = head.moved_from if isinstance(head.moved_from, dict) else {}
     seen: set[str] = set()
     for old, news in sorted(raw.items(), key=lambda kv: str(kv[0])):
-        if (
-            not isinstance(old, str)
-            or not old.strip()
-            or not isinstance(news, list)
-            or not news
-            or not all(isinstance(n, str) and n.strip() for n in news)
-        ):
-            findings.append(f"{path}: split_from needs non-empty string keys and lists of keys")
-            continue
-        twice = sorted({n for n in news if n in seen or news.count(n) > 1})
-        if twice:
-            findings.append(f"{path}: split_from names {', '.join(twice)} twice")
-            continue
-        seen.update(news)
-        both = sorted(n for n in news if n in moved)
-        if both:
-            findings.append(f"{path}: {', '.join(both)} is named by both moved_from and split_from")
-            continue
-        missing = sorted(n for n in news if n not in head.keys)
-        if missing:
-            findings.append(
-                f"{path}: split_from key {', '.join(missing)} is not an entry in the head"
-            )
+        why = _split_shape_finding(path, old, news, seen, moved, head)
+        if why is not None:
+            findings.append(why)
             continue
         if not any(n in gained for n in news):
             continue  # the split already merged: its keys are in the base, so it admits nothing
