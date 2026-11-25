@@ -21,6 +21,7 @@ OWNERS = {
 # had no `__all__`, so `import *` leaked them; nothing in the repo reads them from here.
 INCIDENTAL_BASE_NAMES = frozenset(
     {
+        "annotations",
         "Any",
         "ConfigFileError",
         "EXIT_CAPACITY",

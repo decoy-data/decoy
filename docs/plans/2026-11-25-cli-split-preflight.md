@@ -55,7 +55,7 @@ Do the move as `git mv src/decoy/cli/preflight.py src/decoy/cli/preflight/__init
 | New file | Directory | CODEMAP "Where Things Go" line | Sits beside |
 |---|---|---|---|
 | `__init__.py` and the 6 modules above | `src/decoy/cli/preflight/` | "Command-private helpers" (S1 adds `src/decoy/cli/report/` there). S2 adds `src/decoy/cli/preflight/` (the `decoy validate preflight` command package) to the same line. | `src/decoy/cli/report/`, `src/decoy/cli/run/` |
-| `test_cli_split_imports.py` | `tests/unit/` | "Command-private helpers", tests column (`tests/unit/`) | `tests/unit/test_report_fidelity.py` |
+| `test_imports.py` | `tests/unit/preflight_package/` | "Command-private helpers", tests column (a named sub-directory, so `tests/unit/` does not gain a module) | `tests/unit/project_layout/` |
 
 ## Importers
 
@@ -129,7 +129,7 @@ Every new entry keeps the old reason. The builder re-runs `scripts/dev/lintdebt.
 ## Acceptance tests
 
 1. Existing tests pass with no assertion edits. The only test edits are the import paths and sentry tables listed above.
-2. Import-compat test (new, kept): `tests/unit/test_cli_split_imports.py`. S2 creates it; S3 adds its cases. One parametrized test asserts that `decoy.cli.preflight.__all__` is exactly the four public names, that each resolves to the object its owning submodule defines (`preflight is _command.preflight`, `CAPACITY_CHECK is _result.CAPACITY_CHECK`), and that `validate.py`'s `_preflight_command` is that same object. It also asserts `not hasattr(decoy.cli.preflight, "_check_capacity")` and that the wildcard-import name set is compared to a base snapshot taken from `git show origin/main:` (names kept or listed). Mutations that must turn it red: re-export `_check_capacity` from `__init__`; bind `_check_capacity` on the package.
+2. Import-compat test (new, kept): `tests/unit/preflight_package/test_imports.py`. S2 creates it; S3 adds its cases. One parametrized test asserts that `decoy.cli.preflight.__all__` is exactly the four public names, that each resolves to the object its owning submodule defines (`preflight is _command.preflight`, `CAPACITY_CHECK is _result.CAPACITY_CHECK`), and that `validate.py`'s `_preflight_command` is that same object. It also asserts `not hasattr(decoy.cli.preflight, "_check_capacity")` and that the wildcard-import name set is compared to a base snapshot taken from `git show origin/main:` (names kept or listed). Mutations that must turn it red: re-export `_check_capacity` from `__init__`; bind `_check_capacity` on the package.
 3. Golden byte check. A throwaway harness (outside the tree; its script and per-case hash table go in the PR body) runs on the base commit and on the head and compares stdout, stderr and exit code byte for byte for:
    - `decoy validate preflight` on: a clean pipeline; a missing source file; an unreadable source; a target that already exists; a capacity fail and a capacity warn (the configs and injected fixtures in `tests/e2e/test_preflight_capacity.py`: the memory-budget patch and the estimator failure); an uncompilable plan; the native cases from `tests/e2e/test_preflight_native.py` with their companion-status fixtures; a layout refusal (`tests/e2e/project_layout/test_layout_gate.py`, covers the `EXIT_USAGE` layout exit); a YAML error; a schema error. Each with no flag, `--json` and `--quiet`, plus `--fail-on-warning` where a warning exists, and one `--local` run;
    - `decoy validate` (the gate) on the capacity-fail, missing-source and target-exists configs, with and without `--json`;
@@ -275,3 +275,10 @@ None needed. Defaults taken, each open to change in review:
 - `#411` had not merged at build time and `main` has no `split_from`. The five lint-debt keys that split (`C901` in three files, `PLR0912` in two) are admitted through `approved_growth` rows in `scripts/dev/sentry_registry.toml`, with an owner decision dated 2026-11-25. The hit total stays 7. When `#411` lands, replace those rows with `split_from` entries and delete the rows. The `proj` fixture in `tests/sentry/test_lint_debt.py` drops `approved_growth` from its scratch registry, because the scratch baseline does not hold those keys.
 - `main` has `LEGACY = report.py` in `test_module_size.py`, so S2 does not edit that test. The `report.py` entry is the one S1 removes. The legacy-equality mutation is not run here for that reason.
 - Package fan-out goes 29 to 28 on this base (S1 has not landed).
+
+## Review round 1 changes
+
+- V1, present on main: a file source `path` holding `https://user:PASSWORD@host/x.csv` was printed in full in preflight and gate findings. `_check_source_files` now runs the path (and the `OSError` text) through `redact_urls`, a shared helper in `cli/io/_display.py`. Plain filenames are unchanged. Tests: `tests/e2e/preflight_package/test_url_redaction.py` (password canary on `validate preflight` and `validate`, human and `--json`).
+- The import test moved to `tests/unit/preflight_package/test_imports.py`.
+- The rule-code scanner now also reads the positional name of `add_pass`, `add_warn` and `add_fail`.
+- Logged, not done: the isolated-import test reads `_result` after collection has imported it, so it does not prove a fresh-process import; `test_layout_gate.py` is 838 lines (the 800 cap applies to `src`).

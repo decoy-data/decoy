@@ -183,18 +183,20 @@ def _cli_gate_codes() -> tuple[set[str], set[str]]:
         for node in ast.walk(fn):
             if not isinstance(node, ast.Call):
                 continue
-            for kw in node.keywords:
-                if kw.arg not in ("name", "code"):
-                    continue
-                if isinstance(kw.value, ast.JoinedStr):
+            # `name=` / `code=` keywords, and the positional name of `add_warn(name, msg, loc)`.
+            named = [kw.value for kw in node.keywords if kw.arg in ("name", "code")]
+            if node.args and isinstance(node.func, ast.Attribute):
+                if node.func.attr in ("add_pass", "add_warn", "add_fail"):
+                    named.append(node.args[0])
+            for value in named:
+                if isinstance(value, ast.JoinedStr):
                     templates.add(
                         "".join(
-                            p.value if isinstance(p, ast.Constant) else "{}"
-                            for p in kw.value.values
+                            p.value if isinstance(p, ast.Constant) else "{}" for p in value.values
                         )
                     )
                 else:
-                    codes.update(s for s in _literals(kw.value) if _CODE_TOKEN.match(s))
+                    codes.update(s for s in _literals(value) if _CODE_TOKEN.match(s))
     assert scanned == gate_checks, "the preflight scan did not visit every check function"
     from decoy.cli import extras
 

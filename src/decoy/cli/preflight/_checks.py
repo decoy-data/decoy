@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from decoy.cli.io import redact_urls
 from decoy.cli.preflight._result import _PreflightAccumulator
 
 
@@ -47,13 +48,14 @@ def _check_source_files(raw: dict[str, Any], base_dir: Path, acc: _PreflightAccu
             )
             continue
 
+        shown = redact_urls(str(src_path_str))
         src_path = Path(src_path_str)
         if not src_path.is_absolute():
             src_path = base_dir / src_path
         if not src_path.exists():
             acc.add_fail(
                 name=f"source.{table_name}.exists",
-                message=f"Source file not found: {src_path_str}",
+                message=f"Source file not found: {shown}",
                 location=f"sources.{table_name}.path",
             )
             continue
@@ -61,7 +63,7 @@ def _check_source_files(raw: dict[str, Any], base_dir: Path, acc: _PreflightAccu
         if not src_path.is_file():
             acc.add_fail(
                 name=f"source.{table_name}.is_file",
-                message=f"Source path is not a regular file: {src_path_str}",
+                message=f"Source path is not a regular file: {shown}",
                 location=f"sources.{table_name}.path",
             )
             continue
@@ -73,14 +75,14 @@ def _check_source_files(raw: dict[str, Any], base_dir: Path, acc: _PreflightAccu
         except OSError as exc:
             acc.add_fail(
                 name=f"source.{table_name}.readable",
-                message=f"Source file not readable: {src_path_str}: {exc}",
+                message=f"Source file not readable: {shown}: {redact_urls(str(exc))}",
                 location=f"sources.{table_name}.path",
             )
             continue
 
         acc.add_pass(
             name=f"source.{table_name}.exists",
-            message=f"Source file exists and is readable: {src_path_str}",
+            message=f"Source file exists and is readable: {shown}",
             location=f"sources.{table_name}.path",
         )
 
