@@ -57,6 +57,7 @@ Non-breaking ideas, so 1.x by rule. A candidate becomes a row in the table above
 | F2 follow-up: dirty generated output (nullable, NaN, nested) on the mixed route | Platform V2 candidate plan (`P:docs/backlog/v2-candidate-plan.md`) | Lifts a decline. |
 | HC5-FIT-CLI: `decoy fit` wiring for `high_cardinality_columns`; the engine half is merged (carried from CLI #321) | `E:docs/backlog/hc-5-cli-fit-wiring.md` | A new option on `fit`. |
 | Generate columns on a masked table: a masked table declares generate columns that add new columns beside its masked ones (today a table is either masked through `columns` or generated through `generate_columns`, never both) | Owner, 2026-11-19 | New optional config on a masked table; existing configs unchanged. |
+| GEN-CROSS-ARCH: the same seeded generate job gives different data on arm64 (Mac) and x86_64 (Linux). Found 2026-11-25: testflight job c_hr_selfref `synthetic_events` hashes differ by CPU, each stable across runs and hash seeds. Goldens and CI are Linux. Owner 2026-11-25: 1.x | testflight investigation, engine PR #819 | Makes arm64 output match x86_64. Linux output, the golden platform, stays the same. |
 
 ## Maintenance
 
