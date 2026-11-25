@@ -603,7 +603,7 @@ def test_require_refuses_absent_or_broken_companion(status):
             config_dict=_eligible_config(),
             status=status,
         )
-    assert exc_info.value.code == f"native_require_{status.reason}"
+    assert exc_info.value.code == f"native_require_{status.reason}".replace("-", "_")
 
 
 def test_require_proceeds_on_healthy_companion():
@@ -765,7 +765,7 @@ def test_default_on_eligible_shape_with_broken_companion_fails_closed(status):
             config_dict=_eligible_config(),
             status=status,
         )
-    assert exc_info.value.code == f"native_companion_{status.reason}"
+    assert exc_info.value.code == f"native_companion_{status.reason}".replace("-", "_")
     assert "cause" not in str(exc_info.value).lower()
 
 
@@ -784,7 +784,7 @@ def test_default_broken_companion_fails_closed_despite_unloaded_extra_source():
             config_dict=config,
             status=_KAT_CORRUPT,
         )
-    assert exc_info.value.code == "native_companion_kat-corrupt"
+    assert exc_info.value.code == "native_companion_kat_corrupt"
 
 
 def test_default_broken_companion_message_never_echoes_cause_object():
@@ -893,3 +893,58 @@ def test_fallback_notice_is_none_for_require_disable_and_no_code():
     assert fallback_notice(SimpleNamespace(native_fallback_code=code), intent="require") is None
     assert fallback_notice(SimpleNamespace(native_fallback_code=code), intent="disable") is None
     assert fallback_notice(SimpleNamespace(native_fallback_code=None), intent="default") is None
+
+
+# AT-15: every code a native refusal promotes to the `--json` envelope is a valid reason code,
+# at the producer. The literal spellings are the frozen contract (plan 7.3).
+_BROKEN_CODES = {
+    "abi-mismatch": "abi_mismatch",
+    "kat-corrupt": "kat_corrupt",
+    "load-error": "load_error",
+}
+
+
+def _refusal(intent: str, status, **kwargs):
+    with pytest.raises(NativeGateError) as info:
+        pre_execution_gate(
+            intent=intent,  # type: ignore[arg-type]
+            chunked=kwargs.pop("chunked", False),
+            any_generate=False,
+            config_dict=_eligible_config(),
+            status=status,
+            **kwargs,
+        )
+    return info.value
+
+
+@pytest.mark.parametrize("reason", sorted(_BROKEN_CODES))
+def test_the_broken_companion_codes_are_valid_reason_codes_in_both_modes(reason):
+    from decoy.ui.output import is_reason_code
+
+    status = _status(reason, present=True, ok=False, abi_actual=_ABI)
+    require = _refusal("require", status)
+    default = _refusal("default", status)
+
+    assert require.code == f"native_require_{_BROKEN_CODES[reason]}"
+    assert default.code == f"native_companion_{_BROKEN_CODES[reason]}"
+    assert is_reason_code(require.code) and is_reason_code(default.code)
+    assert reason in str(require) and reason in str(default)  # the message keeps the engine reason
+
+
+def test_require_with_an_absent_companion_has_a_valid_code():
+    from decoy.ui.output import is_reason_code
+
+    assert _refusal("require", _ABSENT).code == "native_require_absent"
+    assert is_reason_code("native_require_absent")
+
+
+def test_every_other_native_refusal_code_is_a_valid_reason_code():
+    from decoy.ui.output import is_reason_code
+
+    codes = {
+        _refusal("require", _PRESENT_OK, chunked=True).code: "native_require_not_a_candidate",
+        _refusal("require", _PRESENT_OK, vault_active=True).code: "native_require_vault_active",
+    }
+    for got, expected in codes.items():
+        assert got == expected
+        assert is_reason_code(got)

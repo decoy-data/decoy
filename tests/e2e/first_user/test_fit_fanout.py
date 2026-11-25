@@ -112,8 +112,8 @@ class TestFitFanout:
         def _boom(*a: object, **k: object) -> None:
             raise AssertionError("the CSV was read")
 
-        monkeypatch.setattr("decoy.cli.fit.read_fit_csv", _boom)
-        monkeypatch.setattr("decoy.cli.fit.fit_exact_snapshot", _boom)
+        monkeypatch.setattr("decoy.cli.fit._command.read_fit_csv", _boom)
+        monkeypatch.setattr("decoy.cli.fit._command.fit_exact_snapshot", _boom)
         result = runner.invoke(
             app,
             [

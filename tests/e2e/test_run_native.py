@@ -274,9 +274,16 @@ def test_run_json_error_envelope_carries_native_error_kind_and_code(
     config = _hash_eligible_config(tmp_path)
     result = runner.invoke(app, ["run", str(config), "--json"])
     assert result.exit_code == EXIT_USAGE
+    assert len(result.stdout.strip().splitlines()) == 1, result.stdout
     payload = _json.loads(result.stdout)
+    jsonschema = pytest.importorskip("jsonschema")
+    from tests.e2e.first_user.test_items_error_envelope import SCHEMA
+
+    jsonschema.validate(payload, SCHEMA)
     assert payload["error_kind"] == "native"
-    assert payload["code"] == "native_companion_kat-corrupt"
+    assert payload["code"] == "native_companion_kat_corrupt"
+    assert list(payload)[:3] == ["command", "status", "error"]
+    assert payload["hint"] == "rerun with --verbose for the full traceback."
 
 
 @pytest.mark.parametrize("reason", ["abi-mismatch", "kat-corrupt", "load-error"])

@@ -97,7 +97,7 @@ def test_a_non_contextlib_suppress_is_not_blamed() -> None:
     assert not _has(seeded(src), "P3")
 
 
-_STAGE = "    with stage(path) as tmp:"
+_STAGE = "    with target.stage(path) as tmp:"
 
 
 def _targets_with(extra: str) -> dict[str, str]:

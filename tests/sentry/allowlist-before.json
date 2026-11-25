@@ -11,7 +11,7 @@
  },
  "canonical-json-allow": {
   "ci/manifest.py": {"reason": "Pretty-printed committed JSON Schema (indent=2) drift-tested against its file; a stable display form, never hashed.", "sites": 1},
-  "cli/report.py": {"reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Move to records.canonical_bytes when report.py is next split.", "sites": 1},
+  "cli/report/_compare.py": {"reason": "Set-diff key for evidence warnings in report diff; compared in memory only, never stored or hashed. Move to records.canonical_bytes when report.py is next split.", "sites": 1},
   "distribution/signing.py": {"reason": "Frozen release-signature input shared with openssl and the build host; rewiring it would tie release verification to an engine version (plan 3.1).", "sites": 1},
   "distribution/trust_state.py": {"reason": "Trust-state file that install.sh reads with a shell pattern; part of the install contract, not a content hash (plan 3.1).", "sites": 1},
   "notify.py": {"reason": "Webhook body signed with HMAC; different bytes on the wire by design (ASCII-escaped, platform webhook contract), not a content hash (plan 3.1).", "sites": 1}
@@ -26,7 +26,7 @@
   "cli/init.py::_validate_scaffold::1": {"reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"},
   "cli/io/_project.py::_parse_marker::1": {"reason": "user-editable project marker: its own trust class: bounded reader and a PROJECT_MARKER_INVALID refusal"},
   "cli/plan.py::render_plan_artifact::1": {"reason": "CLI-written text: re-parses text the CLI wrote itself, not a user's config"},
-  "cli/report.py::_fidelity::1": {"reason": "policy file: a different file kind where an empty file means no policy"},
+  "cli/report/_fidelity.py::_fidelity::1": {"reason": "policy file: a different file kind where an empty file means no policy"},
   "cli/scanning/_layout.py::_parse_layout::1": {"reason": "fixed-width layout file: YAML with a JSON fallback, not a pipeline config; scan.py is a hot lane"}
  },
  "config-route-allow": {
@@ -58,9 +58,8 @@
   "_mask_secret_guidance.py::secret_provider_unknown": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "_mask_secret_guidance.py::weak_mask_secret": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
   "cli/extras.py::ner_spacy_not_installed": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
-  "cli/fit.py::dp_numeric_domain_invalid": {"count": 2, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
-  "cli/fit.py::dp_schedule_mismatch": {"count": 2, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
-  "cli/fit.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
+  "cli/fit/_args.py::dp_numeric_domain_invalid": {"count": 2, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
+  "cli/fit/_command.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/gen/_preview.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/gen/_scaffold.py::row_count": {"count": 2, "reason": "Dict key or section name that equals an engine code, not a code the CLI matches; rename or delete this entry once the scan can tell them apart."},
   "cli/preflight.py::capacity_source_unprofilable": {"count": 1, "reason": "Legacy copy of an engine reason code; import the engine constant, then delete this entry."},
@@ -110,11 +109,7 @@
   "decoy/cli/setup/__init__.py::setup_command::2": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"},
   "decoy/distribution/lock.py::exclusive::0": {"reason": "existing raise-from-None inside an except block at the B2 base; hoist is V2 corrective work"}
  },
- "exit-code-owner": {
-  "cli/demo.py::_demo": {"reason": "demo's three-type map (usage versus runtime); CL4 calls exit_code_for instead"},
-  "cli/fit.py::fit": {"reason": "the differential-privacy arms (provenance, budget, DP, carrier); CL4 calls exit_code_for"},
-  "cli/run/_errors.py::fail": {"reason": "the decoy run classifier: exception to category to exit; CL4 moves it to exit_code_for"}
- },
+ "exit-code-owner": {},
  "gate-single-entry-allow": {
   "decoy.cli.compile_explain::compile::compile_plan_no_profile": {"reason": "`validate compile --no-profile` is the single-layer command the gate's compile layer reuses helpers from; it keeps its own compile call and its unique-column error."},
   "decoy.cli.preflight::preflight::preflight_check": {"reason": "The `validate preflight` command body is the third copy of steps 1-3 and calls the layer checks itself until CONFIG-EXPLICIT C2 folds it onto the gate."},
@@ -130,13 +125,10 @@
   "distribution/layout.py": {"reason": "The managed runtime home ~/.decoy (versions, current, cache); swapped on upgrade and never a record library (plan 4.1).", "sites": 1}
  },
  "manifest-path-forward-allow": {
-  "src/decoy/cli/report.py::compare_manifests::_fp_changes": {"reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."}
+  "src/decoy/cli/report/_compare.py::compare_manifests::_fp_changes": {"reason": "Compares recorded fingerprints by table name; it reads no `path` and opens nothing."}
  },
  "module-size": {
-  "src/decoy/cli/fit.py": {"max": 817, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/report.py": {"max": 2119, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"},
-  "src/decoy/cli/scan.py": {"max": 804, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
+  "src/decoy/cli/preflight.py": {"max": 839, "reason": "legacy module over the 800-line cap when LAYOUT C2 recorded it; may only shrink"}
  },
  "output-name-allow": {
  },
@@ -147,7 +139,7 @@
   "cli/run/_context.py::output_placement": {"reason": "Resolves the --duckdb-source database path; an input.", "sites": 1}
  },
  "package-fanout": {
-  "src/decoy/cli": {"max": 29, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
+  "src/decoy/cli": {"max": 27, "reason": "flat package over the 25-module cap when LAYOUT C2 froze it; may only shrink, the next module goes in a named sub-package from the CODEMAP map"}
  },
  "readme-table-omitted": {
   "doctor": {"reason": "real command the README Common commands table deliberately does not repeat; the table points readers to decoy --help"},

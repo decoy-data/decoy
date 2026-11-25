@@ -119,6 +119,7 @@ def test_blocked_json_envelope_carries_code_report_and_counts(
     assert doc["error"] == _summary()
     assert doc["error_kind"] == "post_scan_blocked"
     assert doc["code"] == "post_scan.ner_blocked"
+    assert list(doc)[:4] == ["command", "status", "error", "code"]
     assert doc["post_scan"] == {
         "detectors": [
             {"source": "regex", "model_id": None, "model_version": None},

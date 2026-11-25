@@ -379,33 +379,65 @@ def finish(ctx: RunContext, document: Document, payload: dict | None = None) -> 
         raise typer.Exit(code=document.exit_code)
 
 
+@dataclass(frozen=True)
+class HumanLine:
+    """The stderr text and code of a run error when they differ from the JSON `error` and `code`.
+
+    A capacity failure reads `error: capacity: <message>` on the terminal, while its JSON `error`
+    has no label and its `code` stays a machine member.
+    """
+
+    text: str
+    code: str | None = None
+
+
 def report_error(
     ctx: RunContext,
     document: Document,
     text: str,
     *,
     code: str | None = None,
+    hint: str | None = None,
     context: dict | None = None,
     human: bool = True,
+    human_line: HumanLine | None = None,
     stderr_line: bool = False,
+    then: Callable[[], None] | None = None,
 ) -> None:
     """Write a run that ended outside the error arm, through the one error emitter.
 
     `--json`: the `decoy-error-v1` object with `context` and the document's members added.
-    Other modes: the one stderr line, unless `human` is False (Click or the interrupt prints
-    its own). `stderr_line` keeps the stderr line under `--json` too, for a run whose outputs
-    are already written. Does not end the run; `finish_error` does.
+    Other modes: the one stderr line (and `hint`), unless `human` is False (Click or the
+    interrupt prints its own). `human_line` replaces the stderr text and code when they differ
+    from the JSON ones. `stderr_line` keeps the stderr line under `--json` too, for a run whose
+    outputs are already written. `then` runs after the error is written (the `--verbose`
+    traceback follows the error line). Does not end the run; `finish_error` does.
     """
     document = _write_file(ctx, document)
+    shown_text = text if human_line is None else human_line.text
+    shown_code = code if human_line is None else human_line.code
     if ctx.state.mode is OutputMode.json:
         if stderr_line:
             # The same emitter in its human form: one `error:` line on stderr, then the envelope.
-            emit_error(replace(ctx.state, mode=OutputMode.default), "run", text, code=code)
+            emit_error(
+                replace(ctx.state, mode=OutputMode.default),
+                "run",
+                shown_text,
+                code=shown_code,
+                hint=hint,
+            )
         emit_error(
-            ctx.state, "run", text, code=code, context={**(context or {}), **members(document)}
+            ctx.state,
+            "run",
+            text,
+            code=code,
+            hint=hint,
+            context={**(context or {}), **members(document)},
         )
     elif human:
-        emit_error(ctx.state, "run", text, code=code)
+        emit_error(ctx.state, "run", shown_text, code=shown_code, hint=hint)
+    if then is not None:
+        then()
 
 
 def finish_error(ctx: RunContext, document: Document, text: str, **kwargs: Any) -> None:

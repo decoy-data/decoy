@@ -74,7 +74,12 @@ class TestPartAHumanOutput:
             result = runner.invoke(app, ["run", str(cfg_path)])
         assert result.exit_code == EXIT_CAPACITY
         assert "capacity:" in result.output
-        assert "GB of memory" in result.output
+        # Plan CL4 5.2: fixed capacity text by code; the engine's host figures are dropped.
+        assert (
+            "the job needs more memory than this host has (out_of_core_insufficient_memory)."
+            in result.output
+        )
+        assert "GB of memory" not in result.output
 
     def test_fanin_exceeds_budget_also_exits_capacity(self, tmp_path: Path) -> None:
         cfg_path = _write_mask_config(tmp_path)

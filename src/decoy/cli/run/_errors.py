@@ -1,7 +1,7 @@
 """The catch-all error arm of `decoy run`: exception to exit code, text and output."""
 
 from datetime import datetime, timezone
-from typing import Any, NoReturn
+from typing import Any, NamedTuple, NoReturn
 
 import typer
 
@@ -9,10 +9,6 @@ from decoy import _mask_secret_guidance, _native_gate
 from decoy._atomic import AtomicWriteError, describe
 from decoy.cli import exit_codes as _exit_codes
 from decoy.cli import gen
-from decoy.cli.exit_codes import (
-    EXIT_CAPACITY,
-    EXIT_USAGE,
-)
 from decoy.cli.extras import (
     MissingExtraError,
     translate_missing_extra,
@@ -30,8 +26,7 @@ from decoy.cli.run._context import (
 from decoy.cli.run._notify import _dispatch_run_notifications
 from decoy.cli.run._value_free import is_out_of_memory
 from decoy.cli.run._vault import VAULT_COMMIT_FAILED_HINT, _VaultWriteError
-from decoy.ui.output import OutputMode, print_traceback
-from decoy.ui.theme import error, hint
+from decoy.ui.output import OutputMode, is_reason_code, print_traceback
 
 # The engine's capacity-refusal codes come from its registry (`capacity_codes()`); see
 # docs/plans/2026-07-24-oom-checker-cli-v1.md R8 for why the match is narrow.
@@ -54,6 +49,10 @@ def config_caused_generation_codes() -> frozenset[str]:
 
 
 _OUT_OF_MEMORY_TEXT = "the run ran out of memory."
+_CAPACITY_HINT = (
+    "this job needs more memory than this host has; use a larger tier or reduce the job."
+)
+_VERBOSE_HINT = "rerun with --verbose for the full traceback."
 
 
 class OutDirUsageError(LayoutError):
@@ -84,31 +83,103 @@ def _cli_refusal_types() -> tuple[type, ...]:
     return (*owned, _VaultWriteError, PreRunCheckError, EvidenceWriteRefusal, IntegrityWriteRefusal)
 
 
-def _failure_reason(exc: Exception, engine_exc: Exception) -> Any:
-    """The engine's `ReasonRecord` for the failure, or None when the CLI owns the refusal.
+class _Failure(NamedTuple):
+    """What the reason registry says about a run failure."""
+
+    record: Any
+    """The engine's `ReasonRecord`, or None when the CLI owns the refusal."""
+    fixed_text: bool
+    """`str(exc)` is authored by the CLI or a registry, so it holds no data value."""
+    summary: str | None
+    """`<code>: <registry summary>` when the engine registered the exception's own code."""
+
+
+def _failure_reason(exc: Exception, engine_exc: Exception) -> _Failure:
+    """The engine's `ReasonRecord` for the failure and what text `exc` may show.
 
     `engine_exc` is the exception as the engine raised it, before the missing-extra and NER
-    rewrites, so a rewrite keeps the engine's record. The answer is computed here only; any
-    error in it drops the reason and never changes the exit.
+    rewrites, so a rewrite keeps the engine's record. Every answer reads the engine's reason
+    registry, so all are computed here only: any error in that read drops the reason, treats
+    the text as free text (it falls back to the type name) and never changes the exit.
     """
+    fixed_text = False
     try:
-        from decoy_engine import reason_adapter
+        from decoy_engine import reason_adapter, reasons
 
+        fixed_text = isinstance(exc, _fixed_text_types())
         if not _engine_family(type(engine_exc)) and isinstance(exc, _cli_refusal_types()):
-            return None
-        return reason_adapter.reason_from_exception(engine_exc)
+            return _Failure(None, fixed_text, None)
+        record = reason_adapter.reason_from_exception(engine_exc)
+        summary = None
+        if exc is engine_exc and getattr(exc, "code", None) == record.code:
+            spec = reasons.find(record.namespace, record.code)
+            if spec is not None:
+                # A message equal to the registry summary is registry text; any other engine
+                # wording can quote a cell (pyarrow cast errors do), so only the summary shows.
+                fixed_text = fixed_text or str(exc) == spec.summary
+                summary = f"{record.code}: {spec.summary}"
+        return _Failure(record, fixed_text, summary)
     except Exception:
-        return None
+        return _Failure(None, fixed_text, None)
+
+
+def _fixed_text_types() -> tuple[type, ...]:
+    """Exceptions whose text the CLI or its registries author, so it holds no data value.
+
+    The CLI's own refusals (`_cli_refusal_types`), the config file error and the
+    missing-extra install line. An engine exception is not here: its text shows only when it is
+    the registry summary of its own registered code (see `_failure_reason`).
+    """
+    from decoy._config_file import ConfigFileError
+
+    return (*_cli_refusal_types(), ConfigFileError, MissingExtraError)
+
+
+def _capacity_text(code: str) -> str:
+    """The fixed text of a coded capacity refusal. The engine's own message is dropped: it
+    quotes sizes and host figures."""
+    return f"the job needs more memory than this host has ({code})."
+
+
+def _safe_error_text(
+    exc: Exception, failure: _Failure, *, capacity_code: str | None, out_of_memory: bool
+) -> str:
+    """The run error text for `exc`: fixed words, codes and the exception type name only.
+
+    `str(exc)` of an arbitrary exception can quote a source cell (pandas, pyarrow, a formula), and
+    this text reaches the terminal in every mode, the `--json` document and the first-finding
+    summary. A specific message is kept only when its producer supplies fixed text: a CLI
+    refusal, a file-write description, a layout refusal, or an engine message that is the
+    registry summary of its code. A code shape or a registered code alone is not enough: an
+    engine error with a registered code shows `<code>: <registry summary>` instead of its own
+    words. Everything else reads `run failed (<ExceptionType>).`.
+    """
+    if out_of_memory:
+        return _OUT_OF_MEMORY_TEXT
+    if capacity_code is not None:
+        return _capacity_text(capacity_code)
+    if isinstance(exc, AtomicWriteError):
+        return describe(exc)
+    if isinstance(exc, LayoutError):
+        return f"{exc.code}: {exc.message}"
+    if failure.fixed_text:
+        return cap_error_text(str(exc))
+    if failure.summary is not None:
+        return cap_error_text(failure.summary)
+    return f"run failed ({type(exc).__name__})."
 
 
 def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     """Map `exc` to an exit code, notify, print the error and exit. Called inside the
-    `except` block so the exit keeps the exception as its context."""
+    `except` block so the exit keeps the exception as its context.
+
+    The exit is `exit_code_for(exc)` (through `run_category_for`) and the output is the one
+    error emitter, `_result.finish_error`.
+    """
     # The reason comes from the exception as raised, before the rewrites below.
     engine_exc = exc
-    # Dispatch on type: config wrong (EXIT_USAGE) vs run blew up (EXIT_RUNTIME).
     # Imported lazily to keep the engine import off the help path.
-    from decoy_engine import DecoyError, GenerationError, VaultError, reasons
+    from decoy_engine import GenerationError, VaultError, reasons
     from decoy_engine.verification.postmask import PostScanBlockedError
 
     # CLI install DX (2026-09-25): a pipeline step that lazily imports an
@@ -144,86 +215,36 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     except ImportError:
         _mask_secret_error_types = ()
 
-    # OOM checker v1 (Part A): ExecutionError's two capacity-refusal codes
-    # get their own exit code and JSON error_kind, distinct from a generic
-    # engine crash. Same defensive-import posture as MaskSecretError above
-    # -- an engine too old to have ExecutionError at all just never
-    # matches, so this never crashes the error handler itself.
-    try:
-        from decoy_engine.execution import ExecutionError as _ExecutionError
-
-        _execution_error_types: tuple = (_ExecutionError,)
-    except ImportError:
-        _execution_error_types = ()
-
+    # The category names the failure; the exit integer comes from `RUN_EXIT_MAP`, through the
+    # one exception-to-exit owner. A blocking post-scan finding has no category (exit 4).
+    category = _exit_codes.run_category_for(exc)
+    pre_run = isinstance(exc, PreRunCheckError)
+    is_capacity = category == "capacity"
+    # A coded capacity refusal (an engine error or a generate budget) keeps its code. A bare
+    # `MemoryError` has no code and often no text: fixed text instead of an empty `error: `.
     capacity_code: str | None = None
-    if isinstance(exc, _execution_error_types) and exc.code in capacity_codes():
-        capacity_code = exc.code
-    # A generate run whose output cannot fit the memory
-    # budget raises `GenerationBudgetExceeded`, a plain DecoyError carrying its code. It
-    # is a memory refusal like the two above, so it exits 5 and labels the JSON the same.
-    elif isinstance(exc, DecoyError) and getattr(exc, "code", None) in capacity_codes():
-        capacity_code = exc.code
-    # A bare MemoryError has no code and often no text; it is still the host running out of
-    # memory, so it takes the capacity exit with fixed text instead of an empty `error: `.
-    out_of_memory = is_out_of_memory(exc)
+    if is_capacity and not pre_run:
+        candidate = getattr(exc, "code", None)
+        if isinstance(candidate, str) and candidate in capacity_codes():
+            capacity_code = candidate
+    out_of_memory = is_capacity and not pre_run and is_out_of_memory(exc)
 
-    # Phase 3.1: `NativeGateError.code` distinguishes a usage refusal
-    # (--native/--no-native conflict, an ineligible shape) from a
-    # companion-health refusal (`native_require_<reason>` /
-    # `native_companion_<reason>`) -- put it in the JSON envelope so a
-    # script can branch on it without parsing `error` text.
-    native_code: str | None = None
-    if isinstance(exc, _native_gate.NativeGateError):
-        native_code = exc.code
-
-    # The category names the failure; the exit integer comes from `RUN_EXIT_MAP`.
-    if isinstance(exc, PreRunCheckError):
-        if exc.exit_code == EXIT_CAPACITY:
-            _category = "capacity"
-        elif exc.exit_code == EXIT_USAGE:
-            _category = "usage"
-        else:
-            raise RuntimeError("pre-run check carried an exit code with no category")
-    elif capacity_code is not None or out_of_memory:
-        _category = "capacity"
-    elif isinstance(exc, VaultError) and _exit_codes.exit_code_for(exc) == EXIT_USAGE:
-        # A vault the caller causes: an existing one is never overwritten (pick a new path), and
-        # the other input refusals have the same owner, `exit_code_for`.
-        _category = "usage"
-    elif isinstance(exc, PostScanBlockedError):
-        # The post-scan gate withheld the output on a verdict about the data, the same
-        # state as a blocking post-validation failure (exit 4), not a crash (exit 3).
-        _category = None
-    elif isinstance(exc, GenerationError) and exc.code in config_caused_generation_codes():
-        # A `unique` column or pair the data cannot satisfy (a parent with too few distinct
-        # keys, a faker type that ran out) and a formula that raises on a row are fixed in the
-        # config, so they exit 1 like the validate-time domain checks. The engine text is
-        # value-free.
-        _category = "usage"
-    else:
-        _category = "usage" if isinstance(exc, _exit_codes.usage_error_types()) else "runtime"
     # One document and one exit integer for the run, from the one builder.
-    record = _failure_reason(exc, engine_exc)
+    failure = _failure_reason(exc, engine_exc)
+    record = failure.record
     document = _result.build(
         ctx,
-        category=_category,
+        category=category,
         reason=record,
         error_class=type(exc).__name__,
         blocking_failed=isinstance(exc, PostScanBlockedError),
         vault_failed=isinstance(exc, _VaultWriteError),
     )
-    # CLI QA fix (2026-06-02, F8): cap the error message at 500
-    # chars before emitting through --json. Engine exceptions can
-    # quote source-row content verbatim (pandas / pyarrow); without
-    # the truncation a single malformed row's value can land in
-    # downstream log aggregators.
-    error_text = describe(exc) if isinstance(exc, AtomicWriteError) else str(exc)
-    if isinstance(exc, LayoutError):
-        error_text = f"{exc.code}: {exc.message}"
-    error_text = cap_error_text(error_text)
-    if out_of_memory:
-        error_text = _OUT_OF_MEMORY_TEXT
+    # CLI QA fix (2026-06-02, F8): engine exceptions can quote source-row content verbatim
+    # (pandas / pyarrow). `_safe_error_text` keeps only text the producer fixes.
+    error_text = _safe_error_text(
+        exc, failure, capacity_code=capacity_code, out_of_memory=out_of_memory
+    )
     blocked: dict[str, Any] = {}
     if isinstance(exc, PostScanBlockedError):  # writes the report; the text is the fixed summary
         error_text, blocked = blocked_run(ctx.state, exc, ctx._post_scan_file, ctx.config_sha256)
@@ -236,10 +257,8 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     # can quote source-row cell values verbatim (see the comment above),
     # so it MUST NOT ride into an outbound notification, which is POSTed
     # to a third-party webhook / Slack / email. Only the exception TYPE
-    # name goes on the wire; the raw error_text stays on local stdout /
-    # stderr and the --json envelope below where the operator already
-    # sees it. Redaction by construction, mirroring the platform's
-    # facts-only alert rule (dispatcher.py:137-142).
+    # name goes on the wire. Redaction by construction, mirroring the
+    # platform's facts-only alert rule (dispatcher.py:137-142).
     ctx.notify_results = _dispatch_run_notifications(
         ctx.notify_channels,
         notify_on=ctx.notify_on.value,
@@ -258,89 +277,76 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
         and isinstance(exc, GenerationError)
         and exc.code == UNIQUENESS_IMPOSSIBLE_CODE
     )
-
     remove_vault_hint = (
         isinstance(engine_exc, VaultError)
         and engine_exc.code == reasons.runtime.VAULT_COMMIT_FAILED
     )
 
-    payload: dict[str, Any] | None = None
+    # One hint per error: the specific one wins over "rerun with --verbose".
+    hint: str | None
+    if raise_rows_hint:
+        hint = gen.RAISE_ROWS_HINT
+    elif remove_vault_hint:
+        hint = VAULT_COMMIT_FAILED_HINT
+    elif capacity_code is not None or out_of_memory:
+        hint = _CAPACITY_HINT
+    elif pre_run or keyed_refusal or isinstance(exc, PostScanBlockedError):
+        hint = None  # the refusal or verdict says it all; a verdict is not a crash
+    else:
+        hint = _VERBOSE_HINT
+
+    # The one code of the envelope: the refusal's, the post-scan reason, the capacity code or
+    # the native gate's. Only a valid reason code is promoted; `emit_error` would refuse the rest.
+    code: str | None = None
+    if isinstance(exc, PreRunCheckError):
+        code = exc.code
+    elif isinstance(exc, PostScanBlockedError):
+        code = blocked.pop("code", None)
+    elif capacity_code is not None:
+        code = capacity_code
+    elif isinstance(exc, _native_gate.NativeGateError):
+        code = exc.code
+    if not is_reason_code(code):
+        code = None
+
+    context: dict[str, Any] = {"config": ctx.config_str, "mode": ctx.yaml_mode}
     if ctx.state.mode is OutputMode.json:
-        # R7: the capacity branch ADDS error_kind/code to this SAME
-        # envelope -- command/config/mode/error are never dropped, and
-        # `_result.finish` below is the one place a run's envelope is written
-        # (no parallel emit that would lose the 500-char cap, the
-        # notify dispatch above, or quiet/verbose handling below).
-        payload = {
-            "command": "run",
-            "status": "error",
-            "config": ctx.config_str,
-            "mode": ctx.yaml_mode,
-            "error": error_text,
-        }
         # Only what the publication ledger holds: files a writer finished, and their folder.
         if ctx.layout is not None:
             ctx.layout.abandon()
-        payload.update(ctx.published_members())
-        payload.update(blocked)
-        if raise_rows_hint:
-            payload["hint"] = gen.RAISE_ROWS_HINT
-        if remove_vault_hint:
-            payload["hint"] = VAULT_COMMIT_FAILED_HINT
+        context.update(ctx.published_members())
+        context.update(blocked)
         if isinstance(exc, PreRunCheckError):
-            payload.update(exc.json_members())
-        elif capacity_code is not None or out_of_memory:
-            payload["error_kind"] = "capacity"
-            if capacity_code is not None:
-                payload["code"] = capacity_code
-        elif native_code is not None:
-            payload["error_kind"] = "native"
-            payload["code"] = native_code
+            context.update(exc.context_members())
+        elif is_capacity:
+            context["error_kind"] = "capacity"
+        elif isinstance(exc, _native_gate.NativeGateError):
+            context["error_kind"] = "native"
         elif isinstance(exc, MissingExtraError):
-            # A machine-detectable field, not just the
-            # `[missing_extra]`-prefixed message text.
-            payload["error_kind"] = "missing_extra"
-            payload["extra"] = exc.extra
+            # A machine-detectable field, not just the `[missing_extra]`-prefixed message text.
+            context["error_kind"] = "missing_extra"
+            context["extra"] = exc.extra
         if record is not None:
-            payload["reason"] = record.to_payload()
+            context["reason"] = record.to_payload()
         if ctx.notify_channels:
-            payload["notify"] = ctx.notify_results
-    elif ctx.state.mode is not OutputMode.quiet:
-        # CLI install DX (2026-09-25): error_text is arbitrary exception
-        # text, not authored UI copy -- it can legitimately contain `[`
-        # (a MissingExtraError's `pip install decoy-cli[cloud]`, a
-        # Phase 3.1 native-gate message quoting `decoy-cli[native]` or a
-        # companion's own ABI string, or any future message that quotes
-        # a list/bracketed value). markup=False so Rich prints it
-        # verbatim instead of parsing it as markup and silently
-        # dropping an unrecognized tag.
-        if isinstance(exc, PreRunCheckError):
-            # The summary already names the command that lists every finding.
-            label = "capacity:" if exc.error_kind == "capacity" else "error:"
-            ctx.state.err_console.print(error(label), error_text, markup=False)
-        elif capacity_code is not None or out_of_memory:
-            ctx.state.err_console.print(error("capacity:"), error_text, markup=False)
-            ctx.state.err_console.print(
-                " ",
-                hint("hint:"),
-                "this job needs more memory than this host has; use a larger "
-                "tier or reduce the job.",
-            )
-        elif keyed_refusal:
-            ctx.state.err_console.print(error("error:"), error_text, markup=False)
-        else:
-            ctx.state.err_console.print(error("error:"), error_text, markup=False)
-            if raise_rows_hint:
-                ctx.state.err_console.print(" ", hint("hint:"), gen.RAISE_ROWS_HINT)
-            if remove_vault_hint:
-                ctx.state.err_console.print(" ", hint("hint:"), VAULT_COMMIT_FAILED_HINT)
-            if not isinstance(exc, PostScanBlockedError):  # a verdict, not a crash: no traceback
-                ctx.state.err_console.print(
-                    " ", hint("hint:"), "rerun with --verbose for the full traceback."
-                )
-    if ctx.state.verbose:
-        print_traceback(ctx.state)
-    _result.finish(ctx, document, payload)
+            context["notify"] = ctx.notify_results
+    # The terminal reads `error: capacity: <text>`; the JSON `error` has no label. A refusal or a
+    # blocked run keeps its plain `error: <text>` line: its code is a machine member.
+    human_line: _result.HumanLine | None = None
+    if is_capacity:
+        human_line = _result.HumanLine(f"capacity: {error_text}")
+    elif pre_run or isinstance(exc, PostScanBlockedError):
+        human_line = _result.HumanLine(error_text)
+    _result.finish_error(
+        ctx,
+        document,
+        error_text,
+        code=code,
+        hint=hint,
+        context=context,
+        human_line=human_line,
+        then=(lambda: print_traceback(ctx.state)) if ctx.state.verbose else None,
+    )
     raise AssertionError("a failed run has a non-zero exit code")  # pragma: no cover
 
 
@@ -402,7 +408,7 @@ def bad_parameter(ctx: RunContext, exc: typer.BadParameter) -> None:
 def interrupted(ctx: RunContext) -> None:
     """Write the envelope for Ctrl-C. Returns, and the caller re-raises the interrupt, so the
     process ends as it did before; the document carries the same exit (`run_cancelled`)."""
-    record = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt())
+    record = _failure_reason(KeyboardInterrupt(), KeyboardInterrupt()).record
     early = _early(ctx)
     document = _result.build(
         ctx, category="cancelled", reason=record, error_class="KeyboardInterrupt", early=early

@@ -62,85 +62,52 @@
   "cli/reference.py::_reject_kind::e6ba8ecddea2": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_diff::1c42b6ed9709": {
+  "cli/report/_diff.py::_diff::1c42b6ed9709": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_diff::73999020a652": {
+  "cli/report/_diff.py::_diff::73999020a652": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_integrity::2beafd46b1be": {
+  "cli/report/_integrity.py::_integrity::2beafd46b1be": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_integrity::322504ec124b": {
+  "cli/report/_integrity.py::_integrity::322504ec124b": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_integrity::9f5803c00f67": {
+  "cli/report/_integrity.py::_integrity::9f5803c00f67": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_integrity::cb3e41b91799": {
+  "cli/report/_integrity.py::_integrity::cb3e41b91799": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_load_manifest::5244780aebbc": {
+  "cli/report/_render.py::_render::68d8d66e54c4": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_load_manifest::73999020a652": {
+  "cli/report/_render.py::_render::68d8d66e54c4#1": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_render::68d8d66e54c4": {
+  "cli/report/_render.py::_render::73999020a652": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_render::68d8d66e54c4#1": {
+  "cli/report/_render.py::_render::73999020a652#1": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_render::73999020a652": {
+  "cli/report/_shared.py::_load_manifest::5244780aebbc": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_render::73999020a652#1": {
+  "cli/report/_shared.py::_load_manifest::73999020a652": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_show::533228a372c4": {
+  "cli/report/_show.py::_show::533228a372c4": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_verify::2168d2d9d1cc": {
+  "cli/report/_verify.py::_verify::2168d2d9d1cc": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_verify::6e8ed47c2d96": {
+  "cli/report/_verify.py::_verify::6e8ed47c2d96": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/report.py::_verify::88ac16526f10": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::64bc6273e082": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::6b4bb5d082e3": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::b093958fbe09": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::b093958fbe09#1": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/run/_errors.py::fail::c06db90fca96": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_diff::33ac29cba33e": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_diff::b5594f5a743a": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_emit_load_error::106ce9ad9e0c": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_emit_load_error::96d4423a210b": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_show::34b94a01435c": {
-   "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
-  },
-  "cli/scan.py::_show::d38c54124ff5": {
+  "cli/report/_verify.py::_verify::88ac16526f10": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
   "cli/subset.py::_emit_budget_failure::1d382960c047": {
@@ -182,5 +149,23 @@
   "ui/output.py::setup_output::7d55ca599eac": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   }
+ },
+ "moved_from": {
+  "cli/report/_diff.py::_diff::1c42b6ed9709": "cli/report.py::_diff::1c42b6ed9709",
+  "cli/report/_diff.py::_diff::73999020a652": "cli/report.py::_diff::73999020a652",
+  "cli/report/_integrity.py::_integrity::2beafd46b1be": "cli/report.py::_integrity::2beafd46b1be",
+  "cli/report/_integrity.py::_integrity::322504ec124b": "cli/report.py::_integrity::322504ec124b",
+  "cli/report/_integrity.py::_integrity::9f5803c00f67": "cli/report.py::_integrity::9f5803c00f67",
+  "cli/report/_integrity.py::_integrity::cb3e41b91799": "cli/report.py::_integrity::cb3e41b91799",
+  "cli/report/_shared.py::_load_manifest::5244780aebbc": "cli/report.py::_load_manifest::5244780aebbc",
+  "cli/report/_shared.py::_load_manifest::73999020a652": "cli/report.py::_load_manifest::73999020a652",
+  "cli/report/_render.py::_render::68d8d66e54c4": "cli/report.py::_render::68d8d66e54c4",
+  "cli/report/_render.py::_render::68d8d66e54c4#1": "cli/report.py::_render::68d8d66e54c4#1",
+  "cli/report/_render.py::_render::73999020a652": "cli/report.py::_render::73999020a652",
+  "cli/report/_render.py::_render::73999020a652#1": "cli/report.py::_render::73999020a652#1",
+  "cli/report/_show.py::_show::533228a372c4": "cli/report.py::_show::533228a372c4",
+  "cli/report/_verify.py::_verify::2168d2d9d1cc": "cli/report.py::_verify::2168d2d9d1cc",
+  "cli/report/_verify.py::_verify::6e8ed47c2d96": "cli/report.py::_verify::6e8ed47c2d96",
+  "cli/report/_verify.py::_verify::88ac16526f10": "cli/report.py::_verify::88ac16526f10"
  }
 }

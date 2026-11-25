@@ -117,6 +117,9 @@ class SmtpConfig:
     user: str | None = None
     password: str | None = None
     from_addr: str | None = None
+    # A value-free message when the env settings are unusable (a bad port). The email channel
+    # reports it and the other channels still send.
+    problem: str | None = None
 
     @property
     def configured(self) -> bool:
@@ -299,7 +302,7 @@ def send_webhook(
                 _host_only(url),
                 attempt + 1,
                 _max_retries,
-                exc,
+                type(exc).__name__,
             )
         if attempt < _max_retries - 1:
             delay = min(_WEBHOOK_BACKOFF_BASE_SECS * (2**attempt), _WEBHOOK_MAX_BACKOFF_SECS)
@@ -347,7 +350,7 @@ def send_slack(url: str, event: dict[str, Any]) -> tuple[bool, str | None]:
         logger.warning("slack webhook %s refused: %s", _host_only(url), exc.code)
         return False, exc.code
     except urllib.error.URLError as exc:
-        logger.warning("slack webhook %s unreachable: %s", _host_only(url), exc)
+        logger.warning("slack webhook %s unreachable: %s", _host_only(url), type(exc).__name__)
         return False, "unreachable"
 
 
@@ -373,6 +376,8 @@ def send_email(
     Implicit-TLS (port 465) relays are out of scope for v1; use a
     STARTTLS-capable submission port (587) for encrypted delivery.
     """
+    if smtp is not None and smtp.problem is not None:
+        return False, smtp.problem
     if smtp is None or not smtp.configured:
         return False, "email not configured (set DECOY_NOTIFY_SMTP_HOST / DECOY_NOTIFY_SMTP_FROM)"
 
@@ -402,7 +407,7 @@ def send_email(
             server.send_message(msg)
         return True, None
     except Exception as exc:
-        logger.warning("SMTP send to %s failed: %s", _redact_email(to_addr), exc)
+        logger.warning("SMTP send to %s failed: %s", _redact_email(to_addr), type(exc).__name__)
         return False, "smtp send failed"
 
 
@@ -437,7 +442,7 @@ def dispatch(
             else:
                 delivered, detail = send_email(ch.target, event, smtp=smtp)
         except Exception as exc:
-            logger.warning("notify channel %s failed: %s", ch.kind, exc)
+            logger.warning("notify channel %s failed: %s", ch.kind, type(exc).__name__)
             delivered, detail = False, "unexpected error"
         results.append(
             NotifyResult(kind=ch.kind, target_host=host, delivered=delivered, detail=detail)
@@ -449,12 +454,18 @@ def dispatch(
 
 
 def _host_only(url: str) -> str:
-    """Host/domain only, never the full URL (which may carry an auth token
-    in its path or query string, e.g. a Slack incoming-webhook URL)."""
+    """Host and port only, never the full URL (which may carry an auth token in its path or
+    query string, e.g. a Slack incoming-webhook URL) and never `user:password@`."""
     try:
-        netloc = urlsplit(url).netloc
-        return netloc or "(unknown host)"
-    except Exception:
+        parts = urlsplit(url)
+        host = parts.hostname
+        if not host:
+            return "(unknown host)"
+        if ":" in host:  # an IPv6 literal loses its brackets in `hostname`
+            host = f"[{host}]"
+        port = parts.port  # raises ValueError for a bad port
+        return f"{host}:{port}" if port is not None else host
+    except ValueError:
         return "(unknown host)"
 
 

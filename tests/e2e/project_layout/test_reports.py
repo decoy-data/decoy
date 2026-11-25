@@ -168,7 +168,7 @@ def test_a_failed_default_write_warns_and_a_typed_one_still_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from decoy import _atomic
-    from decoy.cli import report as report_module
+    from decoy.cli.report import _shared as report_module
 
     _root, src, masked = _masked_run(tmp_path)
     expected = _baseline_exit(masked, src)

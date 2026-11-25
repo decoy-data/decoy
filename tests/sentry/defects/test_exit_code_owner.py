@@ -1,11 +1,15 @@
 """G-ONE-EXIT-MAP: an exception becomes an exit code in one place, `exit_code_for`.
 
-`decoy.cli.exit_codes.exit_code_for` is the map. Three older copies still decide for themselves
-until CL4 moves them: the `decoy run` classifier, `decoy demo`'s three-type map and `decoy fit`'s
-differential-privacy arms. `ALLOWLIST` is exactly those three, read from the shrink-only baseline
-`baselines/exit-code-owner.json`: the ratchet (`scripts/dev/ratchet_check.py`) rejects an added
-key, this test requires every entry to match a real site, and CL4 empties it. Distinct from the
-literal-exit-code sentry (`tests/unit/test_exit_codes.py`), which watches `typer.Exit(code=7)`.
+`decoy.cli.exit_codes.exit_code_for` is the map. `decoy run`, `decoy demo` and `decoy fit` take their
+exit from it, so `ALLOWLIST` is empty: the shrink-only baseline `baselines/exit-code-owner.json`
+holds no entry, and this test requires the scan to find no site that picks an `EXIT_*` from an
+exception on its own. Distinct from the literal-exit-code sentry (`tests/unit/test_exit_codes.py`),
+which watches `typer.Exit(code=7)`.
+
+Limit: the scan sees an `if`, an `IfExp` or a dict that picks an `EXIT_*` from an exception. It does
+not see `except T: raise typer.Exit(code=EXIT_*)`. About 79 such arms exist (for example in
+`tokenize.py`, `report.py` and `compile_explain.py`). Row 24ze G-C1 (the literal-exit sentry with a
+shrink-only baseline) owns them and must merge before REL-GATE.
 The scan is `_exit_map_sites.py`.
 """
 

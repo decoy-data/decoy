@@ -43,8 +43,13 @@ def _baseline(
     return json.dumps(doc)
 
 
-def _registry(rows: dict[str, str]) -> str:
-    return "".join(f'[[sentry]]\nid = "{i}"\nbaseline = "{p}"\n\n' for i, p in rows.items())
+def _registry(rows: dict[str, str], split: frozenset[str] = frozenset()) -> str:
+    return "".join(
+        f'[[sentry]]\nid = "{i}"\nbaseline = "{p}"\n'
+        + ("split = true\n" if i in split else "")
+        + "\n"
+        for i, p in rows.items()
+    )
 
 
 def _write(repo: Path, rel: str, text: str) -> None:
@@ -285,6 +290,8 @@ def test_two_new_keys_naming_one_old_key_fail(repo: Path) -> None:
     entries = {"m::f": _entry(), "n::g": _entry(), "o::g": _entry()}
     _write(repo, A, _moved(entries, {"n::g": "m::g", "o::g": "m::g"}))
     _assert_red(repo, "moved_from names m::g for both")
+    res = _run(repo)
+    assert (res.stdout + res.stderr).count("m::g") == 1, "one problem, one finding"
 
 
 def test_move_from_a_key_not_in_the_base_fails(repo: Path) -> None:
@@ -348,6 +355,226 @@ def test_a_merged_move_left_in_the_map_is_ignored(repo: Path) -> None:
     _write(repo, A, _moved({"m::f": _entry(), "n::g": _entry()}, {"n::g": "m::g"}))
     res = _run(repo)
     assert res.returncode == 0, res.stdout + res.stderr
+
+
+# --- split_from: one key split across several, total kept (CLI-SPLIT) -------------------------
+
+
+def _split_repo(repo: Path, count: int = 5) -> None:
+    """Base: ``m::f`` with a counted ceiling, plus ``m::g``; row ``a`` is marked ``split = true``."""
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
+    doc = {
+        "sentry_id": "a",
+        "created_in": "S0",
+        "entries": {"m::f": _entry(count=count), "m::g": _entry()},
+    }
+    _write(repo, A, json.dumps(doc))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "counted base")
+
+
+def _split(entries: dict[str, object], split: object) -> str:
+    doc = {"sentry_id": "a", "created_in": "S0", "entries": entries, "split_from": split}
+    return json.dumps(doc)
+
+
+_SPLIT = {"m::f": ["n::f", "o::f"]}
+
+
+def test_an_exact_split_passes(repo: Path) -> None:
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}
+    _write(repo, A, _split(entries, _SPLIT))
+    res = _run(repo)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+@pytest.mark.parametrize(
+    ("entries", "split", "needle"),
+    [
+        pytest.param(
+            {"n::f": _entry(count=3), "o::f": _entry(count=3), "m::g": _entry()},
+            _SPLIT,
+            "split of m::f: count sums to 6, the merge base holds 5",
+            id="sum-one-higher",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "p::f": _entry(count=1)},
+            _SPLIT,
+            "gained key(s) not in the merge base: p::f",
+            id="new-key-not-listed",
+        ),
+        pytest.param(
+            {"m::f": _entry(count=5), "n::f": _entry(count=2), "o::f": _entry(count=3)},
+            _SPLIT,
+            "split_from old key m::f is still in the head",
+            id="old-key-still-present",
+        ),
+        pytest.param(
+            {
+                "n::f": {"reason": "a different reviewed reason text", "count": 2},
+                "o::f": _entry(count=3),
+                "m::g": _entry(),
+            },
+            _SPLIT,
+            "split entry n::f differs from m::f in the merge base",
+            id="changed-reason",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=5), "m::g": _entry()},
+            _SPLIT,
+            "split_from key o::f is not an entry in the head",
+            id="listed-key-missing",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            {"m::ghost": ["n::f", "o::f"]},
+            "split_from old key m::ghost was not in the merge base",
+            id="old-key-not-in-base",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(max=3), "m::g": _entry()},
+            _SPLIT,
+            "split entry o::f differs from m::f in the merge base",
+            id="ceiling-moved-to-another-field",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            {"m::f": ["n::f", "o::f", "n::f"]},
+            "split_from names n::f twice",
+            id="new-key-named-twice",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            {"m::f": "n::f"},
+            "split_from needs non-empty string keys and lists of keys",
+            id="value-not-a-list",
+        ),
+        pytest.param(
+            {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()},
+            ["m::f"],
+            "split_from is not an object",
+            id="not-an-object",
+        ),
+    ],
+)
+def test_a_split_that_breaks_a_rule_fails(
+    repo: Path, entries: dict[str, object], split: object, needle: str
+) -> None:
+    _split_repo(repo)
+    _write(repo, A, _split(entries, split))
+    res = _run(repo)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "Traceback" not in res.stderr
+    assert needle in res.stderr
+
+
+def test_a_split_of_an_entry_with_no_ceiling_fails(repo: Path) -> None:
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
+    entries = {"m::f": _entry(), "n::g": _entry(), "o::g": _entry()}
+    _write(repo, A, _split(entries, {"m::g": ["n::g", "o::g"]}))
+    _assert_red(repo, "split of m::g needs a counted entry")
+
+
+def test_a_key_both_moved_and_split_fails(repo: Path) -> None:
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}
+    doc = json.loads(_split(entries, _SPLIT))
+    doc["moved_from"] = {"o::f": "m::g"}
+    doc["entries"].pop("m::g")
+    _write(repo, A, json.dumps(doc))
+    _assert_red(repo, "o::f is named by both moved_from and split_from")
+
+
+def test_one_old_key_both_moved_and_split_fails(repo: Path) -> None:
+    """Double-spend: ``m::f`` feeds a move and a split, so its count would be admitted twice."""
+    _split_repo(repo)
+    entries = {
+        "n::f": _entry(count=2),
+        "o::f": _entry(count=3),
+        "p::f": _entry(count=5),
+        "m::g": _entry(),
+    }
+    doc = json.loads(_split(entries, _SPLIT))
+    doc["moved_from"] = {"p::f": "m::f"}
+    _write(repo, A, json.dumps(doc))
+    _assert_red(repo, "old key m::f is consumed by both moved_from and split_from")
+
+
+def test_one_old_key_in_two_split_groups_fails(repo: Path) -> None:
+    """Double-spend: a repeated JSON key names ``m::f`` in two split groups."""
+    _split_repo(repo)
+    entries = {
+        "n::f": _entry(count=2),
+        "o::f": _entry(count=3),
+        "p::f": _entry(count=1),
+        "q::f": _entry(count=4),
+        "m::g": _entry(),
+    }
+    text = _split(entries, {"m::f": ["n::f", "o::f"]})
+    text = text.replace('"split_from": {', '"split_from": {"m::f": ["p::f", "q::f"], ', 1)
+    _write(repo, A, text)
+    _assert_red(repo, "JSON key m::f is repeated inside one object")
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [pytest.param((-5, 10), id="negative"), pytest.param((7, -2), id="over-old")],
+)
+def test_a_split_ceiling_outside_zero_to_old_fails(repo: Path, counts: tuple[int, int]) -> None:
+    """Each part must lie in [0, old]; a negative part would hide a raised sibling."""
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=counts[0]), "o::f": _entry(count=counts[1]), "m::g": _entry()}
+    _write(repo, A, _split(entries, _SPLIT))
+    _assert_red(repo, "is outside 0..")
+
+
+def test_a_merged_split_left_in_the_map_is_ignored(repo: Path) -> None:
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}
+    _write(repo, A, _split(entries, _SPLIT))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "split merged")
+    res = _run(repo)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_a_split_on_a_row_without_the_split_flag_fails(repo: Path) -> None:
+    """Module-size style rows (``max``) do not add across files: no split_from there."""
+    doc = {
+        "sentry_id": "a",
+        "created_in": "S0",
+        "entries": {"m::f": {"reason": REASON, "max": 900}, "m::g": _entry()},
+    }
+    _write(repo, A, json.dumps(doc))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "max base")
+    entries = {
+        "n::f": {"reason": REASON, "max": 450},
+        "o::f": {"reason": REASON, "max": 450},
+        "m::g": _entry(),
+    }
+    _write(repo, A, _split(entries, _SPLIT))
+    _assert_red(repo, "split_from is not allowed here")
+
+
+def test_a_repeated_key_in_entries_fails(repo: Path) -> None:
+    text = (
+        '{"sentry_id": "a", "created_in": "S0", "entries": {'
+        f'"m::f": {{"reason": "{REASON}"}}, "m::g": {{"reason": "{REASON}"}}, '
+        f'"m::f": {{"reason": "{REASON}"}}}}}}'
+    )
+    _write(repo, A, text)
+    _assert_red(repo, "JSON key m::f is repeated inside one object")
+
+
+def test_a_repeated_key_inside_an_entry_fails(repo: Path) -> None:
+    text = (
+        '{"sentry_id": "a", "created_in": "S0", "entries": {'
+        f'"m::f": {{"reason": "{REASON}", "max": 5, "max": 9}}, "m::g": {{"reason": "{REASON}"}}}}}}'
+    )
+    _write(repo, A, text)
+    _assert_red(repo, "JSON key max is repeated inside one object")
 
 
 # --- numeric ``max`` entries: a head value above its base value is growth --------------------
@@ -563,3 +790,48 @@ def test_a_row_on_another_baseline_gives_no_exemption(repo: Path) -> None:
     res = _run(repo)
     out = res.stdout + res.stderr
     assert res.returncode == 1 and "a: baseline gained key(s)" in out and "m::new" in out
+
+
+def test_a_move_that_changes_only_the_rule_fails(repo: Path) -> None:
+    """``m::g`` -> ``m::h``: the count would pay for a different rule."""
+    _write(repo, A, _moved({"m::f": _entry(), "m::h": _entry()}, {"m::h": "m::g"}))
+    _assert_red(repo, "moved entry m::h changes the rule after :: of m::g")
+
+
+def test_a_move_from_one_json_type_to_another_fails(repo: Path) -> None:
+    """``1`` -> ``true`` is equal in Python; a moved entry must keep its JSON types."""
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
+    base = {"sentry_id": "a", "created_in": "S0", "entries": {"m::f": _entry(count=1)}}
+    _write(repo, A, json.dumps(base))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "counted base")
+    _write(repo, A, _moved({"n::f": _entry(count=True)}, {"n::f": "m::f"}))
+    _assert_red(repo, "moved entry n::f differs from m::f in the merge base")
+
+
+def test_a_split_that_changes_only_the_rule_fails(repo: Path) -> None:
+    """``m::f`` -> ``n::g`` and ``o::g`` keeps the total but lets one rule pay for another."""
+    _split_repo(repo)
+    entries = {"n::g": _entry(count=2), "o::g": _entry(count=3), "m::g": _entry()}
+    _write(repo, A, _split(entries, {"m::f": ["n::g", "o::g"]}))
+    _assert_red(repo, "changes the rule after :: of m::f")
+
+
+def test_a_split_that_changes_a_metadata_json_type_fails(repo: Path) -> None:
+    """``1`` -> ``true`` is equal in Python; split metadata must keep its JSON types."""
+    _write(repo, REG, _registry({"a": A}, frozenset({"a"})))
+    doc = {
+        "sentry_id": "a",
+        "created_in": "S0",
+        "entries": {"m::f": _entry(count=5, flag=1), "m::g": _entry()},
+    }
+    _write(repo, A, json.dumps(doc))
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "counted base")
+    entries = {
+        "n::f": _entry(count=2, flag=True),
+        "o::f": _entry(count=3, flag=1),
+        "m::g": _entry(),
+    }
+    _write(repo, A, _split(entries, _SPLIT))
+    _assert_red(repo, "split entry n::f differs from m::f in the merge base")

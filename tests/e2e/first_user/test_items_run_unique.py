@@ -85,7 +85,8 @@ def test_reference_with_too_few_parent_keys_exits_1_without_values(tmp_path: Pat
     result = runner.invoke(app, ["run", str(cfg)])
     assert result.exit_code == EXIT_USAGE, result.output
     assert "uniqueness_impossible" in result.output
-    assert "children.parent_code" in " ".join(result.output.split())
+    # The engine's own wording is not registry text, so the run shows the registry summary.
+    assert "uniqueness_impossible: Uniqueness impossible." in " ".join(result.output.split())
     assert _SENTINEL not in result.output
     assert not (tmp_path / "children.csv").exists()
 

@@ -319,9 +319,13 @@ def tokenize(
     if findings:
         # The renderer `run` uses: the summary, the first code and every finding.
         refusal = PreRunCheckError.from_findings(findings)
-        members = {"config": config_str, **refusal.json_members()}
-        members.pop("code", None)
-        emit_error(state, "tokenize", str(refusal), code=findings[0].code, context=members)
+        emit_error(
+            state,
+            "tokenize",
+            str(refusal),
+            code=findings[0].code,
+            context={"config": config_str, **refusal.context_members()},
+        )
         raise typer.Exit(code=refusal.exit_code)
 
     from decoy.cli.run import _load_sources_from_config, _write_mask_outputs

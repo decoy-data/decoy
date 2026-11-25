@@ -71,7 +71,7 @@ def test_the_walk_reaches_every_capped_folder() -> None:
 # --- meta-tests: seeded violations prove the guard sees them ------------------------------
 
 
-LEGACY = "src/decoy/cli/report.py"
+LEGACY = "src/decoy/cli/preflight.py"
 
 
 def _copy(root: Path, key: str, extra: str = "") -> None:
@@ -95,8 +95,10 @@ def test_a_legacy_module_that_shrank_demands_a_ratchet_down(tmp_path: Path) -> N
 
 
 def test_a_legacy_module_removed_from_the_allowlist_is_red(tmp_path: Path) -> None:
-    key = "src/decoy/cli/scan.py"
-    _copy(tmp_path, key)
+    key = "src/decoy/legacy_big.py"
+    dest = tmp_path / key
+    dest.parent.mkdir(parents=True)
+    dest.write_text("x = 1\n" * (LIMIT + 11), encoding="utf-8")
     rest = {k: v for k, v in SIZE_ALLOWLIST.items() if k != key}
     found = census(tmp_path, rest)
     assert list(found) == [key] and f"over the {LIMIT}-LOC hard max" in found[key]

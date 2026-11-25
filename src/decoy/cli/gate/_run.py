@@ -117,11 +117,13 @@ class PreRunCheckError(Exception):
             messages=[_message(f) for f in result.findings],
         )
 
-    def json_members(self) -> dict[str, Any]:
-        """The members a refusal adds to run's `--json` error envelope."""
+    def context_members(self) -> dict[str, Any]:
+        """The members a refusal adds to a command's `--json` error object, beside the code.
+
+        The code is not among them: `emit_error` owns it as a fixed member, and a caller passes
+        `self.code` as `code=`.
+        """
         members: dict[str, Any] = {"error_kind": self.error_kind}
-        if self.code is not None:
-            members["code"] = self.code
         if self.extra is not None:
             members["extra"] = self.extra
         members["messages"] = self.messages
