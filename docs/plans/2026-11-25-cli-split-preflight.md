@@ -269,3 +269,9 @@ None needed. Defaults taken, each open to change in review:
 
 1. `_render.py` is separate from `_command.py`. Joined they would be about 335 lines and still under the cap. They are kept apart because output format and step order change for different reasons, and S1 split its renderers the same way.
 2. `CAPACITY_CHECK` and `PLAN_UNCOMPILABLE_CHECK` stay on the package path, and `_layers.py` reads them from there. That keeps the public import surface the same and gives the re-export a named consumer.
+
+## Build notes (2026-11-25)
+
+- `#411` had not merged at build time and `main` has no `split_from`. The five lint-debt keys that split (`C901` in three files, `PLR0912` in two) are admitted through `approved_growth` rows in `scripts/dev/sentry_registry.toml`, with an owner decision dated 2026-11-25. The hit total stays 7. When `#411` lands, replace those rows with `split_from` entries and delete the rows. The `proj` fixture in `tests/sentry/test_lint_debt.py` drops `approved_growth` from its scratch registry, because the scratch baseline does not hold those keys.
+- `main` has `LEGACY = report.py` in `test_module_size.py`, so S2 does not edit that test. The `report.py` entry is the one S1 removes. The legacy-equality mutation is not run here for that reason.
+- Package fan-out goes 29 to 28 on this base (S1 has not landed).

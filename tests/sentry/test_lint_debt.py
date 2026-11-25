@@ -10,6 +10,7 @@ Named limit: the counts depend on the ruff version, which the dev lock pins.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -54,6 +55,8 @@ def proj(tmp_path: Path) -> Path:
     shutil.copy(ROOT / REG, tmp_path / REG)
     # Only the lint-debt row matters here; the others point at files this scratch tree lacks.
     row = (ROOT / REG).read_text(encoding="utf-8").split('[[sentry]]\nid = "lint-debt"')[1]
+    # The real row's approved_growth keys are not in this scratch baseline; drop them.
+    row = re.sub(r"approved_growth = \[.*?\n\]\n", "", row, flags=re.DOTALL)
     (tmp_path / REG).write_text('[[sentry]]\nid = "lint-debt"' + row, encoding="utf-8")
     (tmp_path / "src" / "mod.py").write_text(HIT, encoding="utf-8")
     assert _run(tmp_path, "--init").returncode == 0
