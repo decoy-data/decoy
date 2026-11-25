@@ -18,6 +18,7 @@ The change moves code and nothing else. After it:
 - The gate's preflight layer (`decoy validate`, and `decoy run` through `run_gate`) gives the same findings, in the same order, with the same exit codes.
 - `decoy validate --help` and `decoy validate preflight --help` are byte-identical.
 - `from decoy.cli.preflight import preflight, PREFLIGHT_EPILOG, CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK` keeps working. These four public names form the new `__all__`.
+- Named and wildcard imports of other names: the old module had no `__all__`, so `from decoy.cli.preflight import *` also gave the names it imported (`ConfigFileError`, `typer`, `Path`, `exit_code_for` and others, `src/decoy/cli/preflight.py:52-66`). Those are not part of the contract. Nothing imports them from here (`grep -rn "decoy.cli.preflight" src tests docs` lists only the sites in Importers), no file does `import *` from it, and `decoy.cli` is not a library surface (`docs/library.md` names only `decoy.cli.io.read_small_file`). Each such name keeps its own home module. The import-compat test records this choice (acceptance test 2).
 - No sentry count or ceiling goes up. Two go down: module-size loses its `preflight.py` entry, and package-fanout for `src/decoy/cli` goes from 28 (after S1) to 27.
 
 Non-goals (recorded follow-ups, not blockers):
@@ -37,11 +38,16 @@ Non-goals (recorded follow-ups, not blockers):
 | `_checks.py` | `_check_source_files` (L188-262), `_check_target_overwrite` (L265-298), `_check_native` (L521-580) | how a source, a target or the native companion is judged ready | ~200 |
 | `_capacity.py` | `_file_sources_missing_on_disk`, `_check_capacity` (L306-513) | the out-of-core FK capacity verdict | ~230 |
 | `_render.py` | `_emit_preflight_result` (L734-836) | how the result is printed (card, `--json`, exit code) | ~120 |
+| `readiness.py` | No code. Re-exports `_PreflightAccumulator`, `_check_source_files`, `_check_target_overwrite`, `_check_native` and `_check_capacity` with an `__all__` | the one check seam shared by `validate preflight` and the gate layer | ~25 |
 | `_command.py` | `_PREFLIGHT_EPILOG` (L68-108), `preflight` (L588-731), `PREFLIGHT_EPILOG = _PREFLIGHT_EPILOG` (L839) | the step order of `validate preflight` | ~215 |
 
-All modules are well under the 800-line cap. The package has 6 modules, under the 25-module fan-out cap. `_capacity.py` holds one large check and its one helper. It is the only module that asks the engine to price a job, so it is kept apart from the three small checks.
+All modules are well under the 800-line cap. The package has 7 modules, under the 25-module fan-out cap. `_capacity.py` holds one large check and its one helper. It is the only module that asks the engine to price a job, so it is kept apart from the three small checks.
 
-Imports run one way: `_result` is a leaf; `_checks`, `_capacity` and `_render` import from `_result`; `_command` imports from all four; `__init__` imports from `_result` and `_command`. No module imports `__init__`. The engine imports (`decoy_engine.execution`, `decoy_engine`, `decoy._native_gate`, `parse_pipeline_config`, `run_config_only_checks`) and the `decoy.cli.io` layout imports stay lazy inside function bodies, as today, so `--help` does not load the engine.
+Imports run one way: `_result` is a leaf; `_checks`, `_capacity` and `_render` import from `_result`; `readiness` imports from `_result`, `_checks` and `_capacity`; `_command` imports `_result`, `_render` and the `readiness` module; `__init__` imports from `_result` and `_command`.
+
+`readiness` is the one supported path to the checks. Today `preflight()` and the gate layer both find the checks as attributes of `decoy.cli.preflight`, so one patch there reaches both routes. After the split both routes look the checks up on `readiness` at call time: `_command` does `from decoy.cli.preflight import readiness` and calls `readiness._check_source_files(...)` (and the other three), and `_layers.py` keeps its lazy imports, now from `decoy.cli.preflight.readiness`. A patch on `readiness` then reaches both routes, as a patch on the old module did. `_command` must not bind the check functions with `from ... import`; a bound name would bypass the patch. The gate-single-entry rule matches the last name of a call, so `readiness._check_capacity(...)` is still seen (the seed at `tests/sentry/test_gate_single_entry.py:281` already uses the attribute form).
+
+No module imports `__init__`. The engine imports (`decoy_engine.execution`, `decoy_engine`, `decoy._native_gate`, `parse_pipeline_config`, `run_config_only_checks`) and the `decoy.cli.io` layout imports stay lazy inside function bodies, as today, so `--help` does not load the engine.
 
 `__init__.py` stays thin: no function definitions. It re-exports only the four public names, each with a named consumer (see Importers). Private names (`_PreflightAccumulator`, `_check_*`, `_emit_preflight_result`) are not re-exported. A re-exported private name invites a test to patch the package attribute, which the moved code no longer reads, so the patch would do nothing without failing.
 
@@ -51,7 +57,7 @@ Do the move as `git mv src/decoy/cli/preflight.py src/decoy/cli/preflight/__init
 
 | New file | Directory | CODEMAP "Where Things Go" line | Sits beside |
 |---|---|---|---|
-| `__init__.py` and the 5 modules above | `src/decoy/cli/preflight/` | "Command-private helpers" (S1 adds `src/decoy/cli/report/` there). S2 adds `src/decoy/cli/preflight/` (the `decoy validate preflight` command package) to the same line. | `src/decoy/cli/report/`, `src/decoy/cli/run/` |
+| `__init__.py` and the 6 modules above | `src/decoy/cli/preflight/` | "Command-private helpers" (S1 adds `src/decoy/cli/report/` there). S2 adds `src/decoy/cli/preflight/` (the `decoy validate preflight` command package) to the same line. | `src/decoy/cli/report/`, `src/decoy/cli/run/` |
 | `test_cli_split_imports.py` | `tests/unit/` | "Command-private helpers", tests column (`tests/unit/`) | `tests/unit/test_report_fidelity.py` |
 
 ## Importers
@@ -65,16 +71,16 @@ Import-path edits only (no assertion changes). Each one reaches a private name, 
 
 | Site | Today | After |
 |---|---|---|
-| `src/decoy/cli/gate/_layers.py:243` (lazy) | `from decoy.cli.preflight import _check_target_overwrite, _PreflightAccumulator` | `_check_target_overwrite` from `decoy.cli.preflight._checks`, `_PreflightAccumulator` from `decoy.cli.preflight._result` |
-| `src/decoy/cli/gate/_layers.py:393` (lazy) | `from decoy.cli.preflight import CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK, _check_capacity, _check_native, _check_source_files, _PreflightAccumulator` | the two constants from `decoy.cli.preflight`; `_check_capacity` from `_capacity`; `_check_native`, `_check_source_files` from `_checks`; `_PreflightAccumulator` from `_result` |
-| `tests/e2e/project_layout/test_layout_gate.py:80` (`install_read_spy`, shared with `test_shared_destination_parity.py`) | `import decoy.cli.preflight as preflight`; patches `_check_source_files` and `_check_capacity` on it | patch `_check_source_files` on `decoy.cli.preflight._checks` and `_check_capacity` on `decoy.cli.preflight._capacity` |
-| `tests/unit/project_layout/test_layout.py:92,114-115` | `from decoy.cli import preflight`; `preflight._PreflightAccumulator()`, `preflight._check_target_overwrite(...)` | `from decoy.cli.preflight import _checks, _result` and the same calls on those |
+| `src/decoy/cli/gate/_layers.py:243` (lazy) | `from decoy.cli.preflight import _check_target_overwrite, _PreflightAccumulator` | the same two names from `decoy.cli.preflight.readiness` |
+| `src/decoy/cli/gate/_layers.py:393` (lazy) | `from decoy.cli.preflight import CAPACITY_CHECK, PLAN_UNCOMPILABLE_CHECK, _check_capacity, _check_native, _check_source_files, _PreflightAccumulator` | the two constants from `decoy.cli.preflight`; the four private names from `decoy.cli.preflight.readiness` |
+| `tests/e2e/project_layout/test_layout_gate.py:80` (`install_read_spy`, shared with `test_shared_destination_parity.py`) | `import decoy.cli.preflight as preflight`; patches `_check_source_files` and `_check_capacity` on it | `from decoy.cli.preflight import readiness`; patch both on `readiness` |
+| `tests/unit/project_layout/test_layout.py:92,114-115` | `from decoy.cli import preflight`; `preflight._PreflightAccumulator()`, `preflight._check_target_overwrite(...)` | `from decoy.cli.preflight import readiness` and the same calls on it |
 | `tests/unit/test_ci_rule_codes.py:31,171` | `import decoy.cli.preflight as cli_preflight`; walks the AST of `cli_preflight.__file__` for the four check functions | walk every `*.py` in the package directory (`Path(cli_preflight.__file__).parent`), so a later move inside the package cannot hide a check |
 
 How each edit fails if missed:
 
 - `_layers.py` and `test_layout.py`: `ImportError` or `AttributeError` (loud). In `_layers.py` the imports are lazy, so the error comes at gate run time. The gate e2e tests run that path.
-- `install_read_spy`: `monkeypatch.setattr` raises on a missing attribute (loud). The spy works because `_layers.py` imports the checks lazily, at call time, from the module where the spy sits. After the edit both point at `_checks` and `_capacity`. The existing tests assert on the recorded reads, so a spy that stops firing turns them red.
+- `install_read_spy`: `monkeypatch.setattr` raises on a missing attribute (loud). The spy works because both routes look the checks up on `readiness` at call time. The refusal test (`test_layout_gate.py:113-123`) only asserts an empty read list, which a spy that never fires would also pass. So S2 adds a valid-input control next to it: for `["validate"]` and `["validate", "preflight"]`, a project with a good target must record one `_check_source_files` call and one `_check_capacity` call in the spy. Mutation: on a scratch copy, make `_command` bind `_check_source_files` with `from ._checks import`; the `validate preflight` control must go red.
 - `test_ci_rule_codes.py`: after the move `__file__` is `__init__.py`, which holds no check. The template half fails loudly (it asserts `templates` is non-empty, L313). The code half (`codes`) has no such assert and would go quiet. Walking the whole package closes both.
 
 `tests/sentry/io_policy/test_pipeline_argument.py` reads `sys.modules[callback.__module__]`. The callback's module becomes `decoy.cli.preflight._command`, which holds the `setup_output` and `resolve_pipeline` calls, so it needs no edit.
@@ -97,7 +103,7 @@ Re-home each entry to the new file at the same site. Every one-to-one re-key goe
 | `tests/sentry/test_gate_single_entry.py:366,371` | The seeded file `"cli/preflight.py"` with module `"decoy.cli.preflight"` becomes `"cli/preflight/_command.py"` with `"decoy.cli.preflight._command"`, so the self-test still matches a real allowlist entry. The seeds at L212, L281, L286, L291 and L355 import from `decoy.cli.preflight`. The rule matches the last name only, so they stay valid and need no edit. `test_allowlist_has_reasons_and_unique_identities` (3 entries) is unchanged. |
 | `tests/sentry/io_policy/test_output_placement.py:40` | `PREFLIGHT = "cli/preflight.py"` to `"cli/preflight/_checks.py"` (the module that holds `_check_target_overwrite`). If missed, `read_text` raises (loud). |
 | `tests/sentry/io_policy/test_engine_base_dir.py:111` | The known call-site file `"cli/preflight.py"` becomes the two files `"cli/preflight/_command.py"` (`run_config_only_checks`) and `"cli/preflight/_capacity.py"` (`estimate_job_capacity`). If missed, the subset assert fails (loud). |
-| `tests/sentry/layout/test_module_size.py:74,98` | The meta-tests seed a real legacy file: `LEGACY` (S1 sets it to `preflight.py`) and the key `src/decoy/cli/fit.py` at L98. S2 deletes the `preflight.py` entry, so these must change. Rewrite the three meta-tests to plant a synthetic file (`src/legacy.py`, `LIMIT + 10` lines) in `tmp_path` and pass `census` an allowlist built in the test. The proofs stay the same: grown by one line is red, shrunk asks for a ratchet down, removed from the allowlist is red. This pins no real file, so S3 does not edit this test again. Mutation: with `margin=1` on a scratch copy of `size_reason`, the "grown" test must go red. |
+| `tests/sentry/layout/test_module_size.py:74,98` | The meta-tests seed a real legacy file: `LEGACY` (S1 sets it to `preflight.py`) and the key `src/decoy/cli/fit.py` at L98. S2 deletes the `preflight.py` entry, so these must change. Rewrite the three meta-tests to plant a synthetic file (`src/legacy.py`, `LIMIT + 10` lines) in `tmp_path` and pass `census` an allowlist built in the test. The proofs stay the same: grown by one line is red, shrunk asks for a ratchet down, removed from the allowlist is red. This pins no real file, so S3 does not edit this test again. Mutation: on a scratch copy of `size_reason`, change the legacy check so `recorded + 1` lines also pass (`tests/sentry/layout/_layout.py:158-171` returns before `margin` is read for a legacy entry, so a `margin` mutation proves nothing); the "grown by one line" test must go red. |
 
 No `preflight.py` entry exists in `.importlinter`, `csv-read-allow`, `private-file-sinks`, `canonical-json-allow` or `ci/vendored.toml`. The split adds no cross-layer import: `cli.gate` and `cli.preflight` are both in the `cli` tier.
 
@@ -126,11 +132,12 @@ Every new entry keeps the old reason. The builder re-runs `scripts/dev/lintdebt.
 ## Acceptance tests
 
 1. Existing tests pass with no assertion edits. The only test edits are the import paths and sentry tables listed above.
-2. Import-compat test (new, kept): `tests/unit/test_cli_split_imports.py`. S2 creates it; S3 adds its cases. One parametrized test asserts that `decoy.cli.preflight.__all__` is exactly the four public names, that each resolves to the object its owning submodule defines (`preflight is _command.preflight`, `CAPACITY_CHECK is _result.CAPACITY_CHECK`), and that `validate.py`'s `_preflight_command` is that same object. Mutation that must turn it red: re-export `_check_capacity` from `__init__`.
+2. Import-compat test (new, kept): `tests/unit/test_cli_split_imports.py`. S2 creates it; S3 adds its cases. One parametrized test asserts that `decoy.cli.preflight.__all__` is exactly the four public names, that each resolves to the object its owning submodule defines (`preflight is _command.preflight`, `CAPACITY_CHECK is _result.CAPACITY_CHECK`), and that `validate.py`'s `_preflight_command` is that same object. It asserts `readiness.__all__` is exactly the five check names and that each `readiness` name is the object its defining module holds. It asserts that no private name is bound on the package: `not hasattr(decoy.cli.preflight, name)` for `_check_capacity`, `_check_source_files`, `_check_target_overwrite`, `_check_native`, `_PreflightAccumulator` and `_emit_preflight_result`. Mutation that must turn it red: re-export `_check_capacity` from `__init__`.
 3. Golden byte check. A throwaway harness (outside the tree; its script and per-case hash table go in the PR body) runs on the base commit and on the head and compares stdout, stderr and exit code byte for byte for:
-   - `decoy validate preflight` on: a clean pipeline; a missing source file; an unreadable source; a target that already exists; a capacity fail and a capacity warn (the configs in `tests/e2e/test_preflight_capacity.py`); an uncompilable plan; the native cases from `tests/e2e/test_preflight_native.py`; a YAML error; a schema error. Each with no flag, `--json` and `--quiet`, plus `--fail-on-warning` where a warning exists, and one `--local` run;
+   - `decoy validate preflight` on: a clean pipeline; a missing source file; an unreadable source; a target that already exists; an escaping target (the layout refusal at `src/decoy/cli/preflight.py:701-705`, config from `tests/e2e/project_layout/test_layout_gate.py:113-123`); a capacity fail and a capacity warn (the configs in `tests/e2e/test_preflight_capacity.py`); an uncompilable plan; the native cases from `tests/e2e/test_preflight_native.py`; a YAML error; a schema error. Each with no flag, `--json` and `--quiet`, plus `--fail-on-warning` where a warning exists, and one `--local` run;
    - `decoy validate` (the gate) on the capacity-fail, missing-source and target-exists configs, with and without `--json`;
    - `decoy validate --help` and `decoy validate preflight --help`.
+   The harness runs in process through Typer's `CliRunner`, so it can apply the same test doubles the e2e tests use: the memory ceiling (`decoy_engine.execution.out_of_core._budget.detect_effective_memory_bytes`, `test_preflight_capacity.py:244`), the estimator failure (`estimate_job_capacity`, `:360`) and the companion status (`decoy_engine.native_companion_status`, `test_preflight_native.py:42,119`). All three targets are engine names, so the same patch applies on both trees. Before it compares bytes, each case asserts its expected exit code and, for `--json`, the expected `status` and `code` (copied from the e2e test it comes from). A case whose double did not take effect fails there, so two identical wrong outputs cannot pass.
    The harness first runs the base tree twice. Any field that differs between those two runs (timestamps, temp paths) is listed and masked. Everything else must match exactly. `--verbose` traceback text is out of scope because it names file paths.
 4. Ratchet equal, not raised: the ratchet check against the merge base reports no finding, and the total of the preflight lint-debt counts is 7 before and after. These pass: `tests/sentry/layout/test_module_size.py`, `test_package_fanout.py`, `test_import_layers.py`, `test_codemap_paths.py`, `tests/sentry/test_lint_debt.py`, `test_baseline_registry.py`, `test_ratchet_check.py`, `test_sentry_manifest.py`, `test_gate_single_entry.py`, `tests/sentry/io_policy/` and `tests/unit/test_ci_rule_codes.py`.
 5. `ruff check`, `ruff format --check` and `mypy` are clean on the head.
@@ -156,7 +163,7 @@ All exits are in `preflight` and go to `_command.py` unchanged:
 ### Routes
 
 - `decoy validate preflight` reaches `preflight` through `src/decoy/cli/validate.py:422`.
-- `decoy validate` and `decoy run` reach the check functions through the gate's lazy imports (`src/decoy/cli/gate/_layers.py:243`, `src/decoy/cli/gate/_layers.py:393`).
+- `decoy validate` and `decoy run` reach the check functions through the gate's lazy imports (`src/decoy/cli/gate/_layers.py:243`, `src/decoy/cli/gate/_layers.py:393`). After the split both routes look the checks up on `decoy.cli.preflight.readiness`.
 
 ### FK shapes
 
@@ -193,7 +200,7 @@ N/A: no `--json` field is added, renamed or removed. The payload is built in `_e
 | 1 | value | N/A: no data path changes; error text stays value-free | existing value-free sentries | acceptance test 3 |
 | 2 | cleanup | N/A: preflight writes no file | none | none |
 | 3 | state | N/A: `_PreflightAccumulator` is built per call, never shared | none | none |
-| 4 | route | Yes: a patch on the package attribute no longer reaches the moved code (`install_read_spy`); an AST walk of `__init__.py` finds nothing (`test_ci_rule_codes.py`) | private names not re-exported; patch and walk the owning submodules | on a scratch copy, walk only `_checks.py` in `test_ci_rule_codes.py`; the capacity codes go missing and the test must go red |
+| 4 | route | Yes: a patch on the package attribute no longer reaches the moved code (`install_read_spy`); an AST walk of `__init__.py` finds nothing (`test_ci_rule_codes.py`) | private names not re-exported; both routes look checks up on `readiness`; walk the whole package | `test_ci_rule_codes.py` today accepts a subset of codes and any non-empty template set (L165-171, L307-316), so a missing module would pass. S2 adds an assert that the walk visited all four check functions by name. Mutation: on a scratch copy, walk only `_checks.py`; the new assert must go red |
 | 5 | referential | N/A: no rows change | none | none |
 | 6 | untrusted | N/A: no child process or extension | none | none |
 | 7 | toctou | N/A: the source checks keep the same reads in the same order | existing `test_layout_gate.py` read-order asserts | acceptance test 1 |
@@ -239,6 +246,7 @@ If this slice fails, the likely causes are:
 - A lazy import in `_layers.py` that still names `decoy.cli.preflight` for a private name. It fails only at gate run time. The gate e2e tests in acceptance test 1 reach it.
 - A circular import if `_result` ever imports from `_command` or `__init__`. The one-way order above prevents it. `python -c "import decoy.cli.preflight._result"` in a fresh process proves it.
 - An engine import moved to module top level by accident: `--help` would load the engine. The golden `--help` cell does not measure time, so the builder greps the new modules for top-level `decoy_engine` imports. `preflight.py` has none today, and the package must have none.
+- `_command` binding a check function with `from ... import` instead of calling it on `readiness`. A spy on `readiness` would then miss the `validate preflight` route. The valid-input spy control catches it.
 - A patch site in a test left on the package path. `monkeypatch.setattr` raises on a missing attribute, but `mock.patch(..., create=True)` does not. S2 has no `create=True` patch on preflight (checked with grep at planning time). The builder repeats that grep on the head.
 - A ledger conflict with another branch that re-homes an entry in the same baseline. Keep both sides and re-run the ratchet check.
 
@@ -248,7 +256,7 @@ Moved code, edited sentry tables and `allowlist-before.json` are full-suite trig
 
 ## Size and commits
 
-One PR. About 900 lines added and 850 removed, nearly all of it the move, so review with `git diff --color-moved=dimmed-zebra -M`. Files: 1 removed and 6 added under `src/decoy/cli/preflight/`; `gate/_layers.py` (two lazy import lines) and `gate/_capacity_text.py` (docstring); 3 test files with import-path edits; 1 new test file; 6 baselines plus the snapshot; 4 sentry test files with table or seed edits; `CODEMAP.md`. No new public names.
+One PR. About 900 lines added and 850 removed, nearly all of it the move, so review with `git diff --color-moved=dimmed-zebra -M`. Files: 1 removed and 7 added under `src/decoy/cli/preflight/`; `gate/_layers.py` (two lazy import lines) and `gate/_capacity_text.py` (docstring); 3 test files with import-path edits (plus the spy control in `test_layout_gate.py` and the visited-functions assert in `test_ci_rule_codes.py`); 1 new test file; 6 baselines plus the snapshot; 4 sentry test files with table or seed edits; `CODEMAP.md`. No new names in the package `__all__`; `readiness` is a new module path inside the package.
 
 Commits (Conventional Commits, last line `cam`, no body unless it explains why):
 

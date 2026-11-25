@@ -17,6 +17,7 @@ The change moves code and nothing else. After it:
 - `decoy fit` prints the same bytes to stdout and stderr, writes the same snapshot file, and exits with the same code as before, for every input and flag.
 - `decoy fit --help` and `decoy --help` are byte-identical.
 - `from decoy.cli.fit import fit, FIT_EPILOG` keeps working. These two names form the new `__all__`.
+- Named and wildcard imports of other names: the old module had no `__all__`, so `from decoy.cli.fit import *` and `from decoy.cli.fit import read_fit_csv` also worked for the names it imported (`read_fit_csv`, `fit_exact_snapshot`, `exit_code_for`, `typer` and others, `src/decoy/cli/fit.py:34-53`). Those names are not part of the contract, and the package does not re-export them. Evidence: `grep -rn "decoy.cli.fit" src tests docs` finds only `src/decoy/__main__.py:25-26` as an importer; the other hits are patch targets and module handles, all listed below and all moved to the module that looks the name up. No file does `import *` from it. `decoy.cli` is not a library surface (`docs/library.md` names only `decoy.cli.io.read_small_file`). Each such name keeps its own home module (`read_fit_csv` and `fit_exact_snapshot` in `decoy.cli.gen`). A re-export here would invite a patch on the package that `fit` no longer reads (see Module map). The owner can overrule this in Owner decisions.
 - No sentry count or ceiling goes up. Two go down: module-size loses its last entry (`fit.py`), and package-fanout for `src/decoy/cli` goes from 27 (after S2) to 26.
 
 Non-goals (recorded follow-ups, not blockers):
@@ -81,7 +82,7 @@ Re-home each entry to the new file at the same site. Every one-to-one re-key goe
 | `tests/sentry/baselines/csv-read-allow.json` | No edit. Its `moved_from` value `"cli/fit.py::fit"` is a leftover from an earlier move; `_ratchet.py` ignores leftovers. |
 | `tests/sentry/test_csv_read_choke_point.py:104` | `FIT_READER_CALLERS`: `("cli/fit.py", "fit")` to `("cli/fit/_command.py", "fit")`. If missed, the exact-set assert fails (loud). |
 | `tests/sentry/io_policy/test_private_files.py:139` | `"cli/fit.py::fit::write_local_target::1"` to `"cli/fit/_command.py::fit::write_local_target::1"`. If missed, the site table and the scan disagree (loud). |
-| `tests/sentry/io_policy/test_fit_value_redaction.py:24,59` | `FIT` points at one file. Scan every `*.py` under `src/decoy/cli/fit/` instead, and change the message to `cli/fit/`. The module docstring (L11) changes to match. If missed, `read_text` raises (loud). Mutation: put `pii_score` in `_args.py` on a scratch copy; the test must go red. |
+| `tests/sentry/io_policy/test_fit_value_redaction.py:24,59,63` | `FIT` points at one file and is read twice. The negative check (L58-59, no sensitivity name) scans every `*.py` under `src/decoy/cli/fit/`, with the message changed to `cli/fit/`. The positive check (L63, `fit` reads `redacted_columns` from the engine's document) points at `src/decoy/cli/fit/_command.py` only, the module that holds the executable read (`src/decoy/cli/fit.py:712` today). A package-wide search would also match the docstring at `fit.py:14`, which moves to `__init__.py`, and would pass with the read gone. The module docstring (L11) changes to match. If missed, `read_text` raises (loud). Mutations: put `pii_score` in `_args.py` on a scratch copy, the negative check must go red; on a scratch copy, rename the `redacted_columns` key at both of its uses in `_command.py` (L712 and L760 today), the positive check must go red. |
 
 `tests/sentry/layout/test_module_size.py` needs no edit: S2 makes its meta-tests synthetic. No `fit.py` entry exists in `.importlinter`, `one-error-emitter`, `gate-single-entry-allow`, `private-file-sinks`, `canonical-json-allow` or `ci/vendored.toml`.
 
@@ -154,14 +155,18 @@ N/A: no `--json` field is added, renamed or removed. The payload is built inside
 ## Acceptance tests
 
 1. Existing tests pass with no assertion edits. The only test edits are the import paths, patch targets and sentry tables listed above.
-2. Import-compat test: add a `fit` case to `tests/unit/test_cli_split_imports.py`. It asserts that `decoy.cli.fit.__all__` is exactly `["FIT_EPILOG", "fit"]`, that each resolves to the object `_command` defines, and that `decoy.__main__`'s `fit_command` is that same object. Mutation that must turn it red: re-export `_FitUsageError` from `__init__`.
+2. Import-compat test: add a `fit` case to `tests/unit/test_cli_split_imports.py`. It asserts that `decoy.cli.fit.__all__` is exactly `["FIT_EPILOG", "fit"]`, that each resolves to the object `_command` defines, and that `decoy.__main__`'s `fit_command` is that same object. It also asserts that no moved name is bound on the package: `not hasattr(decoy.cli.fit, name)` for `_FitUsageError`, `_build_typed_frame`, `_map_flag_token`, `read_fit_csv` and `fit_exact_snapshot`. Mutation that must turn it red: re-export `_FitUsageError` from `__init__`.
 3. Golden byte check. A throwaway harness (outside the tree; its script and per-case hash table go in the PR body) runs on the base commit and on the head and compares stdout, stderr, exit code and the snapshot file bytes for:
    - a clean exact fit, with no flag, `--json` and `--quiet`, and with `--rows`, `--joint` and `--parse-dates`;
-   - a DP fit (`--epsilon`, `--delta`, `--dp-number`, `--dp-flag`), a DP refusal, an undeclared DP column (with and without `--dp-allow-omit`) and a declared column missing from the CSV;
+   - a DP fit (`--epsilon`, `--delta`, `--dp-number`, `--dp-flag`) with the deterministic doubles from `tests/e2e/test_fit_command.py:822-830` (`_pass_gate` and a stub `decoy_engine.quality.dp.fit_dp_snapshot`), which must exit 0 and write a snapshot on both trees; the real certified-install refusal on this host as its own case; an undeclared DP column (with and without `--dp-allow-omit`) and a declared column missing from the CSV;
+   - a DP request error raised at `check_dp_fit_request` (`src/decoy/cli/fit.py:646`, before the full read) and a DP error raised at `fit_dp_snapshot` (`:702`, after it), each injected with a double on the engine name; each asserts its error code and that no snapshot file exists;
+   - the changed-header case (`tests/e2e/test_fit_command.py:1091`, the header changes between the check read and the full read);
    - a bad `--joint` spec, `--joint-max-cells` without `--joint`, and an out-of-range `--joint-max-cells`;
-   - each usage error the existing e2e tests raise: a bad `--rows`, a bad `--dp-number` spec, an empty column name, a bad setting, an unreadable CSV, an existing output without overwrite;
+   - each usage error the existing e2e tests raise: a bad `--rows`, a bad `--dp-number` spec, an empty column name, a bad setting, an unreadable CSV;
+   - an existing output: `fit` writes with `WriteMode.REPLACE` (`src/decoy/cli/fit.py:717`), so this is a success case. Seed the destination with known bytes and assert it is replaced, with exit 0, on both trees;
    - a failed snapshot write (read-only output directory);
    - `decoy fit --help` and `decoy --help`.
+   The harness runs in process through Typer's `CliRunner`, so it can apply the doubles. Every double targets an engine name (`decoy_engine.quality.*`) or the read spy from the e2e test, so the same patch applies on both trees. Before it compares bytes, each case asserts its expected exit code, error code and whether a snapshot exists. A case whose double did not take effect fails there, so two identical wrong outputs cannot pass.
    The harness first runs the base tree twice. Any field that differs between those two runs (timestamps, temp paths) is listed and masked. Everything else must match exactly.
 4. Ratchet equal, not raised: the ratchet check against the merge base reports no finding, and the total of the fit lint-debt counts is 8 before and after. These pass: `tests/sentry/layout/test_module_size.py`, `test_package_fanout.py`, `test_import_layers.py`, `test_codemap_paths.py`, `tests/sentry/test_lint_debt.py`, `test_baseline_registry.py`, `test_ratchet_check.py`, `test_sentry_manifest.py`, `test_csv_read_choke_point.py` and `tests/sentry/io_policy/`.
 5. `ruff check`, `ruff format --check` and `mypy` are clean on the head.
@@ -179,7 +184,7 @@ N/A: no `--json` field is added, renamed or removed. The payload is built inside
 | 6 | untrusted | N/A: no child process or extension | none | none |
 | 7 | toctou | N/A: the read, fit and write order inside `fit` is unchanged | the function moves as one block | acceptance test 3 |
 | 8 | weak | Yes: a byte check that masks too much passes anything | mask only fields that differ between two base runs, and list them | change one error message on a scratch copy of the head; the golden check must go red |
-| 9 | refactor drift | Yes: output, snapshot bytes, exit codes, help | golden byte check on base and head | acceptance test 3; swap two `except` clauses in `fit` on a scratch copy, a usage-error cell must go red |
+| 9 | refactor drift | Yes: output, snapshot bytes, exit codes, help | golden byte check on base and head | acceptance test 3; on a scratch copy, change `EXIT_USAGE` to `EXIT_RUNTIME` in the `_FitUsageError` handler (`src/decoy/cli/fit.py:535-537`, the only handler in that block); the bad-setting cell must go red |
 | 10 | frozen contract | Yes: the `decoy.cli.fit` import path and the sentry identities | `__all__`, import-compat test, `moved_from` and `split_from` | acceptance test 2; a lint-debt key re-keyed without `moved_from` must fail the ratchet check |
 
 ## Pre-mortem
@@ -214,7 +219,7 @@ S3 depends on both earlier slices:
 - `split_from` exists only after #411 merges (`tests/sentry/_ratchet.py`). Without it, the ANN401 split would need an `approved_growth` row.
 - S2 makes the module-size meta-tests synthetic. Without that, deleting the `fit.py` entry turns the meta-tests red.
 - S2 sets package-fanout to 27 and creates `tests/unit/test_cli_split_imports.py`, both of which S3 edits.
-- All three slices edit the same ledgers: `lint-debt.json`, `module-size.json`, `package-fanout.json`, `allowlist-before.json`, `engine-reason-code-copies.json`.
+- All three slices edit the same ledgers: `lint-debt.json`, `module-size.json`, `package-fanout.json`, `allowlist-before.json`. S2 and S3 also both edit `engine-reason-code-copies.json`; #411 does not touch it (its fit entries at L37 and L41 are unchanged there).
 
 Order: build S3 from `origin/main` after S2 merges. If the builder starts earlier, it branches from the S2 branch and opens its PR against `main` only after S2 has merged and the branch is rebased onto main (`git rebase --onto origin/main <S2 head> <S3 branch>`). A PR based on the S2 or #411 branch is not allowed: a PR merged into a non-main base never ships (#749 on 2026-11-22).
 
