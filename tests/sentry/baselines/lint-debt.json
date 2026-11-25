@@ -506,19 +506,31 @@
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 2
   },
-  "src/decoy/cli/preflight.py::ANN401": {
+  "src/decoy/cli/preflight/_capacity.py::C901": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 1
   },
-  "src/decoy/cli/preflight.py::C901": {
+  "src/decoy/cli/preflight/_capacity.py::PLR0912": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 3
+   "count": 1
   },
-  "src/decoy/cli/preflight.py::PLR0912": {
+  "src/decoy/cli/preflight/_command.py::C901": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
-   "count": 2
+   "count": 1
   },
-  "src/decoy/cli/preflight.py::PLR0915": {
+  "src/decoy/cli/preflight/_command.py::PLR0915": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/preflight/_render.py::ANN401": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/preflight/_render.py::C901": {
+   "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
+   "count": 1
+  },
+  "src/decoy/cli/preflight/_render.py::PLR0912": {
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 1
   },
@@ -1558,5 +1570,9 @@
    "reason": "hit present when the lint-debt ratchet was recorded (2026-11-22); may only shrink",
    "count": 1
   }
+ },
+ "moved_from": {
+  "src/decoy/cli/preflight/_render.py::ANN401": "src/decoy/cli/preflight.py::ANN401",
+  "src/decoy/cli/preflight/_command.py::PLR0915": "src/decoy/cli/preflight.py::PLR0915"
  }
 }

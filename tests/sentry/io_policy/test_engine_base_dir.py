@@ -108,7 +108,8 @@ def test_the_walk_sees_the_known_call_sites() -> None:
         "cli/tokenize.py",
         "cli/demo.py",
         "cli/compile_explain.py",
-        "cli/preflight.py",
+        "cli/preflight/_command.py",
+        "cli/preflight/_capacity.py",
         "cli/gate/_layers.py",
     } <= files
 

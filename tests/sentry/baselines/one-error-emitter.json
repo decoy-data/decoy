@@ -44,10 +44,10 @@
   "cli/io/_pipelines.py::resolve_pipeline::fded7ff3cc71": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/preflight.py::_emit_preflight_result::13b936a5128f": {
+  "cli/preflight/_render.py::_emit_preflight_result::13b936a5128f": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
-  "cli/preflight.py::_emit_preflight_result::48e0f1638b82": {
+  "cli/preflight/_render.py::_emit_preflight_result::48e0f1638b82": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   },
   "cli/project/_common.py::refuse::4e7f9cb4f1f8": {
@@ -149,5 +149,9 @@
   "ui/output.py::setup_output::7d55ca599eac": {
    "reason": "legacy error site recorded when the one error emitter landed; converts to emit_error and leaves this baseline, never joins it"
   }
+ },
+ "moved_from": {
+  "cli/preflight/_render.py::_emit_preflight_result::13b936a5128f": "cli/preflight.py::_emit_preflight_result::13b936a5128f",
+  "cli/preflight/_render.py::_emit_preflight_result::48e0f1638b82": "cli/preflight.py::_emit_preflight_result::48e0f1638b82"
  }
 }

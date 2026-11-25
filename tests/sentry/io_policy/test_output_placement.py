@@ -37,7 +37,7 @@ OUT_LITERAL = "out"
 BUILDERS = frozenset({"with_suffix", "with_name", "joinpath", "Path", "PurePath"})
 WRITERS = ("write_targets", "write_chunked_output")
 TARGETS = "cli/io/_targets.py"
-PREFLIGHT = "cli/preflight.py"
+PREFLIGHT = "cli/preflight/_checks.py"
 TARGET_CHECK = "_check_target_overwrite"
 
 

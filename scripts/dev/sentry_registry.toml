@@ -197,5 +197,12 @@ consumer = "tests/sentry/release/test_old_org_refs.py"
 [[sentry]]
 id = "lint-debt"
 baseline = "tests/sentry/baselines/lint-debt.json"
+approved_growth = [
+  { key = "src/decoy/cli/preflight/_capacity.py::C901", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
+  { key = "src/decoy/cli/preflight/_command.py::C901", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
+  { key = "src/decoy/cli/preflight/_render.py::C901", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
+  { key = "src/decoy/cli/preflight/_capacity.py::PLR0912", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
+  { key = "src/decoy/cli/preflight/_render.py::PLR0912", decision = "owner 2026-11-25 CLI-SPLIT S2 splits preflight.py; the hit count is unchanged" },
+]
 kind = "json"
 consumer = "tests/sentry/test_lint_debt.py"
