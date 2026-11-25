@@ -477,6 +477,49 @@ def test_a_key_both_moved_and_split_fails(repo: Path) -> None:
     _assert_red(repo, "o::f is named by both moved_from and split_from")
 
 
+def test_one_old_key_both_moved_and_split_fails(repo: Path) -> None:
+    """Double-spend: ``m::f`` feeds a move and a split, so its count would be admitted twice."""
+    _split_repo(repo)
+    entries = {
+        "n::f": _entry(count=2),
+        "o::f": _entry(count=3),
+        "p::f": _entry(count=5),
+        "m::g": _entry(),
+    }
+    doc = json.loads(_split(entries, _SPLIT))
+    doc["moved_from"] = {"p::f": "m::f"}
+    _write(repo, A, json.dumps(doc))
+    _assert_red(repo, "old key m::f is consumed more than once")
+
+
+def test_one_old_key_in_two_split_groups_fails(repo: Path) -> None:
+    """Double-spend: a repeated JSON key names ``m::f`` in two split groups."""
+    _split_repo(repo)
+    entries = {
+        "n::f": _entry(count=2),
+        "o::f": _entry(count=3),
+        "p::f": _entry(count=1),
+        "q::f": _entry(count=4),
+        "m::g": _entry(),
+    }
+    text = _split(entries, {"m::f": ["n::f", "o::f"]})
+    text = text.replace('"split_from": {', '"split_from": {"m::f": ["p::f", "q::f"], ', 1)
+    _write(repo, A, text)
+    _assert_red(repo, "old key m::f is consumed more than once")
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [pytest.param((-5, 10), id="negative"), pytest.param((7, -2), id="over-old")],
+)
+def test_a_split_ceiling_outside_zero_to_old_fails(repo: Path, counts: tuple[int, int]) -> None:
+    """Each part must lie in [0, old]; a negative part would hide a raised sibling."""
+    _split_repo(repo)
+    entries = {"n::f": _entry(count=counts[0]), "o::f": _entry(count=counts[1]), "m::g": _entry()}
+    _write(repo, A, _split(entries, _SPLIT))
+    _assert_red(repo, "is outside 0..")
+
+
 def test_a_merged_split_left_in_the_map_is_ignored(repo: Path) -> None:
     _split_repo(repo)
     entries = {"n::f": _entry(count=2), "o::f": _entry(count=3), "m::g": _entry()}

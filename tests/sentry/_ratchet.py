@@ -29,8 +29,10 @@ A code split moves one counted key's hits into several files. A baseline may car
 ``"split_from": {old_key: [new_key, ...]}`` map (CLI-SPLIT). The new keys are admitted only when
 the old key was in the merge base and is gone from the head, every listed new key is a head entry,
 each new entry equals the old one apart from its ceilings, and each ceiling the old entry held
-sums across the new entries to exactly the old value. A key named by both maps is a finding. A
-split whose new keys are all already in the base is a leftover of a merged split and is ignored.
+sums across the new entries to exactly the old value, with each part in ``0..old``. A new key
+named by both maps is a finding, and so is an old key consumed more than once (by a move and a
+split, or by a split group repeated in the JSON). A split whose new keys are all already in the
+base is a leftover of a merged split and is ignored.
 """
 
 from __future__ import annotations
@@ -135,8 +137,21 @@ def parse_approvals(text: str) -> tuple[dict[str, dict[str, str]], list[str]]:
     return out, findings
 
 
+class _Pairs(dict):  # type: ignore[type-arg]
+    """A JSON object that remembers the keys the text repeated (``json`` keeps only the last)."""
+
+    dupes: tuple[str, ...] = ()
+
+
+def _pairs(items: list[tuple[str, object]]) -> _Pairs:
+    out = _Pairs(items)
+    names = [k for k, _ in items]
+    out.dupes = tuple(sorted({k for k in names if names.count(k) > 1}))
+    return out
+
+
 def parse_baseline(text: str) -> Baseline:
-    data = json.loads(text)
+    data = json.loads(text, object_pairs_hook=_pairs)
     entries = data.get("entries", {})
     created_in = data.get("created_in")
     return Baseline(
@@ -272,6 +287,11 @@ def _split_entry_finding(
         ):
             return f"{path}: split entry {new} differs from {old} in the merge base"
     for field in held:
+        cap = old_entry[field]
+        for new in news:
+            part = _int_field(head.reasons[new], field)
+            if part is None or not 0 <= part <= cap:
+                return f"{path}: split entry {new}: {field} {part} is outside 0..{cap}"
         total = sum(_int_field(head.reasons[new], field) or 0 for new in news)
         if total != old_entry[field]:
             return (
@@ -279,6 +299,24 @@ def _split_entry_finding(
                 f" the merge base holds {old_entry[field]}"
             )
     return None
+
+
+def double_spend_findings(path: str, head: Baseline) -> list[str]:
+    """An old key that ``moved_from`` and ``split_from`` consume more than once, in one pass."""
+    uses: dict[str, int] = {}
+    moved, split = head.moved_from, head.split_from
+    if isinstance(moved, dict):
+        for old in moved.values():
+            if isinstance(old, str):
+                uses[old] = uses.get(old, 0) + 1
+    if isinstance(split, dict):
+        for old in [*split, *getattr(split, "dupes", ())]:
+            if isinstance(old, str):
+                uses[old] = uses.get(old, 0) + 1
+    return [
+        f"{path}: old key {old} is consumed more than once by moved_from and split_from"
+        for old in sorted(k for k, n in uses.items() if n > 1)
+    ]
 
 
 def split_findings(
@@ -397,7 +435,7 @@ def check(root: Path, base_ref: str, slice_name: str | None = None) -> tuple[lis
             findings += moved_f
             grown -= admitted
             split_f, split_admitted = split_findings(path, base, base_doc, grown)
-            findings += split_f
+            findings += split_f + double_spend_findings(path, base)
             grown -= split_admitted
             approved = grown & frozenset(approvals.get(sid, {}))
             report += [
