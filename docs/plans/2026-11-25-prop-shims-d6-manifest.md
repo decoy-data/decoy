@@ -1,6 +1,6 @@
 # 24zk PROP-SHIMS D6 manifest half: `report diff` refuses an evidence manifest entry with no `format`
 
-Status: plan
+Status: plan (build-ready: Dennis R1 GO-WITH-FIXES folded, Codex R3 GO at 68b41cc6)
 Revision: 4
 Repo: decoy (CLI), branch `docs/plans-prop-shims-d6-manifest`, planned against CLI `origin/main`
 `fffca916`.
@@ -109,7 +109,7 @@ format recording); re-run the pipeline to write a new manifest")`. Delete
 - Two-sided table: after the path check (`_compare.py:225-232`), both sides are checked. Any
   refusal records every refusal and both raw paths, then `continue`; only when both pass are the
   two `read_file` calls made with the kept tuples, under the existing `except (OSError, ValueError, DecoyError)` arm.
-- One block records a skipped side: a local `_skip(raws, refusals=())` appends the raw paths to
+- One block records a skipped side: a local `_skip(raws, errors=())` appends the raw paths to
   `missing_files` (deduplicated, as today at `_compare.py:242-244`) and adds each
   `(err.code, str(err))` pair to a `refusals` set. The missing-file branch
   (`_compare.py:228-230`), the refusal path and the generic read arm all call it.
