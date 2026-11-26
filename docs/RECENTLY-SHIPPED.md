@@ -11,6 +11,19 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-25: CLI-SPLIT report and fit splits, FPE-CHECKSUM-NATIVE S2a
+
+No row closed. Rows moved:
+
+- CLI-SPLIT: CLI #411 (2026-11-25, `d0826aa9`) splits `cli/report.py` into a package. CLI #413 (2026-11-25, `cbee83af`) does the same for `cli/fit.py`. Left: `cli/preflight.py`.
+- FPE-CHECKSUM-NATIVE: S2a is engine #815 (2026-11-25, `393f0d47c`): shared check-digit arithmetic in the native crate with known-answer tests.
+- PROP-SURFACE (row 24zj): engine #821 (2026-11-25, `0952fbae2`) widens the plan to every name on the engine root. No code change.
+
+Other merges:
+
+- **Engine #814 (2026-11-24, `2b8a47fbe`):** a test fix tied to no row. It counts only the results a b6b run creates.
+- **CLI #414 (2026-11-25, `3df9c13a`):** roadmap docs only.
+
 ## 2026-11-24: row 24zf DUP-FREEZE closed
 
 - Row 24zf (DUP-FREEZE): CL4 is CLI #406 (2026-11-24): one owner each for the duplicate exit codes and error emitters. With E1, E2, E3, E4 and CL0 to CL5 merged, every surface that freezes at REL-GATE has one owner.
