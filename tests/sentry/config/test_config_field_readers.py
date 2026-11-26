@@ -24,21 +24,20 @@ configuration warning, applied at build time.
 from __future__ import annotations
 
 import copy
+import importlib
+import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 from decoy_engine.config import PipelineConfig
-from pydantic import BaseModel
+from pydantic import BaseModel, create_model
 from tests.sentry._ratchet import load_allowlist
 from tests.sentry.config import _readers as r
 
 ROOT = Path(__file__).resolve().parents[3]
-# The unread rows at the C0 merge. C1 (PRE-SCAN-RUN) removes `pre_scan`. A shrink-only pin: the
-# registered baseline ratchet blocks growth on main, this blocks it inside the slice.
-UNREAD_AT_C0 = frozenset(
-    {"pre_scan", "scan_baseline.on_drift", "delivery", "protected_quarantine.access_policy"}
-)
 
 
 UNREAD: dict[str, Any] = load_allowlist("config-field-readers")
@@ -127,8 +126,42 @@ def test_t3_a_missing_file_or_function_fails(tmp_path: Path) -> None:
     assert r.cli_findings("pre_scan", entry, root)
 
 
-def test_t4_the_unread_rows_never_grow() -> None:
-    assert set(_real()["unread"]) <= UNREAD_AT_C0
+def test_t4_a_removed_unread_row_cannot_come_back(tmp_path: Path) -> None:
+    """The registered baseline is the one list of unread rows: the shrink-only ratchet refuses a
+    row the merge base no longer holds, with no second copy of the list in this file."""
+    from tests.sentry import _ratchet
+
+    reg = "scripts/dev/sentry_registry.toml"
+    path = "tests/sentry/baselines/config-field-readers.json"
+    rows = {"pre_scan": {"reason": "accepted and read by no run"}, "delivery": {"reason": "x" * 20}}
+
+    def write(entries: dict[str, Any]) -> None:
+        doc = {"sentry_id": "config-field-readers", "created_in": "S0", "entries": entries}
+        (tmp_path / path).write_text(json.dumps(doc), encoding="utf-8")
+
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            check=True,
+            capture_output=True,
+        )
+
+    (tmp_path / path).parent.mkdir(parents=True)
+    (tmp_path / reg).parent.mkdir(parents=True)
+    (tmp_path / reg).write_text(
+        f'[[sentry]]\nid = "config-field-readers"\nbaseline = "{path}"\n', encoding="utf-8"
+    )
+    git("init", "-q", "-b", "main")
+    write(rows)
+    git("add", "-A")
+    git("commit", "-q", "-m", "base")
+    write({"delivery": rows["delivery"]})
+    found, _ = _ratchet.check(tmp_path, "HEAD")
+    assert found == []  # shrinking is allowed
+    git("commit", "-qam", "shrink")
+    write(rows)  # the removed row returns
+    found, _ = _ratchet.check(tmp_path, "HEAD")
+    assert any("gained key(s) not in the merge base: pre_scan" in f for f in found)
 
 
 def test_t4_each_unread_row_names_a_roadmap_row() -> None:
@@ -148,6 +181,39 @@ def test_t5_a_new_nested_block_the_walker_was_never_told_about_fails() -> None:
     assert "extra_block.thing" in r.walk(_Extended)
     text = _text(r.findings(_Extended, _real(), ROOT))
     assert "extra_block.thing" in text and "extra_block:" in text
+
+
+def _grown(block: str) -> type[BaseModel]:
+    """PipelineConfig where the nested model of ``block`` gains one new child field."""
+    (nested,) = r._models_of(PipelineConfig.model_fields[block].annotation)
+    child = create_model("Grown", __base__=nested, brand_new_child=(int, 0))
+    return create_model("GrownPipeline", __base__=PipelineConfig, **{block: (child, child())})
+
+
+@pytest.mark.parametrize("block", ["pre_scan", "delivery"])
+def test_t5_a_new_child_of_an_unread_block_needs_classification(block: str) -> None:
+    model = _grown(block)
+    assert f"{block}.brand_new_child" in r.walk(model)
+    text = _text(r.findings(model, _real(), ROOT))
+    assert f"{block}.brand_new_child" in text and "classify" in text
+
+
+def test_t5_a_known_child_of_an_unread_block_is_not_a_finding() -> None:
+    assert r.findings(PipelineConfig, _real(), ROOT) == []
+    assert "detectors" in _real()["unread"]["pre_scan"]["children"]
+
+
+def test_t5_a_listed_child_the_block_no_longer_has_is_a_finding() -> None:
+    manifest = copy.deepcopy(_real())
+    manifest["unread"]["pre_scan"]["children"].append("gone_child")
+    text = _text(r.findings(PipelineConfig, manifest, ROOT))
+    assert "pre_scan.gone_child" in text
+
+
+def test_t5_an_unread_block_with_children_lists_them() -> None:
+    manifest = copy.deepcopy(_real())
+    del manifest["unread"]["delivery"]["children"]
+    assert "delivery." in _text(r.findings(PipelineConfig, manifest, ROOT))
 
 
 def test_t5_the_walk_does_not_enter_list_or_dict_items() -> None:
@@ -218,3 +284,71 @@ def _chain_tree(base: Path) -> Path:
         (base / rel).parent.mkdir(parents=True, exist_ok=True)
         (base / rel).write_text(text, encoding="utf-8")
     return base
+
+
+def _pkg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]) -> None:
+    """A throwaway public package ``rdrpkg`` with an ``__all__`` and private helper modules."""
+    root = tmp_path / "rdrpkg"
+    root.mkdir()
+    (root / "__init__.py").write_text(files.pop("__init__"), encoding="utf-8")
+    for name, text in files.items():
+        (root / name).write_text(text, encoding="utf-8")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    r._package_trees.cache_clear()
+    r._defs_by_name.cache_clear()
+    for mod in [m for m in sys.modules if m.split(".")[0] == "rdrpkg"]:
+        del sys.modules[mod]
+    importlib.invalidate_caches()
+
+
+_PKG_OK = {
+    "__init__": (
+        "from ._helper import reads_things, other\n"
+        "def real_reader(cfg):\n    return reads_things(cfg)\n"
+        "def wrong_reader(cfg):\n    return other(cfg)\n"
+        "def dropped_reader(cfg):\n    return cfg\n"
+        '__all__ = ["real_reader", "wrong_reader", "dropped_reader", "reads_things", "other"]\n'
+    ),
+    "_helper.py": (
+        'def reads_things(cfg):\n    return cfg["gadget_widths"]\ndef other(cfg):\n    return cfg\n'
+    ),
+}
+_VIA = "rdrpkg:reads_things"
+
+
+def _entry(symbol: str) -> dict[str, Any]:
+    return {"engine": f"rdrpkg:{symbol}", "scope": "package", "via": _VIA}
+
+
+def test_t8_a_package_reader_that_calls_its_helper_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _pkg(tmp_path, monkeypatch, dict(_PKG_OK))
+    assert r.engine_findings("block.gadget_widths", _entry("real_reader")) == []
+
+
+def test_t8_a_wrong_reader_in_the_same_package_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The key is named in the package, but not by the symbol the entry points at."""
+    _pkg(tmp_path, monkeypatch, dict(_PKG_OK))
+    assert r.engine_findings("block.gadget_widths", _entry("wrong_reader"))
+    bare = {"engine": "rdrpkg:wrong_reader", "scope": "package"}
+    assert r.engine_findings("block.gadget_widths", bare)
+
+
+def test_t8_a_reader_that_stops_calling_its_helper_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Another function in the package still calls the helper; this reader no longer does."""
+    _pkg(tmp_path, monkeypatch, dict(_PKG_OK))
+    found = r.engine_findings("block.gadget_widths", _entry("dropped_reader"))
+    assert found and "call" in found[0]
+
+
+def test_t8_a_helper_whose_package_never_names_the_key_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _pkg(tmp_path, monkeypatch, dict(_PKG_OK))
+    found = r.engine_findings("block.unrelated_setting", _entry("real_reader"))
+    assert found and "does not name" in found[0]

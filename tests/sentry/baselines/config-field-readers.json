@@ -4,7 +4,12 @@
  "entries": {
   "pre_scan": {
    "reason": "Accepted by the config and run by no `decoy run`; PRE-SCAN-RUN (C1) gives it a reader and removes this row.",
-   "row": "PRE-SCAN-RUN"
+   "row": "PRE-SCAN-RUN",
+   "children": [
+    "detectors",
+    "ner_model",
+    "on_findings"
+   ]
   },
   "scan_baseline.on_drift": {
    "reason": "The engine hashes it and nothing on the run path calls evaluate_drift; row 32 DRIFT adds the run-start check.",
@@ -12,10 +17,21 @@
   },
   "delivery": {
    "reason": "The run result hardcodes in_place and nothing on the run path calls plan_delivery, so delivery.mode is not read; found by the C0 walk.",
-   "row": "DELIV"
+   "row": "DELIV",
+   "children": [
+    "mode"
+   ]
   },
   "protected_quarantine.access_policy": {
    "reason": "No engine source outside the contract model names access_policy; found by the C0 walk, owner to confirm before it is relied on.",
+   "row": "DECLARED-CASTING"
+  },
+  "global_settings.categorical_retention_warn_threshold": {
+   "reason": "The only function that reads it is never called anywhere in the engine; compile_plan only hashes the name. Found by the package-scope tightening; owner to confirm.",
+   "row": "HC-5"
+  },
+  "protected_quarantine.schema_version": {
+   "reason": "No engine function that reads the protected_quarantine block names schema_version; the receipt schema_version is a different field. Found by the package-scope tightening; owner to confirm.",
    "row": "DECLARED-CASTING"
   }
  },
@@ -30,28 +46,24 @@
   "global_settings": {
    "engine": "decoy_engine.plan:compile_plan"
   },
-  "global_settings.categorical_retention_warn_threshold": {
-   "engine": "decoy_engine.plan:compile_plan",
-   "scope": "package"
-  },
   "global_settings.dp": {
    "engine": "decoy_engine.quality:compute_quality_report",
    "via": "decoy_engine.quality:compute_fidelity"
   },
   "global_settings.fidelity_warn_threshold": {
-   "engine": "decoy_engine.generation.window:generate_rows",
+   "engine": "decoy_engine.execution:run_pipeline",
    "scope": "package"
   },
   "global_settings.freetext_advisory_min_avg_length": {
-   "engine": "decoy_engine.plan:compile_plan",
+   "engine": "decoy_engine.execution:run_pipeline",
    "scope": "package"
   },
   "global_settings.freetext_advisory_min_distinctness": {
-   "engine": "decoy_engine.plan:compile_plan",
+   "engine": "decoy_engine.execution:run_pipeline",
    "scope": "package"
   },
   "global_settings.mask_secret_ref": {
-   "engine": "decoy_engine.execution:run_pipeline",
+   "engine": "decoy_engine.execution.physical:ShadowCoordinator",
    "scope": "package"
   },
   "global_settings.on_pool_exhaustion": {
@@ -101,7 +113,7 @@
    "via": "decoy_engine.config:post_scan_model_setting"
   },
   "post_scan.dismissed": {
-   "engine": "decoy_engine.verification.postmask:raise_if_ner_blocked",
+   "engine": "decoy_engine.verification:run_post_mask",
    "scope": "package"
   },
   "post_scan.distribution": {
@@ -114,7 +126,7 @@
    "engine": "decoy_engine.config:post_scan_ner_findings"
   },
   "post_scan.ner_model": {
-   "engine": "decoy_engine.verification.postmask:raise_if_ner_blocked",
+   "engine": "decoy_engine.plan:run_ner_models",
    "scope": "package"
   },
   "validators": {
@@ -126,8 +138,9 @@
    "scope": "package"
   },
   "quarantine.enabled": {
-   "engine": "decoy_engine.execution:select_execution_adapter",
-   "via": "decoy_engine.execution:PandasExecutionAdapter"
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package",
+   "via": "decoy_engine.execution:finalize_validators_and_quarantine"
   },
   "quarantine.output_path": {
    "engine": "decoy_engine.execution:run_pipeline",
@@ -156,10 +169,6 @@
   },
   "protected_quarantine": {
    "engine": "decoy_engine.plan:compile_plan",
-   "scope": "package"
-  },
-  "protected_quarantine.schema_version": {
-   "engine": "decoy_engine.declared_casting:preflight_declared_casting",
    "scope": "package"
   },
   "protected_quarantine.retention_seconds": {

@@ -19,6 +19,7 @@ import json
 import textwrap
 import types
 import typing
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,7 @@ CONFIG_PACKAGE = "config"
 # `label` is for a field the model validates and the run carries without branching on it. Only
 # these paths may use it, so it cannot hide an unread field.
 LABEL_PATHS = frozenset({"name"})
+MAX_SAME_NAME = 3
 
 
 def load_manifest(unread: dict[str, Any]) -> dict[str, Any]:
@@ -183,29 +185,100 @@ def engine_findings(path: str, entry: dict[str, Any]) -> list[str]:
             f"{path}: {entry['engine']} is a config model; a model defines a key, it reads none"
         ]
     scope = entry.get("scope", "symbol")
-    if scope == "package":
-        trees = list(_package_trees(module))
-    elif scope == "symbol":
-        tree = _symbol_tree(obj)
-        trees = [tree] if tree is not None else []
-    else:
+    if scope not in ("symbol", "package"):
         return [f"{path}: scope {scope!r} is not symbol or package"]
-    mentioned: set[str] = set().union(*(_mentions(t) for t in trees)) if trees else set()
-    called: set[str] = set().union(*(_calls(t) for t in trees)) if trees else set()
+    # The named symbol is always the reader: it names the key itself, or it calls (directly or
+    # through helpers of its own package) a function that does. Scope `package` follows those
+    # calls; scope `symbol` reads the symbol's own source only. A different function of the
+    # package never stands in for the symbol.
     via = entry.get("via")
     if _needs_via(path) and not via:
         return [f"{path}: key {_key(path)!r} is short or common; the entry needs a via helper"]
-    if via:
-        _, _, bad_via = _public_symbol(str(via), path)
-        if bad_via:
-            return [bad_via]
-        name = str(via).partition(":")[2]
-        if name not in called:
-            return [f"{path}: {entry['engine']} does not call the via helper {name}"]
+    reach = _reach if scope == "package" else _own
+    seen = reach(obj, module)
+    if not via:
+        if _key(path) not in seen.mentions:
+            return [f"{path}: {entry['engine']} does not name the key {_key(path)!r}"]
         return []
-    if _key(path) not in mentioned:
-        return [f"{path}: {entry['engine']} does not name the key {_key(path)!r}"]
+    name = str(via).partition(":")[2]
+    helper, helper_module, bad_via = _public_symbol(str(via), path)
+    if not bad_via:
+        assert helper_module is not None
+        helper_reach = (_reach if scope == "package" else _own)(helper, helper_module)
+    elif scope == "package" and name in _defs_by_name(module):
+        # Source is parsed, never imported, so a package-scope helper may be a private engine
+        # function; the index drops common names, so the name stands for one or few functions.
+        helper_reach = _reach_defs(name, module)
+    else:
+        return [bad_via]
+    if name not in seen.calls:
+        return [f"{path}: {entry['engine']} does not call the via helper {name}"]
+    if _key(path) not in helper_reach.mentions:
+        return [f"{path}: the via helper {name} does not name the key {_key(path)!r}"]
     return []
+
+
+@dataclass(frozen=True)
+class _Seen:
+    mentions: set[str]
+    calls: set[str]
+
+
+def _own(obj: object, module: str) -> _Seen:
+    tree = _symbol_tree(obj)
+    return _Seen(_mentions(tree), _calls(tree)) if tree is not None else _Seen(set(), set())
+
+
+@functools.lru_cache(maxsize=None)
+def _defs_by_name(module: str) -> dict[str, tuple[ast.AST, ...]]:
+    """Every function or method defined in the engine, by name, minus the config package.
+
+    The index is engine-wide because a public reader often calls a helper in a sibling package.
+    A name defined more than ``MAX_SAME_NAME`` times (``get``, ``run``) is left out: following it
+    would credit a symbol with half the engine.
+    """
+    out: dict[str, list[ast.AST]] = {}
+    for tree in _package_trees(module.partition(".")[0]):
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                out.setdefault(node.name, []).append(node)
+    return {k: tuple(v) for k, v in out.items() if len(v) <= MAX_SAME_NAME}
+
+
+def _reach_defs(name: str, module: str) -> _Seen:
+    """Like ``_reach`` for the functions of the engine that carry ``name``."""
+    mentions: set[str] = set()
+    calls: set[str] = set()
+    for node in _defs_by_name(module).get(name, ()):
+        mentions |= _mentions(node)
+        calls |= _calls(node)
+    return _closure(mentions, calls, module)
+
+
+def _reach(obj: object, module: str) -> _Seen:
+    """The symbol's own source plus every package function its calls reach, by call name.
+
+    A call resolves by name to each same-named function of the package, so a name shared by two
+    functions reaches both (a named limit: it can only widen what a symbol is credited with).
+    """
+    start = _own(obj, module)
+    return _closure(set(start.mentions), set(start.calls), module)
+
+
+def _closure(mentions: set[str], calls: set[str], module: str) -> _Seen:
+    defs = _defs_by_name(module)
+    queue, done = sorted(calls), set()
+    while queue:
+        name = queue.pop()
+        if name in done or (name.startswith("__") and name.endswith("__")):
+            continue  # a dunder name is shared by every class and would reach the whole package
+        done.add(name)
+        for node in defs.get(name, ()):
+            mentions |= _mentions(node)
+            fresh = _calls(node)
+            calls |= fresh
+            queue.extend(sorted(fresh - done))
+    return _Seen(mentions, calls)
 
 
 def _function(root: Path, spec: str, path: str) -> tuple[ast.FunctionDef | None, str | None]:
@@ -267,24 +340,48 @@ def _chain_findings(path: str, route: str, links: object, root: Path) -> list[st
     ]
 
 
+def _children_of(parent: str, unread: dict[str, Any]) -> set[str] | None:
+    """The recorded children of an unread block, or None when the entry is not a block."""
+    entry = unread.get(parent)
+    kids = entry.get("children") if isinstance(entry, dict) else None
+    return {str(k) for k in kids} if isinstance(kids, list) else None
+
+
 def _coverage_findings(
     walked: list[str], unread: dict[str, Any], readers: dict[str, Any]
 ) -> list[str]:
+    """A path needs exactly one entry. An unread block lists its known children, so a child the
+    block gains later is a finding like any other new field."""
     out: list[str] = []
     for path in walked:
-        parent = path.partition(".")[0]
-        covered_by_parent = "." in path and parent in unread
+        parent, _, child = path.partition(".")
+        under_unread = bool(child) and parent in unread
         kinds = [path in unread, path in readers]
-        if sum(kinds) == 0 and not covered_by_parent:
+        if under_unread:
+            kids = _children_of(parent, unread)
+            if kids is None or child not in kids:
+                out.append(
+                    f"{path}: new field under the unread block {parent}; classify it as engine,"
+                    f" cli or other_command, or add it to the block's children"
+                )
+            elif any(kinds):
+                out.append(f"{path}: its block {parent} is unread; list the block once")
+        elif sum(kinds) == 0:
             out.append(
                 f"{path}: no manifest entry; classify it as engine, cli, other_command or unread"
             )
         elif sum(kinds) == 2:
             out.append(f"{path}: listed as both unread and read")
-        elif covered_by_parent and any(kinds):
-            out.append(f"{path}: its block {parent} is unread; list the block once")
     for path in sorted((set(unread) | set(readers)) - set(walked)):
         out.append(f"{path}: manifest entry for a path the model does not have")
+    for parent in sorted(unread):
+        kids = _children_of(parent, unread)
+        if kids is None:
+            continue
+        for child in sorted(
+            kids - {w.partition(".")[2] for w in walked if w.startswith(parent + ".")}
+        ):
+            out.append(f"{parent}.{child}: listed as a child of an unread block that lacks it")
     return out
 
 
