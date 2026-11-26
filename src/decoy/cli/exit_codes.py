@@ -90,10 +90,14 @@ Which refusals count is the engine's call: `decoy_engine.errors.CAPACITY_REASON_
 (read through `decoy.cli.gate.capacity_codes()`), so the CLI keeps no list of its own.
 Today that set holds `out_of_core_fanin_exceeds_budget`, `out_of_core_insufficient_memory`,
 `out_of_core_faker_pool_budget_exceeded`, `out_of_core_reorder_budget_too_small`,
-`pool_exceeds_cache_budget`, `generation_budget_exceeded`, `process_out_of_memory` and
-`isolated_worker_out_of_memory`; a bare `MemoryError` also exits 5. The engine lists every
+`pool_exceeds_cache_budget`, `generation_budget_exceeded`, `nonfk_full_frame_capacity_exceeded`,
+`process_out_of_memory` and `isolated_worker_out_of_memory`; a bare `MemoryError` also exits 5. The engine lists every
 other budget or capacity code with the reason it is not capacity (a rejected setting, disk or
 quota, a routing refusal, a different limit) and those keep their usual exit.
+
+`nonfk_full_frame_capacity_exceeded` is the engine's refusal, before the read, of a large job with
+no foreign keys whose resident fit is over the memory ceiling. Give the job more memory or a
+smaller scope; `--max-memory` does not move that ceiling, so lowering or raising it does not help.
 
 The build-floor estimate of the out-of-core-FK gate is advisory: a job over it warns and
 does not exit 5. `out_of_core_insufficient_memory` stays in the set for engines that still
