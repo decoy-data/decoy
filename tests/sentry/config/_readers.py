@@ -209,21 +209,60 @@ def _via_findings(
     """Why the ``via`` helper of an ``engine`` entry fails: unresolvable, never called, or it
     does not name the key."""
     name = via.partition(":")[2]
-    helper, helper_module, bad_via = _public_symbol(via, path)
-    if not bad_via:
-        assert helper_module is not None
-        helper_reach = (_reach if scope == "package" else _own)(helper, helper_module)
-    elif scope == "package" and name in _defs_by_name(module):
-        # Source is parsed, never imported, so a package-scope helper may be a private engine
-        # function; the index drops common names, so the name stands for one or few functions.
-        helper_reach = _reach_defs(name, module)
-    else:
-        return [bad_via]
+    helper_reach, bad_via = _via_reach(path, via, scope, module)
+    if helper_reach is None:
+        return [bad_via] if bad_via else []
     if name not in seen.calls:
         return [f"{path}: {entry['engine']} does not call the via helper {name}"]
     if _key(path) not in helper_reach.mentions:
         return [f"{path}: the via helper {name} does not name the key {_key(path)!r}"]
     return []
+
+
+def _via_reach(path: str, via: str, scope: str, module: str) -> tuple["_Seen | None", str | None]:
+    """What the ``via`` helper reaches, resolved by its exact module and symbol.
+
+    A public helper is imported. Under scope ``package`` a private one is read from the source
+    of the module the spec names, so a spec naming another module fails even when the bare
+    function name exists elsewhere in the engine.
+    """
+    helper, helper_module, bad_via = _public_symbol(via, path)
+    if not bad_via:
+        assert helper_module is not None
+        return (_reach if scope == "package" else _own)(helper, helper_module), None
+    helper_module, _, name = via.partition(":")
+    nodes = _module_defs(helper_module, name) if scope == "package" and name else ()
+    if not nodes:
+        return None, bad_via
+    return _closure(*_node_names(nodes), module), None
+
+
+def _module_defs(module: str, name: str) -> tuple[ast.AST, ...]:
+    """The functions named ``name`` in the one source file of ``module``; never imports it."""
+    try:
+        spec = importlib.util.find_spec(module)
+    except (ImportError, AttributeError, ValueError):  # a parent that is missing or not a package
+        return ()
+    if spec is None or spec.origin is None or not spec.origin.endswith(".py"):
+        return ()
+    try:
+        tree = ast.parse(Path(spec.origin).read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):
+        return ()
+    return tuple(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
+    )
+
+
+def _node_names(nodes: tuple[ast.AST, ...]) -> tuple[set[str], set[str]]:
+    mentions: set[str] = set()
+    calls: set[str] = set()
+    for node in nodes:
+        mentions |= _mentions(node)
+        calls |= _calls(node)
+    return mentions, calls
 
 
 @dataclass(frozen=True)
@@ -251,16 +290,6 @@ def _defs_by_name(module: str) -> dict[str, tuple[ast.AST, ...]]:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 out.setdefault(node.name, []).append(node)
     return {k: tuple(v) for k, v in out.items() if len(v) <= MAX_SAME_NAME}
-
-
-def _reach_defs(name: str, module: str) -> _Seen:
-    """Like ``_reach`` for the functions of the engine that carry ``name``."""
-    mentions: set[str] = set()
-    calls: set[str] = set()
-    for node in _defs_by_name(module).get(name, ()):
-        mentions |= _mentions(node)
-        calls |= _calls(node)
-    return _closure(mentions, calls, module)
 
 
 def _reach(obj: object, module: str) -> _Seen:

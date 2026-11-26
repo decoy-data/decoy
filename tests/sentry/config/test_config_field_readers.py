@@ -190,28 +190,45 @@ def _grown(block: str) -> type[BaseModel]:
     return create_model("GrownPipeline", __base__=PipelineConfig, **{block: (child, child())})
 
 
+def _block_manifest(block: str, children: list[str]) -> dict[str, Any]:
+    """The live manifest with ``block`` made an unread block of exactly ``children``, so the
+    child checks never depend on which rows the live registry holds today."""
+    manifest = copy.deepcopy(_real())
+    for path in [p for p in r.walk(PipelineConfig) if p.startswith(block + ".")]:
+        manifest["readers"].pop(path, None)
+        manifest["unread"].pop(path, None)
+    manifest["readers"].pop(block, None)
+    manifest["unread"][block] = {"reason": "fixture", "row": "X", "children": children}
+    return manifest
+
+
+def _children_of_block(block: str) -> list[str]:
+    return [p.partition(".")[2] for p in r.walk(PipelineConfig) if p.startswith(block + ".")]
+
+
 @pytest.mark.parametrize("block", ["pre_scan", "delivery"])
 def test_t5_a_new_child_of_an_unread_block_needs_classification(block: str) -> None:
     model = _grown(block)
+    manifest = _block_manifest(block, _children_of_block(block))
     assert f"{block}.brand_new_child" in r.walk(model)
-    text = _text(r.findings(model, _real(), ROOT))
+    text = _text(r.findings(model, manifest, ROOT))
     assert f"{block}.brand_new_child" in text and "classify" in text
 
 
 def test_t5_a_known_child_of_an_unread_block_is_not_a_finding() -> None:
-    assert r.findings(PipelineConfig, _real(), ROOT) == []
-    assert "detectors" in _real()["unread"]["pre_scan"]["children"]
+    kids = _children_of_block("pre_scan")
+    assert kids
+    assert r.findings(PipelineConfig, _block_manifest("pre_scan", kids), ROOT) == []
 
 
 def test_t5_a_listed_child_the_block_no_longer_has_is_a_finding() -> None:
-    manifest = copy.deepcopy(_real())
-    manifest["unread"]["pre_scan"]["children"].append("gone_child")
-    text = _text(r.findings(PipelineConfig, manifest, ROOT))
-    assert "pre_scan.gone_child" in text
+    kids = _children_of_block("pre_scan")
+    manifest = _block_manifest("pre_scan", [*kids, "gone_child"])
+    assert "pre_scan.gone_child" in _text(r.findings(PipelineConfig, manifest, ROOT))
 
 
 def test_t5_an_unread_block_with_children_lists_them() -> None:
-    manifest = copy.deepcopy(_real())
+    manifest = _block_manifest("delivery", _children_of_block("delivery"))
     del manifest["unread"]["delivery"]["children"]
     assert "delivery." in _text(r.findings(PipelineConfig, manifest, ROOT))
 
@@ -352,3 +369,30 @@ def test_t8_a_helper_whose_package_never_names_the_key_fails(
     _pkg(tmp_path, monkeypatch, dict(_PKG_OK))
     found = r.engine_findings("block.unrelated_setting", _entry("real_reader"))
     assert found and "does not name" in found[0]
+
+
+def _via_entry(via: str) -> dict[str, Any]:
+    return {"engine": "rdrpkg:real_reader", "scope": "package", "via": via}
+
+
+def test_t8_a_private_helper_resolves_by_its_exact_module_and_symbol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _pkg(tmp_path, monkeypatch, dict(_PKG_OK))
+    assert r.engine_findings("block.gadget_widths", _via_entry("rdrpkg._helper:reads_things")) == []
+
+
+@pytest.mark.parametrize(
+    "via",
+    [
+        "rdrpkg.typo:reads_things",  # module does not exist; the bare name does elsewhere
+        "rdrpkg._helper:no_such_helper",  # module exists; the symbol does not
+        "rdrpkg._other:reads_things",  # module exists; the name is defined in a different module
+    ],
+)
+def test_t8_a_via_in_the_wrong_module_or_symbol_fails_though_the_name_exists_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, via: str
+) -> None:
+    files = {**_PKG_OK, "_other.py": "def unrelated(cfg):\n    return cfg\n"}
+    _pkg(tmp_path, monkeypatch, files)
+    assert r.engine_findings("block.gadget_widths", _via_entry(via))

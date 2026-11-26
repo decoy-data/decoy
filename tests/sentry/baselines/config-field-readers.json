@@ -140,7 +140,7 @@
   "quarantine.enabled": {
    "engine": "decoy_engine.execution:run_pipeline",
    "scope": "package",
-   "via": "decoy_engine.execution:finalize_validators_and_quarantine"
+   "via": "decoy_engine.execution._pipeline_finalize:finalize_validators_and_quarantine"
   },
   "quarantine.output_path": {
    "engine": "decoy_engine.execution:run_pipeline",
