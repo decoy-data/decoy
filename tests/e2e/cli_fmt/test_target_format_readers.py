@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -422,7 +423,7 @@ def _flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def _old_pair(d: Path, name: str, kind: str, write: Any) -> list[Path]:
+def _old_pair(d: Path, name: str, kind: str, write: Callable[..., object]) -> list[Path]:
     sides = []
     for tag in ("a", "b"):
         out = d / f"{tag}_{name}"
@@ -441,7 +442,7 @@ def _old_pair(d: Path, name: str, kind: str, write: Any) -> list[Path]:
     ],
 )
 def test_report_diff_old_manifest_refused(
-    tmp_path: Path, name: str, kind: str, writer: Any
+    tmp_path: Path, name: str, kind: str, writer: Callable[..., object]
 ) -> None:
     from decoy.cli.report import compare_manifests
 
