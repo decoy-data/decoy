@@ -199,6 +199,26 @@ def test_an_empty_partition_is_not_a_failure_but_two_are(
     assert len(pytest_calls(log)) == 2, "both passes run whatever the first returned"
 
 
+@pytest.mark.parametrize(
+    "env",
+    [
+        {"FAKE_NO_PARALLEL": "1", "FAKE_INTERRUPT": "serial"},  # (5, 2)
+        {"FAKE_NO_SERIAL": "1", "FAKE_INTERRUPT": "parallel"},  # (2, 5)
+    ],
+)
+def test_an_interrupted_pass_beside_an_empty_one_keeps_its_crash_code(
+    tmp_path: Path, env: dict[str, str]
+) -> None:
+    # The empty pass (pytest 5) must not turn the other pass's 2 into a pass or a plain 1: the
+    # step reports rc=2 whichever order the two ran in; gates itself exits 1 for a failed step.
+    clone = parallel_clone(tmp_path)
+    venv, log = recording_venv(tmp_path)
+    got, out = run_gates(clone, venv, *TESTS_ONLY, GATES_WORKERS="2", FAKE_TOTAL="3", **env)
+    assert got == 1, out
+    assert "[tests] FAIL(rc=2)" in out, out
+    assert len(pytest_calls(log)) == 2, "both passes run whatever the first returned"
+
+
 def test_the_serial_pass_runs_and_counts_when_the_parallel_pass_fails(tmp_path: Path) -> None:
     clone = parallel_clone(tmp_path)
     venv, log = recording_venv(tmp_path)
@@ -444,19 +464,8 @@ def test_a_parallel_baseline_records_workers_and_dist(tmp_path: Path) -> None:
     assert rc == 0, out
 
 
-# --- AT-9: nested runs do not inherit the outer worker state -----------------------------
-
-
-def test_a_nested_child_env_drops_the_outer_xdist_state() -> None:
-    outer = {
-        "PYTEST_XDIST_WORKER": "gw3",
-        "PYTEST_XDIST_WORKER_COUNT": "4",
-        "PYTEST_XDIST_TESTRUNUID": "abc",
-        "PYTEST_CURRENT_TEST": "tests/x.py::t (call)",
-        "PYTEST_DEBUG_TEMPROOT": "/tmp/gt.keep",
-        "PATH": "/usr/bin",
-    }
-    assert child_env(outer) == {"PYTEST_DEBUG_TEMPROOT": "/tmp/gt.keep", "PATH": "/usr/bin"}
+# --- AT-9: nested runs do not inherit the outer worker state (the helper's test is in
+# tests/sentry/test_nested_env_single_copy.py) -----------------------------
 
 
 def test_the_gates_harness_pins_one_worker_whatever_the_outer_env(

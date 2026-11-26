@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 import re
 import shlex
 import subprocess
@@ -54,6 +53,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import yaml
+from tests.child_env import child_env
 from tests.sentry.ci_scan._shell_tokens import base, commands
 from tests.sentry.tooling import gate_args
 
@@ -151,11 +151,8 @@ def gates_argvs(root: Path) -> tuple[tuple[str, ...], ...]:
         python = venv / "bin" / "python"
         python.write_text(_STUB_PYTHON.format(real=sys.executable, log=log))
         python.chmod(0o755)
-        env = {
-            k: v
-            for k, v in os.environ.items()
-            if not k.startswith(("PYTEST_", "GATES_")) and k != "VIRTUAL_ENV"
-        }
+        env = child_env(drop_prefixes=("PYTEST_", "GATES_"))
+        env.pop("VIRTUAL_ENV", None)
         env |= {"DECOY_VENV": str(venv), "GATES_WORKERS": "4", "TMPDIR": tmp}
         subprocess.run(
             ["bash", str(script), "--steps", "tests", "--full"],

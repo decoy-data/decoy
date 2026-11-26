@@ -16,23 +16,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.child_env import child_env
+
 REPO = Path(__file__).resolve().parents[3]
 DEV = REPO / "scripts" / "dev"
 BASH = os.environ.get("GATES_TEST_BASH") or shutil.which("bash")
 GIT = shutil.which("git")
-
-
-def child_env(base: dict[str, str] | None = None) -> dict[str, str]:
-    """The environment of a nested pytest or gates run: no outer xdist or current-test state.
-
-    An outer `-n` worker sets PYTEST_XDIST_* and every running test sets PYTEST_CURRENT_TEST; a
-    child that inherited them would think it is a worker (the scrubber hook) or loop on the id."""
-    src = os.environ if base is None else base
-    return {
-        k: v
-        for k, v in src.items()
-        if not k.startswith("PYTEST_XDIST_") and k != "PYTEST_CURRENT_TEST"
-    }
 
 
 def run(
@@ -124,7 +113,12 @@ if os.environ.get("PYTEST_ADDOPTS") or os.environ.get("PYTEST_PLUGINS"):
     total = 1  # a selection from the environment (addopts or a plugin) shrinks the run
 mark = next((argv[i + 1] for i in reversed(range(len(argv) - 1)) if argv[i] == "-m"), "")
 _EMPTY = '<testsuites><testsuite name="pytest" tests="0" failures="0" errors="0" skipped="0"/></testsuites>'
-if mark == "serial" or mark.endswith(" and serial"):  # the serial pass of a parallel run
+is_serial = mark == "serial" or mark.endswith(" and serial")
+if os.environ.get("FAKE_INTERRUPT") == ("serial" if is_serial else "parallel"):  # pytest's exit 2
+    Path(xml).write_text(_EMPTY)
+    print("!!! KeyboardInterrupt !!!")
+    sys.exit(2)
+if is_serial:  # the serial pass of a parallel run
     if os.environ.get("FAKE_NO_SERIAL"):
         Path(xml).write_text(_EMPTY)
         print("no tests ran in 0.01s")

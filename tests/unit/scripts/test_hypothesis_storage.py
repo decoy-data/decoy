@@ -113,12 +113,19 @@ def test_each_process_gets_its_own_storage_root_outside_the_checkout(tmp_path: P
 
 @pytest.mark.skipif(GIT is None, reason="needs git")
 def test_the_checkout_ignores_the_hypothesis_folder() -> None:
+    # Ask git with the host's own ignore rules switched off: a global excludes file or
+    # .git/info/exclude that already ignores `.hypothesis/` would otherwise keep this green with
+    # the .gitignore line removed. `-v` names the file that matched, so only .gitignore counts.
+    env = child_env() | {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
     for path in (".hypothesis/examples/x", ".hypothesis/constants/y"):
         proc = subprocess.run(
-            [str(GIT), "check-ignore", "-q", path],
-            cwd=REPO, capture_output=True, text=True, check=False,
+            [str(GIT), "-c", f"core.excludesFile={os.devnull}", "check-ignore", "-v", "--no-index", path],
+            cwd=REPO, env=env, capture_output=True, text=True, check=False,
         )  # fmt: skip
-        assert proc.returncode == 0, f"`.hypothesis/` must be in .gitignore ({path})"
+        source = proc.stdout.split(":", 1)[0]
+        assert proc.returncode == 0 and source == ".gitignore", (
+            f"`.hypothesis/` must be in the checkout's .gitignore ({path}): {proc.stdout!r}"
+        )
 
 
 def test_a_test_level_database_still_wins_over_the_profile(tmp_path: Path) -> None:
@@ -127,8 +134,5 @@ def test_a_test_level_database_still_wins_over_the_profile(tmp_path: Path) -> No
 
     mine = DirectoryBasedExampleDatabase(tmp_path / "mine")
 
-    @settings(database=mine)
-    def probe() -> None: ...
-
-    assert probe._hypothesis_internal_use_settings.database is mine  # type: ignore[attr-defined]
-    assert settings.default.database is not mine
+    assert settings(database=mine).database is mine
+    assert settings().database is not mine

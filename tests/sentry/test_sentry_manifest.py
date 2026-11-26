@@ -12,13 +12,13 @@ Named limit: a module-level ``pytest.skip`` still collects, so a skipped sentry 
 
 from __future__ import annotations
 
-import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from tests.child_env import child_env
 from tests.sentry.tooling import gate_args
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -163,12 +163,7 @@ def collected() -> set[str]:
         *(("-m", marker) if marker is not None else ()), *ignores, *gates_sentry_paths(),
     ]  # fmt: skip
     # An outer xdist worker's PYTEST_XDIST_* would make this child believe it is a worker.
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if not k.startswith("PYTEST_XDIST_") and k != "PYTEST_CURRENT_TEST"
-    }
-    res = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
+    res = subprocess.run(cmd, cwd=ROOT, env=child_env(), capture_output=True, text=True)
     assert res.returncode == 0, res.stdout[-2000:] + res.stderr[-2000:]
     return {line.split("::")[0] for line in res.stdout.splitlines() if "::" in line}
 
