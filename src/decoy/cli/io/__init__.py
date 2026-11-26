@@ -134,6 +134,7 @@ from decoy.cli.io._placement import (
     report_dest,
     resolved_output_collisions,
 )
+from decoy.cli.io._pointer import read_latest as read_latest
 from decoy.cli.io._project import (
     DECOY_DIR,
     DECOY_DIR_GITIGNORE,

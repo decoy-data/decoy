@@ -204,6 +204,7 @@ WARNING_SNAPSHOT = frozenset(
         "layout.latest_invalid",
         "layout.latest_link_failed",
         "layout.latest_write_failed",
+        "layout.latest_commit_uncertain",
         "layout.gitignore_write_failed",
         "layout.report_not_written",
         "layout.project_nested",

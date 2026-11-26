@@ -39,7 +39,6 @@ from decoy.cli.io._layout import (
     pipeline_folder,
     project_out_folder,
     project_relative_posix,
-    read_latest,
     same_path,
 )
 from decoy.cli.io._layout_errors import (
@@ -51,6 +50,7 @@ from decoy.cli.io._layout_errors import (
     LayoutError,
     LayoutWarning,
 )
+from decoy.cli.io._pointer import read_latest
 from decoy.cli.io._project import Project, find_project
 from decoy.ui.output import OutputMode, OutputState, emit_json
 from decoy.ui.theme import error

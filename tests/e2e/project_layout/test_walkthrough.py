@@ -136,9 +136,15 @@ def _project_entries(name: str, pipelines: tuple[str, ...], records: int) -> lis
 def _pipeline_out(
     project: str, name: str, runs: dict[str, tuple[str, ...]], latest: str
 ) -> list[str]:
-    """`out/<name>/` with its run folders (each with its files), claim, pointer and link."""
+    """`out/<name>/` with its run folders (each with its files), claim, pointer, its lock and link."""
     base = f"work/{project}/out/{name}"
-    lines = [f"{base}/", f"{base}/LATEST", f"{base}/PIPELINE", f"{base}/current -> {latest}"]
+    lines = [
+        f"{base}/",
+        f"{base}/.LATEST.decoy-lock",
+        f"{base}/LATEST",
+        f"{base}/PIPELINE",
+        f"{base}/current -> {latest}",
+    ]
     for run_id, files in runs.items():
         lines.append(f"{base}/{run_id}/")
         lines += [f"{base}/{run_id}/{f}" for f in files]

@@ -21,16 +21,12 @@ from typing import TYPE_CHECKING, Literal, TypeGuard
 from decoy._atomic import (
     AtomicWriteError,
     WriteMode,
-    replace_symlink,
     write_atomic,
     write_local_target,
 )
 from decoy._private_file import PRIVATE_EXISTS, PrivateFileError, create_private_directory
 from decoy.cli.io._layout_errors import (
     GITIGNORE_WRITE_FAILED,
-    LATEST_INVALID,
-    LATEST_LINK_FAILED,
-    LATEST_WRITE_FAILED,
     OUTPUT_PATH_ESCAPES,
     PATH_TOO_LONG,
     PIPELINE_NAME_COLLISION,
@@ -38,6 +34,7 @@ from decoy.cli.io._layout_errors import (
     PIPELINE_NAME_MISMATCH,
     LayoutWarning,
 )
+from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK, swap_latest
 from decoy.cli.io._small_file import UnsafeFileError, read_small_file
 
 if TYPE_CHECKING:
@@ -439,10 +436,6 @@ def create_run_folder(folder: Path, started: datetime, invocation_id: str) -> Ru
 
 # --- the run layout ----------------------------------------------------------------------
 
-_LATEST_FILE = "LATEST"
-# Not `latest`: macOS and Windows fold case by default, so it would collide with `LATEST`.
-_LATEST_LINK = "current"
-
 
 def mint_invocation_id() -> str:
     """A new invocation id (UUID4 text). Called once per command, at its entry.
@@ -604,29 +597,12 @@ class RunLayout:
     def commit_latest(self) -> tuple[LayoutWarning, ...]:
         """Point `LATEST` and `current` at this run, after a clean (exit 0) run.
 
-        Moves nothing when `LATEST` already names a later run id. An invalid `LATEST` is
-        treated as absent and warned. A failure here never changes the run's outcome: it is
-        returned as a warning.
+        Moves nothing when `LATEST` already names a later run id. A failure here never changes
+        the run's outcome: it is returned as a warning (`io/_pointer.py` owns the rules).
         """
         if self._run is None or self._pipeline_dir is None:
             return ()
-        folder, run_id = self._pipeline_dir, self._run.run_id
-        warnings: list[LayoutWarning] = []
-        current = read_latest(folder)
-        if current is not None and not is_run_id(current):
-            warnings.append(LATEST_INVALID.warning(path=folder))
-        elif current is not None and current > run_id:
-            return ()
-        try:
-            write_atomic(folder, _LATEST_FILE, f"{run_id}\n".encode(), WriteMode.REPLACE)
-        except AtomicWriteError:
-            return (*warnings, LATEST_WRITE_FAILED.warning(path=folder))
-        if os.name == "posix":
-            try:
-                replace_symlink(folder / _LATEST_LINK, run_id)
-            except (AtomicWriteError, OSError):
-                warnings.append(LATEST_LINK_FAILED.warning(path=folder))
-        return tuple(warnings)
+        return swap_latest(self._pipeline_dir, self._run.run_id)
 
     def output_dir(self) -> Path | None:
         """The folder this run writes relative paths into: the run folder or `--out-dir`.
@@ -706,16 +682,6 @@ def shown_path(path: Path) -> str:
         return str(path.relative_to(here))
     except ValueError:
         return str(path)
-
-
-def read_latest(folder: Path) -> str | None:
-    """The run id `LATEST` names; None when absent, "" when something unreadable is there."""
-    path = folder / _LATEST_FILE
-    raw = _read_small(path)
-    if raw is None:
-        # A link, pipe or unreadable file is not absent: "" fails is_run_id, so it is warned.
-        return "" if os.path.lexists(path) else None
-    return raw.decode("utf-8", errors="replace").strip() or None
 
 
 def is_placed_relative(raw: object) -> bool:
