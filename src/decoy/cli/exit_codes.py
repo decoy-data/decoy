@@ -95,7 +95,7 @@ Today that set holds `out_of_core_fanin_exceeds_budget`, `out_of_core_insufficie
 other budget or capacity code with the reason it is not capacity (a rejected setting, disk or
 quota, a routing refusal, a different limit) and those keep their usual exit.
 
-`nonfk_full_frame_capacity_exceeded` is the engine's refusal, before the read, of a large job with
+`nonfk_full_frame_capacity_exceeded` is the engine's refusal of a large job with
 no foreign keys whose resident fit is over the memory ceiling. Give the job more memory or a
 smaller scope; `--max-memory` does not move that ceiling, so lowering or raising it does not help.
 
