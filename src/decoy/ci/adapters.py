@@ -11,8 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from decoy._config_file import ConfigFileError, read_config_text
-from decoy._source_positions import Position, YamlPositionIndex
+from decoy._source_positions import Position
 from decoy.ci.contracts import (
     CheckOutcome,
     DriftCheck,
@@ -96,27 +95,8 @@ def validation_outcome(
         rel = loaded.repo_relative(path)
         if rel is None or not path.is_file():
             return refused(check_id, "validation", "ci.input_missing")
-        try:
-            text = read_config_text(path)  # the one read; its text feeds the index and the gate
-        except ConfigFileError:
-            # Only the decode step can fail here: the loader's `yaml.not_utf8`, as `validate`.
-            finding = SafeFinding.create(
-                rule_id="validate.yaml.not_utf8",
-                level="error",
-                safe_message_id="ci.validation_failed",
-                check_id=check_id,
-                artifact_path=rel,
-            )
-            return CheckOutcome.create(
-                id=check_id,
-                kind="validation",
-                status="findings",
-                reason_code=None,
-                findings=[finding],
-                exit_code=EXIT_USAGE,
-            )
-        index = YamlPositionIndex.from_text(text)
-        result = run_config_gate(path, text) if mode == "config" else run_gate(path, text)
+        # The gate loads the file once and gives each finding its own position.
+        result = run_config_gate(path) if mode == "config" else run_gate(path)
         findings: list[SafeFinding] = []
         for item in result.findings:
             logical = item.logical_path or item.location
@@ -130,7 +110,7 @@ def validation_outcome(
                         else "ci.validation_warning"
                     ),
                     check_id=check_id,
-                    location=_source_location(rel, index.locate(logical)),
+                    location=_source_location(rel, item.position),
                     logical_path=logical,
                     artifact_path=rel,
                 )

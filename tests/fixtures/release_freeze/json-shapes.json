@@ -686,6 +686,16 @@
     }
   },
   "validate config": {
+    "error_entry": {
+      "/code": "string",
+      "/hint": "string",
+      "/message": "string",
+      "/position/column": "integer",
+      "/position/end_column": "integer",
+      "/position/end_line": "integer",
+      "/position/line": "integer",
+      "/severity": "string"
+    },
     "paths": {
       "/checks_run[]": "string",
       "/command": "string",

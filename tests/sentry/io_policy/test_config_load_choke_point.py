@@ -135,6 +135,53 @@ def test_reading_bytes_or_decoding_alone_is_not_a_bypass() -> None:
     assert sites.bypass_sites_in_source("def f(b):\n    return b.decode()\n", "x.py") == set()
 
 
+# --- the text of a pipeline file is read only by the loader (rule 1, test 1) --------------------
+
+# The CI manifest is a different kind of file from a pipeline, so it keeps its own read.
+_TEXT_READERS = {"ci/manifest.py::load_manifest"}
+
+
+def test_read_config_text_has_one_caller_and_it_is_not_a_pipeline_reader() -> None:
+    """A command that reads a pipeline file calls `load_pipeline`, so the text, the config and the
+    positions all come from one read. A caller that reads the text and hands it to the gate reads
+    the same path twice in all but name."""
+    assert sites.read_text_inventory() == _TEXT_READERS
+
+
+_TEXT_SEEDS = {
+    "from_import": "from decoy._config_file import read_config_text\ndef f(p):\n    return read_config_text(p)\n",
+    "alias": "from decoy._config_file import read_config_text as r\ndef f(p):\n    return r(p)\n",
+    "module": "from decoy import _config_file\ndef f(p):\n    return _config_file.read_config_text(p)\n",
+    "dotted": "import decoy._config_file\ndef f(p):\n    return decoy._config_file.read_config_text(p)\n",
+    "method": "from decoy._config_file import read_config_text\nclass C:\n    def m(self, p):\n        return read_config_text(p)\n",
+}
+
+
+def test_each_seeded_spelling_of_the_text_read_is_seen() -> None:
+    for name, source in _TEXT_SEEDS.items():
+        assert len(sites.read_text_calls_in_source(source, "x.py")) == 1, name
+    assert sites.read_text_calls_in_source(_TEXT_SEEDS["method"], "x.py") == {"x.py::C.m"}
+
+
+def test_the_seeded_adapter_read_is_the_bypass_the_guard_exists_for() -> None:
+    adapter = (
+        "from decoy._config_file import read_config_text\n"
+        "def validation_outcome(path):\n"
+        "    text = read_config_text(path)\n"
+        "    return text\n"
+    )
+    found = sites.read_text_calls_in_source(adapter, "ci/adapters.py")
+    assert found == {"ci/adapters.py::validation_outcome"}
+    assert found - _TEXT_READERS
+
+
+def test_loading_through_the_loader_is_not_a_text_read() -> None:
+    source = (
+        "from decoy._config_file import load_pipeline\ndef f(p):\n    return load_pipeline(p)\n"
+    )
+    assert sites.read_text_calls_in_source(source, "x.py") == set()
+
+
 # --- the language is reached only through the loader (rule 1, tests 2 and 3) --------------------
 
 

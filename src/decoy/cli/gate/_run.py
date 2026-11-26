@@ -16,6 +16,7 @@ from decoy.cli.gate._layers import (
     GateFinding,
     GateResult,
     GateRoute,
+    finding_message,
     gate_exit_code,
     run_gate_on_config,
     run_static_gate,
@@ -131,15 +132,8 @@ class PreRunCheckError(Exception):
 
 
 def _message(f: GateFinding) -> dict[str, Any]:
-    """One `messages[]` entry: the shape `decoy validate --json` emits, message capped."""
-    return {
-        "layer": f.layer,
-        "severity": f.severity,
-        "code": f.code,
-        "message": cap_error_text(f.message),
-        "location": f.location,
-        **({"hint": f.hint} if f.hint else {}),
-    }
+    """One `messages[]` entry: the shared `finding_message` shape, message capped."""
+    return {**finding_message(f), "message": cap_error_text(f.message)}
 
 
 def check_before_run(

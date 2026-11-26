@@ -49,7 +49,7 @@ import typer
 from decoy._config_file import config_refusal
 from decoy.cli._default_group import make_default_group
 from decoy.cli.exit_codes import EXIT_OK, exit_code_for
-from decoy.cli.gate import GateFinding, gate_exit_code, run_config_gate, run_gate
+from decoy.cli.gate import GateFinding, finding_message, gate_exit_code, run_config_gate, run_gate
 from decoy.cli.io import pipeline_argument, resolve_pipeline
 from decoy.ui.output import OutputMode, emit_error, emit_json, setup_output
 from decoy.ui.theme import accent, code, error, hint, success, warn
@@ -180,16 +180,7 @@ def _emit_result(
 ) -> None:
     """Render the config-layer result of `validate config` to the chosen output mode."""
     errors = [f for f in findings if f.severity == "error"]
-    messages = [
-        {
-            "severity": f.severity,
-            "code": f.code,
-            "message": f.message,
-            **({"location": f.location} if f.location is not None else {}),
-            **({"hint": f.hint} if f.hint else {}),
-        }
-        for f in findings
-    ]
+    messages = [finding_message(f, config_only=True) for f in findings]
     if state.mode is OutputMode.json:
         if errors:
             # Backward-compat: keep top-level "error" for the first error message.
@@ -355,17 +346,7 @@ def _emit_gate(
             "command": "validate",
             "status": status,
             "config": config_str,
-            "messages": [
-                {
-                    "layer": f.layer,
-                    "severity": f.severity,
-                    "code": f.code,
-                    "message": f.message,
-                    "location": f.location,
-                    **({"hint": f.hint} if f.hint else {}),
-                }
-                for f in findings
-            ],
+            "messages": [finding_message(f) for f in findings],
         }
         emit_json(state, envelope)
         return
