@@ -180,7 +180,7 @@ def _emit_result(
 ) -> None:
     """Render the config-layer result of `validate config` to the chosen output mode."""
     errors = [f for f in findings if f.severity == "error"]
-    messages = [finding_message(f) for f in findings]
+    messages = [finding_message(f, config_only=True) for f in findings]
     if state.mode is OutputMode.json:
         if errors:
             # Backward-compat: keep top-level "error" for the first error message.

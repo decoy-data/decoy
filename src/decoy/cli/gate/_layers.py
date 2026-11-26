@@ -85,18 +85,20 @@ class GateFinding:
         return {name: value for name, value in fields.items() if value is not None}
 
 
-def finding_message(f: GateFinding) -> dict[str, Any]:
+def finding_message(f: GateFinding, *, config_only: bool = False) -> dict[str, Any]:
     """One `messages[]` entry of a `--json` document, the one spelling `validate` and `run` share.
 
-    `hint` and `position` appear only when the finding has them. The message is not capped here;
-    `run` caps it because its refusal also goes to a one-line summary.
+    `hint` and `position` appear only when the finding has them. `config_only` is the envelope
+    of `validate config`, which has no layers: it leaves out `layer` and a null `location`
+    (a frozen contract). The message is not capped here; `run` caps it because its refusal
+    also goes to a one-line summary.
     """
     return {
-        "layer": f.layer,
+        **({} if config_only else {"layer": f.layer}),
         "severity": f.severity,
         "code": f.code,
         "message": f.message,
-        "location": f.location,
+        **({} if config_only and f.location is None else {"location": f.location}),
         **({"hint": f.hint} if f.hint else {}),
         **({"position": f.loader_position} if f.loader_position else {}),
     }
