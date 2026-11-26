@@ -1,0 +1,193 @@
+{
+ "sentry_id": "config-field-readers",
+ "created_in": "PRE-SCAN-RUN-C0",
+ "entries": {
+  "pre_scan": {
+   "reason": "Accepted by the config and run by no `decoy run`; PRE-SCAN-RUN (C1) gives it a reader and removes this row.",
+   "row": "PRE-SCAN-RUN"
+  },
+  "scan_baseline.on_drift": {
+   "reason": "The engine hashes it and nothing on the run path calls evaluate_drift; row 32 DRIFT adds the run-start check.",
+   "row": "DRIFT"
+  },
+  "delivery": {
+   "reason": "The run result hardcodes in_place and nothing on the run path calls plan_delivery, so delivery.mode is not read; found by the C0 walk.",
+   "row": "DELIV"
+  },
+  "protected_quarantine.access_policy": {
+   "reason": "No engine source outside the contract model names access_policy; found by the C0 walk, owner to confirm before it is relied on.",
+   "row": "DECLARED-CASTING"
+  }
+ },
+ "readers": {
+  "version": {
+   "engine": "decoy_engine.plan:compile_plan",
+   "scope": "package"
+  },
+  "name": {
+   "label": "pipeline label: the model validates the name and no run branches on it"
+  },
+  "global_settings": {
+   "engine": "decoy_engine.plan:compile_plan"
+  },
+  "global_settings.categorical_retention_warn_threshold": {
+   "engine": "decoy_engine.plan:compile_plan",
+   "scope": "package"
+  },
+  "global_settings.dp": {
+   "engine": "decoy_engine.quality:compute_quality_report",
+   "via": "decoy_engine.quality:compute_fidelity"
+  },
+  "global_settings.fidelity_warn_threshold": {
+   "engine": "decoy_engine.generation.window:generate_rows",
+   "scope": "package"
+  },
+  "global_settings.freetext_advisory_min_avg_length": {
+   "engine": "decoy_engine.plan:compile_plan",
+   "scope": "package"
+  },
+  "global_settings.freetext_advisory_min_distinctness": {
+   "engine": "decoy_engine.plan:compile_plan",
+   "scope": "package"
+  },
+  "global_settings.mask_secret_ref": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "global_settings.on_pool_exhaustion": {
+   "engine": "decoy_engine.plan:compile_plan"
+  },
+  "global_settings.post_validation": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "global_settings.reference_date": {
+   "engine": "decoy_engine.generation.pinned:compile_pinned_plan_with_generation"
+  },
+  "global_settings.seed": {
+   "engine": "decoy_engine.generation.window:generate_rows",
+   "scope": "package",
+   "via": "decoy_engine.generation.statistical:sample_column"
+  },
+  "global_settings.unconfigured_column_policy": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "sources": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "tables": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "relationships": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "targets": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "namespaces": {
+   "engine": "decoy_engine.relationships:build_namespace_registry"
+  },
+  "post_scan": {
+   "engine": "decoy_engine.plan:run_ner_models"
+  },
+  "post_scan.detectors": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package",
+   "via": "decoy_engine.config:post_scan_model_setting"
+  },
+  "post_scan.dismissed": {
+   "engine": "decoy_engine.verification.postmask:raise_if_ner_blocked",
+   "scope": "package"
+  },
+  "post_scan.distribution": {
+   "engine": "decoy_engine.generation.relational:check_reference_pool"
+  },
+  "post_scan.integrity": {
+   "engine": "decoy_engine.config:post_scan_integrity_requested"
+  },
+  "post_scan.ner_findings": {
+   "engine": "decoy_engine.config:post_scan_ner_findings"
+  },
+  "post_scan.ner_model": {
+   "engine": "decoy_engine.verification.postmask:raise_if_ner_blocked",
+   "scope": "package"
+  },
+  "validators": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "quarantine": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "quarantine.enabled": {
+   "engine": "decoy_engine.execution:select_execution_adapter",
+   "via": "decoy_engine.execution:PandasExecutionAdapter"
+  },
+  "quarantine.output_path": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "quarantine.triggers": {
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package"
+  },
+  "subset": {
+   "engine": "decoy_engine.subset:run_subset",
+   "scope": "package"
+  },
+  "subset.seeds": {
+   "engine": "decoy_engine.subset:sample_request",
+   "via": "decoy_engine.subset:subset_request_from_config"
+  },
+  "subset.budget": {
+   "engine": "decoy_engine.subset:sample_request"
+  },
+  "subset.edge_directions": {
+   "engine": "decoy_engine.subset:sample_request"
+  },
+  "subset.allow_dangling": {
+   "engine": "decoy_engine.subset:subset_request_from_config"
+  },
+  "protected_quarantine": {
+   "engine": "decoy_engine.plan:compile_plan",
+   "scope": "package"
+  },
+  "protected_quarantine.schema_version": {
+   "engine": "decoy_engine.declared_casting:preflight_declared_casting",
+   "scope": "package"
+  },
+  "protected_quarantine.retention_seconds": {
+   "engine": "decoy_engine.declared_casting:LocalProtectedQuarantineSink"
+  },
+  "protected_quarantine.max_rows": {
+   "engine": "decoy_engine.declared_casting:LocalProtectedQuarantineSink"
+  },
+  "protected_quarantine.max_bytes": {
+   "engine": "decoy_engine.declared_casting:LocalProtectedQuarantineSink"
+  },
+  "protected_quarantine.required_protection": {
+   "engine": "decoy_engine.declared_casting:preflight_declared_casting",
+   "scope": "package"
+  },
+  "scan_baseline": {
+   "engine": "decoy_engine.plan:pipeline_config_hash"
+  },
+  "scan_baseline.path": {
+   "other_command": "decoy scan --compare",
+   "row": "SCAN-MULTI S3-cli"
+  },
+  "scan_baseline.schema_tag": {
+   "other_command": "decoy scan --compare",
+   "row": "SCAN-MULTI S3-cli"
+  },
+  "scan_baseline.sha256": {
+   "engine": "decoy_engine.plan:pipeline_config_hash"
+  }
+ }
+}

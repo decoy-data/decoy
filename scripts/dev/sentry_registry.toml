@@ -199,6 +199,12 @@ kind = "json"
 consumer = "tests/sentry/release/test_old_org_refs.py"
 
 [[sentry]]
+id = "config-field-readers"
+baseline = "tests/sentry/baselines/config-field-readers.json"
+kind = "json"
+consumer = "tests/sentry/config/test_config_field_readers.py"
+
+[[sentry]]
 id = "lint-debt"
 baseline = "tests/sentry/baselines/lint-debt.json"
 kind = "json"
