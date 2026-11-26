@@ -238,7 +238,7 @@ def _via_reach(path: str, via: str, scope: str, module: str) -> tuple["_Seen | N
 
 
 def _module_defs(module: str, name: str) -> tuple[ast.AST, ...]:
-    """The functions named ``name`` in the one source file of ``module``; never imports it."""
+    """The module-level functions named ``name`` in the one source file of ``module``; never imports it."""
     try:
         spec = importlib.util.find_spec(module)
     except (ImportError, AttributeError, ValueError):  # a parent that is missing or not a package
@@ -251,7 +251,7 @@ def _module_defs(module: str, name: str) -> tuple[ast.AST, ...]:
         return ()
     return tuple(
         n
-        for n in ast.walk(tree)
+        for n in tree.body  # module level only: a method or nested function is not the symbol
         if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == name
     )
 

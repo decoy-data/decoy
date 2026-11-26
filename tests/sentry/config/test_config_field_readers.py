@@ -396,3 +396,24 @@ def test_t8_a_via_in_the_wrong_module_or_symbol_fails_though_the_name_exists_els
     files = {**_PKG_OK, "_other.py": "def unrelated(cfg):\n    return cfg\n"}
     _pkg(tmp_path, monkeypatch, files)
     assert r.engine_findings("block.gadget_widths", _via_entry(via))
+
+
+def test_t8_a_via_that_only_a_method_or_nested_function_defines_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """After a repin moves the helper onto a class, a module-level via entry is stale."""
+    moved = (
+        "class Gadget:\n"
+        "    def reads_things(self, cfg):\n        return cfg['gadget_widths']\n"
+        "def outer(cfg):\n"
+        "    def nested_reads(cfg):\n        return cfg['gadget_widths']\n"
+        "    return nested_reads(cfg)\n"
+    )
+    init = (
+        "from ._helper import Gadget, outer\n"
+        "def real_reader(cfg):\n    return Gadget().reads_things(cfg), outer(cfg)\n"
+        '__all__ = ["real_reader"]\n'
+    )
+    _pkg(tmp_path, monkeypatch, {"__init__": init, "_helper.py": moved})
+    assert r.engine_findings("block.gadget_widths", _via_entry("rdrpkg._helper:reads_things"))
+    assert r.engine_findings("block.gadget_widths", _via_entry("rdrpkg._helper:nested_reads"))
