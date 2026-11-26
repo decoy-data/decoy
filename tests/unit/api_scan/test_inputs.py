@@ -37,7 +37,8 @@ def test_at4_a_csv_without_has_header_is_refused_in_api_spelling(tmp_path: Path)
     path = write_csv(tmp_path / "x.csv")
     with pytest.raises(ValueError) as info:
         decoy.scan(path)
-    text = _text(info.value)
+    # The message names the file; a run label such as `PIN--0.28.4` in its temp path holds `--`.
+    text = _text(info.value).replace(str(path), "")
     assert "has_header=True" in text and "has_header=False" in text
     assert "--" not in text
 
