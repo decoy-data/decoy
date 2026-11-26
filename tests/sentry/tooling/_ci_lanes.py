@@ -616,24 +616,30 @@ class Pass(NamedTuple):
 def _scheduling(args: list[str]) -> tuple[str | None, str | None, list[str]]:
     """(workers, dist, other args): `-n 4`, `-n4`, `-n=4`, `--numprocesses 4` and `--numprocesses=4`
     are one fact, as are `--dist loadfile` and `--dist=loadfile`."""
-    workers = dist = None
+    found: dict[str, str] = {}
     rest: list[str] = []
     i = 0
     while i < len(args):
-        a = args[i]
-        if a in ("-n", "--numprocesses", "--dist") and i + 1 < len(args):
-            workers, dist = (args[i + 1], dist) if a != "--dist" else (workers, args[i + 1])
-            i += 2
-        elif a.startswith("--numprocesses="):
-            workers, i = a.split("=", 1)[1], i + 1
-        elif a.startswith("--dist="):
-            dist, i = a.split("=", 1)[1], i + 1
-        elif a.startswith("-n") and not a.startswith("--") and len(a) > 2:
-            workers, i = a[2:].lstrip("="), i + 1
+        key, value, used = _scheduling_option(args, i)
+        if key:
+            found[key] = value
         else:
-            rest.append(a)
-            i += 1
-    return workers, dist, rest
+            rest.append(args[i])
+        i += used
+    return found.get("workers"), found.get("dist"), rest
+
+
+def _scheduling_option(args: list[str], i: int) -> tuple[str, str, int]:
+    """(`workers` or `dist` or "", its value, args used) for the option at `args[i]`."""
+    a = args[i]
+    if a in ("-n", "--numprocesses", "--dist") and i + 1 < len(args):
+        return ("dist" if a == "--dist" else "workers"), args[i + 1], 2
+    for prefix, key in (("--numprocesses=", "workers"), ("--dist=", "dist")):
+        if a.startswith(prefix):
+            return key, a[len(prefix) :], 1
+    if a.startswith("-n") and not a.startswith("--") and len(a) > 2:
+        return "workers", a[2:].lstrip("="), 1
+    return "", "", 1
 
 
 def _rest(args: list[str]) -> tuple[str, ...]:
@@ -680,30 +686,9 @@ def _suite_passes(tree: Tree) -> list[tuple[dict[str, Any], Pass]]:
     return out
 
 
-def _agreement_findings(tree: Tree) -> list[str]:
-    """M5: the ci.yml `pytest` job runs the two-pass split scripts/dev/gates.sh builds.
-
-    A parallel pass (`not serial`, four workers, `--dist loadfile`) and a plain serial pass
-    (`serial`, no xdist, `if: !cancelled()`), both over the whole suite with the same ignore list
-    and options. gates.sh is read two ways: its marker expressions from the text (`gate_args`) and
-    the real argv of both passes (`Tree.gates_argvs`), so a drift in either copy of the split is
-    a finding. A tree without gates.sh or without the job has nothing to compare (the registry
-    rules report a missing job)."""
-    if not tree.gates or SUITE_JOB[1] not in tree.workflows.get(SUITE_JOB[0], {}).get("jobs", {}):
-        return []
-    try:
-        want_par, want_ser = gate_args.pass_expressions(tree.gates)
-    except ValueError as e:
-        return [f"M5 {e}"]
-    passes = _suite_passes(tree)
-    if len(passes) != 2:
-        return [
-            f"M5 {SUITE_JOB[0]}:{SUITE_JOB[1]} must run exactly two pytest passes, parallel and serial"
-        ]
-    by_expr = {_norm(p.expr): (step, p) for step, p in passes}
-    if set(by_expr) != {want_par, want_ser}:
-        return [f"M5 the two CI passes must select {want_par!r} and {want_ser!r}, as gates.sh does"]
-    (par_step, par), (ser_step, ser) = by_expr[want_par], by_expr[want_ser]
+def _ci_pass_findings(
+    par_step: dict[str, Any], par: Pass, ser_step: dict[str, Any], ser: Pass
+) -> list[str]:
     out = []
     if "if" in par_step or str(ser_step.get("if", "")).strip() != SERIAL_STEP_IF:
         out.append(f"M5 the serial pass needs `if: {SERIAL_STEP_IF}` and the parallel pass none")
@@ -716,26 +701,58 @@ def _agreement_findings(tree: Tree) -> list[str]:
     )
     if not ci_ok:
         out.append("M5 the two CI passes differ in paths, ignores or other options, or select more")
-    gate = {_norm(p.expr): p for p in map(_pass, map(list, tree.gates_argvs))}
-    if len(tree.gates_argvs) != 2 or set(gate) != {want_par, want_ser}:
-        return [*out, "M5 gates.sh did not build the two passes for a four-worker whole-suite run"]
-    for label, ci, gates_pass in (
-        ("parallel", par, gate[want_par]),
-        ("serial", ser, gate[want_ser]),
-    ):
-        same = (ci.paths, ci.ignores, ci.workers, ci.dist) == (
-            gates_pass.paths,
-            gates_pass.ignores,
-            gates_pass.workers,
-            gates_pass.dist,
-        )
-        if not same:
-            out.append(
-                f"M5 the CI {label} pass differs from gates.sh in paths, ignores or scheduling"
-            )
     if (par.workers, par.dist, ser.workers, ser.dist) != ("4", "loadfile", None, None):
         out.append("M5 the parallel pass needs four workers and `--dist loadfile`; the serial none")
     return out
+
+
+def _gates_pass_findings(tree: Tree, want: tuple[str, str], ci: tuple[Pass, Pass]) -> list[str]:
+    """Each CI pass against the argv gates.sh builds for the same expression."""
+    gate = {_norm(p.expr): p for p in map(_pass, map(list, tree.gates_argvs))}
+    if len(tree.gates_argvs) != 2 or set(gate) != set(want):
+        return ["M5 gates.sh did not build the two passes for a four-worker whole-suite run"]
+    out = []
+    for label, expr, mine in zip(("parallel", "serial"), want, ci, strict=True):
+        theirs = gate[expr]
+        if (mine.paths, mine.ignores, mine.workers, mine.dist) != (
+            theirs.paths,
+            theirs.ignores,
+            theirs.workers,
+            theirs.dist,
+        ):
+            out.append(
+                f"M5 the CI {label} pass differs from gates.sh in paths, ignores or scheduling"
+            )
+    return out
+
+
+def _agreement_findings(tree: Tree) -> list[str]:
+    """M5: the ci.yml `pytest` job runs the two-pass split scripts/dev/gates.sh builds.
+
+    A parallel pass (`not serial`, four workers, `--dist loadfile`) and a plain serial pass
+    (`serial`, no xdist, `if: !cancelled()`), both over the whole suite with the same ignore list
+    and options. gates.sh is read two ways: its marker expressions from the text (`gate_args`) and
+    the real argv of both passes (`Tree.gates_argvs`), so a drift in either copy of the split is
+    a finding. A tree without gates.sh or without the job has nothing to compare (the registry
+    rules report a missing job)."""
+    if not tree.gates or SUITE_JOB[1] not in tree.workflows.get(SUITE_JOB[0], {}).get("jobs", {}):
+        return []
+    try:
+        want = gate_args.pass_expressions(tree.gates)
+    except ValueError as e:
+        return [f"M5 {e}"]
+    passes = _suite_passes(tree)
+    if len(passes) != 2:
+        return [
+            f"M5 {SUITE_JOB[0]}:{SUITE_JOB[1]} must run exactly two pytest passes, parallel and serial"
+        ]
+    by_expr = {_norm(p.expr): (step, p) for step, p in passes}
+    if set(by_expr) != set(want):
+        return [f"M5 the two CI passes must select {want[0]!r} and {want[1]!r}, as gates.sh does"]
+    (par_step, par), (ser_step, ser) = by_expr[want[0]], by_expr[want[1]]
+    return _ci_pass_findings(par_step, par, ser_step, ser) + _gates_pass_findings(
+        tree, want, (par, ser)
+    )
 
 
 def findings(tree: Tree) -> list[str]:

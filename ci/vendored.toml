@@ -102,9 +102,9 @@ local_path = "tests/e2e/cli_fmt/_metadata_canary.py"
 blob_sha256 = "cd34d9732bb9b1470558a1007630aa8ef847b909cbee90442667b7d8be7fc826"
 commit = "54db2e5f273118ff74feca9f53512daba265192a"
 
-# CLI-PAR S1: the parallel-test mechanism, ported from engine ENGINE-PAR P2. The xdist report
-# scrubber is byte-identical; the worker rule and the serial-resource scan are adapted (headers).
-[[vendored]]
+# CLI-PAR S1: the parallel-test mechanism, ported from engine ENGINE-PAR P2. Each file is a
+# mirror: its header lists the differences. blob_sha256 is the engine blob it was adapted from.
+[[mirror]]
 engine_path = "tests/_xdist_safe_reports.py"
 local_path = "tests/_xdist_safe_reports.py"
 blob_sha256 = "5e718189c01b8477df36f5b9adcfcbc2f24bda44000d245a1b1335dd659fca30"
