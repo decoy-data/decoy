@@ -171,6 +171,32 @@ def test_a_stale_swap_is_a_write_failure_and_leaves_the_file(
     assert _latest(root).read_bytes() == b"INTERLOPER\n"
 
 
+class _Uncertain(LocalPointerStore):
+    """The replace lands, then the folder sync fails: the engine answers "uncertain"."""
+
+    def replace_if(self, expected: PointerState, new: bytes) -> PointerResult:
+        super().replace_if(expected, new)
+        return "uncertain"
+
+
+@posix_only
+def test_an_uncertain_swap_warns_and_still_points_current_at_the_new_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _project(tmp_path)
+    layout = _open(root)
+    assert layout.run is not None
+    _latest(root).write_text("20200101T000000000000Z-00000000\n", encoding="utf-8")
+    _use_store(monkeypatch, _Uncertain)
+
+    warnings = layout.commit_latest()
+
+    assert _codes(warnings) == ["layout.latest_commit_uncertain"]
+    assert _latest(root).read_text(encoding="utf-8") == f"{layout.run.run_id}\n"
+    link = root / "out" / "orders" / "current"
+    assert link.is_symlink() and link.readlink() == Path(layout.run.run_id)
+
+
 # --- AT-73 an unreadable LATEST is warned about and kept -----------------------------------
 
 
