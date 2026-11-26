@@ -42,7 +42,7 @@ from typing import Any
 
 import yaml
 
-from decoy._source_positions import Position, YamlPositionIndex
+from decoy._source_positions import DecoyPositionIndex, Position, YamlPositionIndex
 from decoy._yaml_errors import sanitize_yaml_error
 
 # The one table of pipeline file suffixes and the one kind check. Completion and the path test
@@ -238,10 +238,9 @@ def _load_decoy(text: str) -> PipelineFile:
     if problems is not None:
         raise ConfigFileError.from_problems(problems)
     assert lowered is not None
-    # No `.decoy` construct is located yet: the position index for it comes with the gate's
-    # positions, and a caller that gets `None` here reports the finding without a line.
+    index = DecoyPositionIndex(lowered.config, lowered.source_map)
     return PipelineFile(
-        lowered.config, lambda _path: None, tuple(_problem(d) for d in lowered.unreviewed)
+        lowered.config, index.locate, tuple(_problem(d) for d in lowered.unreviewed)
     )
 
 

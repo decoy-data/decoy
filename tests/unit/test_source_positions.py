@@ -9,7 +9,14 @@ from __future__ import annotations
 import pytest
 from tests.ci_support import CLEAN_PIPELINE
 
-from decoy._source_positions import Position, YamlPositionIndex, segments
+from decoy._source_positions import (
+    DecoyPositionIndex,
+    Position,
+    YamlPositionIndex,
+    nearest,
+    segments,
+    without_union_member,
+)
 
 
 def _pos(text: str, needle: str, occurrence: int = 1) -> tuple[int, int]:
@@ -203,3 +210,152 @@ def test_index_holds_marks_and_path_tokens_only() -> None:
     canary = "SCALAR_VALUE_CANARY_c19f02"
     idx = _index(f"a:\n  b: {canary}\n")
     assert canary not in repr(idx) and canary not in repr(vars(idx))
+
+
+# -- `.decoy` positions (DecoyPositionIndex) and the shared lookup rules ---------------------------
+
+
+class _Span:
+    """Stands in for `decoy.lang.Span`: `_source_positions` never imports the language."""
+
+    def __init__(self, line: int, column: int = 3) -> None:
+        self.line, self.column = line, column
+        self.end_line, self.end_column = line, column + 4
+
+
+_YAML = (
+    "name: demo\n"  # 1
+    "sources:\n"  # 2
+    "  - name: src\n"  # 3
+    "    csv:\n"  # 4
+    "      path: in.csv\n"  # 5
+    "tables:\n"  # 6
+    "  - name: customers\n"  # 7
+    "    columns:\n"  # 8
+    "      - name: email\n"  # 9
+    "        provider: faker\n"  # 10
+    "      - name: ssn\n"  # 11
+    "        provider: redact\n"  # 12
+    "  - name: orders\n"  # 13
+    "    columns:\n"  # 14
+    "      - name: total\n"  # 15
+)
+
+
+def _decoy_pair() -> tuple[dict, dict]:
+    """The config of `_YAML`, and a source map that gives each construct its own line."""
+    config = {
+        "name": "demo",
+        "sources": [{"name": "src", "csv": {"path": "in.csv"}}],
+        "tables": [
+            {
+                "name": "customers",
+                "columns": [
+                    {"name": "email", "provider": "faker"},
+                    {"name": "ssn", "provider": "redact"},
+                ],
+            },
+            {"name": "orders", "columns": [{"name": "total"}]},
+        ],
+    }
+    spans = {
+        ("name",): _Span(1),
+        ("sources", 0): _Span(3),
+        ("sources", 0, "path"): _Span(5),
+        ("tables", 0): _Span(7),
+        ("tables", 0, "columns", 0): _Span(9),
+        ("tables", 0, "columns", 0, "provider"): _Span(10),
+        ("tables", 0, "columns", 1): _Span(11),
+        ("tables", 0, "columns", 1, "provider"): _Span(12),
+        ("tables", 1): _Span(13),
+        ("tables", 1, "columns", 0): _Span(15),
+    }
+    return config, spans
+
+
+# Numeric, bracket and semantic spellings, a union member, and two leaves that are not there.
+_PATHS = [
+    "name",
+    "sources.0",
+    "sources[0].path",
+    "sources.src",
+    "tables.0",
+    "tables[0].columns[1].provider",
+    "tables.customers.columns.email",
+    "tables.customers.columns.email.provider",
+    "tables.customers.columns.ssn.provider",
+    "tables.orders.columns.total",
+    "tables.1.columns.0",
+    "tables.customers.columns.email.namespace",
+    "tables.orders.generate",
+]
+
+
+def test_every_exact_yaml_region_has_a_decoy_position_with_a_line() -> None:
+    config, spans = _decoy_pair()
+    yaml_index, decoy_index = _index(_YAML), DecoyPositionIndex(config, spans)
+    exact = [p for p in _PATHS if (hit := yaml_index.locate(p)) is not None and hit.line]
+    assert len(exact) >= 9  # the walk saw the paths it claims to compare
+    for path in exact:
+        found = decoy_index.locate(path)
+        assert found is not None and found.line is not None, path
+
+
+def test_decoy_lines_follow_the_construct_the_path_names() -> None:
+    config, spans = _decoy_pair()
+    index = DecoyPositionIndex(config, spans)
+    assert index.locate("tables[0].columns[1].provider").line == 12
+    assert index.locate("tables.customers.columns.email").line == 9
+    assert index.locate("tables.orders").line == 13
+    assert index.locate("sources[0].csv.path").line == 5  # the union member is not a segment
+
+
+def test_a_missing_leaf_takes_the_nearest_construct_where_yaml_stays_file_level() -> None:
+    config, spans = _decoy_pair()
+    assert _index(_YAML).locate("tables.customers.columns.email.namespace") == Position()
+    hit = DecoyPositionIndex(config, spans).locate("tables.customers.columns.email.namespace")
+    assert hit is not None and hit.line == 9
+
+
+def test_a_position_carries_the_whole_span() -> None:
+    config, spans = _decoy_pair()
+    assert DecoyPositionIndex(config, spans).locate("tables.customers") == Position(7, 3, 7, 7)
+
+
+def test_a_duplicate_table_name_never_picks_one_of_the_two() -> None:
+    config, spans = _decoy_pair()
+    config["tables"].append({"name": "customers", "columns": []})
+    spans[("tables", 2)] = _Span(40)
+    index = DecoyPositionIndex(config, spans)
+    hit = index.locate("tables.customers.columns.email")
+    assert hit is None or hit.line not in (9, 40)
+    assert index.locate("tables[2]").line == 40
+
+
+@pytest.mark.parametrize("path", [None, "", "tables.*.x", "tables.<unknown>.x", "a..b"])
+def test_decoy_paths_that_name_no_place_have_no_position(path) -> None:
+    config, spans = _decoy_pair()
+    assert DecoyPositionIndex(config, spans).locate(path) is None
+
+
+def test_a_path_outside_every_construct_is_never_guessed() -> None:
+    config, spans = _decoy_pair()
+    assert DecoyPositionIndex(config, spans).locate("nothing") is None
+
+
+def test_the_shared_rules_drop_the_union_member_and_walk_up() -> None:
+    spans = {("tables", 0): "t0", ("sources", 0, "path"): "p", ("sources", 0): "s0"}
+    assert without_union_member(("sources", 0, "csv", "path")) == ("sources", 0, "path")
+    assert without_union_member(("targets", 1, "parquet")) == ("targets", 1)
+    assert without_union_member(("tables", 0, "columns", 1)) == ("tables", 0, "columns", 1)
+    assert without_union_member(("sources", 0)) == ("sources", 0)
+    assert nearest(("tables", 0, "columns", 5, "x"), spans) == "t0"
+    assert nearest(("sources", 0, "csv", "path"), spans) == "p"
+    assert nearest(("nothing",), spans) is None
+
+
+def test_the_decoy_index_holds_no_value_from_the_config() -> None:
+    canary = "SCALAR_VALUE_CANARY_77aa"
+    config, spans = _decoy_pair()
+    config["name"] = canary
+    assert canary not in repr(DecoyPositionIndex(config, spans))

@@ -116,3 +116,23 @@ def bypass_inventory(src: Path = SRC) -> set[str]:
         if rel != OWNER and "__pycache__" not in path.parts:
             keys |= bypass_sites_in_source(path.read_text(encoding="utf-8"), rel)
     return keys
+
+
+def read_text_calls_in_source(source: str, rel: str) -> set[str]:
+    """`path::function` of every function that calls `read_config_text`, however it is spelled
+    (a bound import, an alias, or a call on the module). A pipeline file read this way keeps the
+    text for a second use, so the file is read twice."""
+    return {
+        f"{rel}::{s.scope}"
+        for s in _calls.sites(ast.parse(source))
+        if isinstance(s.node, ast.Call) and _calls.leaf(s.node, s.bound) == "read_config_text"
+    }
+
+
+def read_text_inventory(src: Path = SRC) -> set[str]:
+    keys: set[str] = set()
+    for path in sorted(src.rglob("*.py")):
+        rel = path.relative_to(src).as_posix()
+        if rel != OWNER and "__pycache__" not in path.parts:
+            keys |= read_text_calls_in_source(path.read_text(encoding="utf-8"), rel)
+    return keys

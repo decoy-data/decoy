@@ -8,36 +8,26 @@ type error on the expression that caused it rather than on the generated code.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from decoy_engine import parse_pipeline_config
 from decoy_engine.config import PipelineConfigError
 
+from decoy._source_positions import nearest, segments
 from decoy.lang._codes import CONFIG
-from decoy.lang._errors import LangError, SourceMap, Span, diagnostic
+from decoy.lang._errors import LangError, SourceMap, diagnostic
 
 _WHEN_HINT = (
     "a condition compares one column with a value (`country == 'US'`) or tests a list "
     "(`state in ['CA', 'NY']`), joined with `and`, `or`, `not`; inside a condition, true and false "
     "are written `True` and `False`"
 )
-_STEP = re.compile(r"\[(\d+)\]|([^.\[\]]+)")
 
 
-def path_of(location: str) -> tuple[Any, ...]:
-    """An engine problem location (`tables[0].columns[2].namespace`) as a config path."""
-    return tuple(int(index) if index else key for index, key in _STEP.findall(location))
-
-
-def locate(path: tuple[Any, ...], spans: SourceMap) -> Span | None:
-    """The span of the nearest construct that produced `path`."""
-    # The engine names the chosen member of a source or target union inside the path.
-    if len(path) > 2 and path[0] in ("sources", "targets"):
-        path = (*path[:2], *path[3:])
-    while path and path not in spans:
-        path = path[:-1]
-    return spans.get(path)
+def _key(location: str) -> tuple[Any, ...]:
+    """An engine problem location (`tables[0].columns[2].namespace`) as a source-map key."""
+    parts = segments(location) or ()
+    return tuple(int(p) if p.isascii() and p.isdigit() else p for p in parts)
 
 
 def validate(config: dict[str, Any], spans: SourceMap) -> None:
@@ -46,10 +36,10 @@ def validate(config: dict[str, Any], spans: SourceMap) -> None:
     except PipelineConfigError as error:
         problems = []
         for problem in error.problems:
-            path = path_of(problem.location)
+            path = _key(problem.location)
             hint = _WHEN_HINT if path and path[-1] == "when" else None
             text = f"{problem.text} [{problem.code}]"
-            problems.append(diagnostic(CONFIG, locate(path, spans), hint, text=text))
+            problems.append(diagnostic(CONFIG, nearest(path, spans), hint, text=text))
     else:
         return
     # Raised outside the handler so the engine error is not attached as context.

@@ -187,6 +187,7 @@ def _emit_result(
             "message": f.message,
             **({"location": f.location} if f.location is not None else {}),
             **({"hint": f.hint} if f.hint else {}),
+            **({"position": f.loader_position} if f.loader_position else {}),
         }
         for f in findings
     ]
@@ -363,6 +364,7 @@ def _emit_gate(
                     "message": f.message,
                     "location": f.location,
                     **({"hint": f.hint} if f.hint else {}),
+                    **({"position": f.loader_position} if f.loader_position else {}),
                 }
                 for f in findings
             ],

@@ -1,8 +1,13 @@
 """Logical config paths -> places in a pipeline file, without guessing.
 
 `Position` and `segments` are shared by every kind of pipeline file; `YamlPositionIndex` is the
-YAML half. It sits at the bottom of the import tiers so the loader, the language package and the
+YAML half and `DecoyPositionIndex` the `.decoy` half. The union-member rule and the
+nearest-construct lookup are shared by `DecoyPositionIndex` and the language's own error
+reporting. It sits at the bottom of the import tiers so the loader, the language package and the
 CI adapter can all reach it.
+
+YAML positions are exact or file-level, never a guess. `.decoy` positions are the nearest
+construct, because the config is generated from the program and has keys the program never wrote.
 
 The pipeline loader is `yaml.safe_load`, which discards source marks. This module makes a
 parallel, read-only `yaml.compose` pass over the SAME text and indexes marks under three
@@ -21,11 +26,14 @@ the SARIF 2.1.0 region model (one-based lines/columns, exclusive end column, 3.3
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any, TypeVar
 
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
+_T = TypeVar("_T")
 _AMBIGUOUS = object()
 _MERGE_TAG = "tag:yaml.org,2002:merge"
 _BRACKET = re.compile(r"\[(\d+)\]")
@@ -58,6 +66,28 @@ def segments(logical_path: str | None) -> tuple[str, ...] | None:
     if any((not s) or s == "*" or s.startswith("<") for s in parts):
         return None
     return parts
+
+
+def without_union_member(path: tuple[Any, ...]) -> tuple[Any, ...]:
+    """`path` without the name of the chosen source or target union member.
+
+    The engine names the member inside the path (`sources[0].csv.path`), but a source map
+    records the construct without it (`("sources", 0, "path")`)."""
+    if len(path) > 2 and path[0] in ("sources", "targets"):
+        return (*path[:2], *path[3:])
+    return path
+
+
+def nearest(path: tuple[Any, ...], spans: Mapping[tuple[Any, ...], _T]) -> _T | None:
+    """The entry of `spans` for the longest prefix of `path` that has one, or `None`.
+
+    A source map has no entry for a key the program never wrote, so a problem at that key is
+    reported on the construct that produced its parent, as a compiler reports an error on the
+    expression that caused it."""
+    path = without_union_member(path)
+    while path and path not in spans:
+        path = path[:-1]
+    return spans.get(path)
 
 
 @dataclass(frozen=True)
@@ -125,6 +155,68 @@ class YamlPositionIndex:
 
     def __repr__(self) -> str:
         return f"YamlPositionIndex(entries={len(self._marks)})"
+
+
+class DecoyPositionIndex:
+    """Config paths -> places in a `.decoy` file, through the source map lowering built.
+
+    `source_map` maps a config path tuple (`("tables", 0, "columns", 1)`) to an object with
+    `line` and `column`, and optionally `end_line` and `end_column`; this module never imports the
+    language. A path resolves to the construct that produced it, or the nearest enclosing one:
+    the program is generated from its source, so a key it never wrote has no line of its own.
+
+    A semantic segment (`tables.customers`) is turned into its list index by the config. A name
+    that two entries share stops the walk at the list, so neither entry is named."""
+
+    def __init__(
+        self, config: Mapping[str, Any], source_map: Mapping[tuple[Any, ...], Any]
+    ) -> None:
+        self._config = config
+        self._spans = source_map
+
+    def locate(self, logical_path: str | None) -> Position | None:
+        parts = segments(logical_path)
+        if parts is None:
+            return None
+        span = nearest(self._resolve(parts), self._spans)
+        if span is None:
+            return None
+        return Position(
+            span.line,
+            span.column,
+            getattr(span, "end_line", None),
+            getattr(span, "end_column", None),
+        )
+
+    def _resolve(self, parts: tuple[str, ...]) -> tuple[Any, ...]:
+        """`parts` as a source-map key. It ends where the config stops matching the path."""
+        node: Any = self._config
+        key: list[Any] = []
+        for part in parts:
+            if isinstance(node, list):
+                index = _list_index(node, part)
+                if index is None:
+                    break
+                key.append(index)
+                node = node[index]
+            else:
+                key.append(part)
+                node = node.get(part) if isinstance(node, Mapping) else None
+        return tuple(key)
+
+    def __repr__(self) -> str:
+        return f"DecoyPositionIndex(entries={len(self._spans)})"
+
+
+def _list_index(items: list[Any], part: str) -> int | None:
+    """The index `part` names in `items`: a number, or the one entry whose `name` it is."""
+    if part.isascii() and part.isdigit():
+        index = int(part)
+        return index if index < len(items) else None
+    matches = [
+        i for i, item in enumerate(items) if isinstance(item, Mapping) and item.get("name") == part
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 class _Walker:

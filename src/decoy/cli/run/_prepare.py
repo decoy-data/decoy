@@ -69,9 +69,10 @@ def _load_raw_config(
     """
     try:
         data = read_config_bytes(config_path)
-        raw, findings = parse_pipeline_yaml(config_path, data)
+        pipeline, findings = parse_pipeline_yaml(config_path, data)
     except OSError as exc:
         return None, [], exc, None
+    raw = pipeline.config if pipeline is not None else None
     return raw, findings, None, config_sha256(data)
 
 
