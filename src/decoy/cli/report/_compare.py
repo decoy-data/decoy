@@ -6,6 +6,7 @@ import json as _json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from decoy.cli._sources import (
     read_file,
@@ -156,14 +157,43 @@ def _column_profile(df: "Any") -> dict[str, dict[str, Any]]:
     return profile
 
 
-def _side_format(
-    recorded: dict[str, Any],
-) -> tuple[str, Mapping[str, Any] | None] | TargetFormatError:
-    """One side's `entry_format` result, or the refusal it raised, so both sides can be checked."""
+def _entry_formats(
+    entries: Sequence[Mapping[str, Any]],
+) -> tuple[list[tuple[str, Mapping[str, Any] | None]], list[TargetFormatError]]:
+    """The recorded `(format, layout)` of every present entry, and the refusals instead.
+
+    The one projection and check for a table seen on one side or both, so a key a reader needs
+    cannot pass on one path and fail on the other. Every entry is checked before any is read.
+    """
+    formats: list[tuple[str, Mapping[str, Any] | None]] = []
+    errors: list[TargetFormatError] = []
+    for entry in entries:
+        try:
+            formats.append(entry_format({k: entry[k] for k in ("format", "layout") if k in entry}))
+        except TargetFormatError as err:
+            errors.append(err)
+    return formats, errors
+
+
+def _shown(raw: str) -> str:
+    """A recorded path as it may be printed: a URL keeps its scheme and host only.
+
+    A legacy entry can hold `scheme://user:password@host/path?token=...`; the user, password,
+    path and query are dropped. No CLI helper does this (`notify._host_only` is private), so
+    the stdlib parse lives here, at the one recorder of skipped paths.
+    """
+    if "://" not in raw:
+        return raw
     try:
-        return entry_format(recorded)
-    except TargetFormatError as err:
-        return err
+        parts = urlsplit(raw)
+        host = parts.hostname
+        if not parts.scheme or not host:
+            return "(remote location)"
+        port = parts.port
+    except ValueError:
+        return "(remote location)"
+    host = f"[{host}]" if ":" in host else host
+    return f"{parts.scheme}://{host}" + (f":{port}" if port is not None else "")
 
 
 def compare_data(
@@ -209,7 +239,8 @@ def compare_data(
 
     def _skip(raws: tuple[str, ...], errors: Sequence[TargetFormatError] = ()) -> None:
         """The one place a table's paths are recorded as skipped, with any refusal codes."""
-        missing_files.extend(r for r in dict.fromkeys(raws) if r not in missing_files)
+        shown = (_shown(r) for r in raws)
+        missing_files.extend(s for s in dict.fromkeys(shown) if s not in missing_files)
         refusals.update((err.code, str(err)) for err in errors)
 
     for table in all_tables:
@@ -221,11 +252,7 @@ def compare_data(
         if not path_a_str or not path_b_str:
             # Table only in one run -- treat as a change, unless its one entry is refused.
             present = [(raw, fp) for raw, fp in ((path_a_str, fp_a), (path_b_str, fp_b)) if raw]
-            seen = [
-                _side_format({k: fp[k] for k in ("format", "layout") if k in fp})
-                for _, fp in present
-            ]
-            lone_errors = [res for res in seen if isinstance(res, TargetFormatError)]
+            _, lone_errors = _entry_formats([fp for _, fp in present])
             if lone_errors:
                 _skip(tuple(raw for raw, _ in present), lone_errors)
                 continue
@@ -261,16 +288,11 @@ def compare_data(
             continue
 
         # Both sides are checked before either is read, each on its own recorded format.
-        sides_fmt = [
-            _side_format({k: fp[k] for k in ("format", "layout") if k in fp}) for fp in (fp_a, fp_b)
-        ]
-        errors = [res for res in sides_fmt if isinstance(res, TargetFormatError)]
+        formats, errors = _entry_formats([fp_a, fp_b])
         if errors:
             _skip((path_a_str, path_b_str), errors)
             continue
-        (fmt_a, layout_a), (fmt_b, layout_b) = (
-            res for res in sides_fmt if not isinstance(res, TargetFormatError)
-        )
+        (fmt_a, layout_a), (fmt_b, layout_b) = formats
         try:
             df_a = read_file(found[0], fmt_a, layout_a, table=table)
             df_b = read_file(found[1], fmt_b, layout_b, table=table)

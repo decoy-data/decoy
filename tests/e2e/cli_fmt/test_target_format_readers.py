@@ -481,6 +481,49 @@ def test_report_diff_old_manifest_human_mode_names_the_code(tmp_path: Path) -> N
     assert "refused: " + _UNRECORDED_TEXT in _flat(soft.output)
 
 
+_PASSWORD = "SENTINEL-pw-7f3a"
+_TOKEN = "SENTINEL-tok-91c2"
+_URL = f"https://svc:{_PASSWORD}@files.example.com/out.csv?token={_TOKEN}"
+
+
+@pytest.mark.parametrize("paired", [False, True], ids=["one_sided", "paired"])
+def test_report_diff_never_echoes_a_credential_bearing_url(tmp_path: Path, paired: bool) -> None:
+    base = _manifest(tmp_path, "a", tmp_path / "unused.csv", "csv")
+    # A legacy entry: a URL path, a null fingerprint (the key stays), no format or layout.
+    with_url = _write_manifest(
+        tmp_path / "with_url.json", base, path=_URL, format=None, layout=None
+    )
+    legacy = json.loads(with_url.read_text(encoding="utf-8"))
+    legacy["output_fingerprints"]["t"]["fingerprint"] = None
+    legacy["manifest_hash"] = compute_manifest_hash(legacy)
+    with_url.write_text(json.dumps(legacy), encoding="utf-8")
+    if paired:
+        other = with_url
+    else:
+        bare = copy.deepcopy(base)
+        bare["output_fingerprints"] = {}
+        bare["manifest_hash"] = compute_manifest_hash(bare)
+        other = tmp_path / "bare.json"
+        other.write_text(json.dumps(bare), encoding="utf-8")
+    args = [str(with_url), str(other)]
+
+    soft_json = _diff(*args)
+    strict_json = _diff(*args, "--require-data")
+    soft_human = runner.invoke(app, ["report", "diff", *args])
+    strict_human = runner.invoke(app, ["report", "diff", *args, "--require-data"])
+    assert soft_json.exit_code == 0, soft_json.output
+    assert soft_human.exit_code == 0, soft_human.output
+    assert strict_json.exit_code == EXIT_USAGE, strict_json.output
+    assert strict_human.exit_code == EXIT_USAGE, strict_human.output
+    payload = json.loads(soft_json.stdout)
+    assert payload["data_level"] == "skipped"
+    assert payload["missing_files"], "the skipped entry is still named"
+    for result in (soft_json, strict_json, soft_human, strict_human):
+        assert _PASSWORD not in result.output
+        assert _TOKEN not in result.output
+        assert "files.example.com" in result.output
+
+
 def test_report_diff_sides_read_independently(tmp_path: Path) -> None:
     ev_a, ev_b = tmp_path / "ev_a.json", tmp_path / "ev_b.json"
     _run_people(tmp_path / "a", _target("parquet", tmp_path / "a" / "a.pq"), ev_a)
