@@ -7,6 +7,7 @@ run proves a test that outlives its timeout fails with "Timeout" and its stack i
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -66,6 +67,7 @@ def test_a_test_past_its_timeout_fails_with_a_stack(tmp_path: Path) -> None:
          "--rootdir", str(tmp_path), "-c", "/dev/null" if sys.platform != "win32" else "NUL",
          str(tmp_path / "test_hang.py")],
         capture_output=True, text=True, timeout=60, cwd=tmp_path, check=False,
+        env={k: v for k, v in os.environ.items() if not k.startswith('PYTEST_XDIST_') and k != 'PYTEST_CURRENT_TEST'},
     )  # fmt: skip
     out = proc.stdout + proc.stderr
     assert proc.returncode == 1, out

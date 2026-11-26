@@ -1,0 +1,84 @@
+{
+ "sentry_id": "serial-resources",
+ "created_in": "CLI-PAR-S1",
+ "entries": {
+  "tests/e2e/test_output_modes.py::test_a_verbose_traceback_widens_the_panel_only_off_a_tty": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/e2e/test_run_otel.py::test_chunked_run_exports_one_ended_root_span": {
+   "reason": "Compares span timestamp fields (end >= start) of one run; no bound on this host speed."
+  },
+  "tests/e2e/test_run_otel.py::test_flag_exports_one_trace_with_phase_spans": {
+   "reason": "Compares span timestamp fields (end >= start) of one run; no bound on this host speed."
+  },
+  "tests/e2e/test_run_otel.py::test_marker_corpus_absent_from_wire": {
+   "reason": "Compares span timestamp fields (end >= start) of one run; no bound on this host speed."
+  },
+  "tests/e2e/test_run_otel.py::test_open_phase_is_closed_on_exit": {
+   "reason": "Compares span timestamp fields (end >= start) of one run; no bound on this host speed."
+  },
+  "tests/e2e/test_run_validate_always.py::test_run_caps_each_message_and_validate_does_not": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/e2e/test_run_validate_always.py::test_run_refuses_what_validate_refuses_before_any_read": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/release/test_old_org_refs.py::test_old_org_refs_equal_the_allowlist": {
+   "reason": "`.hypothesis/` is gitignored and its storage moved out of the checkout (H14); no other test writes an unignored checkout file (CLI-PAR S1 AT-13 step 4)."
+  },
+  "tests/sentry/release/test_retired_name_residual.py::test_no_retired_name_outside_history": {
+   "reason": "`.hypothesis/` is gitignored and its storage moved out of the checkout (H14); no other test writes an unignored checkout file (CLI-PAR S1 AT-13 step 4)."
+  },
+  "tests/sentry/run/test_one_run_exit.py::test_a_new_function_in_run_all_is_not_covered_by_the_allowlist": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/run/test_one_run_exit.py::test_no_exit_or_writer_outside_the_owner": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/run/test_one_run_exit.py::test_one_more_call_inside_a_listed_function_is_caught": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/run/test_one_run_exit.py::test_seeded_shapes_are_caught_in_every_scoped_module": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/run/test_one_run_exit.py::test_the_owner_and_other_code_are_not_flagged": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_no_new_engine_reason_code_copies_in_cli_source": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_seeded_copied_code_is_red": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_seeded_docstring_mention_is_green": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_seeded_docstring_that_is_exactly_a_code_is_green": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_seeded_higher_count_is_red": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_seeded_scaffold_with_the_literal_put_back_is_red": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/sentry/test_engine_reason_code_copies.py::test_seeded_stale_and_lowered_allowlist_entries_are_red": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  },
+  "tests/unit/library/test_index_failures.py::test_two_processes_never_hold_the_lock_at_once_after_a_reset": {
+   "reason": "Polls for a file with a long deadline and sets a 0.5 s lock timeout it expects to expire; the outcome (library_busy) does not depend on host speed."
+  },
+  "tests/unit/library/test_refs.py::test_the_loser_fails_with_library_busy_and_never_overwrites": {
+   "reason": "Lower bound only (the loser waited at least 0.15 s on the holder before giving up); a slow host cannot break a lower bound."
+  },
+  "tests/unit/test_distribution.py::test_lock_is_released_by_the_kernel_when_the_holder_dies": {
+   "reason": "Waits for a child process through a polling helper with a long deadline; asserts lock state, not a time bound."
+  },
+  "tests/unit/test_distribution.py::test_overlapping_repairs_are_single_flight_and_never_delete_the_live_slot": {
+   "reason": "Waits for a child process through a polling helper with a long deadline; asserts lock state, not a time bound."
+  },
+  "tests/unit/test_pyproject_metadata.py::test_engine_dependency_pinned": {
+   "reason": "Name-only match triaged in CLI-PAR S1: the test reads no clock, process memory, fixed port or rlimit; the matched names are fields, caps or fixtures."
+  }
+ }
+}

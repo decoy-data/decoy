@@ -12,13 +12,14 @@ Named limit: a module-level ``pytest.skip`` still collects, so a skipped sentry 
 
 from __future__ import annotations
 
+import os
 import re
-import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from tests.sentry.tooling import gate_args
 
 ROOT = Path(__file__).resolve().parents[2]
 GATES = ROOT / "scripts" / "dev" / "gates.sh"
@@ -40,9 +41,7 @@ def sentry_files(root: Path) -> set[str]:
 SENTRIES: tuple[str, ...] = (*sorted(sentry_files(ROOT)), *OUTSIDE_SENTRIES)
 
 
-def _array(name: str, text: str) -> list[str] | None:
-    m = re.search(rf"^{name}=\(([^)]*)\)", text, re.MULTILINE)
-    return shlex.split(m.group(1), comments=True) if m else None
+_array = gate_args.shell_array  # the one reader of gates.sh's arrays
 
 
 def gates_sentry_paths(text: str | None = None) -> list[str]:
@@ -53,13 +52,7 @@ def gates_sentry_paths(text: str | None = None) -> list[str]:
 
 def gates_marker_expr(text: str | None = None) -> str | None:
     """The ``-m`` expression in ``PYTEST_ARGS``, or None when the gate filters no marker."""
-    args = _array("PYTEST_ARGS", GATES.read_text(encoding="utf-8") if text is None else text)
-    assert args is not None, "gates.sh has no PYTEST_ARGS array"
-    if "-m" not in args:
-        return None
-    i = args.index("-m")
-    assert i + 1 < len(args), "PYTEST_ARGS has -m with no expression"
-    return args[i + 1]
+    return gate_args.marker_expr(GATES.read_text(encoding="utf-8") if text is None else text)
 
 
 def gates_layer_test(text: str) -> str:
@@ -169,7 +162,13 @@ def collected() -> set[str]:
         sys.executable, "-m", "pytest", "--collect-only", "-q", "-p", "no:cacheprovider",
         *(("-m", marker) if marker is not None else ()), *ignores, *gates_sentry_paths(),
     ]  # fmt: skip
-    res = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+    # An outer xdist worker's PYTEST_XDIST_* would make this child believe it is a worker.
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if not k.startswith("PYTEST_XDIST_") and k != "PYTEST_CURRENT_TEST"
+    }
+    res = subprocess.run(cmd, cwd=ROOT, env=env, capture_output=True, text=True)
     assert res.returncode == 0, res.stdout[-2000:] + res.stderr[-2000:]
     return {line.split("::")[0] for line in res.stdout.splitlines() if "::" in line}
 

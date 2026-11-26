@@ -27,6 +27,20 @@ def job(tree: lanes.Tree, wf: str, key: str) -> dict[str, Any]:
     return tree.workflows[wf]["jobs"][key]
 
 
+def pytest_steps(tree: lanes.Tree) -> list[dict[str, Any]]:
+    return [s for s in job(tree, "ci.yml", "pytest")["steps"] if "pytest" in s.get("run", "")]
+
+
+def par_step(tree: lanes.Tree) -> dict[str, Any]:
+    (step,) = [s for s in pytest_steps(tree) if "not serial" in s["run"]]
+    return step
+
+
+def ser_step(tree: lanes.Tree) -> dict[str, Any]:
+    (step,) = [s for s in pytest_steps(tree) if "-m serial" in s["run"]]
+    return step
+
+
 def with_on(doc: dict[Any, Any], on: Any) -> dict[Any, Any]:
     """The workflow with its triggers replaced. YAML 1.1 parses the `on:` key as True."""
     out = {k: v for k, v in doc.items() if k not in (True, "on")}
@@ -184,7 +198,7 @@ def test_lanes_collect_every_test_folder() -> None:
     assert TREE.test_dirs == ["tests/e2e", "tests/sentry", "tests/unit"]
     t = seeded()
     steps = job(t, "ci.yml", "pytest")["steps"]
-    job(t, "ci.yml", "pytest")["steps"] = [s for s in steps if "tests/e2e" not in s.get("run", "")]
+    job(t, "ci.yml", "pytest")["steps"] = [s for s in steps if "pytest" not in s.get("run", "")]
     assert has(lanes.findings(t), "P1 tests/e2e: no automatic pytest lane")
 
 
@@ -208,24 +222,25 @@ def test_ignored_file_must_run_in_another_job() -> None:
 )
 def test_other_exclusions_must_run_in_another_job(extra: str) -> None:
     t = seeded()
-    (step,) = [s for s in job(t, "ci.yml", "pytest")["steps"] if "tests/e2e" in s.get("run", "")]
-    step["run"] = step["run"].replace("tests/e2e", f"tests/e2e {extra}")
+    step = par_step(t)
+    step["run"] += f" {extra}"
     assert has(lanes.findings(t), "runs in no other job"), extra
 
 
 @pytest.mark.parametrize("extra", ["-k smoke", "-ksmoke", "-qk smoke", "-qksmoke", "-xvk smoke"])
 def test_name_filter_fails_closed(extra: str) -> None:
     t = seeded()
-    (step,) = [s for s in job(t, "ci.yml", "pytest")["steps"] if "tests/e2e" in s.get("run", "")]
-    step["run"] = step["run"].replace("tests/e2e", f"tests/e2e {extra}")
+    step = par_step(t)
+    step["run"] += f" {extra}"
     assert has(lanes.findings(t), "P1 ci.yml:pytest: -k smoke narrows"), extra
 
 
 def test_deselected_node_counts_as_its_file() -> None:
+    """P1 reads a deselected node as its file, which runs in the layers job. M5 still objects to
+    the extra option, because the passes no longer match gates.sh."""
     t = seeded()
-    (step,) = [s for s in job(t, "ci.yml", "pytest")["steps"] if "--ignore=" in s.get("run", "")]
-    step["run"] += " --deselect tests/sentry/layout/test_import_layers.py::test_x"
-    assert lanes.findings(t) == []
+    par_step(t)["run"] += " --deselect tests/sentry/layout/test_import_layers.py::test_x"
+    assert not has(lanes.findings(t), "P1")
 
 
 def test_yaml_workflows_are_read(tmp_path: Path) -> None:
@@ -258,3 +273,124 @@ def test_drift_canary_is_reported_once_and_not_required() -> None:
     (site,) = [s for s in t.policy["engine_site"] if s["kind"] == "drift-canary"]
     site["reason"] = ""
     assert has(lanes.findings(t), "drift canary has no reason")
+
+
+# --- M5: the two-pass split in ci.yml is the one gates.sh builds -------------------------------
+
+PAR = 'pytest tests -m "not serial" -n 4 --dist loadfile --ignore=tests/sentry/layout/test_import_layers.py --tb=short'
+SER = "pytest tests -m serial --ignore=tests/sentry/layout/test_import_layers.py --tb=short"
+
+
+def m5(found: list[str]) -> bool:
+    return has(found, "M5")
+
+
+def test_gates_builds_the_two_passes_the_ci_split_mirrors() -> None:
+    by_mark = {a[a.index("-m") + 1]: a for a in map(list, TREE.gates_argvs)}
+    assert sorted(by_mark) == ["not serial", "serial"], TREE.gates_argvs
+    par, ser = by_mark["not serial"], by_mark["serial"]
+    assert par[par.index("-n") + 1] == "4" and par[par.index("--dist") + 1] == "loadfile"
+    assert "-n" not in ser and "--dist" not in ser
+    assert "--ignore=tests/sentry/layout/test_import_layers.py" in par + ser
+    assert par[-1] == ser[-1] == "tests"
+
+
+def test_the_ci_passes_are_whole_suite_lanes_and_loadfile_is_no_path() -> None:
+    ours = [ln for ln in lanes.lanes(TREE) if (ln.workflow, ln.job) == ("ci.yml", "pytest")]
+    assert len(ours) == 2 and all(ln.whole_suite and ln.paths == ("tests",) for ln in ours)
+    assert sorted(ln.expr for ln in ours) == ["not serial", "serial"]
+
+
+def test_dropping_the_serial_step_is_red_for_the_serial_marker_and_the_split() -> None:
+    t = seeded()
+    steps = job(t, "ci.yml", "pytest")["steps"]
+    steps.remove(ser_step(t))
+    found = lanes.findings(t)
+    assert has(found, "M1 marker 'serial'") and m5(found), found
+
+
+def test_a_single_unfiltered_lane_is_not_the_split() -> None:
+    t = seeded()
+    steps = job(t, "ci.yml", "pytest")["steps"]
+    steps.remove(ser_step(t))
+    par_step(t)["run"] = (
+        "pytest tests --ignore=tests/sentry/layout/test_import_layers.py --tb=short"
+    )
+    assert m5(lanes.findings(t))
+
+
+@pytest.mark.parametrize(
+    ("which", "old", "new"),
+    [
+        ("par", " --ignore=tests/sentry/layout/test_import_layers.py", ""),  # one pass drops it
+        ("ser", " --ignore=tests/sentry/layout/test_import_layers.py", ""),
+        ("par", " --tb=short", " --tb=short tests/unit"),  # one pass adds a path
+        ("ser", "pytest tests", "pytest tests tests/e2e"),
+        ("par", '-m "not serial"', '-m "not slow"'),  # not gates.sh's expression
+        ("ser", "-m serial", '-m "serial or slow"'),
+        ("par", "-n 4", "-n 2"),  # a changed worker value
+        ("par", "-n 4", ""),  # no workers at all
+        ("par", " --dist loadfile", ""),  # omitted distribution
+        ("par", "--dist loadfile", "--dist load"),  # changed distribution
+        ("ser", "--ignore=", "-n 4 --dist loadfile --ignore="),  # the serial pass runs parallel
+        ("par", " --tb=short", " --tb=short -x"),  # an option only one pass has
+    ],
+)
+def test_a_ci_split_that_differs_from_gates_sh_is_red(which: str, old: str, new: str) -> None:
+    t = seeded()
+    step = par_step(t) if which == "par" else ser_step(t)
+    assert old in step["run"], (old, step["run"])
+    step["run"] = step["run"].replace(old, new, 1)
+    assert m5(lanes.findings(t)), step["run"]
+
+
+def test_the_serial_step_must_run_after_a_red_parallel_pass() -> None:
+    t = seeded()
+    assert ser_step(t)["if"] == "${{ !cancelled() }}"
+    for bad in (None, "always()", "${{ success() }}", "${{ !cancelled() && true }}"):
+        t = seeded()
+        if bad is None:
+            del ser_step(t)["if"]
+        else:
+            ser_step(t)["if"] = bad
+        assert m5(lanes.findings(t)), bad
+    t = seeded()
+    par_step(t)["if"] = "${{ !cancelled() }}"  # the parallel pass is not conditional
+    assert m5(lanes.findings(t))
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "-n 4 --dist loadfile",
+        "-n4 --dist loadfile",
+        "-n=4 --dist loadfile",
+        "--numprocesses 4 --dist loadfile",
+        "--numprocesses=4 --dist=loadfile",
+        "--dist=loadfile -n 4",
+        "--dist loadfile -n4",
+    ],
+)
+def test_equivalent_spellings_of_the_worker_and_dist_options_agree(spelling: str) -> None:
+    t = seeded()
+    par_step(t)["run"] = par_step(t)["run"].replace("-n 4 --dist loadfile", spelling)
+    assert lanes.findings(t) == [], spelling
+
+
+def test_a_gates_only_drift_is_red_even_when_both_ci_passes_agree() -> None:
+    for i, old, new in (
+        (0, "4", "3"),  # gates.sh builds the parallel pass with another worker count
+        (0, "loadfile", "load"),
+        (0, "--ignore=tests/sentry/layout/test_import_layers.py", "--ignore=tests/other.py"),
+        (1, "serial", "serial or slow"),
+    ):
+        argvs = [list(a) for a in TREE.gates_argvs]
+        argvs[i] = [new if a == old else a for a in argvs[i]]
+        t = replace(seeded(), gates_argvs=tuple(tuple(a) for a in argvs))
+        assert m5(lanes.findings(t)), (i, old, new)
+
+
+def test_a_gates_sh_that_builds_one_pass_is_red() -> None:
+    t = replace(seeded(), gates_argvs=TREE.gates_argvs[:1])
+    assert m5(lanes.findings(t))
+    assert m5(lanes.findings(replace(seeded(), gates_argvs=())))

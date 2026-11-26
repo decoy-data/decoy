@@ -117,12 +117,17 @@ jobs:
         with:
           python: ${{ matrix.python }}
 
-      # --ignore: the layers-gate job below owns the layer test.
-      - name: pytest unit + sentry
-        run: pytest tests/unit tests/sentry --tb=short --ignore=tests/sentry/layout/test_import_layers.py
+      # The same two passes scripts/dev/gates.sh runs (CLI-PAR S1): a parallel pass of everything
+      # not marked `serial`, then a plain pass of the `serial` tests, which need the host to
+      # themselves. tests/sentry/tooling/_ci_lanes.py rule M5 fails when this split and gates.sh
+      # drift apart. --ignore: the layers-gate job below owns the layer test.
+      - name: pytest (parallel pass)
+        run: pytest tests -m "not serial" -n 4 --dist loadfile --ignore=tests/sentry/layout/test_import_layers.py --tb=short
 
-      - name: pytest e2e
-        run: pytest tests/e2e --tb=short
+      # Runs even after a red parallel pass, so both reds show in one run.
+      - name: pytest (serial pass)
+        if: ${{ !cancelled() }}
+        run: pytest tests -m serial --ignore=tests/sentry/layout/test_import_layers.py --tb=short
 
   # ---------------------------------------------------------------------------
   # layers-gate: import-layer contract in its own venv (LAYOUT C3)

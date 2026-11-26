@@ -45,6 +45,7 @@ CREATED_IN = {
     "root-help-omitted": "X0a",
     "readme-table-omitted": "X0a",
     "atomic-writer-allow": "L1b.1",
+    "serial-resources": "CLI-PAR-S1",
     "gate-single-entry-allow": "VALIDATE-ALWAYS-P1",
     "csv-read-allow": "CLI-DIALECT-C",
     "scan-call-allow": "FREEZE-ITEM3-C1",

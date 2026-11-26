@@ -204,3 +204,9 @@ baseline = "tests/sentry/baselines/lint-debt.json"
 kind = "json"
 consumer = "tests/sentry/test_lint_debt.py"
 split = true
+
+[[sentry]]
+id = "serial-resources"
+baseline = "tests/sentry/baselines/serial-resources.json"
+kind = "json"
+consumer = "tests/sentry/tooling/test_serial_resources.py"

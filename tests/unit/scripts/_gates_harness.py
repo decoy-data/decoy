@@ -22,11 +22,26 @@ BASH = os.environ.get("GATES_TEST_BASH") or shutil.which("bash")
 GIT = shutil.which("git")
 
 
+def child_env(base: dict[str, str] | None = None) -> dict[str, str]:
+    """The environment of a nested pytest or gates run: no outer xdist or current-test state.
+
+    An outer `-n` worker sets PYTEST_XDIST_* and every running test sets PYTEST_CURRENT_TEST; a
+    child that inherited them would think it is a worker (the scrubber hook) or loop on the id."""
+    src = os.environ if base is None else base
+    return {
+        k: v
+        for k, v in src.items()
+        if not k.startswith("PYTEST_XDIST_") and k != "PYTEST_CURRENT_TEST"
+    }
+
+
 def run(
     argv: list[str], cwd: Path, check: bool = False, **extra: str
 ) -> subprocess.CompletedProcess[str]:
-    # Point the scripts at the interpreter running this test so nothing is installed.
-    env = dict(os.environ, DECOY_VENV=sys.prefix) | extra
+    # Point the scripts at the interpreter running this test so nothing is installed. One worker
+    # unless a test asks for more: an inherited GATES_WORKERS (a T3 run sets 4) would otherwise
+    # pass `-n 4` to the fake pytest of every nested gates run.
+    env = child_env() | {"DECOY_VENV": sys.prefix, "GATES_WORKERS": "1"} | extra
     env.pop("VIRTUAL_ENV", None)
     return subprocess.run(
         argv, cwd=cwd, env=env, capture_output=True, text=True, timeout=600, check=check
@@ -97,6 +112,8 @@ if "--collect-only" in argv:
     for i in range(int(os.environ.get("FAKE_COLLECT", "0"))):
         print(f"tests/_seeded/test_gone.py::test_{i}")
     sys.exit(0)
+with open(Path(__file__).with_name("env.jsonl"), "a") as _fh:  # what a nested run would inherit
+    _fh.write(json.dumps({k: v for k, v in os.environ.items() if k.startswith(("PYTEST_", "TMPDIR"))}) + "\\n")
 xml = next(a.split("=", 1)[1] for a in argv if a.startswith("--junitxml="))
 if os.environ.get("FAKE_REWRITE_SRC"):  # a test that rewrites the stored file while the suite runs
     shutil.copyfile(os.environ["FAKE_REWRITE_SRC"], os.environ["FAKE_REWRITE_DST"])
@@ -105,6 +122,27 @@ failing = raw.split("|") if "|" in raw or "[" in raw else raw.split()
 total = int(os.environ.get("FAKE_TOTAL", "5"))
 if os.environ.get("PYTEST_ADDOPTS") or os.environ.get("PYTEST_PLUGINS"):
     total = 1  # a selection from the environment (addopts or a plugin) shrinks the run
+mark = next((argv[i + 1] for i in reversed(range(len(argv) - 1)) if argv[i] == "-m"), "")
+_EMPTY = '<testsuites><testsuite name="pytest" tests="0" failures="0" errors="0" skipped="0"/></testsuites>'
+if mark == "serial" or mark.endswith(" and serial"):  # the serial pass of a parallel run
+    if os.environ.get("FAKE_NO_SERIAL"):
+        Path(xml).write_text(_EMPTY)
+        print("no tests ran in 0.01s")
+        sys.exit(5)
+    sfail = os.environ.get("FAKE_SERIAL_FAIL", "")
+    n_ok = int(os.environ.get("FAKE_SERIAL_TOTAL", "1"))
+    cases = "".join(f'<testcase classname="tests.s" name="s{i}" file="tests/s.py" time="0.5"/>' for i in range(n_ok))
+    if sfail:
+        cases += f'<testcase classname="tests.s" name="{sfail}" file="tests/s.py" time="0.5"><failure/></testcase>'
+    Path(xml).write_text(
+        f'<testsuites><testsuite name="pytest" tests="{n_ok + bool(sfail)}" failures="{int(bool(sfail))}" errors="0" skipped="0">{cases}</testsuite></testsuites>'
+    )
+    print(f"{int(bool(sfail))} failed, {n_ok} passed in 0.01s" if sfail else f"{n_ok} passed in 0.01s")
+    sys.exit(1 if sfail else 0)
+if os.environ.get("FAKE_NO_PARALLEL") and (mark == "not serial" or mark.endswith(" and not serial")):
+    Path(xml).write_text(_EMPTY)
+    print("no tests ran in 0.01s")
+    sys.exit(5)
 xunit1 = "junit_family=xunit1" in " ".join(argv)
 
 
@@ -210,6 +248,13 @@ def gates(clone: Path, venv: Path, *args: str, **env: str) -> tuple[int, str]:
 def pytest_calls(log: Path) -> list[list[str]]:
     lines = log.read_text().splitlines() if log.exists() else []
     return [ln.split()[1:] for ln in lines if ln.startswith("pytest ")]
+
+
+def pytest_envs(log: Path) -> list[dict[str, str]]:
+    """The environment each fake pytest call saw (see FAKE_PYTEST's env.jsonl)."""
+    path = log.with_name("env.jsonl")
+    lines = path.read_text().splitlines() if path.exists() else []
+    return [json.loads(ln) for ln in lines]
 
 
 def pytest_argvs(log: Path) -> list[list[str]]:

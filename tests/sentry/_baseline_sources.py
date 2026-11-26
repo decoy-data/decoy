@@ -111,6 +111,8 @@ DATA_FILES = frozenset(
         "tests/sentry/io_policy/file_sinks.toml",
         "tests/sentry/allowlist-before.json",
         "tests/fixtures/release_freeze/json-shapes.json",
+        # A grow-only list of tests that must carry the `serial` mark, not an allowlist (CLI-PAR S1).
+        "tests/sentry/tooling/required_serial.toml",
     }
 )
 

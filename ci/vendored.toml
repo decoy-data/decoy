@@ -86,11 +86,13 @@ commit = "096ecfeae3476fc451024481d173011145287a32"
 
 # The CI lane rules (CI-L1b), adapted from the engine's CI-E2a helper; its header lists the
 # differences.
+# Re-pointed at the engine blob that holds M5 (CLI-PAR S1); the rest of the file was adapted from
+# the earlier blob and its header lists every difference.
 [[mirror]]
 engine_path = "tests/sentry/tooling/_ci_lanes.py"
 local_path = "tests/sentry/tooling/_ci_lanes.py"
-blob_sha256 = "595ee8301f9c831b1fd164cbbbe6fbeddfff612b4b392434c09b1956c68b0d93"
-commit = "096ecfeae3476fc451024481d173011145287a32"
+blob_sha256 = "9b8a5dab39e043afe304235fbe07911d51db4f608c0980883dbd73948015bbb9"
+commit = "0952fbae2bbe229a981244a2370970b4568c1e25"
 
 # The output metadata canary helper (OUTPUT-METADATA-LEAK C1), adapted from the engine's E0 helper;
 # its header lists the differences. blob_sha256 is the engine blob it was adapted from.
@@ -99,3 +101,23 @@ engine_path = "tests/security/_metadata_canary.py"
 local_path = "tests/e2e/cli_fmt/_metadata_canary.py"
 blob_sha256 = "cd34d9732bb9b1470558a1007630aa8ef847b909cbee90442667b7d8be7fc826"
 commit = "54db2e5f273118ff74feca9f53512daba265192a"
+
+# CLI-PAR S1: the parallel-test mechanism, ported from engine ENGINE-PAR P2. The xdist report
+# scrubber is byte-identical; the worker rule and the serial-resource scan are adapted (headers).
+[[vendored]]
+engine_path = "tests/_xdist_safe_reports.py"
+local_path = "tests/_xdist_safe_reports.py"
+blob_sha256 = "5e718189c01b8477df36f5b9adcfcbc2f24bda44000d245a1b1335dd659fca30"
+commit = "0952fbae2bbe229a981244a2370970b4568c1e25"
+
+[[mirror]]
+engine_path = "scripts/dev/_gate_workers.py"
+local_path = "scripts/dev/_gate_workers.py"
+blob_sha256 = "9a71263935032df0554edc47b0fbfb5f1a5fb89614523b872346ac97ce1f41e7"
+commit = "0952fbae2bbe229a981244a2370970b4568c1e25"
+
+[[mirror]]
+engine_path = "tests/sentry/parallel/_resources.py"
+local_path = "tests/sentry/tooling/_serial_resources.py"
+blob_sha256 = "9b80a511f7c4d92585dafb5a3bf0cad9aa72d077df2bec4c3b10fdb31273708e"
+commit = "0952fbae2bbe229a981244a2370970b4568c1e25"
