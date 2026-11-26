@@ -30,7 +30,6 @@ from decoy.cli.io._layout import (
     check_path_budget,
     contained_path,
     is_placed_relative,
-    is_run_id,
     names_a_file_inside,
     owning_run,
     pipeline_folder,
@@ -49,6 +48,7 @@ from decoy.cli.io._layout_errors import (
     LayoutError,
     LayoutWarning,
 )
+from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._run_outputs import OutputKind, RunOutput, replaces_final, run_outputs
 
 if TYPE_CHECKING:

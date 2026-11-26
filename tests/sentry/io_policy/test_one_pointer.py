@@ -37,6 +37,7 @@ _FILE_CALLS = frozenset(
         "write_local_target",
         "open",
         "read_small_file",
+        "read_small_bytes",
         "read_text",
         "read_bytes",
         "write_text",

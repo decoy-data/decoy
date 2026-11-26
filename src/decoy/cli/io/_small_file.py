@@ -25,6 +25,11 @@ class UnsafeFileError(Exception):
     """Something other than a plain regular file is at the path, or it could not be read."""
 
 
+# One limit for every bookkeeping file (claims, `LATEST`). The engine's `POINTER_LIMIT` is the same
+# 4096 but is not exported, so a `LATEST` over this size is one the engine refuses too.
+SMALL_FILE_MAX_BYTES = 4096
+
+
 @dataclass(frozen=True)
 class SmallFile:
     """At most the requested number of bytes, with the size and owner the descriptor reported."""
@@ -74,3 +79,16 @@ def read_small_file(path: Path, max_bytes: int) -> SmallFile | None:
         raise UnsafeFileError from exc
     finally:
         os.close(fd)
+
+
+def read_small_bytes(path: Path) -> bytes | None:
+    """At most `SMALL_FILE_MAX_BYTES` of the regular file at `path`, else None.
+
+    None covers a missing or unreadable file and anything that is not a plain regular file, so a
+    planted link, pipe or device in a run's bookkeeping files is never read through.
+    """
+    try:
+        found = read_small_file(path, SMALL_FILE_MAX_BYTES)
+    except UnsafeFileError:
+        return None
+    return found.data if found is not None else None

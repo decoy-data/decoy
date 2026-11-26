@@ -35,14 +35,11 @@ from decoy.cli.io._layout_errors import (
     LayoutWarning,
 )
 from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK, swap_latest
-from decoy.cli.io._small_file import UnsafeFileError, read_small_file
+from decoy.cli.io._run_id import is_run_id
+from decoy.cli.io._small_file import read_small_bytes
 
 if TYPE_CHECKING:
     from decoy.cli.io._project import Project
-
-# <UTC start YYYYMMDDTHHMMSSffffffZ>-<8 hex of the invocation id>, plus 4 more hex digits per
-# clash, up to all 32.
-_RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}(?:[0-9a-f]{4}){0,6}")
 
 MAX_RUN_ID_LENGTH = 55
 WINDOWS_PATH_LIMIT = 259
@@ -56,7 +53,6 @@ def member_yaml(root: Path, name: str) -> Path:
     return root / PIPELINES_DIR / name / PIPELINE_YAML
 
 
-_CLAIM_MAX_BYTES = 4096
 _SLUG_MAX = 56
 _SLUG_BAD = re.compile(r"[^A-Za-z0-9_.-]+")
 _DASH_RUNS = re.compile(r"-{2,}")
@@ -68,11 +64,6 @@ def is_valid_name(name: str) -> bool:
     from decoy_engine import is_valid_pipeline_name
 
     return bool(is_valid_pipeline_name(name))
-
-
-def is_run_id(value: str) -> bool:
-    """True when `value` is a well-formed run folder name."""
-    return _RUN_ID.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -300,22 +291,9 @@ def _derived(root: Path, yaml_rel: str, stem: str) -> str:
     return f"pipeline-{digest}"
 
 
-def _read_small(path: Path) -> bytes | None:
-    """At most `_CLAIM_MAX_BYTES` of the regular file at `path`, else None.
-
-    None covers a missing or unreadable file and anything that is not a plain regular file, so a
-    planted link, pipe or device in a run's bookkeeping files is never read through.
-    """
-    try:
-        found = read_small_file(path, _CLAIM_MAX_BYTES)
-    except UnsafeFileError:
-        return None
-    return found.data if found is not None else None
-
-
 def read_claim(out: Path, name: str) -> str | None:
     """The YAML path `out/<name>/PIPELINE` names, or None when there is no claim."""
-    raw = _read_small(out / name / _CLAIM_NAME) or b""
+    raw = read_small_bytes(out / name / _CLAIM_NAME) or b""
     # Only the writer's newline goes: spaces are valid at either end of a POSIX path.
     return raw.decode("utf-8", errors="replace").removesuffix("\n") or None
 

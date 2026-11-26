@@ -25,7 +25,8 @@ from decoy.cli.io._layout_errors import (
     LATEST_WRITE_FAILED,
     LayoutWarning,
 )
-from decoy.cli.io._small_file import UnsafeFileError, read_small_file
+from decoy.cli.io._run_id import is_run_id
+from decoy.cli.io._small_file import read_small_bytes
 
 if TYPE_CHECKING:
     from decoy_engine.publication import CurrentPointer
@@ -33,7 +34,6 @@ if TYPE_CHECKING:
 _LATEST_FILE = "LATEST"
 # Not `latest`: macOS and Windows fold case by default, so it would collide with `LATEST`.
 _LATEST_LINK = "current"
-_MAX_BYTES = 4096
 # The CLI's one wait on the `LATEST` lock (the engine's own default is not exported).
 LATEST_LOCK_TIMEOUT_S: Final = 30.0
 
@@ -63,14 +63,11 @@ def _decode(raw: bytes) -> str | None:
 def read_latest(folder: Path) -> str | None:
     """The run id `LATEST` names; None when absent, "" when something unreadable is there."""
     path = folder / _LATEST_FILE
-    try:
-        found = read_small_file(path, _MAX_BYTES)
-    except UnsafeFileError:
-        found = None
-    if found is None:
+    data = read_small_bytes(path)
+    if data is None:
         # A link, pipe or unreadable file is not absent: "" fails is_run_id, so it is warned.
         return "" if os.path.lexists(path) else None
-    return _decode(found.data)
+    return _decode(data)
 
 
 def _link_current(folder: Path, run_id: str) -> list[LayoutWarning]:
@@ -106,7 +103,7 @@ def swap_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
         with pointer.locked(LATEST_LOCK_TIMEOUT_S) as held:
             state = pointer.read()
             seen = _decode(state.raw) if state.raw is not None else None
-            if seen is not None and not _is_run_id(seen):
+            if seen is not None and not is_run_id(seen):
                 warnings.append(LATEST_INVALID.warning(path=folder))
             elif seen is not None and seen > run_id:
                 return ()
@@ -135,18 +132,11 @@ def swap_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
     return tuple(warnings)
 
 
-def _is_run_id(text: str) -> bool:
-    # Imported here: `_layout` imports this module for `swap_latest`.
-    from decoy.cli.io._layout import is_run_id
-
-    return is_run_id(text)
-
-
 def _write_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
     """The pre-pointer write, kept for hosts without the engine's lock (named limit, F22 W1)."""
     warnings: list[LayoutWarning] = []
     seen = read_latest(folder)
-    if seen is not None and not _is_run_id(seen):
+    if seen is not None and not is_run_id(seen):
         warnings.append(LATEST_INVALID.warning(path=folder))
     elif seen is not None and seen > run_id:
         return ()
