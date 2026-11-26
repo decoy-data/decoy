@@ -200,8 +200,16 @@ def engine_findings(path: str, entry: dict[str, Any]) -> list[str]:
         if _key(path) not in seen.mentions:
             return [f"{path}: {entry['engine']} does not name the key {_key(path)!r}"]
         return []
-    name = str(via).partition(":")[2]
-    helper, helper_module, bad_via = _public_symbol(str(via), path)
+    return _via_findings(path, entry, str(via), scope, module, seen)
+
+
+def _via_findings(
+    path: str, entry: dict[str, Any], via: str, scope: str, module: str, seen: "_Seen"
+) -> list[str]:
+    """Why the ``via`` helper of an ``engine`` entry fails: unresolvable, never called, or it
+    does not name the key."""
+    name = via.partition(":")[2]
+    helper, helper_module, bad_via = _public_symbol(via, path)
     if not bad_via:
         assert helper_module is not None
         helper_reach = (_reach if scope == "package" else _own)(helper, helper_module)
@@ -354,24 +362,7 @@ def _coverage_findings(
     block gains later is a finding like any other new field."""
     out: list[str] = []
     for path in walked:
-        parent, _, child = path.partition(".")
-        under_unread = bool(child) and parent in unread
-        kinds = [path in unread, path in readers]
-        if under_unread:
-            kids = _children_of(parent, unread)
-            if kids is None or child not in kids:
-                out.append(
-                    f"{path}: new field under the unread block {parent}; classify it as engine,"
-                    f" cli or other_command, or add it to the block's children"
-                )
-            elif any(kinds):
-                out.append(f"{path}: its block {parent} is unread; list the block once")
-        elif sum(kinds) == 0:
-            out.append(
-                f"{path}: no manifest entry; classify it as engine, cli, other_command or unread"
-            )
-        elif sum(kinds) == 2:
-            out.append(f"{path}: listed as both unread and read")
+        out += _path_coverage(path, unread, readers)
     for path in sorted((set(unread) | set(readers)) - set(walked)):
         out.append(f"{path}: manifest entry for a path the model does not have")
     for parent in sorted(unread):
@@ -383,6 +374,27 @@ def _coverage_findings(
         ):
             out.append(f"{parent}.{child}: listed as a child of an unread block that lacks it")
     return out
+
+
+def _path_coverage(path: str, unread: dict[str, Any], readers: dict[str, Any]) -> list[str]:
+    """The coverage findings of one walked path."""
+    parent, _, child = path.partition(".")
+    kinds = [path in unread, path in readers]
+    if child and parent in unread:
+        kids = _children_of(parent, unread)
+        if kids is None or child not in kids:
+            return [
+                f"{path}: new field under the unread block {parent}; classify it as engine,"
+                f" cli or other_command, or add it to the block's children"
+            ]
+        if any(kinds):
+            return [f"{path}: its block {parent} is unread; list the block once"]
+        return []
+    if sum(kinds) == 0:
+        return [f"{path}: no manifest entry; classify it as engine, cli, other_command or unread"]
+    if sum(kinds) == 2:
+        return [f"{path}: listed as both unread and read"]
+    return []
 
 
 def _entry_findings(path: str, entry: dict[str, Any], root: Path) -> list[str]:
