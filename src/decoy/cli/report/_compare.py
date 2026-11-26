@@ -6,7 +6,6 @@ import json as _json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
 from decoy.cli._sources import (
     read_file,
@@ -15,6 +14,7 @@ from decoy.cli.evidence import (
     resolve_manifest_path,
 )
 from decoy.cli.io import TargetFormatError, entry_format
+from decoy.safe_url import redacted_location
 
 
 def _warning_key(w: Any) -> str:
@@ -175,27 +175,6 @@ def _entry_formats(
     return formats, errors
 
 
-def _shown(raw: str) -> str:
-    """A recorded path as it may be printed: a URL keeps its scheme and host only.
-
-    A legacy entry can hold `scheme://user:password@host/path?token=...`; the user, password,
-    path and query are dropped. No CLI helper does this (`notify._host_only` is private), so
-    the stdlib parse lives here, at the one recorder of skipped paths.
-    """
-    if "://" not in raw:
-        return raw
-    try:
-        parts = urlsplit(raw)
-        host = parts.hostname
-        if not parts.scheme or not host:
-            return "(remote location)"
-        port = parts.port
-    except ValueError:
-        return "(remote location)"
-    host = f"[{host}]" if ":" in host else host
-    return f"{parts.scheme}://{host}" + (f":{port}" if port is not None else "")
-
-
 def compare_data(
     manifest_a: dict[str, Any],
     manifest_b: dict[str, Any],
@@ -239,7 +218,7 @@ def compare_data(
 
     def _skip(raws: tuple[str, ...], errors: Sequence[TargetFormatError] = ()) -> None:
         """The one place a table's paths are recorded as skipped, with any refusal codes."""
-        shown = (_shown(r) for r in raws)
+        shown = (redacted_location(r) for r in raws)
         missing_files.extend(s for s in dict.fromkeys(shown) if s not in missing_files)
         refusals.update((err.code, str(err)) for err in errors)
 

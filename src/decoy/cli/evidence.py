@@ -79,6 +79,7 @@ from decoy.cli.io import (
     resolve_target_format,
     resolved_source_config,
 )
+from decoy.safe_url import redacted_location
 from decoy.ui.theme import warn
 
 _SCHEMA_VERSION = "cli-local-1"
@@ -294,7 +295,10 @@ def build_manifest(
         src_path = Path(str(src_path_str))
         if "://" in str(src_path_str) or not src_path.is_absolute():
             # A URL, or a non-file source the run did not open from this path: nothing to hash.
-            input_fingerprints[table_name] = {"path": str(src_path_str), **_fingerprint(None)}
+            input_fingerprints[table_name] = {
+                "path": redacted_location(str(src_path_str)),
+                **_fingerprint(None),
+            }
             continue
         input_fingerprints[table_name] = {
             "path": _recorded(src_path, project_root),
@@ -311,7 +315,11 @@ def build_manifest(
         if not tgt_path_str:
             continue
         tgt_path = _placed(place_target, str(tgt_path_str), yaml_dir)
-        recorded = str(tgt_path_str) if tgt_path is None else _recorded(tgt_path, project_root)
+        recorded = (
+            redacted_location(str(tgt_path_str))
+            if tgt_path is None
+            else _recorded(tgt_path, project_root)
+        )
         entry: dict[str, Any] = {"path": recorded}
         entry.update(_format_keys(table_name, tgt))
         entry.update(_fingerprint(tgt_path))
@@ -501,6 +509,26 @@ def read_manifest(path: Path, project: Path | None = None) -> dict[str, Any]:
     for _at, _table, field, raw, _recorded_fp in _stored_files(manifest):
         resolve_manifest_path(manifest, raw, manifest_file=path, project=project, field=field)
     return manifest
+
+
+def redact_manifest_paths(manifest: dict[str, Any]) -> dict[str, Any]:
+    """A copy of `manifest` with every recorded input and output path shown by its safe location.
+
+    For a manifest a person will read or share: a legacy one can hold a URL with a user, password
+    and query. The `manifest_hash` is kept as recorded, so the copy is for display and is not
+    verified.
+    """
+    shown = dict(manifest)
+    for group in ("input_fingerprints", "output_fingerprints"):
+        entries = manifest.get(group)
+        if isinstance(entries, dict):
+            shown[group] = {
+                name: {**info, "path": redacted_location(info["path"])}
+                if isinstance(info, dict) and isinstance(info.get("path"), str)
+                else info
+                for name, info in entries.items()
+            }
+    return shown
 
 
 def _stored_files(manifest: dict[str, Any]) -> list[tuple[int, str, str, str, str]]:
@@ -755,7 +783,7 @@ def _render_manifest_card(state: Any, manifest: dict[str, Any], evidence_file: P
             fp = (info.get("fingerprint") or "")[:23] + "..."
             method = info.get("fingerprint_method") or "?"
             size = str(info.get("size_bytes") or "?")
-            t.add_row(tname, info.get("path", "?"), fp, method, size)
+            t.add_row(tname, redacted_location(str(info.get("path", "?"))), fp, method, size)
         state.console.print(t)
 
     # Strategies table

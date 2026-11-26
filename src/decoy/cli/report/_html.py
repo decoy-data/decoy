@@ -6,6 +6,8 @@ import html as _html_mod
 import json as _json
 from typing import Any
 
+from decoy.safe_url import redacted_location
+
 _HTML_CSS = """\
 body { font-family: monospace; max-width: 900px; margin: 2em auto; background: #111; color: #e0e0e0; }
 h1 { color: #00d4aa; border-bottom: 1px solid #333; padding-bottom: 0.3em; }
@@ -103,7 +105,7 @@ def render_html(manifest: dict[str, Any]) -> str:
             fp = _esc(info_val.get("fingerprint") or "(none)")
             method = _esc(info_val.get("fingerprint_method") or "?")
             size = _esc(info_val.get("size_bytes") or "?")
-            path_v = _esc(info_val.get("path") or "?")
+            path_v = _esc(redacted_location(str(info_val.get("path") or "?")))
             parts.append(
                 f"<tr><td>{_esc(tname)}</td><td>{path_v}</td>"
                 f'<td class="fp">{fp}</td><td>{method}</td><td>{size}</td></tr>'
@@ -123,7 +125,7 @@ def render_html(manifest: dict[str, Any]) -> str:
             fp = _esc(info_val.get("fingerprint") or "(none)")
             method = _esc(info_val.get("fingerprint_method") or "?")
             size = _esc(info_val.get("size_bytes") or "?")
-            path_v = _esc(info_val.get("path") or "?")
+            path_v = _esc(redacted_location(str(info_val.get("path") or "?")))
             parts.append(
                 f"<tr><td>{_esc(tname)}</td><td>{path_v}</td>"
                 f'<td class="fp">{fp}</td><td>{method}</td><td>{size}</td></tr>'

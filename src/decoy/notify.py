@@ -55,9 +55,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.mime.text import MIMEText
 from typing import Any, Callable, Literal
-from urllib.parse import urlsplit
 
 from decoy import _outbound
+from decoy.safe_url import safe_url_parts
 
 logger = logging.getLogger(__name__)
 
@@ -456,17 +456,8 @@ def dispatch(
 def _host_only(url: str) -> str:
     """Host and port only, never the full URL (which may carry an auth token in its path or
     query string, e.g. a Slack incoming-webhook URL) and never `user:password@`."""
-    try:
-        parts = urlsplit(url)
-        host = parts.hostname
-        if not host:
-            return "(unknown host)"
-        if ":" in host:  # an IPv6 literal loses its brackets in `hostname`
-            host = f"[{host}]"
-        port = parts.port  # raises ValueError for a bad port
-        return f"{host}:{port}" if port is not None else host
-    except ValueError:
-        return "(unknown host)"
+    parts = safe_url_parts(url)
+    return parts.netloc if parts else "(unknown host)"
 
 
 def _redact_email(addr: str) -> str:

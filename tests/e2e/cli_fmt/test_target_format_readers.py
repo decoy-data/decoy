@@ -25,6 +25,7 @@ from typer.testing import CliRunner
 from decoy.__main__ import app
 from decoy.cli.evidence import build_manifest, compute_manifest_hash
 from decoy.cli.exit_codes import EXIT_RUNTIME, EXIT_USAGE
+from decoy.cli.io import LayoutError
 from tests.csv_sources import csv_source
 from tests.e2e.cli_fmt.test_target_format_dispatch import _csv_config, _target, _target_layout
 from tests.e2e.test_source_format_dispatch import _COLUMNS, _PEOPLE
@@ -522,6 +523,69 @@ def test_report_diff_never_echoes_a_credential_bearing_url(tmp_path: Path, paire
         assert _PASSWORD not in result.output
         assert _TOKEN not in result.output
         assert "files.example.com" in result.output
+
+
+def _legacy_url_manifest(tmp_path: Path) -> Path:
+    """A legacy manifest whose output and input entries hold the credential-bearing URL."""
+    base = _manifest(tmp_path, "a", tmp_path / "unused.csv", "csv")
+    legacy = copy.deepcopy(base)
+    legacy["output_fingerprints"]["t"] = {"path": _URL, "fingerprint": None}
+    legacy["input_fingerprints"] = {"s": {"path": _URL, "fingerprint": None}}
+    legacy["manifest_hash"] = compute_manifest_hash(legacy)
+    out = tmp_path / "legacy_url.json"
+    out.write_text(json.dumps(legacy), encoding="utf-8")
+    return out
+
+
+def _assert_no_sentinel(text: str) -> None:
+    assert _PASSWORD not in text
+    assert _TOKEN not in text
+    assert "svc:" not in text
+
+
+def test_report_show_never_echoes_a_credential_bearing_url(tmp_path: Path) -> None:
+    ev = _legacy_url_manifest(tmp_path)
+    outputs = []
+    for args in (["show", str(ev)], ["show", str(ev), "--json"]):
+        result = runner.invoke(app, ["report", *args], env={"COLUMNS": "10000"})
+        assert result.exit_code == 0, result.output
+        assert "files.example.com" in result.output
+        outputs.append(result.output)
+    for fmt, name in (("html", "r.html"), ("markdown", "r.md")):
+        written = tmp_path / name
+        for cmd in ("show", "render"):
+            result = runner.invoke(
+                app, ["report", cmd, str(ev), "--format", fmt, "--output", str(written)]
+            )
+            assert result.exit_code == 0, result.output
+            outputs.append(result.output)
+            outputs.append(written.read_text(encoding="utf-8"))
+            assert "files.example.com" in outputs[-1]
+    for text in outputs:
+        _assert_no_sentinel(text)
+
+
+@pytest.mark.parametrize("target", [_URL, "https://svc:" + _PASSWORD + "@host/o.csv"])
+def test_a_placement_failure_does_not_record_the_raw_target(tmp_path: Path, target: str) -> None:
+    def refuse(_raw: str) -> Path:
+        raise LayoutError("target_refused", "the layout refused the target")
+
+    pipeline = tmp_path / "pipeline.yaml"
+    pipeline.write_text("version: 2\n", encoding="utf-8")
+    config = {
+        "sources": {"s": {"type": "s3", "path": target}},
+        "targets": {"t": {"type": "file", "format": "csv", "path": target}},
+    }
+    manifest = build_manifest(
+        pipeline_path=pipeline,
+        config_dict=config,
+        run_result={"row_counts": {"t": 2}},
+        cli_version="0",
+        engine_version="0",
+        place_target=refuse,
+    )
+    _assert_no_sentinel(json.dumps(manifest))
+    assert manifest["manifest_hash"] == compute_manifest_hash(manifest)
 
 
 def test_report_diff_sides_read_independently(tmp_path: Path) -> None:

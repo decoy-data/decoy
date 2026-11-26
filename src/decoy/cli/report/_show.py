@@ -9,6 +9,7 @@ import typer
 
 from decoy.cli.evidence import (
     _render_manifest_card,
+    redact_manifest_paths,
 )
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import ReportTarget
@@ -93,7 +94,7 @@ def _show(
                 "command": "report show",
                 "status": "ok",
                 "evidence_file": str(evidence_file),
-                "manifest": manifest,
+                "manifest": redact_manifest_paths(manifest),
             },
         )
         return
