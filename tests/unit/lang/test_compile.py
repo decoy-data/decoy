@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from decoy._source_positions import nearest as locate
 from decoy.lang import LangError, compile_text, render
 from decoy.lang._lower import lower
 from decoy.lang._parse import parse
-from decoy.lang._validate import locate
 
 _BASE = """decoy 1
 
