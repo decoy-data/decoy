@@ -106,7 +106,7 @@ def latest_shown(folder: Path) -> Path:
     if named is None or not is_run_id(named):
         return link
     try:
-        current = os.readlink(link)
+        current = str(link.readlink())
     except OSError:
         current = None
     return link if current == named else folder / named
