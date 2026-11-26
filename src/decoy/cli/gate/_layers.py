@@ -85,6 +85,23 @@ class GateFinding:
         return {name: value for name, value in fields.items() if value is not None}
 
 
+def finding_message(f: GateFinding) -> dict[str, Any]:
+    """One `messages[]` entry of a `--json` document, the one spelling `validate` and `run` share.
+
+    `hint` and `position` appear only when the finding has them. The message is not capped here;
+    `run` caps it because its refusal also goes to a one-line summary.
+    """
+    return {
+        "layer": f.layer,
+        "severity": f.severity,
+        "code": f.code,
+        "message": f.message,
+        "location": f.location,
+        **({"hint": f.hint} if f.hint else {}),
+        **({"position": f.loader_position} if f.loader_position else {}),
+    }
+
+
 @dataclass(frozen=True)
 class GateResult:
     """The side-effect-free outcome of the pre-run gate (no rendering, no exit).

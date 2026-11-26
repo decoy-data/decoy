@@ -21,6 +21,7 @@ from decoy.cli.gate import parse_pipeline_yaml, run_config_gate, run_gate
 runner = CliRunner()
 ENV = {"COLUMNS": "10000"}
 MARKER = "SECRET_MARKER_91be"
+TOKENIZE_CONFIG_REFUSAL = 1
 
 THREE_PROBLEMS = """decoy 1
 
@@ -219,7 +220,7 @@ def test_tokenize_refuses_a_marked_file_and_names_the_count(tmp_path: Path) -> N
         app, ["tokenize", str(path), "--vault", str(tmp_path / "v.db"), "--json"], env=ENV
     )
 
-    assert result.exit_code != 0
+    assert result.exit_code == TOKENIZE_CONFIG_REFUSAL, result.output
     assert "lang.unreviewed" in result.output
     assert "1 more" in result.output
     assert MARKER not in result.output
@@ -247,3 +248,19 @@ def test_parse_pipeline_yaml_returns_none_for_a_file_that_cannot_load(tmp_path: 
     assert pipeline is None
     assert [f.code for f in findings][:2] == ["lang.link_needs_namespace", "lang.unknown_strategy"]
     assert findings[-1].code == "lang.unreviewed"
+
+
+# -- one messages[] entry, whichever command writes it --------------------------------------
+
+
+def test_run_and_validate_json_give_the_same_message_entry(tmp_path: Path) -> None:
+    path = _write(tmp_path, THREE_PROBLEMS)
+
+    _, validated = _validate_json(path)
+    run = runner.invoke(app, ["run", str(path), "--json"], env=ENV)
+    ran = json.loads(run.stdout)
+
+    assert ran["messages"], run.output
+    for entry in ran["messages"]:
+        assert "position" in entry, entry
+    assert ran["messages"] == validated["messages"][: len(ran["messages"])]
