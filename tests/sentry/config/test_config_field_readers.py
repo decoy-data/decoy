@@ -157,15 +157,17 @@ def test_t5_the_walk_does_not_enter_list_or_dict_items() -> None:
 
 
 @pytest.mark.parametrize(
-    "spec",
+    ("spec", "rule"),
     [
-        "decoy_engine._internal_thing:anything",
-        "decoy_engine.plan:_private_name",
-        "decoy_engine.plan:not_in_all_but_importable",
+        ("decoy_engine.plan._compile:compile_plan", "private"),
+        ("decoy_engine.plan:_checks", "private"),
+        ("decoy_engine.plan._compile:_hash_config", "private"),
+        ("decoy_engine.plan:validate", "__all__"),
     ],
 )
-def test_t6_a_private_or_unlisted_engine_symbol_fails(spec: str) -> None:
-    assert r.engine_findings("global_settings.seed", {"engine": spec})
+def test_t6_a_private_or_unlisted_engine_symbol_fails(spec: str, rule: str) -> None:
+    found = r.engine_findings("global_settings.on_pool_exhaustion", {"engine": spec})
+    assert found and rule in found[0]
 
 
 def test_t6_a_public_listed_symbol_passes_the_visibility_rule() -> None:
