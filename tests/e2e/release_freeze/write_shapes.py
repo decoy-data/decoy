@@ -506,12 +506,18 @@ def capture(root: Path) -> dict[str, Any]:
                     docs[name] = call(argv)
                 continue
             docs[name] = call(argv)
-        for name, source in ERROR_STEPS.items():
-            result = runner.invoke(app, [*name.split(), str(root / source), "--json"])
-            assert result.exit_code == 1, f"{name} exited {result.exit_code}: {result.stdout}"
-            entry = json.loads(result.stdout)["messages"][0]
-            docs[name + ERROR_SUFFIX] = entry
+        docs.update(_error_entries(runner, root))
     return docs
+
+
+def _error_entries(runner: CliRunner, root: Path) -> dict[str, Any]:
+    """The first `messages` entry of each failing step, keyed by command plus `ERROR_SUFFIX`."""
+    out: dict[str, Any] = {}
+    for name, source in ERROR_STEPS.items():
+        result = runner.invoke(app, [*name.split(), str(root / source), "--json"])
+        assert result.exit_code == 1, f"{name} exited {result.exit_code}: {result.stdout}"
+        out[name + ERROR_SUFFIX] = json.loads(result.stdout)["messages"][0]
+    return out
 
 
 def snapshot() -> dict[str, Any]:
