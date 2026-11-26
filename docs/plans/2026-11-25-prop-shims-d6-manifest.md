@@ -247,7 +247,13 @@ One slice, C-S2m (CLI), R1.
 | Tests: `tests/unit/cli_fmt/test_targets_format.py`, `tests/e2e/cli_fmt/test_target_format_readers.py`, `tests/sentry/test_report_raw_value_isolation.py` | about +70 / -30 |
 
 New public names: `UNRECORDED` in `decoy.cli.io._targets` (not re-exported). Changed signature:
-`entry_format(recorded)` (one production caller). No new files, so no Placement table.
+`entry_format(recorded)` (one production caller). Two new files, placed as follows.
+
+| New file | Kind | Folder | Why there |
+|---|---|---|---|
+| `src/decoy/safe_url.py` | Shared helper, public name (`safe_url_parts`, `redacted_location`) | `src/decoy/` | Used by `notify`, `report diff`, `report show`, `report render` and the manifest writer, so it belongs to no one package. Row "Private shared filesystem or process primitives" in `CODEMAP.md`. |
+| `tests/unit/test_safe_url.py` | Unit test | `tests/unit/` | One `test_<noun>.py` per shared module. |
+
 Dependencies: none open. The parent plan's C-S2 row now points here for the remaining D6 work.
 
 ### Acceptance tests

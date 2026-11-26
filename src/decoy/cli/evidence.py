@@ -770,8 +770,10 @@ def _render_manifest_card(state: Any, manifest: dict[str, Any], evidence_file: P
         status="ok" if hash_ok else "warn",
     )
 
+    # The hash check above ran on the recorded manifest; the tables show the redacted copy.
+    shown = redact_manifest_paths(manifest)
     for group, title in (("input_fingerprints", "Input"), ("output_fingerprints", "Output")):
-        entries = manifest.get(group) or {}
+        entries = shown.get(group) or {}
         if not entries:
             continue
         t = make_table(
@@ -783,7 +785,7 @@ def _render_manifest_card(state: Any, manifest: dict[str, Any], evidence_file: P
             fp = (info.get("fingerprint") or "")[:23] + "..."
             method = info.get("fingerprint_method") or "?"
             size = str(info.get("size_bytes") or "?")
-            t.add_row(tname, redacted_location(str(info.get("path", "?"))), fp, method, size)
+            t.add_row(tname, str(info.get("path", "?")), fp, method, size)
         state.console.print(t)
 
     # Strategies table
