@@ -17,6 +17,7 @@ from decoy._source_positions import (
     segments,
     without_union_member,
 )
+from decoy.lang import _validate as lang_validate
 
 
 def _pos(text: str, needle: str, occurrence: int = 1) -> tuple[int, int]:
@@ -359,3 +360,86 @@ def test_the_decoy_index_holds_no_value_from_the_config() -> None:
     config, spans = _decoy_pair()
     config["name"] = canary
     assert canary not in repr(DecoyPositionIndex(config, spans))
+
+
+# -- one resolver for the gate and the compiler ----------------------------------------------
+
+
+def _connector_pair() -> tuple[dict, dict]:
+    """A target written over three lines: the connector, then two arguments on their own lines."""
+    config = {
+        "targets": {"customers": {"type": "csv", "path": "out.csv", "header": True}},
+        "tables": [{"name": "customers"}],
+    }
+    spans = {
+        ("targets", "customers"): _Span(20),
+        ("targets", "customers", "path"): _Span(21),
+        ("targets", "customers", "header"): _Span(22),
+        ("tables", 0): _Span(18),
+    }
+    return config, spans
+
+
+def test_an_ordinary_connector_path_keeps_its_argument_segment() -> None:
+    """Mutation: `without_union_member` first, so `path` is dropped and the connector line wins."""
+    config, spans = _connector_pair()
+    index = DecoyPositionIndex(config, spans)
+    assert index.locate("targets.customers.path").line == 21
+    assert index.locate("targets.customers.header").line == 22
+    assert index.locate("targets.customers.type").line == 20  # no entry of its own: the connector
+
+
+def test_a_union_qualified_path_still_reaches_the_argument() -> None:
+    config, spans = _connector_pair()
+    index = DecoyPositionIndex(config, spans)
+    assert index.locate("targets.customers.csv.path").line == 21
+    assert index.locate("targets.customers.csv").line == 20
+
+
+def test_nearest_takes_an_exact_entry_before_dropping_a_member() -> None:
+    spans = {("targets", "t"): "connector", ("targets", "t", "path"): "argument"}
+    assert nearest(("targets", "t", "path"), spans) == "argument"
+    assert nearest(("targets", "t", "csv", "path"), spans) == "argument"
+    assert nearest(("targets", "t", "csv", "nope"), spans) == "connector"
+
+
+class _StubEngineError(lang_validate.PipelineConfigError):
+    def __init__(self, locations: list[str]) -> None:
+        super().__init__("stub")
+        self.problems = [
+            type("P", (), {"location": loc, "code": "x.y", "text": "problem"})()
+            for loc in locations
+        ]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "tables.0",  # a number inside a list is an index
+        "tables[0].name",
+        "tables.customers",
+        "targets.0.path",  # a number that is a mapping key stays text
+        "targets.0",
+        "targets.customers.path",
+        "targets.customers.csv.path",
+        "tables.7.columns.0",  # outside the list: the nearest construct
+    ],
+)
+def test_the_compiler_and_the_gate_select_the_same_span(path: str, monkeypatch) -> None:
+    config, spans = _connector_pair()
+    config["targets"]["0"] = {"type": "csv", "path": "z.csv"}
+    spans[("targets", "0")] = _Span(30)
+    spans[("targets", "0", "path")] = _Span(31)
+
+    def refuse(_config: object) -> None:
+        raise _StubEngineError([path])
+
+    monkeypatch.setattr(lang_validate, "parse_pipeline_config", refuse)
+    with pytest.raises(lang_validate.LangError) as caught:
+        lang_validate.validate(config, spans)
+    (problem,) = caught.value.diagnostics
+    gate = DecoyPositionIndex(config, spans).locate(path)
+    compiler = problem.span
+    assert (gate is None) == (compiler is None), path
+    if gate is not None and compiler is not None:
+        assert (gate.line, gate.column) == (compiler.line, compiler.column), path

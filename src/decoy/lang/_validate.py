@@ -13,7 +13,7 @@ from typing import Any
 from decoy_engine import parse_pipeline_config
 from decoy_engine.config import PipelineConfigError
 
-from decoy._source_positions import nearest, segments
+from decoy._source_positions import nearest, segments, span_at
 from decoy.lang._codes import CONFIG
 from decoy.lang._errors import LangError, SourceMap, diagnostic
 
@@ -24,22 +24,18 @@ _WHEN_HINT = (
 )
 
 
-def _key(location: str) -> tuple[Any, ...]:
-    """An engine problem location (`tables[0].columns[2].namespace`) as a source-map key."""
-    parts = segments(location) or ()
-    return tuple(int(p) if p.isascii() and p.isdigit() else p for p in parts)
-
-
 def validate(config: dict[str, Any], spans: SourceMap) -> None:
     try:
         parse_pipeline_config(config)
     except PipelineConfigError as error:
         problems = []
         for problem in error.problems:
-            path = _key(problem.location)
-            hint = _WHEN_HINT if path and path[-1] == "when" else None
+            parts = segments(problem.location) or ()
+            hint = _WHEN_HINT if parts and parts[-1] == "when" else None
             text = f"{problem.text} [{problem.code}]"
-            problems.append(diagnostic(CONFIG, nearest(path, spans), hint, text=text))
+            # A location that names no place (a wildcard) still has to land somewhere: the program.
+            span = span_at(config, spans, problem.location) or nearest((), spans)
+            problems.append(diagnostic(CONFIG, span, hint, text=text))
     else:
         return
     # Raised outside the handler so the engine error is not attached as context.

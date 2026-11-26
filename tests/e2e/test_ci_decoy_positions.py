@@ -73,6 +73,10 @@ def test_sarif_regions_are_on_the_decoy_lines_and_valid(tmp_path: Path) -> None:
     for r in results:
         physical = r["locations"][0]["physicalLocation"]
         assert physical["artifactLocation"]["uri"] == "pipeline.decoy"
+    schema = [r for r in results if r["ruleId"] != "validate.lang.unreviewed"]
+    assert schema, "the engine schema finding is in the SARIF report"
+    region = schema[0]["locations"][0]["physicalLocation"]["region"]
+    assert region["startLine"] == _line("bogus_key")
 
 
 def test_a_decoy_syntax_error_is_one_finding_with_its_own_rule_not_the_unknown_one(

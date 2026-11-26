@@ -1,9 +1,9 @@
 """Logical config paths -> places in a pipeline file, without guessing.
 
 `Position` and `segments` are shared by every kind of pipeline file; `YamlPositionIndex` is the
-YAML half and `DecoyPositionIndex` the `.decoy` half. The union-member rule and the
-nearest-construct lookup are shared by `DecoyPositionIndex` and the language's own error
-reporting. It sits at the bottom of the import tiers so the loader, the language package and the
+YAML half and `DecoyPositionIndex` the `.decoy` half. `span_at` (path to source key, union-member
+rule, nearest-construct lookup) is the one `.decoy` lookup, used by `DecoyPositionIndex` and the
+language's own error reporting. It sits at the bottom of the import tiers so the loader, the language package and the
 CI adapter can all reach it.
 
 YAML positions are exact or file-level, never a guess. `.decoy` positions are the nearest
@@ -83,11 +83,47 @@ def nearest(path: tuple[Any, ...], spans: Mapping[tuple[Any, ...], _T]) -> _T | 
 
     A source map has no entry for a key the program never wrote, so a problem at that key is
     reported on the construct that produced its parent, as a compiler reports an error on the
-    expression that caused it."""
-    path = without_union_member(path)
-    while path and path not in spans:
-        path = path[:-1]
-    return spans.get(path)
+    expression that caused it. At each prefix an exact entry wins; the union member is dropped
+    only when there is none, so `targets.customers.path` keeps its own argument span."""
+    probe = path
+    while True:
+        for key in (probe, without_union_member(probe)):
+            if key in spans:
+                return spans[key]
+        if not probe:
+            return None
+        probe = probe[:-1]
+
+
+def source_key(config: Mapping[str, Any], parts: tuple[str, ...]) -> tuple[Any, ...]:
+    """`parts` as a source-map key, read through `config`. It ends where the config stops
+    matching the path.
+
+    A number is an index only inside a list, and a name there is the one entry that carries it;
+    in a mapping every segment stays text. The gate and the compiler both come through here."""
+    node: Any = config
+    key: list[Any] = []
+    for part in parts:
+        if isinstance(node, list):
+            index = _list_index(node, part)
+            if index is None:
+                break
+            key.append(index)
+            node = node[index]
+        else:
+            key.append(part)
+            node = node.get(part) if isinstance(node, Mapping) else None
+    return tuple(key)
+
+
+def span_at(
+    config: Mapping[str, Any], spans: Mapping[tuple[Any, ...], _T], logical_path: str | None
+) -> _T | None:
+    """The source span of a config path: the one lookup behind every `.decoy` position."""
+    parts = segments(logical_path)
+    if parts is None:
+        return None
+    return nearest(source_key(config, parts), spans)
 
 
 @dataclass(frozen=True)
@@ -175,10 +211,7 @@ class DecoyPositionIndex:
         self._spans = source_map
 
     def locate(self, logical_path: str | None) -> Position | None:
-        parts = segments(logical_path)
-        if parts is None:
-            return None
-        span = nearest(self._resolve(parts), self._spans)
+        span = span_at(self._config, self._spans, logical_path)
         if span is None:
             return None
         return Position(
@@ -187,22 +220,6 @@ class DecoyPositionIndex:
             getattr(span, "end_line", None),
             getattr(span, "end_column", None),
         )
-
-    def _resolve(self, parts: tuple[str, ...]) -> tuple[Any, ...]:
-        """`parts` as a source-map key. It ends where the config stops matching the path."""
-        node: Any = self._config
-        key: list[Any] = []
-        for part in parts:
-            if isinstance(node, list):
-                index = _list_index(node, part)
-                if index is None:
-                    break
-                key.append(index)
-                node = node[index]
-            else:
-                key.append(part)
-                node = node.get(part) if isinstance(node, Mapping) else None
-        return tuple(key)
 
     def __repr__(self) -> str:
         return f"DecoyPositionIndex(entries={len(self._spans)})"

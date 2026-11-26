@@ -76,6 +76,20 @@ OPTIONAL: dict[str, list[str]] = {
     "report show": ["/manifest/warnings/detail/resident_source"],
 }
 
+# A command whose failing document also has a pinned shape: the first `messages` entry of a run
+# that exits 1 on a `.decoy` loader finding, which carries `position`. The success shape pins `messages` as `[]`, so a position field on an error entry
+# could vanish unseen. Each value is the pipeline file the step reads (written by the workspace).
+ERROR_STEPS: dict[str, str] = {"validate config": "bad.decoy"}
+ERROR_SUFFIX = " (error entry)"
+_BAD_DECOY = """decoy 1
+
+pipeline {
+  mask patients from csv("patients.csv", header: true) to csv("out/patients.csv") {
+    ssn : redact
+  }
+}
+"""
+
 _TYPES = {bool: "boolean", int: "integer", float: "number", str: "string", type(None): "null"}
 
 
@@ -293,6 +307,7 @@ def build_workspace(root: Path) -> None:
         "patient_id,diagnosis\n" + "".join(f"{i},flu\n" for i in range(1, 6)), encoding="utf-8"
     )
     (root / "pipeline.yaml").write_text(_PIPELINE, encoding="utf-8")
+    (root / "bad.decoy").write_text(_BAD_DECOY, encoding="utf-8")
     (root / "integrity.yaml").write_text(_INTEGRITY, encoding="utf-8")
     (root / "tokenize.yaml").write_text(_TOKENIZE, encoding="utf-8")
     (root / "vaulted.yaml").write_text(_VAULTED, encoding="utf-8")
@@ -491,6 +506,11 @@ def capture(root: Path) -> dict[str, Any]:
                     docs[name] = call(argv)
                 continue
             docs[name] = call(argv)
+        for name, source in ERROR_STEPS.items():
+            result = runner.invoke(app, [*name.split(), str(root / source), "--json"])
+            assert result.exit_code == 1, f"{name} exited {result.exit_code}: {result.stdout}"
+            entry = json.loads(result.stdout)["messages"][0]
+            docs[name + ERROR_SUFFIX] = entry
     return docs
 
 
@@ -499,7 +519,10 @@ def snapshot() -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         docs = capture(Path(tmp))
     out: dict[str, Any] = {name: {"exempt": why} for name, why in EXEMPT.items()}
+    errors = {n.removesuffix(ERROR_SUFFIX): d for n, d in docs.items() if n.endswith(ERROR_SUFFIX)}
     for name, doc in docs.items():
+        if name.endswith(ERROR_SUFFIX):
+            continue
         dynamic, optional = DYNAMIC.get(name, []), OPTIONAL.get(name, [])
         opaque = OPAQUE.get(name, {})
         entry: dict[str, Any] = {"paths": flatten(shape_of(doc, dynamic, optional, opaque))}
@@ -509,6 +532,8 @@ def snapshot() -> dict[str, Any]:
             entry["opaque_values"] = opaque
         if optional:
             entry["optional_keys"] = optional
+        if name in errors:
+            entry["error_entry"] = flatten(shape_of(errors[name], [], []))
         out[name] = entry
     return dict(sorted(out.items()))
 
