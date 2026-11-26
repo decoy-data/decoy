@@ -23,10 +23,9 @@ Output entry format keys (additive to cli-local-1)
 An `output_fingerprints` entry for a file target also records `format` (`csv`, `parquet` or
 `fixed_width`, the format the file was written in) and, for fixed width only, `layout` (the
 target's validated layout: column names and positions, no data). The version string does not
-change. A reader treats an entry without `format` as written by an older CLI and applies the
-legacy rule: `.parquet` is Parquet, everything else CSV. It must not use the suffix rule of
-`format_for_path` for those entries, because the old writer put CSV bytes into a `.pq` path.
-`manifest_hash` covers the new keys on new manifests; old manifests verify unchanged.
+change. `report diff` refuses an entry without `format` (written by an older CLI) with
+`target_format_unrecorded`; it applies no suffix rule, because the old writer put CSV bytes into
+a `.pq` path. `manifest_hash` covers the new keys on new manifests; old manifests verify unchanged.
 
 Path base (additive to cli-local-1)
 -----------------------------------
@@ -180,8 +179,8 @@ def _format_keys(table: str, tgt: dict[str, Any]) -> dict[str, Any]:
     """The `format` (and fixed-width `layout`) keys of a file target; none for any other target.
 
     A target the writer would have refused (suffix contradiction) cannot reach here after a
-    successful run; if one does, the entry stays in the legacy shape rather than failing a
-    finished run.
+    successful run; if one does, the entry has no format (`report diff` refuses it) rather than
+    failing a finished run.
     """
     if tgt.get("type", "file") != "file":
         return {}

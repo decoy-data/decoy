@@ -61,9 +61,9 @@ from decoy.cli.report import compare_data, render_html, render_markdown
 _SENTINEL = "SENTRY_RAW_VALUE_ZZZZZ_" + "X" * 20
 
 
-def _outputs(path: Path) -> dict[str, Any]:
-    """A manifest (old path rule: paths as recorded) whose one output is `path`."""
-    entry = {"path": str(path), "fingerprint": "sha256:" + "0" * 64}
+def _outputs(path: Path, fmt: str) -> dict[str, Any]:
+    """A manifest (old path rule: paths as recorded) whose one output is `path` in `fmt`."""
+    entry = {"path": str(path), "fingerprint": "sha256:" + "0" * 64, "format": fmt}
     return {"output_fingerprints": {"data": entry}}
 
 
@@ -210,9 +210,12 @@ def test_compare_data_does_not_leak_raw_string_values(tmp_path: Path) -> None:
     )
 
     result = compare_data(
-        _outputs(csv_a), _outputs(csv_b), manifest_file_a=None, manifest_file_b=None
+        _outputs(csv_a, "csv"), _outputs(csv_b, "csv"), manifest_file_a=None, manifest_file_b=None
     )
     serialised = _json.dumps(result)
+
+    # The data level ran: a refused or unread table would leave this empty and pass vacuously.
+    assert result["table_deltas"], "compare_data did not read the CSV outputs"
 
     assert _STRING_SENTINEL not in serialised, (
         f"compare_data leaked the string sentinel '{_STRING_SENTINEL}' into its "
@@ -264,9 +267,14 @@ def test_compare_data_does_not_leak_raw_numeric_values(tmp_path: Path) -> None:
     pq.write_table(pa.Table.from_pandas(df_b), str(parquet_b))
 
     result = compare_data(
-        _outputs(parquet_a), _outputs(parquet_b), manifest_file_a=None, manifest_file_b=None
+        _outputs(parquet_a, "parquet"),
+        _outputs(parquet_b, "parquet"),
+        manifest_file_a=None,
+        manifest_file_b=None,
     )
     serialised = _json.dumps(result)
+
+    assert result["table_deltas"], "compare_data did not read the Parquet outputs"
 
     assert str(_NUMERIC_SENTINEL) not in serialised, (
         f"compare_data leaked the numeric sentinel '{_NUMERIC_SENTINEL}' into its "

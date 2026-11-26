@@ -122,6 +122,7 @@ def _diff(
         data_dep_error = str(_dep_err)
 
     missing_files: list[str] = list(data_result["missing_files"]) if data_result else []
+    refused = _refusal_text(data_result["refusals"]) if data_result else None
     data_available = data_result is not None and not missing_files
 
     # --require-data: restore the strict hard-fail when the data level could
@@ -131,6 +132,8 @@ def _diff(
             msg = "Output files are missing or unreadable and cannot be compared: " + ", ".join(
                 missing_files
             )
+            if refused:
+                msg += "; " + refused
         else:
             msg = data_dep_error or "data-level comparison is unavailable."
         if state.mode is OutputMode.json:
@@ -163,8 +166,8 @@ def _diff(
             payload["any_data_change"] = None
             payload["table_deltas"] = []
             payload["missing_files"] = missing_files
-            if data_dep_error:
-                payload["data_note"] = data_dep_error
+            if data_dep_error or refused:
+                payload["data_note"] = data_dep_error or refused
         emit_json(state, payload)
         return
 
@@ -219,7 +222,12 @@ def _diff(
         # Degraded: the output files are gone. Note, not failure.
         state.console.print("")
         note = (
-            "output files missing (" + ", ".join(missing_files) + ")"
+            "output files missing"
+            + (" or refused" if refused else "")
+            + " ("
+            + ", ".join(missing_files)
+            + ")"
+            + (f"; {refused}" if refused else "")
             if missing_files
             else (data_dep_error or "data-level comparison unavailable")
         )
@@ -229,6 +237,13 @@ def _diff(
             f"data-level comparison skipped: {note}; reported manifest-level "
             "only. Pass --require-data to hard-fail instead.",
         )
+
+
+def _refusal_text(refusals: list[tuple[str, str]]) -> str | None:
+    """The fixed `refused: code: message` text for refused outputs, or None when none were."""
+    if not refusals:
+        return None
+    return "refused: " + "; ".join(f"{code}: {message}" for code, message in refusals)
 
 
 def _render_data_diff(state: Any, diff_result: dict[str, Any]) -> None:
