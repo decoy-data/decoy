@@ -468,6 +468,29 @@ def test_layout_files_are_owner_only_under_umask_zero(tmp_path: Path) -> None:
     ]
 
 
+_LATEST_WITHOUT_LOCK = (
+    "import os, stat, sys\n"
+    "from pathlib import Path\n"
+    "from decoy.cli.io import PipelineName, RunLayout, _pointer, name_dir, prepare_out, write_claim\n"
+    "_pointer._pointer_supported = lambda: False\n"
+    "os.umask(0)\n"
+    "root = Path(sys.argv[1])\n"
+    "out, _ = prepare_out(root)\n"
+    "write_claim(name_dir(out, 'p'), 'jobs/p.yaml')\n"
+    "name = PipelineName('p', False, 'jobs/p.yaml')\n"
+    "assert RunLayout.open(root, name, '0a1b2c3d-0000-4000-8000-000000000000').commit_latest() == ()\n"
+    "print(oct(stat.S_IMODE(os.stat(root / 'out/p/LATEST').st_mode)))\n"
+)
+
+
+@posix_only
+def test_latest_written_without_the_engine_lock_is_owner_only_under_umask_zero(
+    tmp_path: Path,
+) -> None:
+    """The fallback `_write_latest` (the win32 path) is forced here, so its own write is checked."""
+    assert _run(_LATEST_WITHOUT_LOCK, str(tmp_path)).splitlines() == ["0o600"]
+
+
 _LIBRARY_FILES = (
     "import os, stat, sys\n"
     "from datetime import datetime, timezone\n"

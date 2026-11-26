@@ -254,3 +254,112 @@ def test_an_unsupported_host_writes_latest_the_old_way(
     assert layout.commit_latest() == ()
     assert _latest(root).read_text(encoding="utf-8") == f"{layout.run.run_id}\n"
     assert not (root / "out" / "orders" / ".LATEST.decoy-lock").exists()
+
+
+# --- V1 a stale `current` never shows as Latest --------------------------------------------
+
+OLD_RUN = "20200101T000000000000Z-00000000"
+
+
+def _fail_link(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(link: Path, target: str) -> None:
+        raise OSError(28, "no space left")
+
+    monkeypatch.setattr(_pointer, "replace_symlink", boom)
+
+
+@posix_only
+def test_a_failed_link_swap_leaves_summary_and_readers_on_the_new_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _project(tmp_path)
+    layout = _open(root)
+    assert layout.run is not None
+    folder = root / "out" / "orders"
+    (folder / OLD_RUN).mkdir()
+    _latest(root).write_text(f"{OLD_RUN}\n", encoding="utf-8")
+    (folder / "current").symlink_to(OLD_RUN)
+    _fail_link(monkeypatch)
+
+    warnings = layout.commit_latest()
+
+    assert _codes(warnings) == ["layout.latest_link_failed"]
+    assert (folder / "current").readlink() == Path(OLD_RUN)
+    assert _pointer.read_latest(folder) == layout.run.run_id
+    assert _pointer.latest_shown(folder) == folder / layout.run.run_id
+    shown = dict(layout.summary_facts())["Latest"]
+    assert shown.endswith(layout.run.run_id)
+    assert OLD_RUN not in shown
+
+
+@posix_only
+def test_a_fresh_link_is_what_the_summary_shows(tmp_path: Path) -> None:
+    root = _project(tmp_path)
+    layout = _open(root)
+    assert layout.commit_latest() == ()
+    folder = root / "out" / "orders"
+    assert _pointer.latest_shown(folder) == folder / "current"
+    assert dict(layout.summary_facts())["Latest"].endswith("current")
+
+
+@posix_only
+def test_a_missing_link_with_a_valid_latest_shows_the_run_folder(tmp_path: Path) -> None:
+    folder = tmp_path / "orders"
+    (folder / OLD_RUN).mkdir(parents=True)
+    (folder / "LATEST").write_text(f"{OLD_RUN}\n", encoding="utf-8")
+    assert _pointer.latest_shown(folder) == folder / OLD_RUN
+
+
+# --- DESIGN the decision is made once, for both paths --------------------------------------
+
+LATER = "20300101T000000000000Z-00000000"
+
+
+@pytest.mark.parametrize(
+    ("seen", "proceed", "codes"),
+    [
+        (None, True, []),
+        (OLD_RUN, True, []),
+        ("garbage", True, ["layout.latest_invalid"]),
+        (LATER, False, []),
+    ],
+    ids=["absent", "older", "malformed", "later"],
+)
+def test_the_decision_helper(seen: str | None, proceed: bool, codes: list[str]) -> None:
+    warnings, go = _pointer._judge(Path("p"), seen, "20250101T000000000000Z-00000000")
+    assert go is proceed
+    assert [w.code for w in warnings] == codes
+
+
+@pytest.mark.parametrize("host", ["posix", "no lock"])
+@pytest.mark.parametrize(
+    ("seen", "codes", "moves"),
+    [
+        (OLD_RUN, [], True),
+        ("garbage", ["layout.latest_invalid"], True),
+        (LATER, [], False),
+    ],
+    ids=["older", "malformed", "later"],
+)
+def test_both_paths_apply_the_same_decision(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    host: str,
+    seen: str,
+    codes: list[str],
+    moves: bool,
+) -> None:
+    if host == "posix" and sys.platform == "win32":
+        pytest.skip("the pointer path is POSIX")
+    root = _project(tmp_path)
+    layout = _open(root, 5)
+    assert layout.run is not None
+    _latest(root).write_text(f"{seen}\n", encoding="utf-8")
+    if host == "no lock":
+        monkeypatch.setattr(_pointer, "_pointer_supported", lambda: False)
+
+    warnings = layout.commit_latest()
+
+    assert _codes(warnings) == codes
+    expected = layout.run.run_id if moves else seen
+    assert _latest(root).read_text(encoding="utf-8") == f"{expected}\n"

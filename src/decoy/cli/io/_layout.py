@@ -34,7 +34,7 @@ from decoy.cli.io._layout_errors import (
     PIPELINE_NAME_MISMATCH,
     LayoutWarning,
 )
-from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK, swap_latest
+from decoy.cli.io._pointer import latest_shown, swap_latest
 from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._small_file import read_small_bytes
 
@@ -631,8 +631,7 @@ class RunLayout:
                 ("Run folder" if self._run is not None else "Output folder", shown_path(folder))
             )
         if self._pipeline_dir is not None:
-            pointer = _LATEST_LINK if os.name == "posix" else _LATEST_FILE
-            facts.append(("Latest", shown_path(self._pipeline_dir / pointer)))
+            facts.append(("Latest", shown_path(latest_shown(self._pipeline_dir))))
         return facts
 
     def abandon(self) -> None:

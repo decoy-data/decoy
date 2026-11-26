@@ -162,7 +162,7 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/io/_layout.py::write_claim::write_atomic::1": _UNIT
     + "test_layout_files_are_owner_only_under_umask_zero",
     "cli/io/_pointer.py::_write_latest::write_atomic::1": _UNIT
-    + "test_layout_files_are_owner_only_under_umask_zero",
+    + "test_latest_written_without_the_engine_lock_is_owner_only_under_umask_zero",
     "cli/io/_project.py::_create_once::write_local_target::1": _UNIT
     + "test_layout_files_are_owner_only_under_umask_zero",
     "cli/library/_fs.py::ensure_private_dir::create_private_directory::1": _LIBRARY,

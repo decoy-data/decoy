@@ -80,6 +80,38 @@ def _link_current(folder: Path, run_id: str) -> list[LayoutWarning]:
     return []
 
 
+def _judge(folder: Path, seen: str | None, run_id: str) -> tuple[list[LayoutWarning], bool]:
+    """The one "later run id wins" rule: the warnings so far and whether to move `LATEST`.
+
+    A malformed id is warned about and replaced; a later id is kept. Both swap paths call
+    this, the locked one while it holds the lock.
+    """
+    if seen is None:
+        return [], True
+    if not is_run_id(seen):
+        return [LATEST_INVALID.warning(path=folder)], True
+    return [], seen <= run_id
+
+
+def latest_shown(folder: Path) -> Path:
+    """The path to show as the latest run: `current` unless it lags behind `LATEST`.
+
+    If the `current` swap failed after `LATEST` moved, the link names the old run. `LATEST` is
+    the authority, so a valid id that the link does not name resolves to its run folder.
+    """
+    if os.name != "posix":
+        return folder / _LATEST_FILE
+    link = folder / _LATEST_LINK
+    named = read_latest(folder)
+    if named is None or not is_run_id(named):
+        return link
+    try:
+        current = os.readlink(link)
+    except OSError:
+        current = None
+    return link if current == named else folder / named
+
+
 def swap_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
     """Point `LATEST` and `current` at `run_id`; a failure is a warning, never an exit.
 
@@ -103,9 +135,8 @@ def swap_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
         with pointer.locked(LATEST_LOCK_TIMEOUT_S) as held:
             state = pointer.read()
             seen = _decode(state.raw) if state.raw is not None else None
-            if seen is not None and not is_run_id(seen):
-                warnings.append(LATEST_INVALID.warning(path=folder))
-            elif seen is not None and seen > run_id:
+            warnings, proceed = _judge(folder, seen, run_id)
+            if not proceed:
                 return ()
             result = held.swap(state, run_id)
             if result == "replaced":
@@ -134,11 +165,8 @@ def swap_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
 
 def _write_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
     """The pre-pointer write, kept for hosts without the engine's lock (named limit, F22 W1)."""
-    warnings: list[LayoutWarning] = []
-    seen = read_latest(folder)
-    if seen is not None and not is_run_id(seen):
-        warnings.append(LATEST_INVALID.warning(path=folder))
-    elif seen is not None and seen > run_id:
+    warnings, proceed = _judge(folder, read_latest(folder), run_id)
+    if not proceed:
         return ()
     try:
         write_atomic(folder, _LATEST_FILE, f"{run_id}\n".encode(), WriteMode.REPLACE)
