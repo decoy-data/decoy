@@ -21,16 +21,12 @@ from typing import TYPE_CHECKING, Literal, TypeGuard
 from decoy._atomic import (
     AtomicWriteError,
     WriteMode,
-    replace_symlink,
     write_atomic,
     write_local_target,
 )
 from decoy._private_file import PRIVATE_EXISTS, PrivateFileError, create_private_directory
 from decoy.cli.io._layout_errors import (
     GITIGNORE_WRITE_FAILED,
-    LATEST_INVALID,
-    LATEST_LINK_FAILED,
-    LATEST_WRITE_FAILED,
     OUTPUT_PATH_ESCAPES,
     PATH_TOO_LONG,
     PIPELINE_NAME_COLLISION,
@@ -38,14 +34,12 @@ from decoy.cli.io._layout_errors import (
     PIPELINE_NAME_MISMATCH,
     LayoutWarning,
 )
-from decoy.cli.io._small_file import UnsafeFileError, read_small_file
+from decoy.cli.io._pointer import latest_shown, swap_latest
+from decoy.cli.io._run_id import is_run_id
+from decoy.cli.io._small_file import read_small_bytes
 
 if TYPE_CHECKING:
     from decoy.cli.io._project import Project
-
-# <UTC start YYYYMMDDTHHMMSSffffffZ>-<8 hex of the invocation id>, plus 4 more hex digits per
-# clash, up to all 32.
-_RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z-[0-9a-f]{8}(?:[0-9a-f]{4}){0,6}")
 
 MAX_RUN_ID_LENGTH = 55
 WINDOWS_PATH_LIMIT = 259
@@ -59,7 +53,6 @@ def member_yaml(root: Path, name: str) -> Path:
     return root / PIPELINES_DIR / name / PIPELINE_YAML
 
 
-_CLAIM_MAX_BYTES = 4096
 _SLUG_MAX = 56
 _SLUG_BAD = re.compile(r"[^A-Za-z0-9_.-]+")
 _DASH_RUNS = re.compile(r"-{2,}")
@@ -71,11 +64,6 @@ def is_valid_name(name: str) -> bool:
     from decoy_engine import is_valid_pipeline_name
 
     return bool(is_valid_pipeline_name(name))
-
-
-def is_run_id(value: str) -> bool:
-    """True when `value` is a well-formed run folder name."""
-    return _RUN_ID.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -303,22 +291,9 @@ def _derived(root: Path, yaml_rel: str, stem: str) -> str:
     return f"pipeline-{digest}"
 
 
-def _read_small(path: Path) -> bytes | None:
-    """At most `_CLAIM_MAX_BYTES` of the regular file at `path`, else None.
-
-    None covers a missing or unreadable file and anything that is not a plain regular file, so a
-    planted link, pipe or device in a run's bookkeeping files is never read through.
-    """
-    try:
-        found = read_small_file(path, _CLAIM_MAX_BYTES)
-    except UnsafeFileError:
-        return None
-    return found.data if found is not None else None
-
-
 def read_claim(out: Path, name: str) -> str | None:
     """The YAML path `out/<name>/PIPELINE` names, or None when there is no claim."""
-    raw = _read_small(out / name / _CLAIM_NAME) or b""
+    raw = read_small_bytes(out / name / _CLAIM_NAME) or b""
     # Only the writer's newline goes: spaces are valid at either end of a POSIX path.
     return raw.decode("utf-8", errors="replace").removesuffix("\n") or None
 
@@ -438,10 +413,6 @@ def create_run_folder(folder: Path, started: datetime, invocation_id: str) -> Ru
 
 
 # --- the run layout ----------------------------------------------------------------------
-
-_LATEST_FILE = "LATEST"
-# Not `latest`: macOS and Windows fold case by default, so it would collide with `LATEST`.
-_LATEST_LINK = "current"
 
 
 def mint_invocation_id() -> str:
@@ -604,29 +575,12 @@ class RunLayout:
     def commit_latest(self) -> tuple[LayoutWarning, ...]:
         """Point `LATEST` and `current` at this run, after a clean (exit 0) run.
 
-        Moves nothing when `LATEST` already names a later run id. An invalid `LATEST` is
-        treated as absent and warned. A failure here never changes the run's outcome: it is
-        returned as a warning.
+        Moves nothing when `LATEST` already names a later run id. A failure here never changes
+        the run's outcome: it is returned as a warning (`io/_pointer.py` owns the rules).
         """
         if self._run is None or self._pipeline_dir is None:
             return ()
-        folder, run_id = self._pipeline_dir, self._run.run_id
-        warnings: list[LayoutWarning] = []
-        current = read_latest(folder)
-        if current is not None and not is_run_id(current):
-            warnings.append(LATEST_INVALID.warning(path=folder))
-        elif current is not None and current > run_id:
-            return ()
-        try:
-            write_atomic(folder, _LATEST_FILE, f"{run_id}\n".encode(), WriteMode.REPLACE)
-        except AtomicWriteError:
-            return (*warnings, LATEST_WRITE_FAILED.warning(path=folder))
-        if os.name == "posix":
-            try:
-                replace_symlink(folder / _LATEST_LINK, run_id)
-            except (AtomicWriteError, OSError):
-                warnings.append(LATEST_LINK_FAILED.warning(path=folder))
-        return tuple(warnings)
+        return swap_latest(self._pipeline_dir, self._run.run_id)
 
     def output_dir(self) -> Path | None:
         """The folder this run writes relative paths into: the run folder or `--out-dir`.
@@ -677,8 +631,7 @@ class RunLayout:
                 ("Run folder" if self._run is not None else "Output folder", shown_path(folder))
             )
         if self._pipeline_dir is not None:
-            pointer = _LATEST_LINK if os.name == "posix" else _LATEST_FILE
-            facts.append(("Latest", shown_path(self._pipeline_dir / pointer)))
+            facts.append(("Latest", shown_path(latest_shown(self._pipeline_dir))))
         return facts
 
     def abandon(self) -> None:
@@ -706,16 +659,6 @@ def shown_path(path: Path) -> str:
         return str(path.relative_to(here))
     except ValueError:
         return str(path)
-
-
-def read_latest(folder: Path) -> str | None:
-    """The run id `LATEST` names; None when absent, "" when something unreadable is there."""
-    path = folder / _LATEST_FILE
-    raw = _read_small(path)
-    if raw is None:
-        # A link, pipe or unreadable file is not absent: "" fails is_run_id, so it is warned.
-        return "" if os.path.lexists(path) else None
-    return raw.decode("utf-8", errors="replace").strip() or None
 
 
 def is_placed_relative(raw: object) -> bool:

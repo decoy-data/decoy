@@ -33,13 +33,11 @@ from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io._layout import (
     PIPELINE_YAML,
     PIPELINES_DIR,
-    is_run_id,
     is_valid_name,
     member_yaml,
     pipeline_folder,
     project_out_folder,
     project_relative_posix,
-    read_latest,
     same_path,
 )
 from decoy.cli.io._layout_errors import (
@@ -51,7 +49,9 @@ from decoy.cli.io._layout_errors import (
     LayoutError,
     LayoutWarning,
 )
+from decoy.cli.io._pointer import read_latest
 from decoy.cli.io._project import Project, find_project
+from decoy.cli.io._run_id import is_run_id
 from decoy.ui.output import OutputMode, OutputState, emit_json
 from decoy.ui.theme import error
 

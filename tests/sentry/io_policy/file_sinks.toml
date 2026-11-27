@@ -508,8 +508,8 @@ reason = "the folder `--out-dir` names, made before targets are written"
 output_kind = "target"
 
 [[row]]
-file = "cli/io/_layout.py"
-function = "RunLayout.commit_latest"
+file = "cli/io/_pointer.py"
+function = "_write_latest"
 sink = "write_atomic"
 ordinal = 1
 disposition = "entry"
@@ -517,8 +517,8 @@ reason = "`out/<name>/LATEST`"
 output_kind = "layout"
 
 [[row]]
-file = "cli/io/_layout.py"
-function = "RunLayout.commit_latest"
+file = "cli/io/_pointer.py"
+function = "_link_current"
 sink = "replace_symlink"
 ordinal = 1
 disposition = "entry"

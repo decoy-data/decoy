@@ -140,6 +140,10 @@ LATEST_WRITE_FAILED = Descriptor(
     "layout.latest_write_failed",
     "Could not write LATEST in {path}; the run itself is unaffected.",
 )
+LATEST_COMMIT_UNCERTAIN = Descriptor(
+    "layout.publication_commit_uncertain",
+    "LATEST in {path} was replaced, but the folder could not be synced; it may not survive a crash.",
+)
 GITIGNORE_WRITE_FAILED = Descriptor(
     "layout.gitignore_write_failed",
     "Could not write {path}; the run goes on without it.",
@@ -191,6 +195,7 @@ WARNING_DESCRIPTORS: tuple[Descriptor, ...] = (
     LATEST_INVALID,
     LATEST_LINK_FAILED,
     LATEST_WRITE_FAILED,
+    LATEST_COMMIT_UNCERTAIN,
     GITIGNORE_WRITE_FAILED,
     REPORT_NOT_WRITTEN,
     PROJECT_NESTED,
