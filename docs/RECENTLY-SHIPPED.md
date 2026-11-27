@@ -11,6 +11,10 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-26: row 24zj PROP-SURFACE slice E-S1a
+
+- PROP-SURFACE (row 24zj, E-S1a): engine #822 (2026-11-26, `6d6e1aca3`) drops 21 root names that now import from their sub-packages, and removes `TelemetryClient`, `ExecutionEvent` and `event_to_legacy_dict` from the engine surface.
+
 ## 2026-11-25: CLI-SPLIT report and fit splits, FPE-CHECKSUM-NATIVE S2a
 
 No row closed. Rows moved:
