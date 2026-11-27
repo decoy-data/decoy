@@ -18,8 +18,9 @@ from tests.csv_sources import csv_source
 from decoy.cli.gate import run_gate_on_config
 from decoy.cli.io import OutputPlacement
 from decoy.cli.io._cloud import CloudRoot, cloud_root, new_cloud_run_id
-from decoy.cli.io._layout import is_run_id, pipeline_name_for
+from decoy.cli.io._layout import pipeline_name_for
 from decoy.cli.io._placement import layout_issues
+from decoy.cli.io._run_id import is_run_id
 
 SPLIT = "layout.delivery_root_split"
 INVALID = "layout.cloud_target_invalid"

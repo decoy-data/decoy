@@ -342,3 +342,48 @@ def test_a_run_writes_only_what_run_outputs_names(
     assert [p for p in changed if p not in allowed] == []
     # The audit sees something: the outputs the case asked for are among the changes.
     assert any(p.endswith("masked.csv") for p in changed), changed
+
+
+# --- AT-84 the pointer lock file ------------------------------------------------------------
+
+_LOCK_NAME = ".LATEST.decoy-lock"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the pointer path runs on POSIX")
+def test_the_pointer_lock_file_is_a_listed_layout_output(tmp_path: Path) -> None:
+    from decoy.cli.io._run_outputs import _layout_outputs
+
+    run = tmp_path / "out" / "customers" / "20261109T101500123456Z-0a1b2c3d"
+    listed = {(o.kind, o.path) for o in _layout_outputs(run)}
+    assert (OutputKind.LAYOUT, run.parent / _LOCK_NAME) in listed
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the audit walks POSIX links")
+def test_a_tokenize_commit_writes_only_what_run_outputs_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.keyed_secret import TEST_MASK_SECRET, TEST_MASK_SECRET_ENV
+
+    monkeypatch.setenv(TEST_MASK_SECRET_ENV, TEST_MASK_SECRET)
+    monkeypatch.delenv("DECOY_LIBRARY", raising=False)
+    monkeypatch.delenv("DECOY_PROJECT", raising=False)
+    top = tmp_path.resolve()
+    root = top / "proj"
+    root.mkdir()
+    (root / ".git").mkdir()
+    (root / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
+    config = _pipeline(root, post_scan=False, vault=False, quarantine=False)
+    raw = yaml.safe_load(config.read_text(encoding="utf-8"))
+    raw["tables"][0]["columns"][1] = {"name": "email", "strategy": "tokenize", "namespace": "em"}
+    config.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.chdir(root)
+
+    result = runner.invoke(app, ["tokenize", str(config), "--vault", str(top / "tokens.db")])
+
+    assert result.exit_code == 0, result.output
+    out = root / "out"
+    seen = _lstat_tree(root, root / ".decoy")
+    allowed = _allowed(config, (), None, root, False)
+    changed = sorted(p for p in seen if str(out) in p)
+    assert any(p.endswith(_LOCK_NAME) for p in changed), changed
+    assert [p for p in changed if p not in allowed] == []
