@@ -159,11 +159,12 @@ def _out_first(project: Path) -> set[Path]:
 
 
 def _run_paths(project: Path, name: str, run: Path, *files: str) -> set[Path]:
-    """One pipeline's `out/<name>/`: claim, pointer, link, the run folder and its files."""
+    """One pipeline's `out/<name>/`: claim, pointer, its lock, link, the run folder and its files."""
     base = project / "out" / name
     paths = {base, base / "PIPELINE", base / "LATEST", run, *(run / f for f in files)}
     if os.name == "posix":
         paths.add(base / "current")
+        paths.add(base / ".LATEST.decoy-lock")
     return paths
 
 

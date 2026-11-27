@@ -62,7 +62,6 @@ from decoy.cli.io._layout import (
     has_placed_output,
     is_absolute_local,
     is_placed_relative,
-    is_run_id,
     is_valid_name,
     member_yaml,
     mint_invocation_id,
@@ -134,6 +133,7 @@ from decoy.cli.io._placement import (
     report_dest,
     resolved_output_collisions,
 )
+from decoy.cli.io._pointer import read_latest as read_latest
 from decoy.cli.io._project import (
     DECOY_DIR,
     DECOY_DIR_GITIGNORE,
@@ -146,6 +146,7 @@ from decoy.cli.io._project import (
     write_decoy_gitignore,
     write_project_marker,
 )
+from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._run_outputs import RunOutput, run_outputs
 from decoy.cli.io._scan_set import (
     ScanSetFormatError,
