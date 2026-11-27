@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the local gates in CI order and print an EVIDENCE block to paste.
 # Usage: scripts/dev/gates.sh [--keep-going] [--baseline] [--baseline-file FILE]
-#        [--write-baseline FILE] [--full] [--steps LIST] [test paths...]
+#        [--write-baseline FILE] [--outcomes-file FILE] [--full] [--steps LIST] [test paths...]
 #   --keep-going  run every step even after a failure (default: stop at the first)
 #   --baseline    rerun every step on origin/main in a temporary detached worktree, with the
 #                 SAME venv, and diff the failures of every step (test ids; mypy/ruff error
@@ -36,7 +36,19 @@
 #                 tests/sentry/baselines/lint-debt.json; new debt fails, `scripts/dev/lintdebt.py
 #                 --shrink` lowers the baseline after a fix. CI's `ruff check` does not select them.
 #   --full        run the whole `tests` directory (same as passing `tests`)
-#   The CLI suite runs serial in collection order; there is no worker or order option.
+#   --outcomes-file FILE
+#                 after the run write one `<outcome>\t<id>` line per collected test of the tests
+#                 step (passed, failed, error or skipped; ids only, never a message), sorted, from
+#                 both passes. Two runs of one head are equal when their files are byte-equal.
+# GATES_WORKERS=N|auto (default auto) sets the pytest-xdist worker count of the tests step.
+#   N > 1 runs two passes that partition the selection: a parallel pass (-n N --dist loadfile,
+#   tests marked `serial` deselected), then a plain serial pass of the `serial` tests, which
+#   need the host to themselves (a wall-clock bound, a memory measurement, a snapshot of the
+#   checkout or the real home). Both JUnit files count as one run. N = 1, or a venv without
+#   pytest-xdist, is one plain pytest run in collection order. auto is min(cpus, 4), at most 2 on
+#   a host under 14 GB (1 when under 4 GB is free). The workers: line of the EVIDENCE header names
+#   the choice. A stored baseline records it and refuses a run with another count (exit 2); pin
+#   GATES_WORKERS for any baseline write or compare. A bad value exits 2.
 #   test paths    default: tests touching files changed against origin/main. That is a
 #                 SELECTION, not the full suite; the header says so. Use --full (or `tests`).
 set -uo pipefail
@@ -58,6 +70,18 @@ SENTRY_PATHS=(
 LAYER_TEST=tests/sentry/layout/test_import_layers.py
 LAYER_IGNORE=(--ignore=$LAYER_TEST)
 PYTEST_ARGS=()
+# The `-m` expression of PYTEST_ARGS, empty when there is none. A parallel run adds `not serial`
+# and `serial` to it; with no expression the passes are exactly `not serial` and `serial`, never
+# an empty parenthesis or a leading `and`.
+PYTEST_MARK=''
+for ((i = 0; i + 1 < ${#PYTEST_ARGS[@]}; i++)); do
+  [ "${PYTEST_ARGS[$i]}" = -m ] && PYTEST_MARK=${PYTEST_ARGS[$((i + 1))]}
+done
+if [ -n "$PYTEST_MARK" ]; then
+  PAR_MARK="($PYTEST_MARK) and not serial" SER_MARK="($PYTEST_MARK) and serial"
+else
+  PAR_MARK='not serial' SER_MARK=serial
+fi
 SRC_MATCH='src/*.py'   # changed files that map to a dotted module
 SRC_STRIP='src/'       # prefix removed before turning a path into a module
 PYPATH_DIRS=(src)
@@ -76,13 +100,13 @@ DOC_WALK_GUARDS=(${SENTRY_PATHS[@]+"${SENTRY_PATHS[@]}"})
 ROOT=$(git rev-parse --show-toplevel) || exit 2
 VENV=${DECOY_VENV:-$ROOT/.venv}
 BIN=$VENV/bin
-KEEP=0 BASELINE=0 FULL=0 BASEFILE='' WRITEBASE='' STEPS=env,ruff,lintdebt,format,mypy,sentry,layers,tests PATHS=()
+KEEP=0 BASELINE=0 FULL=0 BASEFILE='' WRITEBASE='' OUTCOMES='' STEPS=env,ruff,lintdebt,format,mypy,sentry,layers,tests PATHS=()
 while [ $# -gt 0 ]; do
   case $1 in
     --keep-going) KEEP=1 ;;
     --baseline) BASELINE=1 ;;
     --full) FULL=1 ;;
-    --baseline-file|--write-baseline|--steps)
+    --baseline-file|--write-baseline|--outcomes-file|--steps)
       # A missing operand, or another flag where it belongs, is a usage error: swallowing it
       # would turn `--write-baseline --full` into a baseline file named --full. An empty --steps
       # list is allowed (it runs nothing and the gate then says no step ran); an empty path is not.
@@ -94,6 +118,7 @@ while [ $# -gt 0 ]; do
       case $1 in
         --baseline-file) BASEFILE=$2; BASELINE=1 ;;
         --write-baseline) WRITEBASE=$2 ;;
+        --outcomes-file) OUTCOMES=$2 ;;
         --steps) STEPS=$2 ;;
       esac
       shift ;;
@@ -103,6 +128,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# The outcomes writer would overwrite the stored baseline it just compared against.
+if [ -n "$OUTCOMES" ] && [ -n "$BASEFILE" ] && [ "$OUTCOMES" -ef "$BASEFILE" ]; then
+  echo "gates: --outcomes-file and --baseline-file name the same file" >&2; exit 2
+fi
 # A baseline verdict compares every step, so a step skipped after an early failure can never
 # read as shared with main.
 if [ $BASELINE = 1 ]; then KEEP=1; fi
@@ -124,15 +153,28 @@ if [ "$STEPS" = layers ]; then
 fi
 [ -x "$BIN/python" ] || { echo "gates: no venv at $VENV; run scripts/dev/bootstrap.sh" >&2; exit 2; }
 # Worker count for the tests step, recorded in a stored baseline's run mode. The reporter owns the
-# answer (always 1 here); only its stdout is captured, so its diagnostics reach the terminal.
+# rule (_gate_workers.py); a venv without pytest-xdist resolves to 1 there and says why. Only
+# stdout is captured: the reporter's own diagnostics reach the terminal as written. Exit 64 is its
+# usage error (GATES_WORKERS is not a number or auto); any other failure is a crash.
 WORKERS_RC=0
 WORKERS_LINE=$("$BIN/python" "$ROOT/scripts/dev/_gates_report.py" --workers) || WORKERS_RC=$?
 if [ $WORKERS_RC != 0 ]; then
+  if [ $WORKERS_RC = 64 ]; then exit 2; fi
   echo "gates: FAIL: no complete EVIDENCE block (the reporter failed before the run)" >&2; exit 3
 fi
 WORKERS=${WORKERS_LINE%% *}
 WORKERS_WHY=${WORKERS_LINE#* }
 OUT=$(mktemp -d "${TMPDIR:-/tmp}/gates.XXXXXX")
+[ -n "$OUT" ] && [ -d "$OUT" ] || { echo "gates: FAIL: cannot create a temp dir" >&2; exit 3; }
+# Each tests pass gets its own basetemp here, removed on exit: pytest's default
+# /tmp/pytest-of-<user> keeps the last three runs. Kept directly under /tmp, not under $OUT:
+# TMPDIR can be long (T3 sets /tmp/decoy-out-<label>), and tests that bind AF_UNIX sockets under
+# tmp_path fail once the path passes the 104-108 byte limit. /tmp on purpose, ignoring TMPDIR.
+TMP_ROOT=$(mktemp -d /tmp/gt.XXXXXX)
+[ -n "$TMP_ROOT" ] && [ -d "$TMP_ROOT" ] || { echo "gates: FAIL: cannot create a basetemp dir" >&2; exit 3; }
+mkdir -p "$TMP_ROOT/root"
+# Pytest runs that tests start themselves have no --basetemp; this moves their default root too.
+export PYTEST_DEBUG_TEMPROOT=$TMP_ROOT/root
 WT=$OUT/baseline-tree
 MBT=$OUT/merge-base-tree
 STORED=$OUT/stored-baseline.json
@@ -140,6 +182,7 @@ STORED=$OUT/stored-baseline.json
 cleanup() {
   local d
   for d in "$WT" "$MBT"; do [ -d "$d" ] && git -C "$ROOT" worktree remove --force "$d" 2>/dev/null; done
+  rm -rf -- "${TMP_ROOT:?}"
   return 0
 }
 trap cleanup EXIT
@@ -251,11 +294,50 @@ layer_step() {
   "$LAYER_VENV/bin/python" -m pytest "$@" "$LAYER_TEST"
 }
 
+# Exit code of the two tests passes as one: pytest's 5 (nothing collected) in one pass is not a
+# failure when the other pass ran tests; two 5s are a failure (nothing ran); a crash code (not 0,
+# 1 or 5) wins over a plain failure; else 1 beats 0. (Ported from the engine's gates.sh.)
+combine_rc() {  # $1 parallel-pass rc, $2 serial-pass rc
+  local a=$1 b=$2
+  if [ "$a" = 5 ] && [ "$b" = 5 ]; then echo 5; return; fi
+  [ "$a" = 5 ] && a=0
+  [ "$b" = 5 ] && b=0
+  case $a in 0|1) ;; *) echo "$a"; return ;; esac
+  case $b in 0|1) ;; *) echo "$b"; return ;; esac
+  if [ "$a" = 1 ] || [ "$b" = 1 ]; then echo 1; else echo 0; fi
+}
+
+# The one place that builds the tests step's command(s): the worker rule, the scrubber fallback,
+# the `not serial` / `serial` split and the junit and basetemp names. Sets cmd, cmd2 (the serial
+# pass; empty when the run is not parallel) and note. Reads tree, label, OUT, TMP_ROOT, WORKERS,
+# jbase, pyt, LAYER_IGNORE and tests from run_steps.
+split_pytest_cmds() {
+  local w=$WORKERS
+  note=''
+  cmd2=()
+  # A tree without the xdist report scrubber (origin/main before it lands) would abort a
+  # parallel run on the first lone surrogate in a captured log, so that tree runs serial.
+  if [ "$w" -gt 1 ] && [ ! -f "$tree/tests/_xdist_safe_reports.py" ]; then
+    w=1; note=" (serial: this tree has no tests/_xdist_safe_reports.py)"
+  fi
+  if [ "$w" -gt 1 ]; then
+    # PYTEST_ARGS is not repeated here: its -m is already part of PAR_MARK and SER_MARK. The serial
+    # pass says `-n 0` because an inherited PYTEST_ADDOPTS with `-n 4` would put the serial tests
+    # on workers; a command-line -n wins over addopts.
+    cmd=(${pyt[@]+"${pyt[@]}"} ${jbase[@]+"${jbase[@]}"} -m "$PAR_MARK" -n "$w" --dist loadfile ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
+    cmd2=(${pyt[@]+"${pyt[@]}"} -p no:cacheprovider -q -rfE -o junit_family=xunit1 "--junitxml=$OUT/$label-tests-serial.xml" "--basetemp=$TMP_ROOT/$label-tests-serial" -n 0 -m "$SER_MARK" ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
+  else
+    cmd=(${pyt[@]+"${pyt[@]}"} ${jbase[@]+"${jbase[@]}"} ${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"} ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
+  fi
+}
+
 run_steps() {  # $1 label, $2 tree
-  local label=$1 tree=$2 name rc stop=0 p cmd shown tests=() pyt
+  local label=$1 tree=$2 name rc rc2 stop=0 p cmd cmd2 shown tests=() pyt note
   : >"$OUT/$label.steps"
   for name in ${STEPS//,/ }; do
-    local junit=(-p no:cacheprovider -q -rfE -o junit_family=xunit1 "--junitxml=$OUT/$label-$name.xml" ${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"})
+    cmd2=() note=
+    local jbase=(-p no:cacheprovider -q -rfE -o junit_family=xunit1 "--junitxml=$OUT/$label-$name.xml")
+    local junit=(${jbase[@]+"${jbase[@]}"} ${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"})
     case $name in
       env) cmd=(bash "$ROOT/scripts/dev/bootstrap.sh" --check) ;;
       ruff) cmd=("$BIN/ruff" check ${RUFF_PATHS[@]+"${RUFF_PATHS[@]}"}) ;;
@@ -277,7 +359,8 @@ run_steps() {  # $1 label, $2 tree
         if [ -n "$WRITEBASE$BASEFILE" ]; then
           pyt=(env -u PYTEST_ADDOPTS -u PYTEST_PLUGINS PY_COLORS=0 NO_COLOR=1 "$BIN/python" -m pytest -o addopts= --color=no)
         fi
-        cmd=(${pyt[@]+"${pyt[@]}"} ${junit[@]+"${junit[@]}"} ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"}) ;;
+        jbase+=("--basetemp=$TMP_ROOT/$label-tests")
+        split_pytest_cmds ;;
       *) echo "gates: unknown step $name" >&2; exit 2 ;;
     esac
     if [ $stop = 1 ]; then rc=-2
@@ -290,12 +373,26 @@ run_steps() {  # $1 label, $2 tree
       echo "gates: [$label] $name ..." >&2
       (cd "$tree" && PYTHONPATH=$(pypath "$tree") ${cmd[@]+"${cmd[@]}"}) >"$OUT/$label-$name.log" 2>&1
       rc=$?
+      if [ "$name" = tests ]; then  # raw argv and status of each executed pass, for the T3 proof
+        printf '%s\t%s\t%s\n' "$([ ${#cmd2[@]} -gt 0 ] && echo parallel || echo plain)" "$rc" "$(printf '%q ' ${cmd[@]+"${cmd[@]}"})" >"$OUT/$label-tests.passes"
+      fi
+      if [ ${#cmd2[@]} -gt 0 ]; then
+        # Unconditional: the serial pass must run (and be read) even when the parallel pass failed.
+        echo "gates: [$label] $name (serial pass) ..." >&2
+        (cd "$tree" && PYTHONPATH=$(pypath "$tree") ${cmd2[@]+"${cmd2[@]}"}) >"$OUT/$label-$name-serial.log" 2>&1
+        rc2=$?
+        printf '%s\t%s\t%s\n' serial "$rc2" "$(printf '%q ' ${cmd2[@]+"${cmd2[@]}"})" >>"$OUT/$label-tests.passes"
+        if [ $rc2 != 0 ] && [ $rc2 != 5 ]; then tail -n 15 "$OUT/$label-$name-serial.log" | sed "s/^/  $label $name serial| /" >&2; fi
+        rc=$(combine_rc "$rc" "$rc2")
+      fi
       if [ $rc != 0 ]; then
         tail -n 15 "$OUT/$label-$name.log" | sed "s/^/  $label $name| /" >&2
         [ $KEEP = 1 ] || stop=1
       fi
     fi
     [ $rc = -1 ] && shown=${cmd[*]+${cmd[*]}} || shown=$(printf '%q ' ${cmd[@]+"${cmd[@]}"})
+    shown="$shown$note"
+    if [ ${#cmd2[@]} -gt 0 ]; then shown="$shown; then $(printf '%q ' ${cmd2[@]+"${cmd2[@]}"})"; fi
     printf '%s\t%s\t%s\n' "$name" "$rc" "$shown" >>"$OUT/$label.steps"
   done
 }
@@ -335,6 +432,7 @@ fi
 echo "logs:       $OUT" >>"$OUT/meta"
 
 REPORT_ARGS=(--workers "$WORKERS")
+[ -n "$OUTCOMES" ] && REPORT_ARGS+=(--outcomes-file "$OUTCOMES")
 [ $WHOLE_SUITE = 1 ] && REPORT_ARGS+=(--whole-suite)
 # A whole-suite result is only trustworthy if the tests step ran the whole suite,
 # pytest finished (rc 0 or 1), and its JUnit file parses with at least one case.

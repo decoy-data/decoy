@@ -28,6 +28,8 @@ from tests.keyed_secret import TEST_MASK_SECRET_REF, secret_env
 pytestmark = [
     pytest.mark.skipif(not os.environ.get("DECOY_RUN_STREAM_PERF"), reason="VM measurement cell"),
     pytest.mark.timeout(1800),
+    # An RSS and timing measurement is only valid on a quiet host (the gate's serial pass).
+    pytest.mark.serial,
 ]
 
 _DRIVER = Path(__file__).with_name("_perf_driver.py")

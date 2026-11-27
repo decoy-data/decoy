@@ -199,6 +199,12 @@ kind = "json"
 consumer = "tests/sentry/release/test_old_org_refs.py"
 
 [[sentry]]
+id = "serial-resources"
+baseline = "tests/sentry/baselines/serial-resources.json"
+kind = "json"
+consumer = "tests/sentry/tooling/test_serial_resources.py"
+
+[[sentry]]
 id = "config-field-readers"
 baseline = "tests/sentry/baselines/config-field-readers.json"
 kind = "json"

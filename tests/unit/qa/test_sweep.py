@@ -521,31 +521,35 @@ def test_the_stored_set_is_versioned_and_round_trips() -> None:
 GOOD = "ab" * 32
 
 
+_MALFORMED_STORED = [
+    "not json",
+    "[]",
+    '{"salt": "00", "digests": ["x"], "lengths": []}',  # the old unversioned form
+    _stored(schema_version=None),
+    _stored(schema_version=2),
+    _stored(schema_version=True),
+    _stored(schema_version="1"),
+    _stored(salt="zz" * 16),
+    _stored(salt="ab" * 8),
+    _stored(salt=7),
+    _stored(groups=[GOOD]),
+    _stored(groups={"2": []}),  # a group with no digests: lengths and digests disagree
+    _stored(groups={"0": [GOOD]}),
+    _stored(groups={"-1": [GOOD]}),
+    _stored(groups={"x": [GOOD]}),
+    _stored(groups={"2": "oops"}),
+    _stored(groups={"2": [GOOD, GOOD]}),
+    _stored(groups={"2": ["short"]}),
+    _stored(groups={"2": [GOOD.upper()]}),
+    _stored(groups={"2": [5]}),
+    _stored(extra=1),
+]
+
+
+# The stored texts embed the per-process salt, so the ids are by index. Salted ids differ between
+# xdist workers and abort collection.
 @pytest.mark.parametrize(
-    "text",
-    [
-        "not json",
-        "[]",
-        '{"salt": "00", "digests": ["x"], "lengths": []}',  # the old unversioned form
-        _stored(schema_version=None),
-        _stored(schema_version=2),
-        _stored(schema_version=True),
-        _stored(schema_version="1"),
-        _stored(salt="zz" * 16),
-        _stored(salt="ab" * 8),
-        _stored(salt=7),
-        _stored(groups=[GOOD]),
-        _stored(groups={"2": []}),  # a group with no digests: lengths and digests disagree
-        _stored(groups={"0": [GOOD]}),
-        _stored(groups={"-1": [GOOD]}),
-        _stored(groups={"x": [GOOD]}),
-        _stored(groups={"2": "oops"}),
-        _stored(groups={"2": [GOOD, GOOD]}),
-        _stored(groups={"2": ["short"]}),
-        _stored(groups={"2": [GOOD.upper()]}),
-        _stored(groups={"2": [5]}),
-        _stored(extra=1),
-    ],
+    "text", _MALFORMED_STORED, ids=[f"malformed-{i}" for i in range(len(_MALFORMED_STORED))]
 )
 def test_a_malformed_stored_set_is_refused_never_read_as_clean(text: str) -> None:
     with pytest.raises(sweep.RefusalSetError) as err:

@@ -1,13 +1,17 @@
 """Print the EVIDENCE block for scripts/dev/gates.sh from its output directory.
 
 Ported from the engine's scripts/dev/_gates_report.py (ENGINE-PAR P1); the CLI keeps its own
-copy and the build record lists the differences (no parallel pass, no order map).
+copy and the build record lists the differences (no order map; the parallel pass was added in
+CLI-PAR S1).
 
 gates.sh writes, per run label (`branch`, `baseline`): `<label>.steps` with one
 tab-separated `name rc cmd` line per step, `<label>-<name>.log`, and for pytest
-steps `<label>-<name>.xml` (JUnit, family xunit1 so testcases carry `file`). Counts and
-failing ids come from the JUnit files; only pytest's final totals line is read from a log, to
-cross-check the JUnit. It also owns the stored failing-id baseline and its run mode.
+steps `<label>-<name>.xml` (JUnit, family xunit1 so testcases carry `file`). A parallel run
+(GATES_WORKERS > 1) adds a second `tests` pass for the `serial` marker, `<label>-tests-serial.xml`
+and `.log`; every count, id and totals check of a step with a serial pass reads both files as one
+run (`_xmls`). Counts and failing ids come from the JUnit files; only pytest's final totals line
+is read from each log, to cross-check the JUnit. It also owns the stored failing-id baseline and
+its run mode.
 Stdlib only, so it runs in any venv."""
 
 from __future__ import annotations
@@ -58,9 +62,9 @@ def _steps(out: Path, label: str) -> list[tuple[str, int, str]]:
 
 
 def _xmls(out: Path, label: str, name: str) -> list[Path]:
-    """The JUnit file of a step, as a list (empty for a step that wrote none)."""
-    xml = out / f"{label}-{name}.xml"
-    return [xml] if xml.exists() else []
+    """JUnit files of a step: a step that ran a parallel pass has a second, serial file."""
+    files = [out / f"{_stem(label, name, serial)}.xml" for serial in (False, True)]
+    return [f for f in files if f.exists()]
 
 
 def _roots(out: Path, label: str, name: str) -> list[ET.Element]:
@@ -173,13 +177,44 @@ _TOTALS_LINE = re.compile(
 
 def pytest_totals_failed(out: Path, label: str) -> int | None:
     """`N failed` plus `M error(s)` from pytest's final totals line, None if there is none."""
-    log = out / f"{label}-tests.log"
-    if not log.exists():
+    first = out / f"{_tests_stem(label, False)}.log"
+    if not first.exists():
         return None
-    for line in reversed(_ANSI.sub("", log.read_text(errors="replace")).splitlines()):
-        if _TOTALS_LINE.match(line.strip()):
-            return sum(int(n) for n in _TOTALS.findall(line))
-    return None
+    total = 0
+    for log in (lg for lg in (first, out / f"{_tests_stem(label, True)}.log") if lg.exists()):
+        # a parallel run has one totals line per pass, and a pass without one cannot be trusted
+        for line in reversed(_ANSI.sub("", log.read_text(errors="replace")).splitlines()):
+            if _TOTALS_LINE.match(line.strip()):
+                total += sum(int(n) for n in _TOTALS.findall(line))
+                break
+        else:
+            return None
+    return total
+
+
+def _stem(label: str, name: str, serial: bool = False) -> str:
+    """File stem of one pass of a step: the parallel (or only) pass, or the serial pass."""
+    return f"{label}-{name}-serial" if serial else f"{label}-{name}"
+
+
+def _tests_stem(label: str, serial: bool) -> str:
+    return _stem(label, "tests", serial)
+
+
+def missing_pass_files(out: Path, label: str) -> list[str]:
+    """JUnit and log files of the tests passes gates.sh recorded that are not on disk.
+
+    A parallel run that lost its first pass's JUnit file would otherwise read as the serial pass
+    alone: its counts are smaller, but every file that exists still agrees with itself."""
+    record = out / f"{label}-tests.passes"
+    if not record.exists():
+        return []
+    gone = []
+    for line in record.read_text().splitlines():
+        kind = line.split("\t", 1)[0]
+        stem = _tests_stem(label, kind == "serial")
+        gone += [f"{stem}{ext}" for ext in (".xml", ".log") if not (out / f"{stem}{ext}").exists()]
+    return gone
 
 
 def failing_ids(out: Path, label: str) -> list[str]:
@@ -275,6 +310,30 @@ def branch_only_steps(out: Path) -> list[str]:
         if not complete or mine - theirs:  # Counter subtraction keeps only positive excess
             bad.append(name)
     return bad
+
+
+def outcomes(out: Path, label: str) -> list[str]:
+    """One `<outcome>\\t<id>` line per collected test of the tests step, sorted, from every JUnit file.
+
+    The outcome is one of passed, failed, error or skipped and nothing else is written: no
+    message, no value. A test with a failure and a teardown error counts once, as failed. This is
+    the file the S1 proof compares between a serial and a parallel run."""
+    rows: dict[str, str] = {}
+    for case in (c for root in _roots(out, label, "tests") for c in root.iter("testcase")):
+        tid = _case_id(case)
+        if case.find("failure") is not None:
+            word = "failed"
+        elif case.find("error") is not None:
+            word = "error"
+        elif case.find("skipped") is not None:
+            word = "skipped"
+        else:
+            word = "passed"
+        # the worst outcome wins when one id appears twice (a call failure plus a teardown error)
+        rank = ("passed", "skipped", "error", "failed")
+        if tid not in rows or rank.index(word) > rank.index(rows[tid]):
+            rows[tid] = word
+    return sorted(f"{word}\t{tid}" for tid, word in rows.items())
 
 
 def _section(out: Path, label: str) -> None:
@@ -400,10 +459,10 @@ def _subcommand(argv: list[str]) -> int | None:
             print(load_baseline(Path(argv[2])).main_sha)
         return 2 if reasons else 0
     if argv[1:2] == ["--workers"]:
-        # --workers: "<count> <reason>" for the tests step. The CLI suite has no xdist (CLI-PAR is
-        # a later slice), so the answer is always one; GATES_WORKERS is not read.
-        print("1 the CLI suite runs serial")
-        return 0
+        # --workers: "<count> <reason>" for the tests step; the rule lives in _gate_workers.py.
+        import _gate_workers  # beside this script, stdlib only
+
+        return _gate_workers.main()
     if argv[1:2] == ["--suite-collected"]:
         # --suite-collected OUT: cases in the branch tests JUnit; 0 when missing or unreadable.
         try:
@@ -434,6 +493,7 @@ def _report(argv: list[str]) -> int:
     ap.add_argument("--main-sha", default="")
     ap.add_argument("--head-sha", default="")
     ap.add_argument("--workers", type=int, default=1)
+    ap.add_argument("--outcomes-file", type=Path, default=None)
     # promote runs a copy of this script outside the repo, where parents[2] is not the repo root.
     ap.add_argument("--test-root", type=Path, default=None)
     args = ap.parse_args(argv[1:])
@@ -447,9 +507,25 @@ def _report(argv: list[str]) -> int:
             return 64
         TEST_ROOT = args.test_root.resolve()
     rc = main(args.out, args.whole_suite)
-    ran_tests = (args.out / "branch-tests.xml").exists()
+    ran_tests = any((args.out / f"{_tests_stem('branch', s)}.xml").exists() for s in (False, True))
+    gone = missing_pass_files(args.out, "branch")
+    if gone and (args.write_baseline or args.outcomes_file is not None):
+        # Before any file is written: a pass that left no report must not read as a smaller suite.
+        print(
+            f"gates: a recorded tests pass left no {', '.join(gone)}; writing nothing",
+            file=sys.stderr,
+        )
+        return 4
+    if args.outcomes_file is not None:
+        args.outcomes_file.write_text("".join(f"{ln}\n" for ln in outcomes(args.out, "branch")))
     if ran_tests and (args.write_baseline or (args.out / "stored-baseline.json").exists()):
         action = "store" if args.write_baseline else "compare against"
+        if gone:
+            print(
+                f"gates: a recorded tests pass left no {', '.join(gone)}; refusing to {action} the baseline",
+                file=sys.stderr,
+            )
+            return 4
         reported = pytest_totals_failed(args.out, "branch")
         in_junit = junit_failure_elements(args.out, "branch")
         if reported is None or reported != in_junit:
