@@ -11,6 +11,7 @@ from decoy.cli import gen
 from decoy.cli.extras import check_cloud_endpoints, check_cloud_endpoints_supported
 from decoy.cli.io import (
     DuckDBSourceError,
+    Ledger,
     RunLayout,
     check_target_formats,
     duckdb_probe_config,
@@ -37,6 +38,8 @@ from decoy.cli.io import (
 )
 from decoy.cli.run import _progress
 from decoy.cli.run._context import DEFAULT_CHUNK_SIZE, RunContext
+from decoy.cli.run._deliver import deliver as _deliver
+from decoy.cli.run._deliver import open_sink
 from decoy.cli.run._value_free import _no_close, _value_free, _value_free_failure
 from decoy.cli.run._vault import _commit_vault
 from decoy.ui.output import OutputMode
@@ -85,7 +88,7 @@ def _run_chunked_mask(
     chunk_size: int,
     layout: RunLayout,
     key_provider=None,
-    ledger: dict[str, Path] | None = None,
+    ledger: Ledger | None = None,
     *,
     evidence: list | None = None,
     pandas_only: bool = False,
@@ -388,7 +391,7 @@ def _load_sources_from_config(config_dict: dict, base_dir: Path, *, lazy: bool =
 
 
 def _write_mask_outputs(
-    config_dict: dict, result, layout: RunLayout, published: dict[str, Path] | None = None
+    config_dict: dict, result, layout: RunLayout, published: Ledger | None = None
 ) -> dict[str, Path]:
     """Write each declared target from the V2 ExecutionResult.
 
@@ -440,6 +443,8 @@ def execute(ctx: RunContext) -> None:
     else:
         from decoy_engine import run_pipeline
 
+        # Before the first write: the stage is opened, and a quarantine file is a reserved slot.
+        sink = ctx._sink = open_sink(ctx)
         _key_kwargs = {} if ctx.key_provider is None else {"key_provider": ctx.key_provider}
         instance_locale = (ctx.config_dict.get("global_settings") or {}).get("default_locale")
         # S5 report kwargs are passed only when a report flag was requested, so
@@ -468,7 +473,7 @@ def execute(ctx: RunContext) -> None:
             # casting, relationship jobs without a bounded route, gated transforms).
             resident_fallback=True,
             **_progress.run_pipeline_kwargs(run_pipeline, ctx.progress),
-            quarantine_path=layout.place_quarantine(ctx.config_dict),
+            quarantine_path=sink.place_quarantine(ctx.config_dict),
             # The config's `subset:` block stays as written; `--no-subset` only tells the engine
             # to leave it unapplied.
             subset_request="skip" if ctx.no_subset else "config",
@@ -495,12 +500,19 @@ def execute(ctx: RunContext) -> None:
         # default/--no-native intent.
         _native_gate.post_run_verify(intent=ctx.native_intent, route=ctx._native_route)
         # The vault is durable BEFORE any output is published: masked output whose
-        # vault was lost can never be reversed.
+        # vault was lost can never be reversed. Kind R hands it to the stage (rule V).
         if ctx.vault_writer is not None:
-            _commit_vault(ctx.vault_writer, ctx.vault)
-        _written = _write_mask_outputs(ctx.config_dict, result, layout, ctx._published)
+
+            def commit_vault() -> None:
+                _commit_vault(ctx.vault_writer, ctx.vault)
+
+            sink.attach_vault(ctx.vault_writer, ctx.vault, commit_vault)
+        _require_local_io_endpoints(ctx.config_dict)
+        sink.settle_quarantine(result.quality_metrics)
+        sink.write_outputs(ctx.config_dict, result.outputs, ctx._published)
         ctx._table_records = table_records(
-            {name: len(tbl) for name, tbl in result.outputs.items()}, _written
+            {name: len(tbl) for name, tbl in result.outputs.items()},
+            sink.final_paths() or ctx._published,
         )
         # S5: capture the quality metrics so the tail can render the
         # requested report sections and apply the enforce -> EXIT_FINDINGS
@@ -513,6 +525,7 @@ def execute(ctx: RunContext) -> None:
         ctx._ev_timings = result.timings
         ctx._ev_engine_warnings = result.warnings
         ctx._notify_row_count = sum(len(tbl) for tbl in result.outputs.values())
+        _deliver(ctx)
 
 
 def execute_preview(ctx: RunContext) -> None:

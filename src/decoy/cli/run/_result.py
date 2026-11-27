@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -33,6 +33,9 @@ from decoy.cli.io import declared_format
 from decoy.cli.run._context import RunContext, library_choice, library_label, output_placement
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
+
+if TYPE_CHECKING:
+    from decoy.cli.io import DeliverySink
 
 _BUILT = {"document": "built", "file": "not_requested", "code": None}
 _FAILED = {"document": "failed", "file": "not_requested", "code": "run_result_build_failed"}
@@ -69,9 +72,21 @@ def _output(ctx: RunContext, path: Path) -> str | None:
     return resolved.name
 
 
-def _entry(ctx: RunContext, name: str, targets: dict) -> Any:
+def _entry(ctx: RunContext, name: str, targets: dict, sink: DeliverySink | None = None) -> Any:
     from decoy_engine.run_result import TableDelivery
 
+    if sink is not None and sink.withheld and sink.mode == "strict":
+        from decoy_engine import reasons
+        from decoy_engine.reasons import ReasonRecord
+
+        record = ReasonRecord.for_reason(reasons.decoy.DELIVERY_WITHHELD)
+        return TableDelivery(
+            state="withheld",
+            format=declared_format(targets.get(name)),
+            output=None,
+            reason=record.to_payload(),
+            dropped_because=None,
+        )
     published = ctx._published.get(name)
     if published is None:
         return TableDelivery(
@@ -107,16 +122,20 @@ def delivery_facts(ctx: RunContext, config: dict, *, vault_failed: bool) -> Any:
     if ctx.rows is not None or not names:
         return DeliveryFacts.not_applicable()
     writer = getattr(ctx, "vault_writer", None)
+    sink = getattr(ctx, "_sink", None)
     if writer is None:
         vault = "not_used"
     elif vault_failed:
         vault = "failed"
+    elif sink is not None:
+        vault = sink.vault  # the sink's own record, not a look at the file system
     else:
         vault = "committed" if Path(ctx.vault).exists() else "not_used"
+    mode = "in_place" if sink is None else sink.mode
     return DeliveryFacts(
-        "in_place",
+        mode,
         vault,
-        {name: _entry(ctx, name, targets) for name in names},  # type: ignore[arg-type]
+        {name: _entry(ctx, name, targets, sink) for name in names},  # type: ignore[arg-type]
     )
 
 

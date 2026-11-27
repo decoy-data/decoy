@@ -16,6 +16,7 @@ from decoy.cli.io import (
 )
 from decoy.cli.project import only_pipeline, run_all
 from decoy.cli.run import (
+    _deliver,
     _errors,
     _evidence,
     _execute,
@@ -25,7 +26,13 @@ from decoy.cli.run import (
     _result,
     _sample,
 )
-from decoy.cli.run._context import IntegrityWriteRefusal, RunContext, RunRefusal, UsageRefusal
+from decoy.cli.run._context import (
+    DeliveryRefusal,
+    IntegrityWriteRefusal,
+    RunContext,
+    RunRefusal,
+    UsageRefusal,
+)
 from decoy.cli.run._notify import (
     _begin_trace,
     _dispatch_run_notifications,
@@ -217,13 +224,20 @@ def _phases(ctx: RunContext) -> None:
     except typer.Exit:
         # An inner typer.Exit already set its exit code; keep it out of the catch-all below.
         raise
-    except UsageRefusal:
-        # A usage refusal ends in `execute`, with the envelope; `finally` still cleans up. The
-        # write refusals stay with `_errors.fail`, which already gives them their document.
+    except (UsageRefusal, DeliveryRefusal):
+        # A usage refusal, or a delivery that left nothing, ends in `execute`, with the envelope;
+        # `finally` still cleans up. The write refusals raised in here stay with `_errors.fail`,
+        # which already gives them their document.
         raise
     except Exception as exc:
-        _failed_with = type(exc).__name__
-        _errors.fail(ctx, exc)
+        if ctx._sink is not None and ctx._sink.settled():
+            # Delivered before this error (a teardown fault, a late writer): the run stays
+            # delivered, with one cleanup warning, and takes the success tail.
+            _deliver.note_cleanup(ctx)
+            finished = True
+        else:
+            _failed_with = type(exc).__name__
+            _errors.fail(ctx, exc)
     finally:
         # A run that failed before writing anything leaves no empty run folder.
         if not finished and ctx.layout is not None:
@@ -249,11 +263,15 @@ def _phases(ctx: RunContext) -> None:
         _render.finish_preview(ctx)
         return
 
-    failed = write_run_report(ctx._post_scan, ctx._post_scan_file, ctx.config_sha256)
-    if failed is not None:
-        raise IntegrityWriteRefusal(failed, code=INTEGRITY_WRITE_FAILED)
-    _evidence.write_evidence(ctx)
-    _render.commit_latest(ctx)
+    if ctx._sink is None or ctx._sink.mode == "in_place":
+        # No strict stage (the chunked route until C2a-2, a fixed folder, a host without the
+        # engine's lock): the report and evidence follow the outputs and `LATEST` moves last, as
+        # before the sink.
+        failed = write_run_report(ctx._post_scan, ctx._post_scan_file, ctx.config_sha256)
+        if failed is not None:
+            raise IntegrityWriteRefusal(failed, code=INTEGRITY_WRITE_FAILED)
+        _evidence.write_evidence(ctx)
+        _render.commit_latest(ctx)
 
     ctx.notify_results = _dispatch_run_notifications(
         ctx.notify_channels,

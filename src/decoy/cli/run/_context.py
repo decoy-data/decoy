@@ -19,6 +19,7 @@ from decoy.cli.gate import GateFinding
 from decoy.cli.io import (
     DuckDBSourceError,
     LayoutError,
+    Ledger,
     OutputPlacement,
     PipelineRef,
     RunLayout,
@@ -36,7 +37,13 @@ DEFAULT_CHUNK_SIZE = 100_000
 # The machine-readable `code` of each warning the CLI raises itself. Closed: a new code is
 # added here, so the `--json` `warnings` vocabulary has one list.
 CLI_WARNING_CODES: frozenset[str] = frozenset(
-    {"chunked_key_check_not_run", "run_result_build_failed", "run_result_write_failed"}
+    {
+        "chunked_key_check_not_run",
+        "delivery_cleanup_incomplete",
+        "post_scan_report_write_failed",
+        "run_result_build_failed",
+        "run_result_write_failed",
+    }
 )
 
 
@@ -69,6 +76,15 @@ class EvidenceWriteRefusal(RunRefusal):
 
 class IntegrityWriteRefusal(RunRefusal):
     """The post-scan report could not be written after the outputs (exit 3)."""
+
+    category = "runtime"
+
+
+class DeliveryRefusal(RunRefusal):
+    """The delivery stage delivered nothing and no decision withheld the run (exit 3).
+
+    `code` is the engine's reason code for the cause; the text is fixed.
+    """
 
     category = "runtime"
 
@@ -207,7 +223,13 @@ class RunContext:
     _notify_row_count: int | None = field(init=False, default=None)
     # The publication ledger: table to the file a writer has finished publishing. `--json`
     # `outputs` and `output_dir` come only from it.
-    _published: dict[str, Path] = field(init=False, default_factory=dict)
+    _published: Ledger = field(init=False, default_factory=Ledger)
+    # The delivery sink of this run (`cli.io._delivery.DeliverySink`), opened by `_execute`.
+    _sink: Any = field(init=False, default=None)
+    # Attempt files `(attempt, final)` the sink publishes after the visibility point, and the
+    # evidence manifest they were written from.
+    _attempts: list[tuple[Path, Path]] = field(init=False, default_factory=list)
+    _manifest: dict | None = field(init=False, default=None)
     # Per-table {name, rows, path} for the summary; rows is None on a chunked run.
     _table_records: list[dict] = field(init=False, default_factory=list)
     # Native route classification (Phase 3.1), set on a successful run for

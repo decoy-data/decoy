@@ -140,7 +140,7 @@ PRIVATE_CASES: dict[str, str] = {
     "cli/scanning/_multi.py::run_scan::write_local_target::1": _FIT_SCAN,
     "cli/report/_shared.py::_write_out::write_local_target::1": _REPORT,
     "cli/report/_render.py::_render::write_local_target::1": _REPORT,
-    "cli/run/_evidence.py::write_evidence::write_local_target::1": _E2E
+    "cli/run/_evidence.py::_put::write_local_target::1": _E2E
     + "test_run_vault_and_evidence_are_private",
     "cli/run/_result.py::_write_file::write_local_target::1": _E2E
     + "test_run_result_file_is_private",

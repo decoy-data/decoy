@@ -252,6 +252,7 @@ def build_manifest(
     engine_warnings: Any = None,
     run_id: str | None = None,
     place_target: Callable[[str], Path] | None = None,
+    read_target: Callable[[str], Path] | None = None,
     project_root: Path | None = None,
     evidence_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -315,7 +316,9 @@ def build_manifest(
         recorded = str(tgt_path_str) if tgt_path is None else _recorded(tgt_path, project_root)
         entry: dict[str, Any] = {"path": recorded}
         entry.update(_format_keys(table_name, tgt))
-        entry.update(_fingerprint(tgt_path))
+        # Before delivery the bytes sit in a stage slot; the record still names the final path.
+        read = tgt_path if read_target is None else read_target(str(tgt_path_str))
+        entry.update(_fingerprint(read))
         output_fingerprints[table_name] = entry
 
     # --- Row counts ---

@@ -18,6 +18,7 @@ from decoy.cli.gate import PreRunCheckError, cap_error_text, capacity_codes
 from decoy.cli.io import OUTPUT_DIR_UNUSABLE, LayoutError, blocked_run
 from decoy.cli.run import _result
 from decoy.cli.run._context import (
+    DeliveryRefusal,
     EvidenceWriteRefusal,
     IntegrityWriteRefusal,
     RunContext,
@@ -80,7 +81,14 @@ def _cli_refusal_types() -> tuple[type, ...]:
     the gate refusal (exit 1 or 5) and the evidence write refusal (exit 3).
     """
     owned = tuple(t for t in _exit_codes.usage_error_types() if not _engine_family(t))
-    return (*owned, _VaultWriteError, PreRunCheckError, EvidenceWriteRefusal, IntegrityWriteRefusal)
+    return (
+        *owned,
+        _VaultWriteError,
+        PreRunCheckError,
+        DeliveryRefusal,
+        EvidenceWriteRefusal,
+        IntegrityWriteRefusal,
+    )
 
 
 class _Failure(NamedTuple):

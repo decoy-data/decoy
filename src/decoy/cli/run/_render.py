@@ -8,7 +8,7 @@ from rich.text import Text
 
 from decoy.cli import gen
 from decoy.cli.io import post_scan_members, print_post_scan, shown_path
-from decoy.cli.run import _result
+from decoy.cli.run import _deliver, _result
 from decoy.cli.run._context import Mode, RunContext
 from decoy.cli.run._prepare import _has_kind
 from decoy.ui.card import render_card
@@ -62,15 +62,8 @@ def _next_hint_for_run(raw_cfg: dict | None, mode: "Mode") -> str | None:
 
 
 def _blocking_failed(ctx: RunContext) -> bool:
-    """Whether `--post-validate-enforce` blocks this run: the one place the decision is made.
-
-    The engine never fails the job on a hard-failed validator check, it stamps `failed_checks`;
-    under enforce the CLI turns a non-empty list into the findings exit, after the outputs and
-    the evidence are written. Without enforce the checks only warn.
-    """
-    return bool(
-        ctx.post_validate_enforce and (ctx._report_quality_metrics or {}).get("failed_checks")
-    )
+    """Whether the run exits 4 (findings): see `_deliver.blocking_failed`, the one decision."""
+    return _deliver.blocking_failed(ctx)
 
 
 def commit_latest(ctx: RunContext) -> None:
