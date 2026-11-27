@@ -430,7 +430,20 @@ def test_a_baseline_is_refused_when_a_recorded_pass_left_no_report(
         clone, venv, *WHOLE, "--write-baseline", str(dest), GATES_WORKERS="2", FAKE_TOTAL="3", **env
     )
     assert rc != 0 and not dest.exists(), out
-    assert f"left no {gone}" in out and "refusing to store the baseline" in out, out
+    assert f"left no {gone}" in out and "writing nothing" in out, out
+
+
+def test_an_outcomes_file_is_not_written_when_a_recorded_pass_left_no_report(
+    tmp_path: Path,
+) -> None:
+    clone = parallel_clone(tmp_path)
+    venv, _log = recording_venv(tmp_path)
+    dest = tmp_path / "outcomes.tsv"
+    rc, out = run_gates(
+        clone, venv, *TESTS_ONLY, "--outcomes-file", str(dest), GATES_WORKERS="2",
+        FAKE_TOTAL="3", FAKE_NOJUNIT="1",
+    )  # fmt: skip
+    assert rc != 0 and not dest.exists(), out
 
 
 def test_outcomes_and_baseline_files_must_differ(tmp_path: Path) -> None:

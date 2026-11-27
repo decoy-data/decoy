@@ -177,11 +177,11 @@ _TOTALS_LINE = re.compile(
 
 def pytest_totals_failed(out: Path, label: str) -> int | None:
     """`N failed` plus `M error(s)` from pytest's final totals line, None if there is none."""
-    first = out / f"{label}-tests.log"
+    first = out / f"{_tests_stem(label, False)}.log"
     if not first.exists():
         return None
     total = 0
-    for log in (lg for lg in (first, out / f"{label}-tests-serial.log") if lg.exists()):
+    for log in (lg for lg in (first, out / f"{_tests_stem(label, True)}.log") if lg.exists()):
         # a parallel run has one totals line per pass, and a pass without one cannot be trusted
         for line in reversed(_ANSI.sub("", log.read_text(errors="replace")).splitlines()):
             if _TOTALS_LINE.match(line.strip()):
@@ -190,6 +190,11 @@ def pytest_totals_failed(out: Path, label: str) -> int | None:
         else:
             return None
     return total
+
+
+def _tests_stem(label: str, serial: bool) -> str:
+    """File stem of one tests pass: the parallel (or only) pass, or the serial pass."""
+    return f"{label}-tests-serial" if serial else f"{label}-tests"
 
 
 def missing_pass_files(out: Path, label: str) -> list[str]:
@@ -203,7 +208,7 @@ def missing_pass_files(out: Path, label: str) -> list[str]:
     gone = []
     for line in record.read_text().splitlines():
         kind = line.split("\t", 1)[0]
-        stem = f"{label}-tests-serial" if kind == "serial" else f"{label}-tests"
+        stem = _tests_stem(label, kind == "serial")
         gone += [f"{stem}{ext}" for ext in (".xml", ".log") if not (out / f"{stem}{ext}").exists()]
     return gone
 
@@ -498,12 +503,19 @@ def _report(argv: list[str]) -> int:
             return 64
         TEST_ROOT = args.test_root.resolve()
     rc = main(args.out, args.whole_suite)
+    ran_tests = any((args.out / f"{_tests_stem('branch', s)}.xml").exists() for s in (False, True))
+    gone = missing_pass_files(args.out, "branch")
+    if gone and (args.write_baseline or args.outcomes_file is not None):
+        # Before any file is written: a pass that left no report must not read as a smaller suite.
+        print(
+            f"gates: a recorded tests pass left no {', '.join(gone)}; writing nothing",
+            file=sys.stderr,
+        )
+        return 4
     if args.outcomes_file is not None:
         args.outcomes_file.write_text("".join(f"{ln}\n" for ln in outcomes(args.out, "branch")))
-    ran_tests = any((args.out / f"branch-tests{sfx}.xml").exists() for sfx in ("", "-serial"))
     if ran_tests and (args.write_baseline or (args.out / "stored-baseline.json").exists()):
         action = "store" if args.write_baseline else "compare against"
-        gone = missing_pass_files(args.out, "branch")
         if gone:
             print(
                 f"gates: a recorded tests pass left no {', '.join(gone)}; refusing to {action} the baseline",

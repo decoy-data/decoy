@@ -217,6 +217,9 @@ def recording_venv(tmp_path: Path) -> tuple[Path, Path]:
         '    : >"' + str(marker) + '"; cp "$FAKE_CHECK_REWRITE_SRC" "$FAKE_CHECK_REWRITE_DST"\n'
         "  fi ;;\n"
         "esac\n"
+        'case "$*" in *_gates_report.py*--workers)\n'
+        '  case "$GATES_WORKERS" in [2-9]*) echo "$GATES_WORKERS GATES_WORKERS=$GATES_WORKERS"; exit 0 ;; esac ;;\n'
+        "esac\n"
         'if [ "$1" = -m ] && [ "$2" = pytest ] && [ "$3" != --version ]; then\n'
         f'  echo "pytest $*" >>"{log}"\n'
         f'  exec "{sys.executable}" "{helper}" "$@"\n'
