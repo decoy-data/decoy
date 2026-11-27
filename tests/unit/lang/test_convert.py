@@ -99,7 +99,6 @@ def test_adjacent_columns_with_one_rule_share_a_line() -> None:
         },
         {"quarantine": {"enabled": True, "output_path": "q.jsonl", "triggers": ["format_error"]}},
         {"scan_baseline": {"path": "b.json", "schema": "scan-set/v1"}},
-        {"delivery": {"mode": "best_effort"}},
         {"namespaces": {"ids": {"declared_by": ["t.id"]}}},
         {
             "subset": {

@@ -17,7 +17,7 @@ pipeline {
   expect fk_intact
   quarantine("out/bad.jsonl", triggers: [validation_fail, format_error])
   baseline("scans/base.json", on_drift: warn)
-  delivery(best_effort)
+  delivery(strict)
   namespace ids for people.id, orders.person_id
 
   mask people from csv("a.csv", header: true) to csv("b.csv") {
@@ -84,7 +84,7 @@ def test_baseline_delivery_and_namespace() -> None:
         "path": "scans/base.json",
         "on_drift": "warn",
     }
-    assert config["delivery"] == {"mode": "best_effort"}
+    assert config["delivery"] == {"mode": "strict"}
     assert config["namespaces"] == {"ids": {"declared_by": ["people.id", "orders.person_id"]}}
 
 
@@ -98,8 +98,8 @@ def test_a_pipeline_without_these_statements_has_none_of_the_blocks() -> None:
     [
         ("scan before(regex, ner)", "scan before(regex)\n  scan before", "lang.block_repeated", 7),
         ("scan before(regex, ner)", "scan before(people.id)", "lang.reference_not_allowed", 6),
-        ("delivery(best_effort)", "delivery(best_effort, x)", "lang.block_arguments", 12),
-        ("delivery(best_effort)", "delivery(sometimes)", "lang.config", 12),
+        ("delivery(strict)", "delivery(strict, x)", "lang.block_arguments", 12),
+        ("delivery(strict)", "delivery(sometimes)", "lang.config", 12),
         ("expect fk_intact", "expect luhn(5)", "lang.expect_argument", 9),
         ("expect fk_intact", "expect luhn(orders.email, a: 1, a: 2)", "lang.option_repeated", 9),
         ("on_drift: warn", "on_drift: warn, schema: x", "lang.option_repeated", 11),
@@ -112,7 +112,7 @@ def test_a_pipeline_without_these_statements_has_none_of_the_blocks() -> None:
             14,
         ),
         (
-            "delivery(best_effort)",
+            "delivery(strict)",
             "options { delivery: {mode: strict} }",
             "lang.option_not_allowed",
             12,
