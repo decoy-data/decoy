@@ -11,12 +11,13 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
-## 2026-11-27: INIT-SCAN-SCAFFOLD E2, F31-AUDIT AE1a1
+## 2026-11-27: INIT-SCAN-SCAFFOLD E2, F31-AUDIT AE1a1, GEN-NONFAKER-DRAWS S2
 
 No row closed. Rows moved:
 
 - INIT-SCAN-SCAFFOLD (E2): engine #831 (2026-11-27, `8e4eb23ba`) makes the starter config from the init scan read the model detector hits. It also refuses column headers that look suspect.
 - F31-AUDIT (AE1a1): engine #795 (2026-11-27, `8a580c8e8`) makes the safe-text sentry scan every `.const` and `.literal_template` call in every engine module. Before, it only scanned modules that mention SafeText.
+- GEN-NONFAKER-DRAWS (S2): engine #797 (2026-11-27, `fd44de88b`) runs `uuid` and string `random_choice` on the sequential and out-of-core routes, and pools `lorem_text`. Its generated values change, so the change ships as a breaking entry in the changelog fragment.
 
 ## 2026-11-26: PROP-SURFACE E-S1a, DECOY-LANG S2, delivery C2p, PRE-SCAN-RUN C0, EXPERIMENTAL-TIER S0
 
