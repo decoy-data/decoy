@@ -215,11 +215,25 @@ def test_native_require_accepts_faker_column_on_engine_0_28_4(tmp_path: Path) ->
     assert len(targets[0].read_text(encoding="utf-8").splitlines()) > 1
 
 
+def test_best_effort_delivery_is_refused_with_the_engine_reason(tmp_path: Path) -> None:
+    """Engine 0.28.5 refuses `delivery: best_effort` (no run implemented it). The CLI stops
+    before any row is read, names the planned release and writes nothing."""
+    build = single_build(tmp_path, columns=PLAIN, extra={"delivery": {"mode": "best_effort"}})
+    out = tmp_path / "run"
+    out.mkdir()
+    config, targets = build(out)
+    result = CliRunner().invoke(app, ["run", str(config)])
+    assert result.exit_code == 1, result.output
+    assert "best_effort" in result.output and "strict only" in " ".join(result.output.split())
+    assert not targets[0].exists()
+
+
 def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """AT-C1w: with no record the lazy source reports the layout schema, so an `int` field is
-    `int64`; the resident read of the same empty file gave `null`. The layout wins (CHANGELOG)."""
+    `int64`. Engine 0.28.5 (EMPTY-LAYOUT-PARITY) gives the resident read the same declared type, so
+    both routes write `int64` and the text field `s` matches too."""
     from tests.csv_sources import file_source
 
     path = tmp_path / "data" / "e.dat"
@@ -258,5 +272,5 @@ def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
         return pq.read_schema(pa.BufferReader(run.files["t.parquet"]))
 
     assert schema(lazy).field("i").type == pa.int64()
-    assert schema(base).field("i").type == pa.null()
+    assert schema(base).field("i").type == pa.int64()
     assert schema(lazy).field("s").type == schema(base).field("s").type

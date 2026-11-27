@@ -42,7 +42,7 @@ def _codes(issues: list) -> list[str]:
     return [err.code for _loc, err in issues]
 
 
-@pytest.mark.parametrize("mode", ["strict", "best_effort"])
+@pytest.mark.parametrize("mode", ["strict"])
 def test_at22_at24_one_relative_and_one_absolute_target_is_split(tmp_path: Path, mode: str) -> None:
     root, yaml = _project(tmp_path)
     config = {"delivery": {"mode": mode}, **_targets(a="a.csv", b=str(tmp_path / "b.csv"))}
