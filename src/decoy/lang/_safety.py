@@ -5,7 +5,7 @@
     expect leak_check(orders.email, min_rows: 50)   one `validators` entry
     quarantine("out/bad.jsonl", triggers: [...]) quarantine, enabled
     baseline("scans/base.json", on_drift: fail)  scan_baseline
-    delivery(best_effort)                        delivery
+    delivery(strict)                             delivery
     namespace ids for members.id, orders.id      one `namespaces` entry
 
 Each statement is a word and call-style arguments, the shape strategies and generators already
@@ -57,9 +57,7 @@ SHAPES = {
         positional=("path",),
         fixed={"schema": "scan-set/v1"},
     ),
-    "delivery": Shape(
-        "delivery", "`delivery(strict)` or `delivery(best_effort)`", positional=("mode",)
-    ),
+    "delivery": Shape("delivery", "`delivery(strict)`", positional=("mode",)),
 }
 # Config blocks this module writes, with the syntax that writes each.
 SAFETY_SYNTAX = {

@@ -116,7 +116,11 @@ def test_validate_rejects_graph_mode_yaml(tmp_path: Path):
         "mode": "graph",
         "nodes": [
             {"id": "s", "kind": "source.file", "config": {"path": str(src)}},
-            {"id": "t", "kind": "target.file", "config": {"output_filename": str(tmp_path / "o.csv")}},
+            {
+                "id": "t",
+                "kind": "target.file",
+                "config": {"output_filename": str(tmp_path / "o.csv")},
+            },
         ],
         "edges": [{"from": "s", "to": "t"}],
     }
@@ -233,12 +237,21 @@ class TestConfigOnlyPlanChecks:
         return p
 
     def test_faker_on_non_poolable_provider_exits_usage(self, tmp_path):
+        # Engine 0.28.5 draws `uuid` from the key (GEN-NONFAKER-DRAWS), so it no longer trips
+        # this check; `lorem_text` is poolable=False with no computed draw and still does.
         cfg = self._write(
-            tmp_path, [{"name": "device_id", "strategy": "faker", "provider": "uuid"}]
+            tmp_path, [{"name": "notes", "strategy": "faker", "provider": "lorem_text"}]
         )
         result = runner.invoke(app, ["validate", "config", str(cfg)])
         assert result.exit_code == EXIT_USAGE
         assert "non_poolable_provider_with_pool_backend" in result.output
+
+    def test_faker_uuid_is_a_computed_draw_and_validates(self, tmp_path):
+        cfg = self._write(
+            tmp_path, [{"name": "device_id", "strategy": "faker", "provider": "uuid"}]
+        )
+        result = runner.invoke(app, ["validate", "config", str(cfg)])
+        assert result.exit_code == 0, result.output
 
     def test_unknown_provider_exits_usage(self, tmp_path):
         cfg = self._write(

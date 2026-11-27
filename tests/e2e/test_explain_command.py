@@ -188,6 +188,16 @@ def _flat(*argv: str) -> str:
     return " ".join(result.output.replace("│", " ").split())
 
 
+def test_chunked_text_states_the_nondeterministic_categorical_limits():
+    """Engine 0.28.4 refuses a non-deterministic categorical for --chunked on uneven weights
+    (categorical_nondeterministic_not_chunk_safe) and on an unsupported `when`
+    (chunked_categorical_nondeterministic_when_not_supported); both surfaces must say so."""
+    for argv in (("explain", "chunked"), ("run", "--help")):
+        text = _flat(*argv)
+        assert "[1, 1e-9, 1, 1]" in text, argv
+        assert "`when`" in text and "text or null" in text, argv
+
+
 def test_chunked_text_says_chunked_can_run_compiled_kernels():
     """PARQUET-CHUNKED-NULLABLE-INT S2 (AT-C15): after `--chunked` moved to the engine entry
     that can run compiled kernels, no text may call pandas its only substrate."""

@@ -177,7 +177,7 @@ def _configs(draw: st.DrawFn) -> dict:
         }
         config["subset"] = {"seeds": [seed]}
     if draw(st.booleans()):
-        config["delivery"] = {"mode": draw(st.sampled_from(["strict", "best_effort"]))}
+        config["delivery"] = {"mode": draw(st.just("strict"))}
     if draw(st.booleans()):
         config["pre_scan"] = {"detectors": ["regex"]}
     if draw(st.booleans()):
