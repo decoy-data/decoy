@@ -11,6 +11,8 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 
 ### Breaking
 
+- **A target nested more than 8 folders deep is refused at preflight on a project run (DELIV C2a, `layout.delivery_member_too_deep`).** The engine's publication takes member paths of at most 8 components, so a deeper relative target in a project run now stops before any write with that code, naming the table and the limit. Shorten the path. A host with no strict stage and a `--out-dir` run keep the old behavior.
+
 - **Compressed CSV targets of `decoy detokenize` and `decoy unmask` change bytes (FREEZE-OUTPUT O2).** A `.csv.gz`, `.csv.tar.gz` or `.csv.zip` target from `decoy detokenize` now has no file name and a zero time in the gzip header, and compression level 6 (was: the staging file name, the write time, level 9). A zip member is dated 1980-01-01 (was: the write time). A `.csv.zst` target from `decoy detokenize` now uses pyarrow's zstd frame, so the bytes change when `zstandard` is installed and the write works without it. A `.csv.tar.bz2` target now writes instead of failing. Every member of a `decoy detokenize` or `decoy unmask` archive target (`.csv.zip`, `.csv.tar`, `.csv.tar.gz`, `.csv.tar.bz2`, `.csv.tar.xz`) now has mode 0600 (was: 0644, except the detokenize zip member). A suffix-only archive target (`-o .zip`, `-o .tar.gz`) now holds a member named `data.csv` for every command (was: the staging name for detokenize, an empty name for `unmask` and `run`). `decoy unmask` to a tar target with a member name over 100 bytes now writes. The decoded CSV text is unchanged.
 
 ### Added

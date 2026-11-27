@@ -115,6 +115,10 @@ DELIVERY_ROOT_SPLIT = Descriptor(
     "Outputs {first} and {second} are not in one delivery folder. Use relative paths for "
     "all outputs, or put every output directly in one folder.",
 )
+DELIVERY_MEMBER_TOO_DEEP = Descriptor(
+    "layout.delivery_member_too_deep",
+    "Output {subject} is nested more than {limit} folders deep. Use a shorter path.",
+)
 SIDE_FILE_IN_OUT = Descriptor(
     "layout.side_file_in_out",
     "{flag} is inside {base}, where Decoy keeps run outputs. Write it outside out/.",
@@ -186,6 +190,7 @@ GATE_DESCRIPTORS: tuple[Descriptor, ...] = (
     OUTPUT_DIR_UNUSABLE,
     PROJECT_ROOT_REFUSED,
     DELIVERY_ROOT_SPLIT,
+    DELIVERY_MEMBER_TOO_DEEP,
     SIDE_FILE_IN_OUT,
     CLOUD_TARGET_INVALID,
     CLOUD_TARGET_UNSUPPORTED,

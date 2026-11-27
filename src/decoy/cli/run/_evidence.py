@@ -34,9 +34,16 @@ def _marked_project_root(config: Path) -> Path | None:
     return None if found.implicit else found.root
 
 
-def _attempt_name(ctx: RunContext, final: Path) -> Path:
-    """The sibling an attempt is written to: same folder, so the later replace is one rename."""
-    return final.with_name(f".{final.name}.{ctx.invocation_id}.attempt")
+def _attempt_name(ctx: RunContext, final: Path, role: str) -> Path:
+    """The sibling an attempt is written to: same folder, so the later replace is one rename.
+
+    The name is cut to fit one 255-byte component, so a destination name the old writer accepted
+    still has an attempt name. `role` keeps the evidence and report attempts apart.
+    """
+    suffix = f".{role}{ctx.invocation_id[:12]}.attempt"
+    room = 255 - 1 - len(suffix.encode("utf-8"))
+    stem = final.name.encode("utf-8")[:room].decode("utf-8", "ignore")
+    return final.with_name(f".{stem}{suffix}")
 
 
 def _manifest(ctx: RunContext, staged_file: Callable[[str], Path] | None) -> dict | None:
@@ -68,16 +75,39 @@ def _manifest(ctx: RunContext, staged_file: Callable[[str], Path] | None) -> dic
 
 
 def write_evidence(ctx: RunContext) -> None:
-    """The route with no delivery stage (`--chunked`): write the attempts, then publish them."""
-    write_attempts(ctx, None)
-    publish_attempts(ctx)
+    """The tail route (`--chunked`, a fixed folder, a host with no strict stage): write the
+    manifest straight to `--evidence-out` after the outputs, as before the sink, then store the
+    library record. A failed write raises the typed refusal."""
+    ctx._manifest = _manifest(ctx, None)
+    if ctx._manifest is None:
+        _record_skipped(ctx)
+        return
+    if ctx.evidence_out is not None:
+        failed = None
+        try:
+            _put(ctx.evidence_out, _json.dumps(ctx._manifest, indent=2).encode("utf-8"))
+        except AtomicWriteError as exc:
+            failed = describe(exc)
+        if failed is not None:
+            # Outside the block: the refusal has no context. `_errors.refused` prints and exits.
+            raise EvidenceWriteRefusal(failed)
+        _say_written(ctx)
+    _store_record(ctx)
+
+
+def _say_written(ctx: RunContext) -> None:
+    if ctx.state.mode is not OutputMode.json and ctx.state.mode is not OutputMode.quiet:
+        from decoy.ui.theme import success as _success
+
+        ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
 
 
 def write_attempts(ctx: RunContext, staged_file: Callable[[str], Path] | None) -> None:
     """Before the visibility point: write the evidence manifest and an explicit
     `--integrity-out` report under attempt names. Nothing live changes.
 
-    A failed write raises the typed refusal (exit 3) and nothing is delivered.
+    A failed write raises the typed refusal (exit 3) and nothing is delivered. Each attempt is
+    registered before its write, so a write that publishes and then fails is still cleaned up.
     """
     ctx._manifest = _manifest(ctx, staged_file)
     # The publish after delivery cannot fail the run, so what it would refuse is refused now.
@@ -89,7 +119,8 @@ def write_attempts(ctx: RunContext, staged_file: Callable[[str], Path] | None) -
         if failed is not None:
             raise IntegrityWriteRefusal(failed, code=INTEGRITY_WRITE_FAILED)
     if ctx._manifest is not None and ctx.evidence_out is not None:
-        attempt = _attempt_name(ctx, ctx.evidence_out)
+        attempt = _attempt_name(ctx, ctx.evidence_out, "e")
+        ctx._attempts.append((attempt, ctx.evidence_out))
         failed = None
         try:
             _put(attempt, _json.dumps(ctx._manifest, indent=2).encode("utf-8"))
@@ -98,14 +129,12 @@ def write_attempts(ctx: RunContext, staged_file: Callable[[str], Path] | None) -
         if failed is not None:
             # Outside the block: the refusal has no context. `_errors.refused` prints and exits.
             raise EvidenceWriteRefusal(failed)
-        ctx._attempts.append((attempt, ctx.evidence_out))
-    if ctx.integrity_out is not None:
-        attempt = _attempt_name(ctx, ctx.integrity_out)
+    if ctx.integrity_out is not None and ctx._post_scan is not None:
+        attempt = _attempt_name(ctx, ctx.integrity_out, "i")
+        ctx._attempts.append((attempt, ctx.integrity_out))
         failed = write_run_report(ctx._post_scan, attempt, ctx.config_sha256)
         if failed is not None:
             raise IntegrityWriteRefusal(failed, code=INTEGRITY_WRITE_FAILED)
-        if ctx._post_scan is not None:
-            ctx._attempts.append((attempt, ctx.integrity_out))
 
 
 def publish_attempts(ctx: RunContext) -> None:
@@ -121,16 +150,16 @@ def publish_attempts(ctx: RunContext) -> None:
     if ctx._manifest is None:
         _record_skipped(ctx)
         return
-    if (
-        ctx.evidence_out in published
-        and ctx.state.mode is not OutputMode.json
-        and ctx.state.mode is not OutputMode.quiet
-    ):
-        from decoy.ui.theme import success as _success
+    if ctx.evidence_out in published:
+        _say_written(ctx)
+    _store_record(ctx)
 
-        ctx.state.console.print(_success("Evidence:"), str(ctx.evidence_out))
+
+def _store_record(ctx: RunContext) -> None:
+    """Store the evidence record in the library; a failure is one warning, never the exit."""
     from decoy.cli.library import store_evidence
 
+    assert ctx._manifest is not None  # both callers return first when there is no manifest
     store = not ctx.no_library and not ctx.duckdb_source
     choice = library_choice(ctx)
     if choice.code is not None:

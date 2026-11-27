@@ -141,28 +141,36 @@ def run_report(config: Mapping[str, Any], metrics: Mapping[str, Any]) -> dict | 
     return next((dict(m) for m in reports if m.get("schema_version") == SCHEMA_VERSION), None)
 
 
-def _write(path: Path, report: Mapping[str, Any], sha: str | None) -> str | None:
+def _write(
+    path: Path, report: Mapping[str, Any], sha: str | None, mode: WriteMode = WriteMode.REPLACE
+) -> str | None:
     """Write the stamped report; the failure text (code and path) when it cannot be written."""
     data = json.dumps({**report, "config_sha256": sha}, indent=2).encode("utf-8")
     try:
         # As the target writer does: a blocked run never made the first target's folder.
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_local_target(path, data, WriteMode.REPLACE)
+        wrote = write_local_target(path, data, mode)
     except OSError as exc:
         return f"could not write the post-scan report {path}: {type(exc).__name__}"
     except AtomicWriteError as exc:
         return f"could not write the post-scan report {path}: {describe(exc)}"
+    if not wrote and mode is WriteMode.CREATE_ONCE:  # a file was already there: not ours to show
+        return f"could not write the post-scan report {path}: it already exists"
     return None
 
 
 def write_run_report(
-    report: Mapping[str, Any] | None, path: Path | None, sha: str | None
+    report: Mapping[str, Any] | None,
+    path: Path | None,
+    sha: str | None,
+    *,
+    create_only: bool = False,
 ) -> str | None:
     """Write a finished run's report after its outputs; the failure text when it cannot be
     written. It never ends the run: `run/_flow.py` raises the typed refusal (exit 3)."""
     if report is None or path is None:
         return None
-    return _write(path, report, sha)
+    return _write(path, report, sha, WriteMode.CREATE_ONCE if create_only else WriteMode.REPLACE)
 
 
 def _detectors(report: Mapping[str, Any]) -> list[dict[str, Any]]:

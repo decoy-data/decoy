@@ -157,9 +157,15 @@ def test_the_vault_is_published_in_the_folder_the_kernel_resolves(tmp_path: Path
     cfg = _vaulting(root, "m.csv")
     result = runner.invoke(app, ["run", str(cfg), "--json", "--vault", spelling])
     assert result.exit_code == EXIT_OK, result.output
-    # `.vault.bin.decoy-lock` is the engine's persistent lock the delivery takes (plan 4.5).
     folder = sorted(p.name for p in kernel.parent.iterdir())
-    assert folder == [".vault.bin.decoy-lock", "deep", "vault.bin"]
+    # The strict stage takes `.vault.bin.decoy-lock` (the engine's persistent lock, rev 6.8
+    # section 19.1); a pass-through host takes no lock and keeps the old listing.
+    from decoy.cli.io._pointer import pointer_supported
+
+    assert folder == ([".vault.bin.decoy-lock"] if pointer_supported() else []) + [
+        "deep",
+        "vault.bin",
+    ]
     assert not list(tmp_path.glob(".vault.bin.*"))
 
 

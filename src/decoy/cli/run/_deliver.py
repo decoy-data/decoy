@@ -15,11 +15,18 @@ from decoy.cli.io import (
     DeliveryHooks,
     DeliverySink,
     LayoutWarning,
+    SideFile,
     SideFileBusy,
+    replaces_final,
     write_run_report,
 )
 from decoy.cli.run import _evidence
-from decoy.cli.run._context import DeliveryRefusal, IntegrityWriteRefusal, RunContext
+from decoy.cli.run._context import (
+    DELIVERY_SIDE_FILE_BUSY,
+    DeliveryRefusal,
+    IntegrityWriteRefusal,
+    RunContext,
+)
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
 
@@ -49,28 +56,62 @@ def open_sink(ctx: RunContext) -> DeliverySink:
         discard_attempts=lambda: _evidence.discard_attempts(ctx),
         show_warning=lambda item: _show(ctx, item),
         integrity_out=ctx.integrity_out,
-        side_files=tuple(p for p in (ctx.evidence_out, vault_leaf(ctx)) if p is not None),
+        side_files=side_files(ctx),
     )
     return DeliverySink.open(ctx.layout, ctx.config_dict, hooks, ctx.invocation_id)
 
 
-def vault_leaf(ctx: RunContext) -> Path | None:
-    """The `--vault` file this run publishes, or None when it keeps no vault."""
-    return ctx.vault if ctx.vault_writer is not None else None
+def side_files(ctx: RunContext) -> tuple[SideFile, ...]:
+    """The vault and evidence files this run publishes, each with its writer's link policy."""
+    found = []
+    if ctx.evidence_out is not None:
+        found.append(SideFile(ctx.evidence_out, follow_final=not replaces_final("--evidence-out")))
+    if ctx.vault_writer is not None:
+        found.append(SideFile(ctx.vault, follow_final=not replaces_final("--vault")))
+    return tuple(found)
+
+
+def _enforced(ctx: RunContext) -> bool:
+    """`--post-validate-enforce` with failed checks: the one expression of that decision."""
+    return bool(
+        ctx.post_validate_enforce and (ctx._report_quality_metrics or {}).get("failed_checks")
+    )
 
 
 def blocking_failed(ctx: RunContext) -> bool:
     """Whether the run exits 4: `--post-validate-enforce` with failed checks, or a delivery the
     sink withheld for the post-scan rule. The one place the decision is made."""
-    enforced = bool(
-        ctx.post_validate_enforce and (ctx._report_quality_metrics or {}).get("failed_checks")
-    )
-    return enforced or _withheld(ctx)
+    return _enforced(ctx) or _withheld(ctx)
 
 
 def _withheld(ctx: RunContext) -> bool:
     sink = ctx._sink
     return sink is not None and sink.mode == "strict" and sink.withheld
+
+
+def shown_tables(ctx: RunContext) -> list[dict]:
+    """The table records both renderers show. On the strict route a path is kept only for a
+    table of a run whose recorded receipt is `delivered`: nothing, an uncertain receipt and a
+    missing receipt show no path, however the run got out (the one projection)."""
+    sink = ctx._sink
+    if sink is None or sink.mode != "strict":
+        return ctx._table_records
+    confirmed = sink.receipt is not None and sink.receipt.state == "delivered"
+    return [
+        {
+            **r,
+            "path": str(ctx._published[r["name"]])
+            if confirmed and r["name"] in ctx._published
+            else None,
+        }
+        for r in ctx._table_records
+    ]
+
+
+def shown_report(ctx: RunContext) -> Path | None:
+    """The post-scan report path both renderers show: where it really is, or none."""
+    sink = ctx._sink
+    return ctx._post_scan_file if sink is None else sink.report_location(ctx._post_scan_file)
 
 
 def note_cleanup(ctx: RunContext) -> None:
@@ -84,14 +125,12 @@ def _gate_withholds(ctx: RunContext) -> bool:
     from decoy_engine.config import post_scan_integrity_requested
 
     missing = post_scan_integrity_requested(ctx.config_dict) and ctx._post_scan is None
-    enforced = bool(
-        ctx.post_validate_enforce and (ctx._report_quality_metrics or {}).get("failed_checks")
-    )
-    return missing or enforced
+    return missing or _enforced(ctx)
 
 
-# The target types `plan_delivery` gives a state to (the engine keeps the set private).
-_DELIVERABLE_TYPES = frozenset({"file", "s3", "gcs"})
+# The target types `plan_delivery` gives a state to. The engine keeps the set private, so a
+# guard test compares this copy with the engine's.
+DELIVERABLE_TYPES = frozenset({"file", "s3", "gcs"})
 
 
 def _deliverable(config: dict) -> dict[str, None]:
@@ -99,7 +138,7 @@ def _deliverable(config: dict) -> dict[str, None]:
     names = {t["name"] for t in config.get("tables") or []}
     targets = config.get("targets") or {}
     return {
-        n: None for n, t in targets.items() if n in names and t.get("type") in _DELIVERABLE_TYPES
+        n: None for n, t in targets.items() if n in names and t.get("type") in DELIVERABLE_TYPES
     }
 
 
@@ -108,8 +147,8 @@ def _stage_report(ctx: RunContext, sink: DeliverySink) -> None:
     if ctx._post_scan is None or ctx._post_scan_file is None:
         return
 
-    def write(path: Path) -> str | None:
-        return write_run_report(ctx._post_scan, path, ctx.config_sha256)
+    def write(path: Path, *, create_only: bool = False) -> str | None:
+        return write_run_report(ctx._post_scan, path, ctx.config_sha256, create_only=create_only)
 
     if ctx.integrity_out is not None:
         sink.keep_report(write)  # the attempt file carries it when the run delivers
@@ -145,23 +184,11 @@ def deliver(ctx: RunContext) -> None:
         busy = True
     if busy:
         # Raised outside the handler, so the refusal carries no context.
-        raise DeliveryRefusal(_BUSY_TEXT, code="delivery_side_file_busy")
+        raise DeliveryRefusal(_BUSY_TEXT, code=DELIVERY_SIDE_FILE_BUSY)
     if sink.report_failed:
         ctx.add_cli_warning(_REPORT_CODE, _REPORT_TEXT)
     if sink.cleanup_failed:
         note_cleanup(ctx)
-    if sink.mode == "strict":
-        # One projection for both renderers: a path only for a confirmed delivery of the table.
-        confirmed = receipt.state == "delivered"
-        ctx._table_records = [
-            {
-                **r,
-                "path": str(ctx._published[r["name"]])
-                if confirmed and r["name"] in ctx._published
-                else None,
-            }
-            for r in ctx._table_records
-        ]
     if receipt.state == "nothing" and decision.deliver:
         cause = None if receipt.cause is None else str(receipt.cause)
         raise DeliveryRefusal(

@@ -158,13 +158,14 @@ from decoy.cli.io._project import (
 from decoy.cli.io._published import Ledger as Ledger
 from decoy.cli.io._published import PublishedOutput as PublishedOutput
 from decoy.cli.io._run_id import is_run_id
-from decoy.cli.io._run_outputs import RunOutput, run_outputs
+from decoy.cli.io._run_outputs import RunOutput, replaces_final, run_outputs
 from decoy.cli.io._scan_set import (
     ScanSetFormatError,
     load_scan_set,
     scan_set_from_data,
     select_table,
 )
+from decoy.cli.io._side_lock import SideFile as SideFile
 from decoy.cli.io._small_file import UnsafeFileError, read_small_file
 from decoy.cli.io._targets import (
     TARGET_SUFFIX,
@@ -238,6 +239,7 @@ __all__ = [
     "RunLayout",
     "RunOutput",
     "ScanSetFormatError",
+    "SideFile",
     "SideFileBusy",
     "Split",
     "TargetFormatError",
@@ -313,6 +315,7 @@ __all__ = [
     "read_source",
     "refuse_unchecked_chunked",
     "relative_outputs",
+    "replaces_final",
     "report_dest",
     "report_detectors",
     "report_file",

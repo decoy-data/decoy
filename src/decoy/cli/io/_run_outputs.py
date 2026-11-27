@@ -27,8 +27,9 @@ from decoy.cli.io._layout import (
     relative_outputs,
     side_file_name,
 )
-from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK
+from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK, lock_name
 from decoy.cli.io._run_id import is_run_id
+from decoy.cli.io._side_lock import SideFile, resolved
 
 if TYPE_CHECKING:
     from decoy.cli.io._placement import OutputPlacement
@@ -136,9 +137,9 @@ def _implicit_report(config_dict: dict, config_path: Path, base: Path | None) ->
 
 def _bound_unit_names() -> tuple[str, str]:
     """The two files the engine's bind leaves in a run folder: its descriptor and stage marker."""
-    from decoy_engine.fileaccess import DESCRIPTOR_NAME
+    from decoy_engine.fileaccess import DESCRIPTOR_NAME, STAGE_MARKER
 
-    return DESCRIPTOR_NAME, ".decoy-publication-stage"
+    return DESCRIPTOR_NAME, STAGE_MARKER
 
 
 def not_delivered_report_name(run_id: str) -> str:
@@ -146,12 +147,14 @@ def not_delivered_report_name(run_id: str) -> str:
     return implicit_report_path(Path("_"), Path(run_id)).name
 
 
-def _lock_beside(path: Path) -> RunOutput:
-    """The `.<leaf>.decoy-lock` file the engine leaves beside a vault or evidence file."""
-    return RunOutput(RUN_FOLDER, OutputKind.LAYOUT, path.with_name(f".{path.name}.decoy-lock"))
+def _lock_beside(out: RunOutput) -> RunOutput:
+    """The `.<leaf>.decoy-lock` file the engine leaves beside the vault or evidence file the
+    writer really replaces (a final symlink of `--evidence-out` is followed)."""
+    entry = resolved(SideFile(out.path, follow_final=not out.replaces_final)) or out.path
+    return RunOutput(RUN_FOLDER, OutputKind.LAYOUT, entry.with_name(lock_name(entry.name)))
 
 
-def _layout_outputs(base: Path) -> list[RunOutput]:
+def _layout_outputs(base: Path, *, strict: bool) -> list[RunOutput]:
     """What the project layout writes around a run folder `base` (`out/<name>/<run-id>`)."""
     pipeline = base.parent
     found = [
@@ -163,14 +166,14 @@ def _layout_outputs(base: Path) -> list[RunOutput]:
     if os.name == "posix":
         found.insert(3, pipeline / _LATEST_LINK)
         # The engine's pointer lock stays in place after every swap.
-        found.insert(4, pipeline / f".{_LATEST_FILE}.decoy-lock")
-    # Written by the engine's bind: the run folder's lock and its descriptor member.
-    found.append(pipeline / f".{base.name}.decoy-lock")
-    found.extend(base / name for name in _bound_unit_names())
-    # A run that delivers nothing leaves its post-scan verdict beside the run folder, under its
-    # own leaf lock (AT-59).
-    report = pipeline / not_delivered_report_name(base.name)
-    found.extend((report, report.with_name(f".{report.name}.decoy-lock")))
+        found.insert(4, pipeline / lock_name(_LATEST_FILE))
+    if strict:
+        # Only the engine's stage makes these: the run folder's lock and its descriptor member,
+        # and the verdict of a run that delivers nothing, under its own leaf lock (AT-59).
+        found.append(pipeline / lock_name(base.name))
+        found.extend(base / name for name in _bound_unit_names())
+        report = pipeline / not_delivered_report_name(base.name)
+        found.extend((report, report.with_name(lock_name(report.name))))
     return [RunOutput(RUN_FOLDER, OutputKind.LAYOUT, path) for path in found]
 
 
@@ -179,11 +182,15 @@ def run_outputs(
     placement: OutputPlacement,
     config_path: Path,
     base: Path | None,
+    *,
+    strict: bool = True,
 ) -> tuple[RunOutput, ...]:
     """Every file this run writes outside the library, in a fixed order.
 
     `base` is the folder relative outputs land in (None when it is unknown). The project run
     folder's own files are listed only under project placement with a relative output.
+    `strict` is whether the engine's stage runs: only it makes the stage files and the side-file
+    locks, so a pass-through route reserves none of those names.
     """
     declared = _declared_outputs(config_dict, base)
     typed: dict[OutputKind, list[RunOutput]] = {kind: [] for kind in _FLAG_KINDS.values()}
@@ -196,7 +203,7 @@ def run_outputs(
         else [out for out in [_implicit_report(config_dict, config_path, base)] if out]
     )
     layout = (
-        _layout_outputs(base)
+        _layout_outputs(base, strict=strict)
         if placement.kind == "project" and base is not None and has_placed_output(config_dict)
         else []
     )
@@ -208,8 +215,9 @@ def run_outputs(
         *typed[OutputKind.EVIDENCE],
         *typed[OutputKind.VAULT],
         *(
-            _lock_beside(out.path)
+            _lock_beside(out)
             for out in (*typed[OutputKind.EVIDENCE], *typed[OutputKind.VAULT])
+            if strict
         ),
         *layout,
     )
@@ -223,6 +231,6 @@ _STAGE_SIBLING = re.compile(r"\._decoy_(?:publication_pending|delivery_slots)_[0
 
 def in_flight_name(name: str) -> bool:
     """Whether `name`, found in `out/<name>/` while a delivery is open, is a known shape."""
-    if name in {_CLAIM_NAME, _LATEST_FILE, _LATEST_LINK, f".{_LATEST_FILE}.decoy-lock"}:
+    if name in {_CLAIM_NAME, _LATEST_FILE, _LATEST_LINK, lock_name(_LATEST_FILE)}:
         return True
     return is_run_id(name) or _STAGE_SIBLING.fullmatch(name) is not None

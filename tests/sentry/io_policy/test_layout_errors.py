@@ -193,6 +193,7 @@ LAYOUT_GATE_CODES = frozenset(
         "layout.output_dir_unusable",
         "layout.project_root_refused",
         "layout.delivery_root_split",
+        "layout.delivery_member_too_deep",
         "layout.side_file_in_out",
         "layout.cloud_target_invalid",
         "layout.cloud_target_unsupported",

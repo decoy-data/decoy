@@ -1,6 +1,6 @@
 """CSV-WRITE-FAST structure guards on the syntax tree.
 
-1. `write_targets` runs `_preflight_csv_targets` before its target loop, so no directory is
+1. `write_targets` runs `preflight_csv_targets` before its target loop, so no directory is
    made and no file is staged before every resident CSV schema passed `check_csv_types`.
 2. In the chunked coordinator, the four calls that build a source-to-masked stream sit in the one
    factory `_masked_chunks`, which `_run_chunked_mask` calls once per table, and every target is
@@ -49,7 +49,7 @@ def preflight_before_loop(source: str) -> bool:
     pre = [
         n.lineno
         for n in ast.walk(func)
-        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_preflight_csv_targets"
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "preflight_csv_targets"
     ]
     loops = [n.lineno for n in ast.walk(func) if isinstance(n, ast.For)]
     return bool(pre) and bool(loops) and min(pre) < min(loops)
@@ -63,7 +63,7 @@ def test_moving_the_preflight_below_the_loop_is_red() -> None:
     seeded = (
         "def write_targets(c, o):\n"
         "    for t in c:\n        pass\n"
-        "    _preflight_csv_targets(c, o)\n"
+        "    preflight_csv_targets(c, o)\n"
     )
     assert not preflight_before_loop(seeded)
     assert not preflight_before_loop("def write_targets(c, o):\n    for t in c:\n        pass\n")

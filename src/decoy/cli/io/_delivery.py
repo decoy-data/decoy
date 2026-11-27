@@ -32,14 +32,14 @@ from decoy.cli.io._layout_errors import (
     LATEST_COMMIT_UNCERTAIN,
     LayoutWarning,
 )
-from decoy.cli.io._placement import Split, delivery_root
+from decoy.cli.io._placement import Fixed, NoLocalOutput, Relative, Split, delivery_root
 from decoy.cli.io._published import Ledger, LocalOutput
 from decoy.cli.io._run_outputs import not_delivered_report_name
-from decoy.cli.io._side_lock import hold_side_files
+from decoy.cli.io._side_lock import SideFile, hold_side_files
 from decoy.cli.io._targets import (
-    _preflight_csv_targets,
     check_target_formats,
     file_targets,
+    preflight_csv_targets,
     write_target,
     write_targets,
 )
@@ -100,7 +100,7 @@ class DeliveryHooks:
     publish_attempts: Callable[[], None]  # attempt files become the live files
     discard_attempts: Callable[[], None]
     show_warning: Callable[[LayoutWarning], None]
-    side_files: tuple[Path, ...] = ()  # the vault and evidence leaves other runs may share
+    side_files: tuple[SideFile, ...] = ()  # the vault and evidence files other runs may share
     integrity_out: Path | None = None  # an explicit `--integrity-out`
 
 
@@ -186,6 +186,37 @@ class _Placer(Protocol):
     def report(self, final: Path, write: Callable[[Path], str | None]) -> str | None: ...
     def quarantine(self, config_dict: dict) -> str | None: ...
     def settle_quarantine(self, rows: int) -> None: ...
+
+
+class _VaultProbe:
+    """Records what the vault writer's one publish did, by wrapping that call on the writer.
+
+    The engine's receipt does not say whether rule V ran, and the file system cannot say whose
+    file it is, so the sink keeps the writer's own outcome. The engine insists on a real
+    `VaultWriter`, so the writer stays the writer: only its `publish` is wrapped.
+    """
+
+    def __init__(self, writer: object) -> None:
+        self.writer = writer
+        self.outcome: Literal["pending", "published", "raised"] = "pending"
+        self.exists = False  # the publish found a vault there (the engine then adopts or refuses)
+        real = writer.publish  # type: ignore[attr-defined]
+
+        def publish(out: object) -> object:
+            from decoy_engine import reasons
+
+            done = False
+            try:
+                result = real(out)
+                done = True
+                return result
+            except Exception as exc:
+                self.exists = getattr(exc, "code", None) == reasons.runtime.VAULT_EXISTS
+                raise
+            finally:
+                self.outcome = "published" if done else "raised"
+
+        writer.publish = publish  # type: ignore[attr-defined]
 
 
 class _Direct:
@@ -300,13 +331,15 @@ class DeliverySink:
         self.state: Literal["open", "delivering", "delivered", "aborted"] = "open"
         self.receipt: DeliveryReceipt | None = None
         self.decision: DeliveryDecision | None = None
-        self.vault: Literal["not_used", "committed", "failed"] = "not_used"
+        self._vault_fact: Literal["not_used", "committed", "failed"] = "not_used"
+        self._probe: _VaultProbe | None = None
         self.cleanup_failed = False
         self.report_failed = False  # the not-delivered report could not be written
-        self._report_writer: Callable[[Path], str | None] | None = None
+        self.report_path: Path | None = None  # where that report was written, when it was
+        self._report_writer: Callable[..., str | None] | None = None
+        self._report_tried = False
         self.withheld = False  # the run's decision withheld every table
         self._finals: dict[str, Path] = {}
-        self._vault: Path | None = None
         self._pre = PreVisible(hooks, placer.staged)
         layout.on_abandon(self.abort)
 
@@ -322,9 +355,13 @@ class DeliverySink:
         root = delivery_root(config_dict, layout.contained_base)
         if isinstance(root, Split):
             raise DELIVERY_ROOT_SPLIT.error(first=root.first, second=root.second)
+        if isinstance(root, Fixed | NoLocalOutput):
+            return cls(RootKind.fixed_folder, PassThroughStage(), _Direct(layout), layout, hooks)
+        if not isinstance(root, Relative):  # a new DeliveryRoot variant needs its own stage
+            raise TypeError(type(root).__name__)
         folder = layout.pipeline_dir
         if layout.run is None or folder is None:
-            return cls(RootKind.fixed_folder, PassThroughStage(), _Direct(layout), layout, hooks)
+            raise RuntimeError("a relative delivery root needs a run folder")
         if not _pointer.pointer_supported():
             return cls(RootKind.run_folder, PassThroughStage(), _Direct(layout), layout, hooks)
         from decoy_engine.fileaccess import FileRequest, FileRole, current
@@ -349,14 +386,25 @@ class DeliverySink:
         bind); kind A commits it now, before any output, as before."""
         if not isinstance(self._stage, _Strict):
             commit()
-            self.vault = "committed"
+            self._vault_fact = "committed"
             return
         from decoy_engine.fileaccess import FileRequest, FileRole, current
         from decoy_engine.publication import VaultBinding
 
-        self._vault = vault
+        self._probe = _VaultProbe(writer)
         request = FileRequest(FileRole.TARGET_OUTPUT, "write", str(vault), "vault")
         self._stage.stage.set_vault(VaultBinding(writer, current().output_dir(request)))  # type: ignore[arg-type]
+
+    @property
+    def vault(self) -> Literal["not_used", "committed", "failed"]:
+        """What this run's own vault write did, as the writer recorded it (never a file check)."""
+        probe = self._probe
+        if probe is None:
+            return self._vault_fact
+        if probe.outcome == "published":
+            return "committed"
+        adopted = probe.exists and self.receipt is not None and self.receipt.state != "nothing"
+        return "committed" if adopted else ("failed" if probe.outcome == "raised" else "not_used")
 
     def place_quarantine(self, config_dict: dict) -> str | None:
         """The `run_pipeline(quarantine_path=...)` value: a staged path on kind R."""
@@ -375,7 +423,7 @@ class DeliverySink:
         if isinstance(self._placer, _Direct):
             write_targets(config_dict, outputs, self._layout, ledger)
             return
-        _preflight_csv_targets(config_dict, outputs)
+        preflight_csv_targets(config_dict, outputs)
         scratch = Ledger()  # a slot path is never a published path
         for name, entry, raw, table in file_targets(config_dict, outputs):
             path = self._placer.place(str(name), raw)
@@ -387,14 +435,14 @@ class DeliverySink:
                 raise
             self._placer.done(str(name), ok=True)
 
-    def stage_report(self, final: Path, write: Callable[[Path], str | None]) -> str | None:
+    def stage_report(self, final: Path, write: Callable[..., str | None]) -> str | None:
         """Write the implicit post-scan report: a member of the run folder on kind R, the
         placed file as before on kind A. The failure text, or None."""
         if isinstance(self._stage, _Strict):
             self._report_writer = write  # kept for a run that delivers nothing (AT-59)
         return self._placer.report(final, write)
 
-    def keep_report(self, write: Callable[[Path], str | None]) -> None:
+    def keep_report(self, write: Callable[..., str | None]) -> None:
         """Remember how to write the report when `--integrity-out` carries it (kind R only)."""
         if isinstance(self._stage, _Strict):
             self._report_writer = write
@@ -414,15 +462,18 @@ class DeliverySink:
 
         with contextlib.ExitStack() as held:
             # Before the pointer lock, in one order, so two runs sharing a file cannot deadlock.
-            if hold_side_files(held, self._hooks.side_files):
+            # The strict route only, and only a run that publishes: the pass-through behaves as
+            # before the sink, and a withheld run touches no publication file but its report.
+            strict_delivery = self.mode == "strict" and decision.deliver
+            if strict_delivery and hold_side_files(held, self._hooks.side_files):
                 raise SideFileBusy
             try:
                 before = self._pre.write_attempts if self.mode == "strict" else _nothing
                 receipt = self._stage.deliver(decision, before, reconcile)
             except BaseException:
-                self._note_vault(raised=True)
+                if not self._bound():
+                    self._publish_side_report()  # a failure before the bind keeps the verdict
                 raise
-        self._note_vault(raised=False)
         if self.receipt is None:  # a withheld decision aborts without calling `reconcile`
             self.receipt = receipt
             self.state = "aborted" if receipt.state == "nothing" else "delivered"
@@ -430,13 +481,22 @@ class DeliverySink:
             self._publish_side_report()
         return receipt
 
+    def _bound(self) -> bool:
+        """Whether the engine already bound the run folder (its descriptor is in it)."""
+        from decoy_engine.fileaccess import DESCRIPTOR_NAME
+
+        run = self._layout.run
+        return run is not None and os.path.lexists(run.path / DESCRIPTOR_NAME)
+
     def _publish_side_report(self) -> None:
-        """A strict run that withheld everything before the bind keeps its post-scan verdict as
-        `out/<name>/<run-id>.post-scan.json`, under that leaf's own lock; the run folder it
-        would have gone into is gone. A failure is one warning and never changes the exit."""
+        """A strict run that delivered nothing before the bind keeps its post-scan verdict as
+        `out/<name>/<run-id>.post-scan.json`, created once under that leaf's own lock (or in
+        the explicit `--integrity-out`). It runs once; a failure is one warning and never
+        changes the exit."""
         write, run, folder = self._report_writer, self._layout.run, self._layout.pipeline_dir
-        if write is None or run is None or folder is None:
+        if write is None or run is None or folder is None or self._report_tried:
             return
+        self._report_tried = True
         explicit = self._hooks.integrity_out
         path = explicit or folder / not_delivered_report_name(run.run_id)
         failed = True
@@ -451,17 +511,16 @@ class DeliverySink:
                     held.enter_context(
                         current().output_dir(request).lock(_pointer.LATEST_LOCK_TIMEOUT_S)
                     )
-                failed = write(path) is not None
+                failed = write(path, create_only=explicit is None) is not None
         self.report_failed = failed
+        self.report_path = None if failed else path
 
-    def _note_vault(self, *, raised: bool) -> None:
-        # The engine's receipt does not say whether rule V published; the vault was absent at
-        # prepare (an existing one is refused), so a file now is this run's.
-        if self._vault is not None and self.vault == "not_used":
-            if os.path.lexists(self._vault):
-                self.vault = "committed"
-            elif raised:
-                self.vault = "failed"
+    def report_location(self, staged_for: Path | None) -> Path | None:
+        """Where the post-scan report really is: the run folder when the run bound, the
+        not-delivered file when it was written, otherwise nowhere."""
+        if self.mode != "strict" or (self.receipt is not None and self.receipt.state != "nothing"):
+            return staged_for
+        return self.report_path
 
     def _reconcile(self, receipt: DeliveryReceipt, decision: StageDecision, ledger: Ledger) -> None:
         """Runs once under the pointer lock and must not raise. Each step is its own handler, so
@@ -490,6 +549,7 @@ class DeliverySink:
         if run is not None and folder is not None:
             for item in _pointer.link_current(folder, run.run_id):
                 self._hooks.show_warning(item)
+                self.cleanup_failed = True  # the helper returns the fault; it is a cleanup fault
 
     def _fill(self, ledger: Ledger, decision: StageDecision) -> None:
         for name, path in self._finals.items():
@@ -511,6 +571,8 @@ class DeliverySink:
         self.state = "aborted"
         self._step(self._stage.abort)
         self._step(self._pre.restore)
+        if self.mode == "strict" and not self._bound():
+            self._publish_side_report()
 
     def settled(self) -> bool:
         """True once the visibility point has passed: a delivered or uncertain receipt."""

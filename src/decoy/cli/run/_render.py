@@ -114,12 +114,12 @@ def finish(ctx: RunContext) -> None:
             "config": ctx.config_str,
             "mode": ctx.yaml_mode,
             "elapsed_s": round(ctx.elapsed, 3),
-            "tables": ctx._table_records,
+            "tables": _deliver.shown_tables(ctx),
             "warnings": _warnings,
             **_where_written(ctx),
         }
         payload["resources"] = ctx._resources_record
-        payload.update(post_scan_members(ctx._post_scan, ctx._post_scan_file))
+        payload.update(post_scan_members(ctx._post_scan, _deliver.shown_report(ctx)))
         if ctx.library_outcome is not None:
             payload["library"] = ctx.library_outcome.to_json()
         if ctx._subset_metrics is not None:
@@ -154,12 +154,14 @@ def finish(ctx: RunContext) -> None:
         ("Pipeline", ctx.config.name),
         ("Mode", ctx.yaml_mode),
         ("Elapsed", f"{ctx.elapsed:.2f}s"),
-        ("Tables", str(len(ctx._table_records))),
+        ("Tables", str(len(_deliver.shown_tables(ctx)))),
         (
             "Rows",
-            "n/a (chunked)" if ctx.chunked else str(sum(r["rows"] for r in ctx._table_records)),
+            "n/a (chunked)"
+            if ctx.chunked
+            else str(sum(r["rows"] for r in _deliver.shown_tables(ctx))),
         ),
-        ("Files", str(sum(1 for r in ctx._table_records if r["path"] is not None))),
+        ("Files", str(sum(1 for r in _deliver.shown_tables(ctx) if r["path"] is not None))),
     ]
     if ctx.layout is not None:
         facts.extend(ctx.layout.summary_facts())
@@ -191,11 +193,11 @@ def finish(ctx: RunContext) -> None:
         ctx.state,
         [
             {**r, "path": shown_path(Path(r["path"]).resolve()) if r["path"] else None}
-            for r in ctx._table_records
+            for r in _deliver.shown_tables(ctx)
         ],
     )
     render_warnings(ctx.state, _warnings)
-    print_post_scan(ctx.state, ctx._post_scan, ctx._post_scan_file)
+    print_post_scan(ctx.state, ctx._post_scan, _deliver.shown_report(ctx))
     if ctx.explain_plan:
         render_execution_route(ctx.state, _qm.get("execution_plan"))
     if ctx.fidelity:

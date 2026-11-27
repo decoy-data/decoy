@@ -343,10 +343,10 @@ def test_at59_a_fault_in_the_side_report_is_one_warning_and_keeps_exit_4(
     post_scan(yml)
     real = _integrity_report.write_run_report
 
-    def fail_for_the_side_file(report, path, sha):
+    def fail_for_the_side_file(report, path, sha, **kw):
         if path.parent.name == "orders":
             return "disk says no"
-        return real(report, path, sha)
+        return real(report, path, sha, **kw)
 
     with (
         mock.patch.object(_deliver, "_gate_withholds", _withhold),

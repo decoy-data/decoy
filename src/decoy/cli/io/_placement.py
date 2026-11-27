@@ -15,7 +15,7 @@ import unicodedata
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 from decoy._atomic import AtomicWriteError, describe, destination_entry
@@ -39,6 +39,7 @@ from decoy.cli.io._layout import (
     relative_outputs,
 )
 from decoy.cli.io._layout_errors import (
+    DELIVERY_MEMBER_TOO_DEEP,
     DELIVERY_ROOT_SPLIT,
     OUTPUT_DIR_UNUSABLE,
     OUTPUT_PATH_COLLISION,
@@ -48,6 +49,7 @@ from decoy.cli.io._layout_errors import (
     LayoutError,
     LayoutWarning,
 )
+from decoy.cli.io._pointer import STRICT_MEMBER_DEPTH, strict_route
 from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._run_outputs import OutputKind, RunOutput, replaces_final, run_outputs
 
@@ -431,6 +433,8 @@ def layout_issues(
         issues.extend(cloud_root_issues(config_dict, chunked=placement.chunked))
     for location, _raw in urls:
         issues.append((location, OUTPUT_PATH_ESCAPES.error(path="a URL", base=base)))
+    # The strict stage is the one with a member depth limit and its own files in the run folder.
+    strict = fixed is None and strict_route(chunked=placement.chunked)
     for location, raw in placed:
         if not names_a_file_inside(raw) or (
             fixed is not None and fixed.exists() and contained_path(folder or fixed, raw) is None
@@ -441,6 +445,19 @@ def layout_issues(
                 check_path_budget(folder, raw, run_folder=fixed is None)
             except LayoutError as exc:
                 issues.append((location, exc))
+            else:
+                if (
+                    strict
+                    and len(PurePosixPath(raw.replace("\\", "/")).parts) > STRICT_MEMBER_DEPTH
+                ):
+                    issues.append(
+                        (
+                            location,
+                            DELIVERY_MEMBER_TOO_DEEP.error(
+                                subject=location, limit=STRICT_MEMBER_DEPTH
+                            ),
+                        )
+                    )
     issues.extend(
         (location, OUTPUT_PATH_ESCAPES.error(path="a path with a NUL byte", base=base))
         for location, raw in outputs
@@ -462,7 +479,7 @@ def layout_issues(
     if not issues:
         where = folder if fixed is not None else folder and folder / "<run-id>"
         clash = resolved_output_collisions(
-            run_outputs(config_dict, placement, config, where),
+            run_outputs(config_dict, placement, config, where, strict=strict),
             protected_inputs(config, config_dict, placement.inputs),
             placement.library,
         )

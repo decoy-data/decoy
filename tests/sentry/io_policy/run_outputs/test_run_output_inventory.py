@@ -354,7 +354,7 @@ def test_the_pointer_lock_file_is_a_listed_layout_output(tmp_path: Path) -> None
     from decoy.cli.io._run_outputs import _layout_outputs
 
     run = tmp_path / "out" / "customers" / "20261109T101500123456Z-0a1b2c3d"
-    listed = {(o.kind, o.path) for o in _layout_outputs(run)}
+    listed = {(o.kind, o.path) for o in _layout_outputs(run, strict=True)}
     assert (OutputKind.LAYOUT, run.parent / _LOCK_NAME) in listed
 
 

@@ -65,12 +65,7 @@ def _vault_failed_text() -> str:
 
 
 def _leftovers(directory: Path, vault_name: str) -> list[str]:
-    # The persistent `.<vault>.decoy-lock` the delivery takes is not a leftover stage.
-    return sorted(
-        p.name
-        for p in directory.iterdir()
-        if p.name.startswith(f".{vault_name}") and not p.name.endswith(".decoy-lock")
-    )
+    return sorted(p.name for p in directory.iterdir() if p.name.startswith(f".{vault_name}"))
 
 
 def _fail_vault_write(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -129,7 +129,7 @@ def delivery_facts(ctx: RunContext, config: dict, *, vault_failed: bool) -> Any:
         vault = "failed"
     elif sink is not None:
         vault = sink.vault  # the sink's own record, not a look at the file system
-    else:
+    else:  # no sink: the chunked route, which keeps this file check until C2a-2
         vault = "committed" if Path(ctx.vault).exists() else "not_used"
     mode = "in_place" if sink is None else sink.mode
     return DeliveryFacts(

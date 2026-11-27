@@ -527,7 +527,7 @@ def _write_csv(table: pa.Table, writer: pacsv.CSVWriter) -> None:
         writer.write_batch(_csv_batch(batch))
 
 
-def _preflight_csv_targets(config_dict: dict, outputs: Mapping[str, pa.Table]) -> None:
+def preflight_csv_targets(config_dict: dict, outputs: Mapping[str, pa.Table]) -> None:
     """Refuse an unsupported CSV column type in any resident target before any is written."""
     for table_name, entry, _raw_path, table in file_targets(config_dict, outputs):
         if isinstance(table, pa.Table) and resolve_target_format(str(table_name), entry) == "csv":
@@ -683,7 +683,7 @@ def write_targets(
     a later failure keeps the earlier entries. The paths come back as plain paths.
     """
     published = Ledger() if published is None else published
-    _preflight_csv_targets(config_dict, outputs)
+    preflight_csv_targets(config_dict, outputs)
     for table_name, entry, raw_path, table in file_targets(config_dict, outputs):
         write_target(table_name, entry, table, layout.place_target(raw_path), published)
     return {name: out.path for name, out in published.items()}

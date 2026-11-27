@@ -47,6 +47,12 @@ CLI_WARNING_CODES: frozenset[str] = frozenset(
 )
 
 
+# The machine-readable `code` of each refusal the CLI raises itself for a delivery. Closed, like
+# `CLI_WARNING_CODES`: a new code is added here and pinned by a registry test.
+DELIVERY_SIDE_FILE_BUSY = "delivery_side_file_busy"
+CLI_REFUSAL_CODES: frozenset[str] = frozenset({DELIVERY_SIDE_FILE_BUSY})
+
+
 class RunRefusal(Exception):
     """A refusal `decoy run` raises itself, before or after the engine runs.
 

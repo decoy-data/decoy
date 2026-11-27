@@ -227,7 +227,8 @@ def test_at78_a_vault_publish_that_fails_is_reported_failed(tmp_path: Path, monk
     _root, yml = project(tmp_path, tables=1)
     _vaulted(yml, monkeypatch)
     fault = VaultError(code=reasons.runtime.VAULT_COMMIT_FAILED, message="x")
-    with mock.patch("decoy_engine.publication._publish._commit_vault", side_effect=fault):
+    # The writer's own publish fails: the sink reads the fact from that call, not from the disk.
+    with mock.patch("decoy_engine.vault.VaultWriter.publish", side_effect=fault):
         result = run(yml, "--vault", str(tmp_path / "v.db"))
     assert result.exit_code == 3, result.output
     assert document(result)["delivery"]["vault"] == "failed"

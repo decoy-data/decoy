@@ -221,20 +221,17 @@ def _phases(ctx: RunContext) -> None:
                 _prepare.prepare_preview(ctx)
                 _execute.execute_preview(ctx)
         finished = True
-    except typer.Exit:
-        # An inner typer.Exit already set its exit code; keep it out of the catch-all below.
-        raise
-    except (UsageRefusal, DeliveryRefusal):
-        # A usage refusal, or a delivery that left nothing, ends in `execute`, with the envelope;
-        # `finally` still cleans up. The write refusals raised in here stay with `_errors.fail`,
-        # which already gives them their document.
-        raise
     except Exception as exc:
         if ctx._sink is not None and ctx._sink.settled():
-            # Delivered before this error (a teardown fault, a late writer): the run stays
-            # delivered, with one cleanup warning, and takes the success tail.
+            # Delivered before this error, whatever it is (a teardown fault, a late writer, an
+            # exit raised on the way out): the run stays delivered, with one cleanup warning, and
+            # takes the success tail. `BaseException` is not caught, so Ctrl-C still propagates.
             _deliver.note_cleanup(ctx)
             finished = True
+        elif isinstance(exc, typer.Exit | UsageRefusal | DeliveryRefusal):
+            # An inner exit already set its code, and a usage or delivery refusal ends in
+            # `execute` with the envelope; `finally` still cleans up.
+            raise
         else:
             _failed_with = type(exc).__name__
             _errors.fail(ctx, exc)
