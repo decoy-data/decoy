@@ -57,9 +57,7 @@ SHAPES = {
         positional=("path",),
         fixed={"schema": "scan-set/v1"},
     ),
-    "delivery": Shape(
-        "delivery", "`delivery(strict)`", positional=("mode",)
-    ),
+    "delivery": Shape("delivery", "`delivery(strict)`", positional=("mode",)),
 }
 # Config blocks this module writes, with the syntax that writes each.
 SAFETY_SYNTAX = {
