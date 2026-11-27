@@ -380,6 +380,7 @@ def _quiet_run(cfg: Path, *args: str):
     ["black_hole", "huge_200", "trickle_200"],
     ids=["black_hole", "huge_body", "trickle"],
 )
+@pytest.mark.serial  # asserts a wall-clock bound on the exit; CPU load from other workers breaks it
 def test_dead_collector_keeps_exit_code_and_bounds_exit(tmp_path, behavior) -> None:
     from tests.unit.test_telemetry_exporter import Listener
 

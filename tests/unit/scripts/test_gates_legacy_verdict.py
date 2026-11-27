@@ -23,7 +23,9 @@ from _gates_harness import (
     BASH,
     DEV,
     GIT,
+    REPO,
     at_main,
+    child_env,
     git,
     pytest_argvs,
     pytest_calls,
@@ -215,11 +217,11 @@ def test_the_header_keeps_the_cli_skip_steps_and_selection_wording(tmp_path: Pat
     assert rc == 0, out
 
 
-def test_the_header_names_the_serial_suite(tmp_path: Path) -> None:
+def test_the_header_names_the_worker_choice(tmp_path: Path) -> None:
     clone = seeded_clone(tmp_path)
     venv, _log = recording_venv(tmp_path)
     _rc, out = run_gates(clone, venv, "--steps", "tests", "tests/_seeded/test_seed_ok.py")
-    assert "workers:    1 (the CLI suite runs serial)" in out, out
+    assert "workers:    1 (GATES_WORKERS=1)" in out, out
 
 
 def test_an_explicit_path_keeps_the_explicit_wording(tmp_path: Path) -> None:
@@ -246,13 +248,16 @@ def test_the_sentry_step_runs_the_ratchet_first_and_then_the_four_sentry_paths(
     ], argv
 
 
-def test_the_header_says_workers_stay_one_whatever_the_environment_asks(tmp_path: Path) -> None:
+def test_the_header_names_the_worker_count_the_environment_asks(tmp_path: Path) -> None:
+    """CLI-PAR S1 replaced the always-one rule: GATES_WORKERS sets the count and names itself."""
+    pytest.importorskip("xdist")
     clone = seeded_clone(tmp_path)
+    shutil.copy2(REPO / "tests" / "_xdist_safe_reports.py", clone / "tests")
     venv, _log = recording_venv(tmp_path)
     _rc, out = run_gates(
         clone, venv, "--steps", "tests", "tests/_seeded/test_seed_ok.py", GATES_WORKERS="4"
     )
-    assert "workers:    1 (the CLI suite runs serial)" in out, out
+    assert "workers:    4 (GATES_WORKERS=4)" in out, out
 
 
 def test_order_from_is_not_a_cli_flag(tmp_path: Path) -> None:
@@ -512,7 +517,7 @@ def test_junit_ids_from_a_real_pytest_run_keep_params_classes_and_errors(tmp_pat
     subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "junit_family=xunit1",
          "--continue-on-collection-errors", f"--junitxml={xml}", "tests"],
-        cwd=tmp_path / "proj", capture_output=True, text=True, timeout=120, check=False,
+        cwd=tmp_path / "proj", env=child_env(), capture_output=True, text=True, timeout=120, check=False,
     )  # fmt: skip
     out = tmp_path / "out"
     out.mkdir()
@@ -548,7 +553,7 @@ def test_totals_count_matches_the_junit_on_a_real_run_with_teardown_errors(tmp_p
     run = subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "junit_family=xunit1",
          f"--junitxml={out / 'branch-tests.xml'}", "tests"],
-        cwd=proj, capture_output=True, text=True, timeout=120, check=False,
+        cwd=proj, env=child_env(), capture_output=True, text=True, timeout=120, check=False,
     )  # fmt: skip
     (out / "branch-tests.log").write_text(run.stdout)
     mod = report_module()
@@ -599,9 +604,10 @@ def test_reporter_subcommands_replace_the_inline_parsing(tmp_path: Path) -> None
     )  # fmt: skip
     assert shown.returncode == 0 and shown.stdout.strip() == sha
     workers = subprocess.run(
-        [sys.executable, str(mod), "--workers"], capture_output=True, text=True, check=False
+        [sys.executable, str(mod), "--workers"], env=child_env() | {"GATES_WORKERS": "1"},
+        capture_output=True, text=True, check=False,
     )  # fmt: skip
-    assert workers.returncode == 0 and workers.stdout.strip() == "1 the CLI suite runs serial"
+    assert workers.returncode == 0 and workers.stdout.strip() == "1 GATES_WORKERS=1"
 
 
 # --- AT-12: an inherited test is keyed by the collected module -------------------------------
@@ -650,7 +656,7 @@ def test_an_inherited_test_from_a_real_run_has_a_rerunnable_id(
     subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-o", "junit_family=xunit1",
          f"--junitxml={xml}", "tests/test_child.py"],
-        cwd=proj, capture_output=True, text=True, timeout=120, check=False,
+        cwd=proj, env=child_env(), capture_output=True, text=True, timeout=120, check=False,
     )  # fmt: skip
     out = tmp_path / "out"
     out.mkdir()

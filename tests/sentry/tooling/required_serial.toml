@@ -1,0 +1,26 @@
+# Tests known to need the whole host (CLI-PAR S1 plan, section 5). Each id is an exact node-id
+# prefix: the id itself, its parametrized cases, or a directory ending in "/". Every collected
+# test a prefix matches must carry the serial mark. The list only grows; to remove one, add its
+# id and a reason (15+ characters) under [[removed]] in the same diff.
+
+# H1: snapshots the checkout and the real home (~/.decoy, the launcher bin) and asserts no change.
+[[serial]]
+id = "tests/e2e/first_user/journey/test_cli_journey.py"
+
+# H3: RSS and timing measurements that are only valid on a quiet host (opt-in by environment).
+[[serial]]
+id = "tests/e2e/run_stream/test_lazy_perf.py"
+
+[[serial]]
+id = "tests/e2e/cli_fmt/test_csv_target_speed.py"
+
+# H2: wall-clock bounds that CPU load from other workers would break.
+[[serial]]
+id = "tests/unit/test_telemetry_exporter.py::test_flush_black_hole_is_bounded"
+
+[[serial]]
+id = "tests/e2e/test_ci_staged_scan.py::test_git_timeout_is_a_runtime_failure_not_a_clean_scan"
+
+# Found by the scan in CLI-PAR S1: compares the wall time of a run with and without a dead collector.
+[[serial]]
+id = "tests/e2e/test_run_otel.py::test_dead_collector_keeps_exit_code_and_bounds_exit"

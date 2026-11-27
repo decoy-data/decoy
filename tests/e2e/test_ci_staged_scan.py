@@ -316,6 +316,7 @@ def test_finding_group_cap(tmp_path: Path) -> None:
     assert _check(report)["reason_code"] == "ci.staged_scan_limit"
 
 
+@pytest.mark.serial  # a wall-clock bound: CPU load from other workers would slow the scan
 def test_git_timeout_is_a_runtime_failure_not_a_clean_scan(tmp_path: Path) -> None:
     manifest = (
         ci_manifest(validation=False, patterns=[PATTERN]) + "  limits:\n    max_git_seconds: 1\n"

@@ -7,12 +7,12 @@ run proves a test that outlives its timeout fails with "Timeout" and its stack i
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from tests.child_env import child_env
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -67,7 +67,7 @@ def test_a_test_past_its_timeout_fails_with_a_stack(tmp_path: Path) -> None:
     )
     # Load only the plugin under test: with every installed plugin the child's start-up can pass
     # the parent's limit on a loaded box.
-    env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+    env = {**child_env(), "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
     try:
         proc = subprocess.run(
             [sys.executable, "-m", "pytest", "-p", "timeout", "-p", "no:cacheprovider",

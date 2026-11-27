@@ -46,6 +46,10 @@ from scripts.qa import sweep as qa_sweep
 from decoy.distribution.layout import CLI_HOME_PATHS
 from tests.cli_journey import allowed_exit_codes, journey_step, step_by_id
 
+# The journey snapshots the checkout and the real home and asserts nothing else changed them, so
+# another worker writing there would fail it: the gate runs it in the serial pass.
+pytestmark = pytest.mark.serial
+
 REPO = Path(__file__).resolve().parents[4]
 BIN_VAR = "DECOY_JOURNEY_BIN"
 HOME_VAR = "DECOY_JOURNEY_HOME"
