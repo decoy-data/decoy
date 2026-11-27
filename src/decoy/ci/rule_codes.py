@@ -219,7 +219,6 @@ _ENGINE_LITERAL_CODES: frozenset[str] = frozenset(
         "absent",  # execution/native/_companion_status.py:269
         "bad_token",  # _canonical/_strict_spec.py:119
         "binding_pair",  # records/_payloads.py:117
-        "bucketize",  # contracts/format_error_reasons.py:17 (a strategy key in the reason table)
         "collision_rate",  # execution/native/_pool_quality.py:442
         "digest",  # declared_casting/_quarantine_local.py:504
         "digest_mismatch",  # _error_base.py:24

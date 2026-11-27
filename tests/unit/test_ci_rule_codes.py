@@ -71,6 +71,17 @@ def _registry_codes() -> set[str]:
 _FIRST_ARG_NOT_A_CODE = frozenset({"ScanSourceError"})
 
 
+# Engine tables whose keys are strategy names and whose values are row-error prose, not code
+# declarations: the key is a lookup argument and never reaches a report as a rule_id. Each
+# entry is (path under the engine package, assigned name); a test holds it to the engine source.
+_MESSAGE_TABLES = frozenset({("contracts/format_error_reasons.py", "_REASONS")})
+
+
+def _is_message_table(rel: str, node: ast.AST) -> bool:
+    targets = node.targets if isinstance(node, ast.Assign) else [getattr(node, "target", None)]
+    return any(isinstance(t, ast.Name) and (rel, t.id) in _MESSAGE_TABLES for t in targets)
+
+
 def _engine_literal_codes() -> set[str]:
     """Literal codes the engine raises or reports outside the registry."""
     import decoy_engine
@@ -78,7 +89,10 @@ def _engine_literal_codes() -> set[str]:
     root = Path(decoy_engine.__file__).parent
     codes: set[str] = set()
     for path in root.rglob("*.py"):
+        rel = path.relative_to(root).as_posix()
         for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if _is_message_table(rel, node):
+                continue
             values: list[ast.AST] = []
             if isinstance(node, ast.Call):
                 values += [kw.value for kw in node.keywords if kw.arg in ("code", "reason")]
@@ -226,6 +240,23 @@ def test_the_engine_code_set_is_not_vacuous() -> None:
     assert canary not in validation_codes() and not reasons.is_registered(canary)
     assert rule_code(canary, validation_codes()) == UNKNOWN_CODE
     assert _unlisted(codes | {canary}) == sorted({canary, *_unlisted(codes)})
+
+
+def test_a_strategy_to_message_table_key_is_not_a_code() -> None:
+    import decoy_engine
+
+    root = Path(decoy_engine.__file__).parent
+    for rel, name in _MESSAGE_TABLES:
+        tree = ast.parse((root / rel).read_text(encoding="utf-8"))
+        assert any(
+            _is_message_table(rel, n)
+            and isinstance(n, (ast.Assign, ast.AnnAssign))
+            and any(isinstance(c, ast.Dict) for c in ast.walk(n))
+            for n in ast.walk(tree)
+        ), f"{rel}:{name} is no longer a dict table; drop the entry or rescan"
+    assert "bucketize" not in _engine_literal_codes()
+    assert "bucketize" not in validation_codes()
+    assert rule_code("bucketize", validation_codes()) == UNKNOWN_CODE
 
 
 def test_every_engine_code_is_allowlisted() -> None:
