@@ -11,6 +11,19 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-26: EXPERIMENTAL-TIER S0, DECOY-LANG S2, empty fixed-width parity and two fixes
+
+No row closed. Rows moved:
+
+- EXPERIMENTAL-TIER: S0 is engine #832 (2026-11-26, `f54ad388b`). The stability module gains `is_experimental_export` and `tier_key`, and the engine census calls them in place of its own copies. The caller passes `read_source`, so the contracts package reads no file, and an unreadable SDK source fails closed with `RuntimeError`. Contract section 3.6 is updated. The CLI repins in S1 after the next daily release. The row stays open.
+- DECOY-LANG: S2 is CLI #419 (2026-11-26, `a0bcd3a3f`). A finding in a `.decoy` file names its source line. `decoy validate --json` adds `position` for `yaml.*` and `lang.*` loader findings, and `decoy ci check` uses positions for all findings. Left: S3 to S6 and S8.
+
+Other merges:
+
+- **Engine #791 (EMPTY-LAYOUT-PARITY, 2026-11-26, `3a9ecb2b1`):** an empty fixed-width file written to a Parquet target now gives the same column types on the lazy and resident runs. The reader builds an empty frame from the layout, and both readers share one layout-to-Arrow map. Breaking, named in the engine changelog: the profile and plan hashes of an empty fixed-width source change, and an empty file with an int field and a string-output `when` is now refused, as a non-empty file already was. The CLI cell and CHANGELOG note on this must change when the CLI moves to this engine.
+- **Engine #817 (C6C-I, 2026-11-26, `843eae66b`):** a test fix tied to no row. The mixed hash and text_redact test now passes the table, columns and strategy that the evidence helper needs.
+- **CLI #415 (TNR-ROADMAP, 2026-11-26, `7455f1853`):** roadmap docs only. It adds STRUCTURE-REVIEW and the eight TNR rows from the 2026-11-25 engine audit to 1.x. None of them blocks 1.0.
+
 ## 2026-11-25: CLI-SPLIT report and fit splits, FPE-CHECKSUM-NATIVE S2a
 
 No row closed. Rows moved:
