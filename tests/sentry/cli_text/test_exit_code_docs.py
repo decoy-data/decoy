@@ -118,3 +118,23 @@ def test_crash_code_names_the_internal_error() -> None:
     assert "internal error" in _flat(explain_entry)
     assert "seven" not in _readme_section(README.read_text(encoding="utf-8"))
     assert "seven" not in _explain_text()
+
+
+NONFK_CAPACITY_CODE = "nonfk_full_frame_capacity_exceeded"
+
+
+def test_exit_5_docs_name_the_nonfk_capacity_refusal_and_the_max_memory_limit() -> None:
+    # The engine refuses a large no-FK job over the memory ceiling; `--max-memory` does not move that
+    # ceiling, so every exit-5 doc must say so or a user will tune the wrong flag.
+    source = Path(exit_codes.__file__).read_text(encoding="utf-8")
+    docstring = source.split("EXIT_CAPACITY: int = 5", 1)[1].split("EXIT_PARTIAL", 1)[0]
+    readme_row = _readme_rows(README.read_text(encoding="utf-8"))[exit_codes.EXIT_CAPACITY]
+    explain_entry = _explain_entries(_explain_text())[exit_codes.EXIT_CAPACITY]
+    for where, text in (
+        ("exit_codes docstring", docstring),
+        ("README row", readme_row),
+        ("explain entry", explain_entry),
+    ):
+        flat = _flat(text)
+        assert NONFK_CAPACITY_CODE in flat, where
+        assert "--max-memory" in flat, where
