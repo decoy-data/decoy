@@ -179,20 +179,9 @@ _COMPANION = importlib.util.find_spec("decoy_engine_native") is not None
 
 
 @pytest.mark.skipif(not _COMPANION, reason="needs a real compiled decoy-engine-native companion")
-@pytest.mark.parametrize(
-    "columns",
-    [
-        # No column the companion can plan: nothing compiled runs, so --native has no evidence.
-        [{"name": "id", "strategy": "passthrough"}, {"name": "email", "strategy": "redact"}],
-        # A Python-planned column beside a compiled one: the run still has to name the evidence.
-        [
-            {"name": "id", "strategy": "passthrough"},
-            {"name": "email", "strategy": "faker", "provider": "person_email"},
-        ],
-    ],
-    ids=["redact-only", "faker-only"],
-)
-def test_native_decline_refuses_with_no_output(tmp_path: Path, columns: list[dict]) -> None:
+def test_native_decline_refuses_with_no_output(tmp_path: Path) -> None:
+    # No column the companion can plan: nothing compiled runs, so --native has no evidence.
+    columns = [{"name": "id", "strategy": "passthrough"}, {"name": "email", "strategy": "redact"}]
     build = single_build(tmp_path, columns=columns)
     out = tmp_path / "run"
     out.mkdir()
@@ -203,6 +192,27 @@ def test_native_decline_refuses_with_no_output(tmp_path: Path, columns: list[dic
     assert not targets[0].exists()
     doc = json.loads(result.stdout) if result.stdout.strip().startswith("{") else {}
     assert doc.get("code", "native_require_no_evidence") == "native_require_no_evidence"
+
+
+@pytest.mark.skipif(not _COMPANION, reason="needs a real compiled decoy-engine-native companion")
+def test_native_require_accepts_faker_column_on_engine_0_28_4(tmp_path: Path) -> None:
+    """Engine 0.28.4 plans `person_email` natively, so a faker column beside a passthrough one
+    gives --native its evidence (0.28.3 declined it and the run was refused)."""
+    columns = [
+        {"name": "id", "strategy": "passthrough"},
+        {"name": "email", "strategy": "faker", "provider": "person_email"},
+    ]
+    build = single_build(tmp_path, columns=columns)
+    out = tmp_path / "run"
+    out.mkdir()
+    config, targets = build(out)
+    result = CliRunner().invoke(app, ["run", str(config), "--native", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["native_route"]["state"] == "native"
+    assert payload["native_route"]["label"] == "native (compiled kernel)"
+    assert targets[0].exists()
+    assert len(targets[0].read_text(encoding="utf-8").splitlines()) > 1
 
 
 def test_empty_fixed_width_file_keeps_its_layout_schema_in_a_parquet_target(
