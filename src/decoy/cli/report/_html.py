@@ -6,7 +6,7 @@ import html as _html_mod
 import json as _json
 from typing import Any
 
-from decoy.safe_url import redacted_location
+from decoy.cli import evidence
 
 _HTML_CSS = """\
 body { font-family: monospace; max-width: 900px; margin: 2em auto; background: #111; color: #e0e0e0; }
@@ -38,6 +38,8 @@ def render_html(manifest: dict[str, Any]) -> str:
 
     Returns a complete HTML document as a string.
     """
+    # The one redaction definition; a renderer never picks fields to redact itself.
+    manifest = evidence.redact_manifest_paths(manifest)
     run_id = _esc(manifest.get("run_id", "?"))
     run_ts = _esc(manifest.get("run_timestamp", "?"))
     schema_v = _esc(manifest.get("schema_version", "?"))
@@ -105,7 +107,7 @@ def render_html(manifest: dict[str, Any]) -> str:
             fp = _esc(info_val.get("fingerprint") or "(none)")
             method = _esc(info_val.get("fingerprint_method") or "?")
             size = _esc(info_val.get("size_bytes") or "?")
-            path_v = _esc(redacted_location(str(info_val.get("path") or "?")))
+            path_v = _esc(str(info_val.get("path") or "?"))
             parts.append(
                 f"<tr><td>{_esc(tname)}</td><td>{path_v}</td>"
                 f'<td class="fp">{fp}</td><td>{method}</td><td>{size}</td></tr>'
@@ -125,7 +127,7 @@ def render_html(manifest: dict[str, Any]) -> str:
             fp = _esc(info_val.get("fingerprint") or "(none)")
             method = _esc(info_val.get("fingerprint_method") or "?")
             size = _esc(info_val.get("size_bytes") or "?")
-            path_v = _esc(redacted_location(str(info_val.get("path") or "?")))
+            path_v = _esc(str(info_val.get("path") or "?"))
             parts.append(
                 f"<tr><td>{_esc(tname)}</td><td>{path_v}</td>"
                 f'<td class="fp">{fp}</td><td>{method}</td><td>{size}</td></tr>'

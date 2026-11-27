@@ -5,7 +5,7 @@ from __future__ import annotations
 import json as _json
 from typing import Any
 
-from decoy.safe_url import redacted_location
+from decoy.cli import evidence
 
 
 def render_markdown(manifest: dict[str, Any]) -> str:
@@ -16,6 +16,8 @@ def render_markdown(manifest: dict[str, Any]) -> str:
 
     Returns a Markdown string suitable for writing to a .md file.
     """
+    # The one redaction definition; a renderer never picks fields to redact itself.
+    manifest = evidence.redact_manifest_paths(manifest)
     run_id = manifest.get("run_id", "?")
     run_ts = manifest.get("run_timestamp", "?")
     schema_v = manifest.get("schema_version", "?")
@@ -75,7 +77,7 @@ def render_markdown(manifest: dict[str, Any]) -> str:
             fp = info_val.get("fingerprint") or "(none)"
             method = info_val.get("fingerprint_method") or "?"
             size = str(info_val.get("size_bytes") or "?")
-            path_v = redacted_location(str(info_val.get("path") or "?"))
+            path_v = str(info_val.get("path") or "?")
             lines.append(f"| {tname} | {path_v} | `{fp}` | {method} | {size} |")
         lines.append("")
 
@@ -91,7 +93,7 @@ def render_markdown(manifest: dict[str, Any]) -> str:
             fp = info_val.get("fingerprint") or "(none)"
             method = info_val.get("fingerprint_method") or "?"
             size = str(info_val.get("size_bytes") or "?")
-            path_v = redacted_location(str(info_val.get("path") or "?"))
+            path_v = str(info_val.get("path") or "?")
             lines.append(f"| {tname} | {path_v} | `{fp}` | {method} | {size} |")
         lines.append("")
 

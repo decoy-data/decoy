@@ -586,6 +586,31 @@ def test_report_show_card_displays_exactly_what_the_redaction_helper_returns(
     assert "HELPER-output_fingerprints-t" in result.output
 
 
+@pytest.mark.parametrize("cmd", ["show", "render"])
+@pytest.mark.parametrize("fmt", ["html", "markdown"])
+def test_written_reports_display_exactly_what_the_redaction_helper_returns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cmd: str, fmt: str
+) -> None:
+    # Same stand-in as the card test: a renderer that selects its own fields to redact, or is
+    # handed the original manifest, shows the raw path instead of the tag.
+    ev = _legacy_url_manifest(tmp_path)
+
+    def tagged(manifest: dict[str, Any]) -> dict[str, Any]:
+        shown = copy.deepcopy(manifest)
+        for group in ("input_fingerprints", "output_fingerprints"):
+            for name, info in shown[group].items():
+                info["path"] = f"HELPER-{group}-{name}"
+        return shown
+
+    monkeypatch.setattr("decoy.cli.evidence.redact_manifest_paths", tagged)
+    written = tmp_path / "report.out"
+    result = runner.invoke(app, ["report", cmd, str(ev), "--format", fmt, "--output", str(written)])
+    assert result.exit_code == 0, result.output
+    text = written.read_text(encoding="utf-8")
+    assert "HELPER-input_fingerprints-s" in text
+    assert "HELPER-output_fingerprints-t" in text
+
+
 @pytest.mark.parametrize("target", [_URL, "https://svc:" + _PASSWORD + "@host/o.csv"])
 def test_a_placement_failure_does_not_record_the_raw_target(tmp_path: Path, target: str) -> None:
     def refuse(_raw: str) -> Path:
