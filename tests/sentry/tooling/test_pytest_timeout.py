@@ -7,6 +7,7 @@ run proves a test that outlives its timeout fails with "Timeout" and its stack i
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -57,16 +58,33 @@ def test_missing_setting_is_detected() -> None:
     )
 
 
+# Longer than the suite's per-test default, so the subprocess deadline (300 s) fires first and
+# reports the child's output instead of the plugin killing this test.
+@pytest.mark.timeout(600)
 def test_a_test_past_its_timeout_fails_with_a_stack(tmp_path: Path) -> None:
     (tmp_path / "test_hang.py").write_text(
         "import time\n\n\ndef test_hangs():\n    time.sleep(30)\n", encoding="utf-8"
     )
-    proc = subprocess.run(
-        [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", "--timeout=1", "-q",
-         "--rootdir", str(tmp_path), "-c", "/dev/null" if sys.platform != "win32" else "NUL",
-         str(tmp_path / "test_hang.py")],
-        capture_output=True, text=True, timeout=60, cwd=tmp_path, check=False,
-    )  # fmt: skip
+    # Load only the plugin under test: with every installed plugin the child's start-up can pass
+    # the parent's limit on a loaded box.
+    env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "pytest", "-p", "timeout", "-p", "no:cacheprovider",
+             "--timeout=1", "-q", "--rootdir", str(tmp_path),
+             "-c", "/dev/null" if sys.platform != "win32" else "NUL",
+             str(tmp_path / "test_hang.py")],
+            capture_output=True, text=True, timeout=300, cwd=tmp_path, check=False, env=env,
+        )  # fmt: skip
+    except subprocess.TimeoutExpired as exc:
+        partial = [
+            x.decode(errors="replace") if isinstance(x, bytes) else x
+            for x in (exc.stdout, exc.stderr)
+            if x
+        ]
+        pytest.fail(
+            f"child pytest did not finish in {exc.timeout}s; partial output:\n" + "\n".join(partial)
+        )
     out = proc.stdout + proc.stderr
     assert proc.returncode == 1, out
     assert "Timeout" in out, out
