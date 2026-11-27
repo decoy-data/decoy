@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.child_env import child_env
 from tests.sentry._ratchet import load_allowlist
 from tests.sentry.tooling import gate_args
 
@@ -57,7 +58,7 @@ def collect_suite(
     """Collect `target` under `root` in a clean subprocess and return the dump plugin's report."""
     out = dump_dir / "dump.json"
     out.unlink(missing_ok=True)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_")}
+    env = child_env(drop_prefixes=("PYTEST_",))
     env[res.DUMP_ENV] = str(out)
     env["PYTHONPATH"] = os.pathsep.join([str(HERE), env.get("PYTHONPATH", "")])
     cmd = [

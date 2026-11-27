@@ -128,6 +128,9 @@ if is_serial:  # the serial pass of a parallel run
     cases = "".join(f'<testcase classname="tests.s" name="s{i}" file="tests/s.py" time="0.5"/>' for i in range(n_ok))
     if sfail:
         cases += f'<testcase classname="tests.s" name="{sfail}" file="tests/s.py" time="0.5"><failure/></testcase>'
+    if os.environ.get("FAKE_NOJUNIT_SERIAL"):  # a serial pass that dies before it writes its report
+        print(f"{n_ok} passed in 0.01s")
+        sys.exit(0)
     Path(xml).write_text(
         f'<testsuites><testsuite name="pytest" tests="{n_ok + bool(sfail)}" failures="{int(bool(sfail))}" errors="0" skipped="0">{cases}</testsuite></testsuites>'
     )

@@ -192,6 +192,22 @@ def pytest_totals_failed(out: Path, label: str) -> int | None:
     return total
 
 
+def missing_pass_files(out: Path, label: str) -> list[str]:
+    """JUnit and log files of the tests passes gates.sh recorded that are not on disk.
+
+    A parallel run that lost its first pass's JUnit file would otherwise read as the serial pass
+    alone: its counts are smaller, but every file that exists still agrees with itself."""
+    record = out / f"{label}-tests.passes"
+    if not record.exists():
+        return []
+    gone = []
+    for line in record.read_text().splitlines():
+        kind = line.split("\t", 1)[0]
+        stem = f"{label}-tests-serial" if kind == "serial" else f"{label}-tests"
+        gone += [f"{stem}{ext}" for ext in (".xml", ".log") if not (out / f"{stem}{ext}").exists()]
+    return gone
+
+
 def failing_ids(out: Path, label: str) -> list[str]:
     ids: list[str] = []
     for name, _rc, _cmd in _steps(out, label):
@@ -484,9 +500,16 @@ def _report(argv: list[str]) -> int:
     rc = main(args.out, args.whole_suite)
     if args.outcomes_file is not None:
         args.outcomes_file.write_text("".join(f"{ln}\n" for ln in outcomes(args.out, "branch")))
-    ran_tests = (args.out / "branch-tests.xml").exists()
+    ran_tests = any((args.out / f"branch-tests{sfx}.xml").exists() for sfx in ("", "-serial"))
     if ran_tests and (args.write_baseline or (args.out / "stored-baseline.json").exists()):
         action = "store" if args.write_baseline else "compare against"
+        gone = missing_pass_files(args.out, "branch")
+        if gone:
+            print(
+                f"gates: a recorded tests pass left no {', '.join(gone)}; refusing to {action} the baseline",
+                file=sys.stderr,
+            )
+            return 4
         reported = pytest_totals_failed(args.out, "branch")
         in_junit = junit_failure_elements(args.out, "branch")
         if reported is None or reported != in_junit:

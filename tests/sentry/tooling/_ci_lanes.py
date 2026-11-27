@@ -130,6 +130,10 @@ def _test_dirs(root: Path, testpaths: list[str]) -> list[str]:
 
 
 _STUB_PYTHON = """#!/bin/sh
+case "$*" in *_gates_report.py*--workers)
+  # Whether this interpreter has xdist is not under test here: the probe asks for four workers.
+  echo "$GATES_WORKERS m5 stub: worker rule not under test"; exit 0 ;;
+esac
 if [ "$1" = -m ] && [ "$2" = pytest ] && [ "$3" != --version ]; then
   exec "{real}" -c 'import json, sys; open(sys.argv[1], "a").write(json.dumps(sys.argv[2:]) + "\\n")' "{log}" "$@"
 fi
@@ -623,7 +627,10 @@ def _scheduling(args: list[str]) -> tuple[str | None, str | None, list[str]]:
         else:
             rest.append(args[i])
         i += used
-    return found.get("workers"), found.get("dist"), rest
+    workers = found.get("workers")
+    # `-n 0` runs in-process, the same as no -n at all (gates.sh's serial pass says it so that an
+    # inherited PYTEST_ADDOPTS cannot put the serial tests on workers).
+    return (None if workers == "0" else workers), found.get("dist"), rest
 
 
 def _scheduling_option(args: list[str], i: int) -> tuple[str, str, int]:

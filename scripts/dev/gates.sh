@@ -128,6 +128,10 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+# The outcomes writer would overwrite the stored baseline it just compared against.
+if [ -n "$OUTCOMES" ] && [ -n "$BASEFILE" ] && [ "$OUTCOMES" -ef "$BASEFILE" ]; then
+  echo "gates: --outcomes-file and --baseline-file name the same file" >&2; exit 2
+fi
 # A baseline verdict compares every step, so a step skipped after an early failure can never
 # read as shared with main.
 if [ $BASELINE = 1 ]; then KEEP=1; fi
@@ -317,9 +321,11 @@ split_pytest_cmds() {
     w=1; note=" (serial: this tree has no tests/_xdist_safe_reports.py)"
   fi
   if [ "$w" -gt 1 ]; then
-    # PYTEST_ARGS is not repeated here: its -m is already part of PAR_MARK and SER_MARK.
+    # PYTEST_ARGS is not repeated here: its -m is already part of PAR_MARK and SER_MARK. The serial
+    # pass says `-n 0` because an inherited PYTEST_ADDOPTS with `-n 4` would put the serial tests
+    # on workers; a command-line -n wins over addopts.
     cmd=(${pyt[@]+"${pyt[@]}"} ${jbase[@]+"${jbase[@]}"} -m "$PAR_MARK" -n "$w" --dist loadfile ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
-    cmd2=(${pyt[@]+"${pyt[@]}"} -p no:cacheprovider -q -rfE -o junit_family=xunit1 "--junitxml=$OUT/$label-tests-serial.xml" "--basetemp=$TMP_ROOT/$label-tests-serial" -m "$SER_MARK" ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
+    cmd2=(${pyt[@]+"${pyt[@]}"} -p no:cacheprovider -q -rfE -o junit_family=xunit1 "--junitxml=$OUT/$label-tests-serial.xml" "--basetemp=$TMP_ROOT/$label-tests-serial" -n 0 -m "$SER_MARK" ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
   else
     cmd=(${pyt[@]+"${pyt[@]}"} ${jbase[@]+"${jbase[@]}"} ${PYTEST_ARGS[@]+"${PYTEST_ARGS[@]}"} ${LAYER_IGNORE[@]+"${LAYER_IGNORE[@]}"} ${tests[@]+"${tests[@]}"})
   fi

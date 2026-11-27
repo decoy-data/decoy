@@ -152,11 +152,24 @@ def test_workers_two_run_a_parallel_pass_then_a_serial_pass(tmp_path: Path) -> N
     par, ser = pytest_argvs(log)  # exactly two pytest runs, in this order
     assert par[par.index("-n") + 1] == "2" and par[par.index("--dist") + 1] == "loadfile", par
     assert last_mark(par) == "not serial", par  # the CLI's own PYTEST_ARGS holds no -m
-    assert "-n" not in ser and "--dist" not in ser, ser
+    assert ser[ser.index("-n") + 1] == "0" and "--dist" not in ser, ser  # in-process, no workers
     assert last_mark(ser) == "serial", ser
     assert any(a.endswith("branch-tests.xml") for a in par), par
     assert any(a.endswith("branch-tests-serial.xml") for a in ser), ser
     assert re.search(r"\[tests\] PASS passed=4 failed=0", out), out  # 3 plain + 1 serial
+
+
+def test_an_inherited_worker_option_cannot_put_the_serial_pass_on_workers(tmp_path: Path) -> None:
+    clone = parallel_clone(tmp_path)
+    venv, log = recording_venv(tmp_path)
+    rc, out = run_gates(
+        clone, venv, *TESTS_ONLY, GATES_WORKERS="2", FAKE_TOTAL="3", PYTEST_ADDOPTS="-n 4"
+    )
+    assert rc == 0, out
+    par, ser = pytest_argvs(log)
+    # PYTEST_ADDOPTS comes first on pytest's command line, so the last -n of the argv wins.
+    last_n = lambda call: call[len(call) - call[::-1].index("-n")]  # noqa: E731
+    assert (last_n(par), last_n(ser)) == ("2", "0"), (par, ser)
 
 
 def test_a_seeded_marker_expression_is_parenthesised_in_both_passes(tmp_path: Path) -> None:
@@ -257,7 +270,7 @@ def test_a_baseline_tree_without_the_scrubber_runs_serial_and_says_so(tmp_path: 
     rc, out = run_gates(clone, venv, *TESTS_ONLY, "--baseline", GATES_WORKERS="2")
     assert rc == 0, out
     calls = pytest_calls(log)
-    par = [c for c in calls if "-n" in c]
+    par = [c for c in calls if "--dist" in c]
     assert len(par) == 1, calls  # the branch side only
     base_section = out.split("-- baseline --", 1)[1]
     assert "no tests/_xdist_safe_reports.py" in base_section and " -n " not in base_section, out
@@ -400,6 +413,41 @@ def test_a_written_baseline_stores_the_ids_of_both_passes(tmp_path: Path) -> Non
     assert data["collected"] == 5 and data["workers"] == 2 and data["dist"] == "loadfile"
 
 
+@pytest.mark.parametrize(
+    ("env", "gone"),
+    [
+        ({"FAKE_NOJUNIT": "1"}, "branch-tests.xml"),  # the parallel pass left no report
+        ({"FAKE_NOJUNIT_SERIAL": "1"}, "branch-tests-serial.xml"),  # the serial pass left none
+    ],
+)
+def test_a_baseline_is_refused_when_a_recorded_pass_left_no_report(
+    tmp_path: Path, env: dict[str, str], gone: str
+) -> None:
+    clone = parallel_clone(tmp_path)
+    venv, _log = recording_venv(tmp_path)
+    dest = tmp_path / "base.json"
+    rc, out = run_gates(
+        clone, venv, *WHOLE, "--write-baseline", str(dest), GATES_WORKERS="2", FAKE_TOTAL="3", **env
+    )
+    assert rc != 0 and not dest.exists(), out
+    assert f"left no {gone}" in out and "refusing to store the baseline" in out, out
+
+
+def test_outcomes_and_baseline_files_must_differ(tmp_path: Path) -> None:
+    clone = parallel_clone(tmp_path)
+    venv, log = recording_venv(tmp_path)
+    saved = tmp_path / "base.json"
+    saved.write_text("{}")
+    alias = tmp_path / "alias.json"
+    alias.symlink_to(saved)
+    for other in (saved, alias):
+        rc, out = run_gates(
+            clone, venv, *WHOLE, "--baseline-file", str(saved), "--outcomes-file", str(other)
+        )
+        assert rc == 2 and "name the same file" in out, out
+    assert saved.read_text() == "{}" and not pytest_calls(log)
+
+
 # --- AT-6, AT-7: real xdist -----------------------------------------------------------------
 
 
@@ -465,7 +513,7 @@ def test_a_parallel_baseline_records_workers_and_dist(tmp_path: Path) -> None:
 
 
 # --- AT-9: nested runs do not inherit the outer worker state (the helper's test is in
-# tests/sentry/test_nested_env_single_copy.py) -----------------------------
+# tests/sentry/tooling/test_nested_env_single_copy.py) -----------------------------
 
 
 def test_the_gates_harness_pins_one_worker_whatever_the_outer_env(

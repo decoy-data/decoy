@@ -290,7 +290,9 @@ def test_gates_builds_the_two_passes_the_ci_split_mirrors() -> None:
     assert sorted(by_mark) == ["not serial", "serial"], TREE.gates_argvs
     par, ser = by_mark["not serial"], by_mark["serial"]
     assert par[par.index("-n") + 1] == "4" and par[par.index("--dist") + 1] == "loadfile"
-    assert "-n" not in ser and "--dist" not in ser
+    assert (
+        ser[ser.index("-n") + 1] == "0" and "--dist" not in ser
+    )  # in-process, whatever PYTEST_ADDOPTS says
     assert "--ignore=tests/sentry/layout/test_import_layers.py" in par + ser
     assert par[-1] == ser[-1] == "tests"
 
@@ -394,3 +396,10 @@ def test_a_gates_sh_that_builds_one_pass_is_red() -> None:
     t = replace(seeded(), gates_argvs=TREE.gates_argvs[:1])
     assert m5(lanes.findings(t))
     assert m5(lanes.findings(replace(seeded(), gates_argvs=())))
+
+
+def test_zero_workers_read_as_no_workers() -> None:
+    # gates.sh's serial pass says `-n 0`; the CI serial pass says nothing, and both are in-process.
+    assert lanes._scheduling(["-n", "0", "-m", "serial"])[0] is None
+    assert lanes._scheduling(["--numprocesses=0"])[0] is None
+    assert lanes._scheduling(["-n", "4"])[0] == "4"

@@ -2,7 +2,7 @@
 
 An outer `-n` worker sets PYTEST_XDIST_* and every running test sets PYTEST_CURRENT_TEST. A child
 that inherited them would think it is a worker (the xdist report scrubber hook) or loop on the id.
-This is the one place that rule is written; `tests/sentry/test_nested_env_single_copy.py` fails
+This is the one place that rule is written; `tests/sentry/tooling/test_nested_env_single_copy.py` fails
 when another file spells it.
 """
 
