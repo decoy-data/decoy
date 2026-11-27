@@ -63,7 +63,7 @@ def _steps(out: Path, label: str) -> list[tuple[str, int, str]]:
 
 def _xmls(out: Path, label: str, name: str) -> list[Path]:
     """JUnit files of a step: a step that ran a parallel pass has a second, serial file."""
-    files = [out / f"{label}-{name}.xml", out / f"{label}-{name}-serial.xml"]
+    files = [out / f"{_stem(label, name, serial)}.xml" for serial in (False, True)]
     return [f for f in files if f.exists()]
 
 
@@ -192,9 +192,13 @@ def pytest_totals_failed(out: Path, label: str) -> int | None:
     return total
 
 
+def _stem(label: str, name: str, serial: bool = False) -> str:
+    """File stem of one pass of a step: the parallel (or only) pass, or the serial pass."""
+    return f"{label}-{name}-serial" if serial else f"{label}-{name}"
+
+
 def _tests_stem(label: str, serial: bool) -> str:
-    """File stem of one tests pass: the parallel (or only) pass, or the serial pass."""
-    return f"{label}-tests-serial" if serial else f"{label}-tests"
+    return _stem(label, "tests", serial)
 
 
 def missing_pass_files(out: Path, label: str) -> list[str]:
