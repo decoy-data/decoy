@@ -64,11 +64,11 @@ Added from the 2026-11-27 inventory (`BRANCH-LIST.md` in the vault). "Row" is th
 | CLI `docs/plans-win-runner-1125` | Plans nightly Windows tests, runner monitoring and a runbook. | needs development; row 6. Row 6 still lists the nightly jobs and monitoring. |
 | CLI `plan/cli-rel` | Plans the release workflow, publish modes and smoke tests. | needs development; row 94. PR #363 delivered release identity, one part of row 94. |
 | CLI `plan/column-shape-rule` | Defines when column types come from a schema and when text inputs require a declaration. | needs development; row COLUMN-SHAPE-RULE. Check the revised plan against the roadmap row. |
-| CLI `plan/pre-scan-run` | Plans how run executes the configured pre-scan and records its result. | needs development; row PRE-SCAN-RUN. Engine #748 and #749 landed, while #418 covers the |
-| CLI `plan/rel-docs` | Plans the public documentation for the signed CLI release. | needs development; row 92. Row 92 keeps the public docs in draft pending release and web |
-| CLI `plan/rel-web` | Plans the download page, update-client contract and proof publication. | needs development; row 91. PRs #272 and #279 shipped |
-| CLI `plan/upgrade-key` | Plans rotation and revocation of the CLI update-signing key using an offline backup. | needs development; row UPGRADE-KEY. PR #328 shipped the trust |
-| CLI `plan/win-feas` | Plans Windows file access, installer and version-switch behavior. | needs development; row 89. Row 89 records the engine import fix but still lists CLI install |
+| CLI `plan/pre-scan-run` | Plans how run executes the configured pre-scan and records its result. | needs development; row PRE-SCAN-RUN. Engine #748 and #749 landed, while #418 covers the CLI side. |
+| CLI `plan/rel-docs` | Plans the public documentation for the signed CLI release. | needs development; row 92. Row 92 keeps the public docs in draft pending release and web. |
+| CLI `plan/rel-web` | Plans the download page, update-client contract and proof publication. | needs development; row 91. PRs #272 and #279 shipped parts of this plan. |
+| CLI `plan/upgrade-key` | Plans rotation and revocation of the CLI update-signing key using an offline backup. | needs development; row UPGRADE-KEY. PR #328 shipped part of the trust work. |
+| CLI `plan/win-feas` | Plans Windows file access, installer and version-switch behavior. | needs development; row 89. Row 89 records the engine import fix but still lists CLI install work. |
 | web `docs/header-promo-checklist` | It adds a production checklist for the homepage video to the website roadmap. | needs development; no row. Main already ships the video and poster, and the checklist still names Cloudflare Pages instead of GitHub Pages. |
 
 ### Rebase
