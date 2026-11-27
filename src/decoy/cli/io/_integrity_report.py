@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -220,7 +220,12 @@ def print_post_scan(
 
 
 def blocked_run(
-    state: OutputState, exc: Any, path: Path | None, sha: str | None
+    state: OutputState,
+    exc: Any,
+    path: Path | None,
+    sha: str | None,
+    *,
+    side: Callable[[Callable[..., str | None]], Path | None] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """The blocked-run branch of run's error handler (plan 4.7): write the report the error
     carries, print the post-scan line, and return the fixed safe summary and the `--json`
@@ -231,8 +236,16 @@ def blocked_run(
     known = bool(code) and reasons.find(namespace, code) is not None
     summary = reasons.get(namespace, code).summary if known else _BLOCKED_FALLBACK
     report = dict(getattr(exc, "report", None) or {})
-    failed = _write(path, report, sha) if path is not None else "no report path"
-    written = path if failed is None else None
+    if side is not None:
+        # The strict route: the sink keeps the verdict beside the run folder, create-only, under
+        # its own lock, and says where (or that it could not).
+        written = side(
+            lambda p, create_only=False: write_run_report(report, p, sha, create_only=create_only)
+        )
+        failed = None if written is not None else "the report was not written"
+    else:
+        failed = _write(path, report, sha) if path is not None else "no report path"
+        written = path if failed is None else None
     if state.mode is not OutputMode.json and state.mode is not OutputMode.quiet:
         state.err_console.print(post_scan_line(report, written), markup=False)
         if failed is not None:

@@ -181,6 +181,16 @@ def _fail_every_write(monkeypatch) -> None:
     monkeypatch.setattr(_targets, "write_table", fail)
 
 
+def _host(monkeypatch, host: str) -> bool:
+    """Run on the strict stage or, as a host without one, on the pass-through (old expectations)."""
+    from decoy.cli.io import _pointer
+
+    if host == "in_place":
+        monkeypatch.setattr(_pointer, "_pointer_supported", lambda: False)
+    return host == "strict" and _pointer.pointer_supported()
+
+
+@pytest.mark.parametrize("host", ["strict", "in_place"])
 @pytest.mark.parametrize(
     "cell",
     [
@@ -196,7 +206,10 @@ def _fail_every_write(monkeypatch) -> None:
         "absolute_only_success",
     ],
 )
-def test_json_location_fields_follow_publication(tmp_path: Path, monkeypatch, cell: str) -> None:
+def test_json_location_fields_follow_publication(
+    tmp_path: Path, monkeypatch, cell: str, host: str
+) -> None:
+    strict = _host(monkeypatch, host)
     from decoy.cli.run import _execute
 
     root = _project(tmp_path)
@@ -244,8 +257,7 @@ def test_json_location_fields_follow_publication(tmp_path: Path, monkeypatch, ce
         "out_dir_gate_refusal",
         "placed_fails_before_publish",
         "fixed_fails_before_publish",
-        "placed_fails_after_first_publish",
-    }:
+    } or (strict and cell == "placed_fails_after_first_publish"):
         expected: dict | None = None
     elif cell == "empty_chunked_success":
         expected = None
@@ -280,10 +292,12 @@ def _fail_directory_sync_after_publish(monkeypatch, name: str) -> None:
     monkeypatch.setattr(_atomic, "fsync_directory", sync)
 
 
+@pytest.mark.parametrize("host", ["strict", "in_place"])
 @pytest.mark.parametrize("cell", ["placed", "fixed", "absolute", "chunked", "second_table"])
 def test_a_directory_sync_failure_after_publication_keeps_the_file_in_the_ledger(
-    tmp_path: Path, monkeypatch, cell: str
+    tmp_path: Path, monkeypatch, cell: str, host: str
 ) -> None:
+    strict = _host(monkeypatch, host)
     root = _project(tmp_path)
     build = tmp_path / "build"
     build.mkdir()
@@ -306,7 +320,7 @@ def test_a_directory_sync_failure_after_publication_keeps_the_file_in_the_ledger
     assert result.exit_code != EXIT_OK, result.output
     doc = _json(result)
     assert doc["status"] == "error"
-    if cell in {"placed", "second_table"}:
+    if strict and cell in {"placed", "second_table"}:
         # Kind R: the sync failure fails the table in its stage slot; nothing is delivered.
         assert "outputs" not in doc or _paths(doc) == []
         assert not (root / "out" / "orders" / "LATEST").exists()

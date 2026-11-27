@@ -229,8 +229,16 @@ def run_outputs(
 _STAGE_SIBLING = re.compile(r"\._decoy_(?:publication_pending|delivery_slots)_[0-9a-f]{12}")
 
 
+# The verdict of a run that delivered nothing, and the lock the engine leaves beside it.
+_REPORT_SIBLING = re.compile(r"\.?[0-9]{8}T[0-9]{12}Z-[0-9a-f]+\.post-scan\.json(?:\.decoy-lock)?")
+
+
 def in_flight_name(name: str) -> bool:
     """Whether `name`, found in `out/<name>/` while a delivery is open, is a known shape."""
     if name in {_CLAIM_NAME, _LATEST_FILE, _LATEST_LINK, lock_name(_LATEST_FILE)}:
         return True
-    return is_run_id(name) or _STAGE_SIBLING.fullmatch(name) is not None
+    return (
+        is_run_id(name)
+        or _STAGE_SIBLING.fullmatch(name) is not None
+        or _REPORT_SIBLING.fullmatch(name) is not None
+    )

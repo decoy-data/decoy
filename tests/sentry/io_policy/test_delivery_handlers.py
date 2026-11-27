@@ -16,7 +16,14 @@ SINK = Path(__file__).resolve().parents[3] / "src" / "decoy" / "cli" / "io" / "_
 
 
 def _is_exception(kind: ast.expr | None) -> bool:
-    return isinstance(kind, ast.Name) and kind.id in {"Exception", "BaseException"}
+    # Not `BaseException`: Ctrl-C must still propagate out of the cleanup (AT-50).
+    return isinstance(kind, ast.Name) and kind.id == "Exception"
+
+
+def _cleans_up_and_reraises(handler: ast.ExceptHandler) -> bool:
+    """`except BaseException:` that ends in a bare `raise`: cleanup that lets Ctrl-C through."""
+    base = isinstance(handler.type, ast.Name) and handler.type.id == "BaseException"
+    return base and bool(handler.body) and isinstance(handler.body[-1], ast.Raise)
 
 
 def _bad_handlers(source: str) -> list[int]:
@@ -33,7 +40,7 @@ def _bad_handlers(source: str) -> list[int]:
         if not node.handlers and not node.finalbody:
             found.append(node.lineno)
         for handler in node.handlers:
-            if not _is_exception(handler.type):
+            if not _is_exception(handler.type) and not _cleans_up_and_reraises(handler):
                 found.append(handler.lineno)
     return found
 
@@ -54,3 +61,60 @@ def test_the_scan_sees_a_narrow_suppress() -> None:
     wide = "import contextlib\nwith contextlib.suppress(Exception):\n    pass\n"
     assert _bad_handlers(narrow) == [2]
     assert _bad_handlers(wide) == []
+
+
+def test_the_scan_sees_suppress_base_exception() -> None:
+    seeded = "import contextlib\nwith contextlib.suppress(BaseException):\n    pass\n"
+    assert _bad_handlers(seeded) == [2]
+    assert _bad_handlers("try:\n    pass\nexcept BaseException:\n    pass\n") == [3]
+
+
+# The calls that may stand outside `_step` in the two post-visibility entry points: the step
+# runner itself and plain state reads.
+_PLAIN = {"self._step", "isinstance", "any"}
+
+
+def _calls_outside_lambdas(node: ast.AST) -> list[ast.Call]:
+    """Calls under `node`, not looking inside a lambda: a lambda is a step handed to `_step`."""
+    found: list[ast.Call] = []
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.Lambda):
+            continue
+        if isinstance(child, ast.Call):
+            found.append(child)
+        found.extend(_calls_outside_lambdas(child))
+    return found
+
+
+def _unguarded_calls(source: str, methods: set[str]) -> list[str]:
+    """Calls in the named methods that are not `self._step(...)` or a plain read."""
+    found: list[str] = []
+    tree = ast.parse(source)
+    sinks = [
+        n for n in ast.walk(tree) if isinstance(n, ast.ClassDef) and n.name in {"DeliverySink", "S"}
+    ]
+    for node in (m for c in sinks for m in ast.walk(c)):
+        if isinstance(node, ast.FunctionDef) and node.name in methods:
+            found.extend(
+                f"{node.name}:{ast.unparse(c.func)}"
+                for c in _calls_outside_lambdas(node)
+                if ast.unparse(c.func) not in _PLAIN
+            )
+    return found
+
+
+def test_the_real_reconcile_and_abort_call_only_through_step() -> None:
+    """AT-50b: a direct `self._pre.restore()` in `_reconcile` or `abort` could raise past the
+    visibility point, so every action there is handed to `_step` as a reference."""
+    source = SINK.read_text(encoding="utf-8")
+    assert _unguarded_calls(source, {"_reconcile", "abort"}) == []
+
+
+def test_the_guard_sees_a_seeded_unguarded_call() -> None:
+    seeded = (
+        "class S:\n"
+        "    def abort(self):\n"
+        "        self._step(self._stage.abort)\n"
+        "        self._pre.restore()\n"
+    )
+    assert _unguarded_calls(seeded, {"abort"}) == ["abort:self._pre.restore"]

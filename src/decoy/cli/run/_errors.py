@@ -255,7 +255,11 @@ def fail(ctx: RunContext, exc: Exception) -> NoReturn:
     )
     blocked: dict[str, Any] = {}
     if isinstance(exc, PostScanBlockedError):  # writes the report; the text is the fixed summary
-        error_text, blocked = blocked_run(ctx.state, exc, ctx._post_scan_file, ctx.config_sha256)
+        sink = ctx._sink
+        side = sink.publish_blocked_report if sink is not None and sink.mode == "strict" else None
+        error_text, blocked = blocked_run(
+            ctx.state, exc, ctx._post_scan_file, ctx.config_sha256, side=side
+        )
     keyed_refusal = _mask_secret_guidance.is_keyed_secret_refusal(exc)
     if isinstance(exc, _mask_secret_error_types):
         # Constant text by code; the engine message never reaches the terminal or --json.

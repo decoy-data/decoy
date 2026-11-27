@@ -358,8 +358,31 @@ def test_a_failed_run_leaves_latest_and_an_empty_run_folder_is_removed(tmp_path:
     assert (root / "out" / "orders" / "LATEST").read_text(encoding="utf-8").strip() == kept.name
 
 
-def test_a_runtime_failure_after_a_write_keeps_the_folder_and_leaves_latest(
-    tmp_path: Path, monkeypatch
+@pytest.fixture(params=["strict", "in_place"])
+def host(request, monkeypatch) -> str:
+    """The strict stage, and a host with none (the pass-through keeps the old expectations)."""
+    from decoy.cli.io import _pointer
+
+    if request.param == "in_place":
+        monkeypatch.setattr(_pointer, "_pointer_supported", lambda: False)
+    return request.param
+
+
+def _failed_run_leaves(root: Path, written: str | None = None) -> None:
+    """DELIV C2a: the strict stage is removed on a failure, so no run folder stays; a host with
+    no strict stage keeps the folder with what was written. LATEST is untouched in both."""
+    from decoy.cli.io._pointer import pointer_supported
+
+    if pointer_supported():  # patched to False by the `host` fixture on the second host
+        assert _runs(root, "orders") == []
+    else:
+        (run,) = _runs(root, "orders")
+        assert (run / written).is_file() if written else any(run.iterdir())
+    assert not (root / "out" / "orders" / "LATEST").exists()
+
+
+def test_a_runtime_failure_after_a_write_removes_the_stage_and_leaves_latest(
+    tmp_path: Path, monkeypatch, host: str
 ) -> None:
     from decoy.cli.io import _targets
 
@@ -380,13 +403,11 @@ def test_a_runtime_failure_after_a_write_keeps_the_folder_and_leaves_latest(
     monkeypatch.setattr(_targets, "write_table", second_fails)
     result = _run(cfg)
     assert result.exit_code == 3, result.output
-    # DELIV C2a: the stage is removed on a failure, so no run folder stays and LATEST is untouched.
-    assert _runs(root, "orders") == []
-    assert not (root / "out" / "orders" / "LATEST").exists()
+    _failed_run_leaves(root)
 
 
-def test_an_interrupt_after_a_write_keeps_the_folder_and_leaves_latest(
-    tmp_path: Path, monkeypatch
+def test_an_interrupt_after_a_write_removes_the_stage_and_leaves_latest(
+    tmp_path: Path, monkeypatch, host: str
 ) -> None:
     from decoy.cli.io import _targets
 
@@ -401,8 +422,7 @@ def test_an_interrupt_after_a_write_keeps_the_folder_and_leaves_latest(
     monkeypatch.setattr(_targets, "write_table", write_then_interrupt)
     result = _run(cfg)
     assert result.exit_code != 0, result.output
-    assert _runs(root, "orders") == []
-    assert not (root / "out" / "orders" / "LATEST").exists()
+    _failed_run_leaves(root, "masked.csv")
 
 
 @posix_only
@@ -653,7 +673,7 @@ def _spy_run_pipeline(monkeypatch) -> list[dict]:
 
 
 def test_quarantine_goes_to_the_engine_as_the_placed_path_not_in_the_config(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch, host: str
 ) -> None:
     root = _project(tmp_path)
     cfg = _write(root, "pipelines/orders/pipeline.yaml", _quarantine_config(root))
@@ -662,9 +682,20 @@ def test_quarantine_goes_to_the_engine_as_the_placed_path_not_in_the_config(
     assert result.exit_code == 0, result.output
     (run,) = _runs(root, "orders")
     (call,) = seen
-    # The engine writes into a stage slot; delivery moves the file into the run folder.
-    assert Path(call["quarantine_path"]).name == "q.jsonl"
-    assert Path(call["quarantine_path"]).parent != run.resolve()
+    from decoy.cli.io._pointer import pointer_supported
+
+    placed = Path(call["quarantine_path"])
+    assert placed.name == "q.jsonl"
+    if pointer_supported():
+        # The engine writes into the reserved stage slot, a hidden sibling of the run folder
+        # in the pipeline folder; delivery moves the file into the run folder.
+        from decoy.cli.io._run_outputs import _STAGE_SIBLING
+
+        slot = next(a for a in placed.parents if a.parent == run.resolve().parent)
+        assert slot != run.resolve()
+        assert _STAGE_SIBLING.fullmatch(slot.name)
+    else:
+        assert placed == run.resolve() / "q.jsonl"
     assert call["config"]["quarantine"]["output_path"] == "q.jsonl"
 
 

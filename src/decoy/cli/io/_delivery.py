@@ -515,6 +515,14 @@ class DeliverySink:
         self.report_failed = failed
         self.report_path = None if failed else path
 
+    def publish_blocked_report(self, write: Callable[..., str | None]) -> Path | None:
+        """The verdict of a run an engine finding blocked: kept beside the run folder like any
+        other run that delivers nothing. Where it went, or None."""
+        self._report_writer = write
+        self._report_tried = False
+        self._publish_side_report()
+        return self.report_path
+
     def report_location(self, staged_for: Path | None) -> Path | None:
         """Where the post-scan report really is: the run folder when the run bound, the
         not-delivered file when it was written, otherwise nowhere."""
@@ -571,7 +579,11 @@ class DeliverySink:
         self.state = "aborted"
         self._step(self._stage.abort)
         self._step(self._pre.restore)
-        if self.mode == "strict" and not self._bound():
+        if self.mode == "strict":
+            self._step(self._side_report_if_unbound)
+
+    def _side_report_if_unbound(self) -> None:
+        if not self._bound():
             self._publish_side_report()
 
     def settled(self) -> bool:
