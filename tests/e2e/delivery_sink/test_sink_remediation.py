@@ -116,6 +116,20 @@ def test_a_leaf_held_by_another_run_refuses_before_any_write(tmp_path: Path, mon
 
 
 @posix
+def test_a_final_symlink_shares_the_lock_of_the_file_it_names(tmp_path: Path) -> None:
+    """`--evidence-out` follows a final link, so the lock is the target's, not the link's."""
+    root, yml = project(tmp_path, tables=1)
+    real = tmp_path / "real"
+    real.mkdir()
+    (tmp_path / "link.json").symlink_to(real / "e.json")
+    with _hold(real / "e.json"):
+        result = run(yml, "--evidence-out", str(tmp_path / "link.json"))
+    assert result.exit_code == 3, result.output
+    assert DELIVERY_SIDE_FILE_BUSY in result.output
+    assert latest(root) is None
+
+
+@posix
 def test_a_lock_that_cannot_be_taken_refuses_and_never_proceeds_unlocked(
     tmp_path: Path, monkeypatch
 ) -> None:
