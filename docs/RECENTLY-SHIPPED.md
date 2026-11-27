@@ -11,6 +11,10 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-27: engine 0.28.5 repin (CLI)
+
+- **CLI**: the engine repin to 0.28.5 (tag `v0.28.5`, `c786122fd`). `requirements-certified.txt` keeps its 70 pins, `jsonpath-ng` included; fingerprint is now `4a1765c9...`, a certified row in the engine. The empty fixed-width parity test passes with no expected-fail mark.
+
 ## 2026-11-27: INIT-SCAN-SCAFFOLD E2, F31-AUDIT AE1a1, GEN-NONFAKER-DRAWS S2
 
 No row closed. Rows moved:

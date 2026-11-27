@@ -336,3 +336,19 @@ def test_no_subset_over_the_capacity_limit_exits_5(
     result = runner.invoke(app, ["run", str(path), "--no-subset", "--json"])
     assert result.exit_code == 5, result.output
     assert _json.loads(result.stdout)["error_kind"] == "capacity"
+
+
+def test_no_subset_still_refuses_an_unacknowledged_downward_edge(tmp_path: Path) -> None:
+    """`--no-subset` skips the subset stage, not the check on the block: the engine refuses an
+    edge that turns upward traversal off without `allow_dangling` (engine 0.28.5 makes
+    `skip` check it too). The CLI reports the code, exits 1 and creates no target."""
+    path = _config(tmp_path)
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
+    config["subset"]["edge_directions"] = {"customers.id -> orders.customer_id": "downward"}
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    result = runner.invoke(app, ["run", str(path), "--no-subset", "--json"])
+    assert result.exit_code == 1, result.output
+    codes = [m["code"] for m in _json.loads(result.stdout)["messages"]]
+    assert codes == ["subset_dangling_not_acknowledged"]
+    for name in ("customers", "orders"):
+        assert not (tmp_path / f"out_{name}.parquet").exists()

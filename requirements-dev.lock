@@ -384,7 +384,7 @@ cryptography==50.0.2 \
     #   decoy-cli (pyproject.toml)
     #   decoy-engine
     #   joserfc
-decoy-engine @ git+https://github.com/decoy-data/decoy-engine@263e020b90b273a70f36ecfa59835d53dd21927b
+decoy-engine @ git+https://github.com/decoy-data/decoy-engine@c786122fd70147d1bcb5a11dd148465fdb82059b
     # via decoy-cli (pyproject.toml)
 deprecated==1.3.1 \
     --hash=sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f \
@@ -746,10 +746,6 @@ joblib==1.6.0 \
 joserfc==1.7.7 \
     --hash=sha256:06979cfbab78bc802f14c0358f32969826cc26720e13cb38926ffdc86bc0cb2c \
     --hash=sha256:471d0fd12a5a0d1c0942de280f39efe6f597878315033270b504d4d006d25510
-    # via decoy-engine
-jsonpath-ng==1.8.0 \
-    --hash=sha256:54252968134b5e549ea5b872f1df1168bd7defe1a52fed5a358c194e1943ddc3 \
-    --hash=sha256:b8dde192f8af58d646fc031fac9c99fe4d00326afc4148f1f043c601a8cfe138
     # via decoy-engine
 jsonschema==4.26.0 \
     --hash=sha256:0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326 \
