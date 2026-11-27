@@ -69,9 +69,9 @@ def _codes(result: GateResult) -> list[str]:
 
 
 def test_parse_returns_a_mapping_unchanged_with_no_findings(tmp_path: Path) -> None:
-    raw, findings = parse_pipeline_yaml(tmp_path / "x.yaml", "a: 1\nb: [2, 3]\n")
+    pipeline, findings = parse_pipeline_yaml(tmp_path / "x.yaml", "a: 1\nb: [2, 3]\n")
     assert findings == []
-    assert raw == {"a": 1, "b": [2, 3]}
+    assert pipeline.config == {"a": 1, "b": [2, 3]}
 
 
 @pytest.mark.parametrize(
@@ -124,7 +124,7 @@ def test_run_gate_and_run_config_gate_compose_the_same_refusals(tmp_path: Path) 
 def test_clean_config_returns_the_validated_config_and_checks_run(tmp_path: Path) -> None:
     """Mutation: leave `config` or `checks_run` unset on success."""
     path = _config(tmp_path)
-    raw, _ = parse_pipeline_yaml(path)
+    raw = parse_pipeline_yaml(path)[0].config
     result = run_gate_on_config(raw, path)
     assert result.findings == []
     assert result.ran_layers == frozenset({"config", "compile", "preflight"})
@@ -138,8 +138,8 @@ def test_new_result_fields_are_last_with_defaults() -> None:
     assert names[-2:] == ["checks_run", "config"]
     assert GateResult([], frozenset(), False).config is None
     finding_fields = dataclasses.fields(GateFinding)
-    assert [f.name for f in finding_fields[-2:]] == ["extra", "hint"]
-    assert all(f.default is None for f in finding_fields[-2:])
+    assert [f.name for f in finding_fields[-3:]] == ["extra", "hint", "position"]
+    assert all(f.default is None for f in finding_fields[-3:])
 
 
 # -- extra (missing_extra) -----------------------------------------------------
@@ -242,7 +242,7 @@ def test_capacity_refusal_is_an_error_on_plain_and_a_warning_on_chunked(
     """Mutation: drop the CHUNKED rule in `_run_preflight_layer` (the chunked cell turns red)."""
     _fanin(monkeypatch)
     path = _config(tmp_path)
-    raw, _ = parse_pipeline_yaml(path)
+    raw = parse_pipeline_yaml(path)[0].config
 
     plain = run_gate_on_config(raw, path)
     assert plain.capacity_insufficient
@@ -258,7 +258,7 @@ def test_capacity_refusal_is_an_error_on_plain_and_a_warning_on_chunked(
 def test_chunked_route_does_not_soften_other_preflight_errors(tmp_path: Path) -> None:
     path = _config(tmp_path)
     (tmp_path / "in.csv").unlink()
-    raw, _ = parse_pipeline_yaml(path)
+    raw = parse_pipeline_yaml(path)[0].config
     result = run_gate_on_config(raw, path, GateRoute.CHUNKED)
     errors = [f for f in result.findings if f.severity == "error"]
     assert [f.code for f in errors] == ["source.customers.exists"]

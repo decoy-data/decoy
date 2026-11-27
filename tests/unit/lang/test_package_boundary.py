@@ -1,6 +1,6 @@
 """The compiler is self-contained, so it can move to another package without a rewrite.
 
-Nothing inside `decoy.lang` imports from the rest of `decoy`. Every module imports the engine's
+Nothing inside `decoy.lang` imports from the rest of `decoy` except the bottom-tier `_source_positions`. Every module imports the engine's
 public API, Lark, PyYAML and its own siblings. The loader (`decoy._config_file`) imports the
 package, never the other way, and the import-layer contract keeps `lang` below it.
 """
@@ -11,7 +11,9 @@ import ast
 from pathlib import Path
 
 _PACKAGE = Path(__file__).resolve().parents[3] / "src" / "decoy" / "lang"
-ALLOWED: set[tuple[str, str]] = set()
+# The one shared position rule: `_validate` finds the construct for an engine path with the same
+# lookup `DecoyPositionIndex` uses, so the two cannot disagree.
+ALLOWED: set[tuple[str, str]] = {("_validate.py", "decoy._source_positions")}
 
 
 def decoy_imports(source: str) -> set[str]:

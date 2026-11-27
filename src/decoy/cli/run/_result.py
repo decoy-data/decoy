@@ -257,7 +257,9 @@ def _placement_refused(ctx: RunContext) -> str | None:
 
     try:
         raw = getattr(ctx, "raw", None)
-        raw = raw if raw is not None else parse_pipeline_yaml(ctx.config)[0]
+        if raw is None:
+            pipeline = parse_pipeline_yaml(ctx.config)[0]
+            raw = pipeline.config if pipeline is not None else None
         config = raw if isinstance(raw, dict) else {}
         found = layout_findings(ctx.config, config, output_placement(ctx))
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
