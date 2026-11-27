@@ -46,6 +46,7 @@ from decoy.cli.io._compression import (
     split_compression,
 )
 from decoy.cli.io._layout import RunLayout, owning_run, placed_path, same_path
+from decoy.cli.io._published import Ledger, LocalOutput
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -528,7 +529,7 @@ def _write_csv(table: pa.Table, writer: pacsv.CSVWriter) -> None:
 
 def _preflight_csv_targets(config_dict: dict, outputs: Mapping[str, pa.Table]) -> None:
     """Refuse an unsupported CSV column type in any resident target before any is written."""
-    for table_name, entry, _raw_path, table in _file_targets(config_dict, outputs):
+    for table_name, entry, _raw_path, table in file_targets(config_dict, outputs):
         if isinstance(table, pa.Table) and resolve_target_format(str(table_name), entry) == "csv":
             check_csv_types(str(table_name), table.schema)
 
@@ -629,7 +630,7 @@ def write_private_table(
 
 
 @contextlib.contextmanager
-def _publication(ledger: dict[str, Path] | None, key: str, path: Path) -> Iterator[None]:
+def _publication(ledger: Ledger | None, key: str, path: Path) -> Iterator[None]:
     """Enter `path` in the publication ledger once its write has published the file.
 
     The atomic writer replaces the file and then syncs the directory, so a write that fails
@@ -641,13 +642,13 @@ def _publication(ledger: dict[str, Path] | None, key: str, path: Path) -> Iterat
         yield
     except AtomicWriteError as exc:
         if exc.code == ATOMIC_SYNC_FAILED and ledger is not None:
-            ledger[key] = path
+            ledger[key] = LocalOutput(path)
         raise
     if ledger is not None:
-        ledger[key] = path
+        ledger[key] = LocalOutput(path)
 
 
-def _file_targets(
+def file_targets(
     config_dict: dict, outputs: Mapping[str, pa.Table]
 ) -> Iterator[tuple[Any, dict, str, pa.Table]]:
     """Each declared file target that has an output: (name, entry, declared path, table)."""
@@ -671,7 +672,7 @@ def write_targets(
     config_dict: dict,
     outputs: Mapping[str, pa.Table],
     layout: RunLayout,
-    published: dict[str, Path] | None = None,
+    published: Ledger | None = None,
 ) -> dict[str, Path]:
     """Write each declared file target from `outputs`, by its declared format.
 
@@ -679,22 +680,28 @@ def write_targets(
     first table is written; `layout` places each entry as it iterates. Returns table name to
     path for the files actually published: `_publication` adds a path once its file is in place.
     `published` is the caller's publication ledger; it is filled as each file is published, so
-    a later failure keeps the earlier entries, and it is the mapping that comes back.
+    a later failure keeps the earlier entries. The paths come back as plain paths.
     """
-    published = {} if published is None else published
+    published = Ledger() if published is None else published
     _preflight_csv_targets(config_dict, outputs)
-    for table_name, entry, raw_path, table in _file_targets(config_dict, outputs):
-        fmt = resolve_target_format(str(table_name), entry)
-        path = layout.place_target(raw_path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with _publication(published, str(table_name), path):
-            write_table(table, fmt, path, entry.get("layout"))
-    return published
+    for table_name, entry, raw_path, table in file_targets(config_dict, outputs):
+        write_target(table_name, entry, table, layout.place_target(raw_path), published)
+    return {name: out.path for name, out in published.items()}
+
+
+def write_target(
+    table_name: str, entry: dict, table: pa.Table, path: Path, published: Ledger
+) -> None:
+    """Write one declared table to `path`: the one per-table writer, also used for staged slots."""
+    fmt = resolve_target_format(str(table_name), entry)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with _publication(published, str(table_name), path):
+        write_table(table, fmt, path, entry.get("layout"))
 
 
 @contextlib.contextmanager
 def _staged_chunked(
-    out_path: Path, ledger: dict[str, Path] | None, name: str, defer: contextlib.ExitStack | None
+    out_path: Path, ledger: Ledger | None, name: str, defer: contextlib.ExitStack | None
 ) -> Iterator[Path]:
     """The staged temp of one chunked target, published when `defer` (or this block) exits.
 
@@ -715,7 +722,7 @@ def write_chunked_output(
     layout: RunLayout,
     *,
     empty_schema: Callable[[], pa.Schema] | None,
-    ledger: dict[str, Path] | None = None,
+    ledger: Ledger | None = None,
     name: str = "",
     defer: contextlib.ExitStack | None = None,
 ) -> Path | None:
@@ -778,9 +785,7 @@ def write_chunked_output(
     return out_path
 
 
-def table_records(
-    rows: Mapping[str, int | None], paths: Mapping[str, Path | None]
-) -> list[dict[str, Any]]:
+def table_records(rows: Mapping[str, int | None], paths: Mapping[str, Any]) -> list[dict[str, Any]]:
     """One `{name, rows, path}` record per table for the run summary.
 
     `rows` is None when the writer streamed and never counted; `path` is None when no file

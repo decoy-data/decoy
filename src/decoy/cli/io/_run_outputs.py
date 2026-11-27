@@ -12,6 +12,7 @@ Writes under the library root (records, index, scratch) belong to the library an
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
@@ -27,6 +28,7 @@ from decoy.cli.io._layout import (
     side_file_name,
 )
 from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK
+from decoy.cli.io._run_id import is_run_id
 
 if TYPE_CHECKING:
     from decoy.cli.io._placement import OutputPlacement
@@ -35,6 +37,8 @@ __all__ = [
     "OutputKind",
     "RunOutput",
     "implicit_report_path",
+    "in_flight_name",
+    "not_delivered_report_name",
     "replaces_final",
     "run_outputs",
 ]
@@ -130,6 +134,23 @@ def _implicit_report(config_dict: dict, config_path: Path, base: Path | None) ->
     )
 
 
+def _bound_unit_names() -> tuple[str, str]:
+    """The two files the engine's bind leaves in a run folder: its descriptor and stage marker."""
+    from decoy_engine.fileaccess import DESCRIPTOR_NAME
+
+    return DESCRIPTOR_NAME, ".decoy-publication-stage"
+
+
+def not_delivered_report_name(run_id: str) -> str:
+    """The name of the post-scan report of a run that delivered nothing, in `out/<name>/`."""
+    return implicit_report_path(Path("_"), Path(run_id)).name
+
+
+def _lock_beside(path: Path) -> RunOutput:
+    """The `.<leaf>.decoy-lock` file the engine leaves beside a vault or evidence file."""
+    return RunOutput(RUN_FOLDER, OutputKind.LAYOUT, path.with_name(f".{path.name}.decoy-lock"))
+
+
 def _layout_outputs(base: Path) -> list[RunOutput]:
     """What the project layout writes around a run folder `base` (`out/<name>/<run-id>`)."""
     pipeline = base.parent
@@ -143,6 +164,13 @@ def _layout_outputs(base: Path) -> list[RunOutput]:
         found.insert(3, pipeline / _LATEST_LINK)
         # The engine's pointer lock stays in place after every swap.
         found.insert(4, pipeline / f".{_LATEST_FILE}.decoy-lock")
+    # Written by the engine's bind: the run folder's lock and its descriptor member.
+    found.append(pipeline / f".{base.name}.decoy-lock")
+    found.extend(base / name for name in _bound_unit_names())
+    # A run that delivers nothing leaves its post-scan verdict beside the run folder, under its
+    # own leaf lock (AT-59).
+    report = pipeline / not_delivered_report_name(base.name)
+    found.extend((report, report.with_name(f".{report.name}.decoy-lock")))
     return [RunOutput(RUN_FOLDER, OutputKind.LAYOUT, path) for path in found]
 
 
@@ -179,5 +207,22 @@ def run_outputs(
         *typed[OutputKind.RESULT],
         *typed[OutputKind.EVIDENCE],
         *typed[OutputKind.VAULT],
+        *(
+            _lock_beside(out.path)
+            for out in (*typed[OutputKind.EVIDENCE], *typed[OutputKind.VAULT])
+        ),
         *layout,
     )
+
+
+# What the engine's delivery stage keeps beside the run folder while a run is open: the unit
+# stage and the slots stage. Both are gone when the run ends, so only a listing taken inside the
+# delivery sees them. The shapes are copied from the engine, which keeps its names private.
+_STAGE_SIBLING = re.compile(r"\._decoy_(?:publication_pending|delivery_slots)_[0-9a-f]{12}")
+
+
+def in_flight_name(name: str) -> bool:
+    """Whether `name`, found in `out/<name>/` while a delivery is open, is a known shape."""
+    if name in {_CLAIM_NAME, _LATEST_FILE, _LATEST_LINK, f".{_LATEST_FILE}.decoy-lock"}:
+        return True
+    return is_run_id(name) or _STAGE_SIBLING.fullmatch(name) is not None

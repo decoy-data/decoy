@@ -43,6 +43,11 @@ def _pointer_supported() -> bool:
     return sys.platform != "win32"
 
 
+def pointer_supported() -> bool:
+    """Whether this host runs the engine's pointer (the one answer every delivery caller reads)."""
+    return _pointer_supported()
+
+
 def latest_pointer(folder: Path) -> CurrentPointer:
     """The pointer for `folder / LATEST`, locked through the same leaf."""
     # Imported here: the engine stays unloaded until a command needs it (startup rule).
@@ -68,6 +73,11 @@ def read_latest(folder: Path) -> str | None:
         # A link, pipe or unreadable file is not absent: "" fails is_run_id, so it is warned.
         return "" if os.path.lexists(path) else None
     return _decode(data)
+
+
+def link_current(folder: Path, run_id: str) -> list[LayoutWarning]:
+    """Point `current` at `run_id`; the warning list is empty on success (POSIX only)."""
+    return _link_current(folder, run_id)
 
 
 def _link_current(folder: Path, run_id: str) -> list[LayoutWarning]:

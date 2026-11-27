@@ -34,6 +34,9 @@ from decoy.cli._sources import (
     source_schema_and_chunks,
 )
 from decoy.cli.io._component import is_portable_component
+from decoy.cli.io._delivery import DeliveryHooks as DeliveryHooks
+from decoy.cli.io._delivery import DeliverySink as DeliverySink
+from decoy.cli.io._delivery import SideFileBusy as SideFileBusy
 from decoy.cli.io._integrity_report import (
     INTEGRITY_OUT_OPTION,
     INTEGRITY_WRITE_FAILED,
@@ -122,8 +125,12 @@ from decoy.cli.io._pipelines import (
     resolve_pipeline,
     run_history,
 )
+from decoy.cli.io._placement import DeliveryRoot as DeliveryRoot
 from decoy.cli.io._placement import (
+    Fixed,
+    NoLocalOutput,
     OutputPlacement,
+    Relative,
     ReportTarget,
     fixed_target_overwrites,
     layout_failures,
@@ -133,6 +140,8 @@ from decoy.cli.io._placement import (
     report_dest,
     resolved_output_collisions,
 )
+from decoy.cli.io._placement import Split as Split
+from decoy.cli.io._placement import delivery_root as delivery_root
 from decoy.cli.io._pointer import read_latest as read_latest
 from decoy.cli.io._project import (
     DECOY_DIR,
@@ -146,6 +155,8 @@ from decoy.cli.io._project import (
     write_decoy_gitignore,
     write_project_marker,
 )
+from decoy.cli.io._published import Ledger as Ledger
+from decoy.cli.io._published import PublishedOutput as PublishedOutput
 from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._run_outputs import RunOutput, run_outputs
 from decoy.cli.io._scan_set import (
@@ -200,11 +211,17 @@ __all__ = [
     "TARGET_SUFFIX",
     "WARNING_CODES",
     "WARNING_DESCRIPTORS",
+    "DeliveryHooks",
+    "DeliveryRoot",
+    "DeliverySink",
     "Descriptor",
     "DuckDBFlag",
     "DuckDBSourceError",
+    "Fixed",
     "LayoutError",
     "LayoutWarning",
+    "Ledger",
+    "NoLocalOutput",
     "OutputPlacement",
     "OwnedYaml",
     "OwnedYamlError",
@@ -213,12 +230,16 @@ __all__ = [
     "PipelineRef",
     "PipelineToken",
     "Project",
+    "PublishedOutput",
+    "Relative",
     "ReportTarget",
     "RunFolder",
     "RunHistory",
     "RunLayout",
     "RunOutput",
     "ScanSetFormatError",
+    "SideFileBusy",
+    "Split",
     "TargetFormatError",
     "UnsafeFileError",
     "acquire_relation",
@@ -233,6 +254,7 @@ __all__ = [
     "contained_path",
     "create_run_folder",
     "declared_format",
+    "delivery_root",
     "duckdb_probe_config",
     "duckdb_probe_raw",
     "ensure_decoy_dir",

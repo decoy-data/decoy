@@ -179,8 +179,36 @@ def _destination_is_within(child: Path, parent: Path, *, replaces: bool = False)
     return any(_destination_key(path) == target for path in (landed, *landed.parents))
 
 
-def _split_root(config_dict: dict, fixed: Path | None = None) -> tuple[str, str] | None:
-    """The first two local file outputs that do not share one delivery root, as labels.
+@dataclass(frozen=True)
+class Relative:
+    """Every local file output is relative: the project run folder is the delivery root."""
+
+
+@dataclass(frozen=True)
+class Fixed:
+    """One folder holds every local file output: `--out-dir`, or the one folder of absolute paths."""
+
+    folder: Path
+
+
+@dataclass(frozen=True)
+class NoLocalOutput:
+    """The run declares no local file output and no `--out-dir` folder stands in for one."""
+
+
+@dataclass(frozen=True)
+class Split:
+    """Two outputs in two roots; `first` and `second` are their config locations."""
+
+    first: str
+    second: str
+
+
+DeliveryRoot = Relative | Fixed | NoLocalOutput | Split
+
+
+def delivery_root(config_dict: dict, fixed: Path | None = None) -> DeliveryRoot:
+    """The one place that says where a run's local file outputs are delivered.
 
     Relative outputs share the run folder, or the `--out-dir` folder when `fixed` is set;
     absolute ones must share one folder, the parent of where the file lands, judged by
@@ -189,13 +217,28 @@ def _split_root(config_dict: dict, fixed: Path | None = None) -> tuple[str, str]
     """
     relative_key = _destination_key(fixed) if fixed is not None else ("relative",)
     roots: list[tuple[str, tuple]] = []
+    folders: list[Path] = []
     for location, raw in relative_outputs(config_dict):
         if is_placed_relative(raw):
             roots.append((location, relative_key))
         elif Path(raw).is_absolute():
-            landed = _landing(Path(raw), replaces_final(location))
-            roots.append((location, _destination_key(landed.parent)))
-    return next(((roots[0][0], loc) for loc, key in roots[1:] if key != roots[0][1]), None)
+            landed = _landing(Path(raw), replaces_final(location)).parent
+            roots.append((location, _destination_key(landed)))
+            folders.append(landed)
+    for location, key in roots[1:]:
+        if key != roots[0][1]:
+            return Split(roots[0][0], location)
+    if fixed is not None:
+        return Fixed(fixed)
+    if not roots:
+        return NoLocalOutput()
+    return Fixed(folders[0]) if folders else Relative()
+
+
+def _split_root(config_dict: dict, fixed: Path | None = None) -> tuple[str, str] | None:
+    """The first two local file outputs that do not share one delivery root, as labels."""
+    root = delivery_root(config_dict, fixed)
+    return (root.first, root.second) if isinstance(root, Split) else None
 
 
 def _side_file_in_out(out: Path, typed: tuple[tuple[str, Path], ...]) -> str | None:

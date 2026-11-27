@@ -59,3 +59,16 @@ forbidden_modules =
     decoy.cli.io._layout
     decoy.cli.io._placement
     decoy.cli.io._pipelines
+
+# The delivery sink and every other `cli.io` module sit below `cli.run`. The run-side work the
+# sink needs (evidence, warnings) reaches it as one injected `DeliveryHooks` value.
+[importlinter:contract:io-not-run]
+name = cli.io never imports cli.run
+type = forbidden
+# Direct imports only: `cli.exit_codes` reaches `cli.run` through function-local imports, and
+# every module that touches an exit code would otherwise be an indirect chain.
+allow_indirect_imports = True
+source_modules =
+    decoy.cli.io
+forbidden_modules =
+    decoy.cli.run

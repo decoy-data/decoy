@@ -171,7 +171,7 @@ reason = "Writes into the stager the caller passes; G-ONE-TARGET-WRITE checks th
 
 [[row]]
 file = "cli/io/_targets.py"
-function = "write_targets"
+function = "write_target"
 sink = "write_table"
 ordinal = 1
 output_kind = "target"
@@ -545,7 +545,7 @@ output_kind = "not-run"
 
 [[row]]
 file = "cli/io/_targets.py"
-function = "write_targets"
+function = "write_target"
 sink = "mkdir"
 ordinal = 1
 disposition = "entry"
@@ -599,16 +599,16 @@ output_kind = "not-run"
 
 [[row]]
 file = "cli/run/_evidence.py"
-function = "write_evidence"
+function = "_put"
 sink = "write_local_target"
 ordinal = 1
 disposition = "entry"
-reason = "`--evidence-out`"
+reason = "`--evidence-out`: written under an attempt name beside it, then replaces the live file after delivery"
 output_kind = "evidence"
 
 [[row]]
 file = "cli/run/_execute.py"
-function = "execute"
+function = "execute.commit_vault"
 sink = "_commit_vault"
 ordinal = 1
 disposition = "entry"

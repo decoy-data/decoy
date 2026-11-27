@@ -13,6 +13,7 @@ import hashlib
 import os
 import re
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -460,6 +461,7 @@ class RunLayout:
         self._project = project
         self._pipeline = pipeline
         self._contained = contained
+        self._on_abandon: Callable[[], None] | None = None
         self.warnings = warnings
 
     @classmethod
@@ -533,6 +535,20 @@ class RunLayout:
     def base(self) -> Path:
         """The folder relative paths resolve against: the run folder, or the fixed base."""
         return self._run.path if self._run is not None else self._base
+
+    @property
+    def pipeline_dir(self) -> Path | None:
+        """`out/<name>/`, where `LATEST` lives; None for a layout with no run folder."""
+        return self._pipeline_dir
+
+    @property
+    def contained_base(self) -> Path | None:
+        """The `--out-dir` folder that stands in for the run folder; None for any other layout."""
+        return self._base if self._contained else None
+
+    def on_abandon(self, callback: Callable[[], None]) -> None:
+        """Register what `abandon` also does: the delivery sink's abort (it holds the stages)."""
+        self._on_abandon = callback
 
     def place_target(self, raw: str) -> Path:
         """The file path for a declared target path.
@@ -640,6 +656,8 @@ class RunLayout:
         Empty sub-folders a nested target made are removed first, deepest first; `rmdir`
         removes only empty folders, so a written file keeps the folder and its parents.
         """
+        if self._on_abandon is not None:
+            self._on_abandon()
         if self._run is None:
             return
         for current, _dirs, _files in os.walk(self._run.path, topdown=False):

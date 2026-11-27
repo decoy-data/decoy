@@ -354,3 +354,16 @@ def test_a_downward_tier_move_goes_green_only_with_its_snapshot(
     moved[4] = moved[4].replace(" | notify", "")
     moved[5] += " | notify"
     assert _snapshot_with(text, tuple(moved))
+
+
+def test_at85_a_cli_io_module_importing_cli_run_breaks_the_io_not_run_contract(
+    scratch: Path, tmp_path: Path
+) -> None:
+    """Without the seed the contract is kept (the case above); with it the contract fails."""
+    tree = _tree(scratch, tmp_path)
+    sink = tree / "src" / "decoy" / "cli" / "io" / "_delivery.py"
+    sink.write_text(
+        sink.read_text(encoding="utf-8") + "\nfrom decoy.cli.run._context import RunContext\n",
+        encoding="utf-8",
+    )
+    assert not lint_scratch(tree)
