@@ -109,7 +109,7 @@ expect = "exit 1, code keyed_strategy_requires_secret, before any data is read"
 id = "mask-vault-flag-needs-vault-column"
 kind = "refused"
 when = { vault = "--vault", strategy_mix = ["hash only", "fpe and date_shift", "faker and categorical", "bucketize and truncate", "text_redact on free text", "passthrough mixed in"] }
-doc = "src/decoy/cli/run/_prepare.py:526"
+doc = "src/decoy/cli/run/_prepare.py:527"
 cites = ["vault_columns_declared"]
 expect = "exit 1, a reason that says no column declares vault: true"
 

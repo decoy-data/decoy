@@ -15,6 +15,7 @@ validation can be reported on the line that caused it.
 from __future__ import annotations
 
 import difflib
+import sys
 from functools import lru_cache
 from typing import Any
 
@@ -162,8 +163,16 @@ def lower(program: nodes.Program) -> tuple[dict[str, Any], SourceMap]:
             config[key] = plain(option.value)
             spans[(key,)] = option.value.span
     if problems:
+        # Links are resolved after the rules, so their problems are found late; a reader gets
+        # every problem in the order of the file.
+        problems.sort(key=_source_order)
         raise LangError(problems)
     return config, spans
+
+
+def _source_order(problem: Diagnostic) -> tuple[int, int]:
+    span = problem.span
+    return (span.line, span.column) if span is not None else (sys.maxsize, 0)
 
 
 def _lets(program: nodes.Program, problems: list[Diagnostic]) -> dict[str, nodes.Treatment]:

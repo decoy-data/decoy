@@ -15,7 +15,8 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
-from decoy._config_file import ConfigFileError, ConfigProblem, load_pipeline
+from decoy._config_file import ConfigFileError, ConfigProblem, PipelineFile, load_pipeline
+from decoy._source_positions import Position
 from decoy.cli.exit_codes import EXIT_CAPACITY, EXIT_OK, EXIT_USAGE, EXIT_WARNINGS
 
 if TYPE_CHECKING:
@@ -63,6 +64,44 @@ class GateFinding:
     # A value-free next step: a `.decoy` compiler suggestion ("did you mean `redact`?") or a
     # plan-refusal fix from `_plan_error_hint`, else None.
     hint: str | None = None
+    # Where the finding is in the pipeline file, from `PipelineFile.locate` (or the loader's own
+    # problem). `None` for a finding with no place; an all-`None` `Position` is a file-level hit.
+    position: Position | None = None
+
+    @property
+    def loader_position(self) -> dict[str, int] | None:
+        """The position a direct `--json` document shows: only for a `yaml.*` or `lang.*` finding
+        (the loader's own) that has a line. An engine finding keeps its dotted `location` there;
+        `decoy ci` is the surface that reports a line for it."""
+        place = self.position
+        if place is None or place.line is None or not self.code.startswith(("yaml.", "lang.")):
+            return None
+        fields = {
+            "line": place.line,
+            "column": place.column,
+            "end_line": place.end_line,
+            "end_column": place.end_column,
+        }
+        return {name: value for name, value in fields.items() if value is not None}
+
+
+def finding_message(f: GateFinding, *, config_only: bool = False) -> dict[str, Any]:
+    """One `messages[]` entry of a `--json` document, the one spelling `validate` and `run` share.
+
+    `hint` and `position` appear only when the finding has them. `config_only` is the envelope
+    of `validate config`, which has no layers: it leaves out `layer` and a null `location`
+    (a frozen contract). The message is not capped here; `run` caps it because its refusal
+    also goes to a one-line summary.
+    """
+    return {
+        **({} if config_only else {"layer": f.layer}),
+        "severity": f.severity,
+        "code": f.code,
+        "message": f.message,
+        **({} if config_only and f.location is None else {"location": f.location}),
+        **({"hint": f.hint} if f.hint else {}),
+        **({"position": f.loader_position} if f.loader_position else {}),
+    }
 
 
 @dataclass(frozen=True)
@@ -104,27 +143,40 @@ def _plan_error_hint(code: str) -> str | None:
 
 
 def _loader_finding(problem: ConfigProblem) -> GateFinding:
-    return GateFinding("config", "error", problem.code, problem.text, hint=problem.hint)
+    return GateFinding(
+        "config", "error", problem.code, problem.text, hint=problem.hint, position=problem.position
+    )
 
 
 def parse_pipeline_yaml(
     config_path: Path, source_text: str | bytes | None = None
-) -> tuple[dict[str, Any] | None, list[GateFinding]]:
-    """The pipeline file as a mapping, through the one config loader (YAML or `.decoy`).
+) -> tuple[PipelineFile | None, list[GateFinding]]:
+    """The pipeline file, through the one config loader (YAML or `.decoy`).
 
     Reads `config_path` unless `source_text` is given; bytes are decoded by the loader.
-    Returns `(raw, [])`, or `(None, findings)` when the file cannot be used: one finding per
-    problem, carrying the loader's code (`yaml.not_utf8`, `yaml.parse_error`, `yaml.empty`,
-    `yaml.not_mapping`, or a `lang.*` code) and its text, which leads with line and column for a
-    `.decoy` problem. A file whose only problem is a `?` mark returns `(raw, mark findings)`:
-    the mapping is real, but the callers refuse on any finding, so no mark reaches a run.
-    An `OSError` from the read passes through.
+    Returns `(None, findings)` when the file cannot be used: one finding per problem, carrying
+    the loader's code (`yaml.not_utf8`, `yaml.parse_error`, `yaml.empty`, `yaml.not_mapping`, or
+    a `lang.*` code), its text (which leads with line and column for a `.decoy` problem) and its
+    position. A file that loads returns `(pipeline, mark findings)`: one `lang.unreviewed` per
+    rule still marked `?`, or `[]`. The mapping is real, but a caller refuses on any finding, so
+    no mark reaches a run. An `OSError` from the read passes through.
     """
     try:
         pipeline = load_pipeline(config_path, text=source_text)
     except ConfigFileError as exc:
         return None, [_loader_finding(problem) for problem in exc.problems]
-    return pipeline.config, [_loader_finding(mark) for mark in pipeline.unreviewed]
+    return pipeline, [_loader_finding(mark) for mark in pipeline.unreviewed]
+
+
+def _placed(findings: list[GateFinding], pipeline: PipelineFile) -> list[GateFinding]:
+    """`findings` with a position on each that has none, from the pipeline's own `locate`.
+
+    The location the engine attached is a dotted config path; `locate` turns it into the line of
+    the construct in the file, so the report names the file's line and not the config's key."""
+    for finding in findings:
+        if finding.position is None:
+            finding.position = pipeline.locate(finding.logical_path or finding.location)
+    return findings
 
 
 def _findings_from_checks(acc: Any, layer: str) -> list[GateFinding]:
@@ -523,21 +575,41 @@ def run_gate_on_config(
     )
 
 
+def _config_layer_with_marks(
+    pipeline: PipelineFile, config: Path, marks: list[GateFinding]
+) -> GateResult:
+    """The config layer's findings, then one `lang.unreviewed` per mark, and no later layer.
+
+    A marked rule is unchecked, so the config does not pass and compile and preflight do not
+    run. The marks come last, after every schema finding, so a reader fixes the file's real
+    problems first and reviews the rules after."""
+    _, _, findings = _run_config_base(pipeline.config, config)
+    return GateResult([*_placed(findings, pipeline), *marks], frozenset({"config"}), False)
+
+
 def run_config_gate(config: Path, source_text: str | None = None) -> GateResult:
     """Config layer only (YAML + schema + profile-free plan-compile checks)."""
-    raw, parse_findings = parse_pipeline_yaml(config, source_text)
-    if parse_findings:
-        return GateResult(parse_findings, frozenset({"config"}), False)
-    validated, checks_run, findings = _run_config_base(raw, config)
-    return GateResult(findings, frozenset({"config"}), False, checks_run, validated)
+    pipeline, held = parse_pipeline_yaml(config, source_text)
+    if pipeline is None:
+        return GateResult(held, frozenset({"config"}), False)
+    if held:
+        return _config_layer_with_marks(pipeline, config, held)
+    validated, checks_run, findings = _run_config_base(pipeline.config, config)
+    return GateResult(
+        _placed(findings, pipeline), frozenset({"config"}), False, checks_run, validated
+    )
 
 
 def run_gate(config: Path, source_text: str | None = None) -> GateResult:
     """Config + compile + preflight, short-circuiting after a failed config layer."""
-    raw, parse_findings = parse_pipeline_yaml(config, source_text)
-    if parse_findings:
-        return GateResult(parse_findings, frozenset({"config"}), False)
-    return run_gate_on_config(raw, config)
+    pipeline, held = parse_pipeline_yaml(config, source_text)
+    if pipeline is None:
+        return GateResult(held, frozenset({"config"}), False)
+    if held:
+        return _config_layer_with_marks(pipeline, config, held)
+    result = run_gate_on_config(pipeline.config, config)
+    _placed(result.findings, pipeline)
+    return result
 
 
 def gate_exit_code(result: GateResult, fail_on_warning: bool) -> int:

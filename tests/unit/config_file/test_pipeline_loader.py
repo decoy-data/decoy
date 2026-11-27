@@ -58,7 +58,7 @@ def test_a_decoy_file_loads_to_the_same_value_as_its_yaml_twin(tmp_path: Path) -
 
     assert pipeline.config["tables"][0]["name"] == "people"
     assert pipeline.unreviewed == ()
-    assert pipeline.locate("tables.0") is None  # no `.decoy` position index yet
+    assert pipeline.locate("tables.0").line == 6  # the `mask people` statement
 
 
 def test_yaml_loads_through_the_same_function(tmp_path: Path) -> None:
