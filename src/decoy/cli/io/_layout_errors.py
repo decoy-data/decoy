@@ -141,7 +141,7 @@ LATEST_WRITE_FAILED = Descriptor(
     "Could not write LATEST in {path}; the run itself is unaffected.",
 )
 LATEST_COMMIT_UNCERTAIN = Descriptor(
-    "layout.latest_commit_uncertain",
+    "layout.publication_commit_uncertain",
     "LATEST in {path} was replaced, but the folder could not be synced; it may not survive a crash.",
 )
 GITIGNORE_WRITE_FAILED = Descriptor(

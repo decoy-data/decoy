@@ -191,7 +191,7 @@ def test_an_uncertain_swap_warns_and_still_points_current_at_the_new_run(
 
     warnings = layout.commit_latest()
 
-    assert _codes(warnings) == ["layout.latest_commit_uncertain"]
+    assert _codes(warnings) == ["layout.publication_commit_uncertain"]
     assert _latest(root).read_text(encoding="utf-8") == f"{layout.run.run_id}\n"
     link = root / "out" / "orders" / "current"
     assert link.is_symlink() and link.readlink() == Path(layout.run.run_id)
