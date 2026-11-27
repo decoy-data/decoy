@@ -11,9 +11,22 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
-## 2026-11-26: row 24zj PROP-SURFACE slice E-S1a
+## 2026-11-26: PROP-SURFACE E-S1a, DECOY-LANG S2, delivery C2p, PRE-SCAN-RUN C0, EXPERIMENTAL-TIER S0
+
+No row closed. Rows moved:
 
 - PROP-SURFACE (row 24zj, E-S1a): engine #822 (2026-11-26, `6d6e1aca3`) drops 21 root names that now import from their sub-packages, and removes `TelemetryClient`, `ExecutionEvent` and `event_to_legacy_dict` from the engine surface.
+- CLI delivery (row 61, C2p): CLI #420 (2026-11-26, `43e1a070`) writes the `LATEST` run pointer through one module, `io/_pointer.py`, under the engine pointer lock. Windows keeps today's write. A new G-ONE-POINTER sentry stops a second pointer writer. C2a is next, after the engine 0.28.5 release and BE0.
+- DECOY-LANG (S2): CLI #419 (2026-11-26, `a0bcd3a3`) reports `.decoy` findings on their source line in JSON and SARIF output. This unblocks S4, S6 and init C5a.
+- PRE-SCAN-RUN (C0): CLI #418 (2026-11-26, `0179eb8b`) adds a test-only route manifest and the G-CONFIG-READER sentry, so every run path is proven to execute a pipeline's `pre_scan` block.
+- EXPERIMENTAL-TIER (S0): engine #832 (2026-11-26, `f54ad388b`) moves the experimental-export check and tier key into `contracts.stability`, so the CLI census reads one source.
+
+Other merges:
+
+- **Engine #791 (2026-11-26, `3a9ecb2b1`):** EMPTY-LAYOUT-PARITY. An empty fixed-width read now takes its column types from the layout, the same as a non-empty one.
+- **Engine #817 (2026-11-26, `843eae66b`):** C6C-I. A test fix: the mixed-hash call site passes table, columns and strategy as keywords.
+- **CLI #428 (2026-11-26, `56f51406`):** a test fix. The pytest-timeout sentry no longer fails when the test machine is busy.
+- **CLI #415 (2026-11-26, `7455f185`):** roadmap docs only. Adds the engine audit findings and STRUCTURE-REVIEW to 1.x.
 
 ## 2026-11-25: CLI-SPLIT report and fit splits, FPE-CHECKSUM-NATIVE S2a
 
