@@ -33,6 +33,10 @@
   "protected_quarantine.schema_version": {
    "reason": "No engine function that reads the protected_quarantine block names schema_version; the receipt schema_version is a different field. Found by the package-scope tightening; owner to confirm.",
    "row": "DECLARED-CASTING"
+  },
+  "global_settings.post_validation": {
+   "reason": "The engine takes post_validation as a run_pipeline keyword, not from config; `decoy run` sets it from --post-validate and --post-validate-enforce only, so a config value is ignored.",
+   "row": "POST-VALIDATE-CONFIG"
   }
  },
  "readers": {
@@ -47,8 +51,9 @@
    "engine": "decoy_engine.plan:compile_plan"
   },
   "global_settings.dp": {
-   "engine": "decoy_engine.quality:compute_quality_report",
-   "via": "decoy_engine.quality:compute_fidelity"
+   "engine": "decoy_engine.plan:compile_plan",
+   "scope": "package",
+   "via": "decoy_engine.plan._checks_dp:parse_dp_ceiling"
   },
   "global_settings.fidelity_warn_threshold": {
    "engine": "decoy_engine.execution:run_pipeline",
@@ -69,17 +74,13 @@
   "global_settings.on_pool_exhaustion": {
    "engine": "decoy_engine.plan:compile_plan"
   },
-  "global_settings.post_validation": {
-   "engine": "decoy_engine.execution:run_pipeline",
-   "scope": "package"
-  },
   "global_settings.reference_date": {
    "engine": "decoy_engine.generation.pinned:compile_pinned_plan_with_generation"
   },
   "global_settings.seed": {
-   "engine": "decoy_engine.generation.window:generate_rows",
+   "engine": "decoy_engine.plan:compile_plan",
    "scope": "package",
-   "via": "decoy_engine.generation.statistical:sample_column"
+   "via": "decoy_engine.plan._seed_envelope:_build_seed_envelope"
   },
   "global_settings.unconfigured_column_policy": {
    "engine": "decoy_engine.execution:run_pipeline",
@@ -117,7 +118,9 @@
    "scope": "package"
   },
   "post_scan.distribution": {
-   "engine": "decoy_engine.generation.relational:check_reference_pool"
+   "engine": "decoy_engine.execution:run_pipeline",
+   "scope": "package",
+   "via": "decoy_engine.config:post_scan_distribution_tolerance"
   },
   "post_scan.integrity": {
    "engine": "decoy_engine.config:post_scan_integrity_requested"
