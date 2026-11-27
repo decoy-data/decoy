@@ -380,8 +380,8 @@ def test_a_runtime_failure_after_a_write_keeps_the_folder_and_leaves_latest(
     monkeypatch.setattr(_targets, "write_table", second_fails)
     result = _run(cfg)
     assert result.exit_code == 3, result.output
-    (run,) = _runs(root, "orders")
-    assert any(run.iterdir())
+    # DELIV C2a: the stage is removed on a failure, so no run folder stays and LATEST is untouched.
+    assert _runs(root, "orders") == []
     assert not (root / "out" / "orders" / "LATEST").exists()
 
 
@@ -401,8 +401,7 @@ def test_an_interrupt_after_a_write_keeps_the_folder_and_leaves_latest(
     monkeypatch.setattr(_targets, "write_table", write_then_interrupt)
     result = _run(cfg)
     assert result.exit_code != 0, result.output
-    (run,) = _runs(root, "orders")
-    assert (run / "masked.csv").is_file()
+    assert _runs(root, "orders") == []
     assert not (root / "out" / "orders" / "LATEST").exists()
 
 
@@ -663,7 +662,9 @@ def test_quarantine_goes_to_the_engine_as_the_placed_path_not_in_the_config(
     assert result.exit_code == 0, result.output
     (run,) = _runs(root, "orders")
     (call,) = seen
-    assert call["quarantine_path"] == str(run.resolve() / "q.jsonl")
+    # The engine writes into a stage slot; delivery moves the file into the run folder.
+    assert Path(call["quarantine_path"]).name == "q.jsonl"
+    assert Path(call["quarantine_path"]).parent != run.resolve()
     assert call["config"]["quarantine"]["output_path"] == "q.jsonl"
 
 

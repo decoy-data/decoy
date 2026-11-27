@@ -157,7 +157,9 @@ def test_the_vault_is_published_in_the_folder_the_kernel_resolves(tmp_path: Path
     cfg = _vaulting(root, "m.csv")
     result = runner.invoke(app, ["run", str(cfg), "--json", "--vault", spelling])
     assert result.exit_code == EXIT_OK, result.output
-    assert sorted(p.name for p in kernel.parent.iterdir()) == ["deep", "vault.bin"]
+    # `.vault.bin.decoy-lock` is the engine's persistent lock the delivery takes (plan 4.5).
+    folder = sorted(p.name for p in kernel.parent.iterdir())
+    assert folder == [".vault.bin.decoy-lock", "deep", "vault.bin"]
     assert not list(tmp_path.glob(".vault.bin.*"))
 
 

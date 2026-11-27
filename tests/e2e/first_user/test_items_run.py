@@ -201,6 +201,7 @@ def test_a_path_is_recorded_only_after_its_file_is_published(tmp_path: Path) -> 
     while tb is not None and tb.tb_frame.f_code.co_name != "write_targets":
         tb = tb.tb_next
     assert tb is not None
-    assert tb.tb_frame.f_locals["published"] == {"a": first}
+    ledger = tb.tb_frame.f_locals["published"]
+    assert {name: out.path for name, out in ledger.items()} == {"a": first}
     assert first.is_file()
     assert not second.exists()

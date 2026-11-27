@@ -229,10 +229,20 @@ def test_typed_refusals_carry_no_context(tmp_path: Path) -> None:
             argv, patcher, _ = _case(name, tmp_path)
             _invoke(argv, patcher)
         _integrity_failure(tmp_path / "integrity")
+        _invoke(["run", str(_write(tmp_path)), "--json"], _nothing_delivered())
     assert {type(r) for r in caught} == set(_refusal_classes())
     for refusal in caught:
         assert refusal.__context__ is None
         assert refusal.__cause__ is None
+
+
+def _nothing_delivered():
+    from decoy_engine.publication import DeliveryReceipt
+
+    from decoy.cli.io import DeliverySink
+
+    receipt = DeliveryReceipt("nothing", "delivery_pointer_moved")
+    return mock.patch.object(DeliverySink, "deliver", return_value=receipt)
 
 
 def _integrity_failure(root: Path):

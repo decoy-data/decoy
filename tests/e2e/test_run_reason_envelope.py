@@ -137,6 +137,7 @@ def _refusal_ids() -> list[str]:
 
 _RUNTIME_REFUSALS = (
     _errors._VaultWriteError,
+    _errors.DeliveryRefusal,
     _errors.EvidenceWriteRefusal,
     _errors.IntegrityWriteRefusal,
 )

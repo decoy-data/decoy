@@ -65,7 +65,12 @@ def _vault_failed_text() -> str:
 
 
 def _leftovers(directory: Path, vault_name: str) -> list[str]:
-    return sorted(p.name for p in directory.iterdir() if p.name.startswith(f".{vault_name}"))
+    # The persistent `.<vault>.decoy-lock` the delivery takes is not a leftover stage.
+    return sorted(
+        p.name
+        for p in directory.iterdir()
+        if p.name.startswith(f".{vault_name}") and not p.name.endswith(".decoy-lock")
+    )
 
 
 def _fail_vault_write(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -209,10 +214,10 @@ def test_run_writes_the_vault_durably_before_any_output(
     """The vault is published first, with owner-only mode and no stage left behind."""
     from decoy_engine.vault import VaultWriter
 
-    from decoy.cli.run import _execute as run_execute
+    from decoy.cli.io import _delivery
 
     events: list[str] = []
-    real_outputs, real_write = run_execute._write_mask_outputs, VaultWriter.write
+    real_outputs, real_write = _delivery.write_targets, VaultWriter.write
     vault = tmp_path / "vault.bin"
 
     def _outputs(*a, **k):
@@ -223,7 +228,8 @@ def test_run_writes_the_vault_durably_before_any_output(
         events.append("vault_write")
         return real_write(self, path)
 
-    monkeypatch.setattr(run_execute, "_write_mask_outputs", _outputs)
+    # The sink is the one writer of run outputs; its pass-through calls `write_targets`.
+    monkeypatch.setattr(_delivery, "write_targets", _outputs)
     monkeypatch.setattr(VaultWriter, "write", _write)
     result = runner.invoke(app, ["run", str(_pipeline(tmp_path)), "--vault", str(vault)])
     assert result.exit_code == 0, result.output

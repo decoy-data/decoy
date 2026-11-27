@@ -87,7 +87,9 @@ def test_run_evidence_out_writes_no_catalog(mask_config: Path, tmp_path: Path) -
     # No `.decoy/` workspace or catalog appeared anywhere under the work dir.
     after = _snapshot(work)
     created = after - before
-    assert not any(".decoy" in p for p in created), f"stateful dir created: {sorted(created)}"
+    # `.ev.json.decoy-lock` is the engine's persistent lock beside a published evidence file.
+    stateful = [p for p in created if ".decoy" in p and not p.endswith(".decoy-lock")]
+    assert not stateful, f"stateful dir created: {sorted(created)}"
     assert not any(p.endswith(".duckdb") for p in created), (
         f"a catalog db was written: {sorted(created)}"
     )

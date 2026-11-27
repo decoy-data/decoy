@@ -98,7 +98,12 @@ def _chunked(cfg: Path, *args: str) -> Any:
 
 
 def _temps(directory: Path) -> list[str]:
-    return sorted(p.name for p in directory.iterdir() if ".decoy-" in p.name)
+    # `.<name>.decoy-lock` is the engine's persistent lock beside a published evidence file.
+    return sorted(
+        p.name
+        for p in directory.iterdir()
+        if ".decoy-" in p.name and not p.name.endswith(".decoy-lock")
+    )
 
 
 def _sha(path: Path) -> str:

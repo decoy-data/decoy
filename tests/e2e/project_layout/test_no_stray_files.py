@@ -158,13 +158,22 @@ def _out_first(project: Path) -> set[Path]:
     return {project / "out", project / "out" / ".gitignore"}
 
 
-def _run_paths(project: Path, name: str, run: Path, *files: str) -> set[Path]:
-    """One pipeline's `out/<name>/`: claim, pointer, its lock, link, the run folder and its files."""
+def _run_paths(project: Path, name: str, run: Path, *files: str, bound: bool = False) -> set[Path]:
+    """One pipeline's `out/<name>/`: claim, pointer, its lock, link, the run folder and its files.
+
+    `bound` is a run delivered through the engine's stage: its bind leaves the run's own lock, the
+    descriptor and the stage marker beside and inside the run folder."""
     base = project / "out" / name
     paths = {base, base / "PIPELINE", base / "LATEST", run, *(run / f for f in files)}
     if os.name == "posix":
         paths.add(base / "current")
         paths.add(base / ".LATEST.decoy-lock")
+    if bound and os.name == "posix":
+        paths |= {
+            base / f".{run.name}.decoy-lock",
+            run / "_decoy_publication.json",
+            run / ".decoy-publication-stage",
+        }
     return paths
 
 
@@ -197,7 +206,11 @@ def test_each_command_writes_only_where_the_guarantee_allows(world: World) -> No
     _assert_quiet(done)
     run = w.run_dir("mask")
     new = _split_library("run", new, w.project, records=2)
-    _assert_exact("run", new, _out_first(w.project) | _run_paths(w.project, "mask", run, "out.csv"))
+    _assert_exact(
+        "run",
+        new,
+        _out_first(w.project) | _run_paths(w.project, "mask", run, "out.csv", bound=True),
+    )
     assert json.loads(done.stdout)["output_dir"] == str(run)
     masked = run / "out.csv"
 
@@ -254,7 +267,7 @@ def test_run_all_writes_only_each_pipelines_run_folder(world: World) -> None:
     _assert_quiet(done)
     expected = _out_first(w.project)
     for name in ("alpha", "beta"):
-        expected |= _run_paths(w.project, name, w.run_dir(name), "out.csv")
+        expected |= _run_paths(w.project, name, w.run_dir(name), "out.csv", bound=True)
     _assert_exact("run --all", _split_library("run --all", new, w.project, records=4), expected)
     assert not list(w.home.rglob("*")), "a command wrote into the home folder"
 

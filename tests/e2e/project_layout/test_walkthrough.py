@@ -146,7 +146,13 @@ def _pipeline_out(
         f"{base}/current -> {latest}",
     ]
     for run_id, files in runs.items():
-        lines.append(f"{base}/{run_id}/")
+        # The engine's delivery leaves the run's own lock, a descriptor and a stage marker.
+        lines += [
+            f"{base}/.{run_id}.decoy-lock",
+            f"{base}/{run_id}/",
+            f"{base}/{run_id}/_decoy_publication.json",
+            f"{base}/{run_id}/.decoy-publication-stage",
+        ]
         lines += [f"{base}/{run_id}/{f}" for f in files]
     return lines
 

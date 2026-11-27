@@ -238,10 +238,13 @@ def test_json_location_fields_follow_publication(tmp_path: Path, monkeypatch, ce
     doc = _json(result)
     failed = "fails" in cell or "refusal" in cell
     assert (result.exit_code != EXIT_OK) is failed, result.output
+    # A project run is delivered whole or not at all (DELIV C2a): a failure after the first
+    # table leaves no run folder and no outputs, so it reads like a failure before any publish.
     if cell in {
         "out_dir_gate_refusal",
         "placed_fails_before_publish",
         "fixed_fails_before_publish",
+        "placed_fails_after_first_publish",
     }:
         expected: dict | None = None
     elif cell == "empty_chunked_success":
@@ -303,6 +306,11 @@ def test_a_directory_sync_failure_after_publication_keeps_the_file_in_the_ledger
     assert result.exit_code != EXIT_OK, result.output
     doc = _json(result)
     assert doc["status"] == "error"
+    if cell in {"placed", "second_table"}:
+        # Kind R: the sync failure fails the table in its stage slot; nothing is delivered.
+        assert "outputs" not in doc or _paths(doc) == []
+        assert not (root / "out" / "orders" / "LATEST").exists()
+        return
     if cell == "fixed":
         folder = build.resolve()
     elif cell == "absolute":
