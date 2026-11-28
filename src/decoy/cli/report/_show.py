@@ -7,7 +7,7 @@ from typing import Any
 
 import typer
 
-from decoy.cli.evidence import compute_manifest_hash, redact_manifest_paths
+from decoy.cli import evidence
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import ReportTarget
 from decoy.cli.report._html import render_html
@@ -92,7 +92,7 @@ def _show(
                 "command": "report show",
                 "status": "ok",
                 "evidence_file": str(evidence_file),
-                "manifest": redact_manifest_paths(manifest),
+                "manifest": evidence.redact_manifest_paths(manifest),
             },
         )
         return
@@ -123,9 +123,9 @@ def _show(
     # the former `report summarize`/`show`).
     from decoy.ui.table import make_table
 
-    hash_ok = manifest.get("manifest_hash", "") == compute_manifest_hash(manifest)
+    hash_ok = manifest.get("manifest_hash", "") == evidence.compute_manifest_hash(manifest)
     render_manifest_card(
-        state, manifest, redact_manifest_paths(manifest), evidence_file, hash_ok=hash_ok
+        state, manifest, evidence.redact_manifest_paths(manifest), evidence_file, hash_ok=hash_ok
     )
 
     row_counts: dict[str, Any] = manifest.get("row_counts") or {}
