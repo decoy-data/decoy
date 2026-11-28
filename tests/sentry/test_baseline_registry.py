@@ -45,6 +45,7 @@ CREATED_IN = {
     "root-help-omitted": "X0a",
     "readme-table-omitted": "X0a",
     "atomic-writer-allow": "L1b.1",
+    "serial-resources": "CLI-PAR-S1",
     "gate-single-entry-allow": "VALIDATE-ALWAYS-P1",
     "csv-read-allow": "CLI-DIALECT-C",
     "scan-call-allow": "FREEZE-ITEM3-C1",
@@ -73,6 +74,7 @@ CREATED_IN = {
     "outbound-network-owners": "FREEZE-S6",
     "old-org-refs": "CLI-REL-S0id",
     "lint-debt": "LINTDEBT-A1",
+    "config-field-readers": "PRE-SCAN-RUN-C0",
 }
 SNAPSHOT = json.loads(
     (bs.SENTRY / "allowlist-before.json").read_text(encoding="utf-8")

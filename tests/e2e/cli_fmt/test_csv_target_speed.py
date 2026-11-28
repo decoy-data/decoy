@@ -20,9 +20,13 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("DECOY_CSV_SPEED") != "1", reason="set DECOY_CSV_SPEED=1 on a quiet node"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        os.environ.get("DECOY_CSV_SPEED") != "1", reason="set DECOY_CSV_SPEED=1 on a quiet node"
+    ),
+    # An RSS sampler and a timing bound: only valid on a quiet host (the gate's serial pass).
+    pytest.mark.serial,
+]
 
 MAX_4X_RSS_GROWTH = 64 * 1024 * 1024
 _N = 1_000_000

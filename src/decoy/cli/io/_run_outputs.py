@@ -20,14 +20,13 @@ from typing import TYPE_CHECKING
 
 from decoy.cli.io._layout import (
     _CLAIM_NAME,
-    _LATEST_FILE,
-    _LATEST_LINK,
     has_placed_output,
     is_placed_relative,
     names_a_file_inside,
     relative_outputs,
     side_file_name,
 )
+from decoy.cli.io._pointer import _LATEST_FILE, _LATEST_LINK
 
 if TYPE_CHECKING:
     from decoy.cli.io._placement import OutputPlacement
@@ -142,6 +141,8 @@ def _layout_outputs(base: Path) -> list[RunOutput]:
     ]
     if os.name == "posix":
         found.insert(3, pipeline / _LATEST_LINK)
+        # The engine's pointer lock stays in place after every swap.
+        found.insert(4, pipeline / f".{_LATEST_FILE}.decoy-lock")
     return [RunOutput(RUN_FOLDER, OutputKind.LAYOUT, path) for path in found]
 
 

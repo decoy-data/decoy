@@ -14,7 +14,8 @@ from pathlib import Path
 import pytest
 
 from decoy.cli.io import _targets
-from decoy.cli.io._layout import RunFolder, is_run_id, owning_run, placed_path
+from decoy.cli.io._layout import RunFolder, owning_run, placed_path
+from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._targets import input_format
 
 RUN_ID = "20261109T101500123456Z-0a1b2c3d"

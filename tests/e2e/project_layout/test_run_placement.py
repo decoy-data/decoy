@@ -29,7 +29,7 @@ from decoy.cli.io import (
     LayoutError,
     PipelineName,
     RunLayout,
-    _layout,
+    _pointer,
     mint_invocation_id,
     write_targets,
 )
@@ -315,7 +315,7 @@ def test_a_clean_run_moves_latest(tmp_path: Path) -> None:
 
 def test_the_latest_file_and_link_names_do_not_fold_together() -> None:
     """macOS and Windows fold case by default, so `LATEST` and the link need distinct names."""
-    assert _layout._LATEST_FILE.casefold() != _layout._LATEST_LINK.casefold()
+    assert _pointer._LATEST_FILE.casefold() != _pointer._LATEST_LINK.casefold()
 
 
 def test_no_two_names_in_the_pipeline_folder_fold_together(tmp_path: Path) -> None:
@@ -478,14 +478,14 @@ def _plant_latest(kind: str, latest: Path, later_id: str, scratch: Path) -> Path
     # The target names a later run, so reading through the link would hold LATEST back.
     target = scratch / "victim.txt"
     target.write_text(f"{later_id}\n", encoding="utf-8")
-    os.symlink(target, latest)
+    latest.symlink_to(target)
     return target
 
 
 @posix_only
 @pytest.mark.parametrize("gap", [False, True], ids=["all flags", "no O_NOFOLLOW"])
 @pytest.mark.parametrize("kind", ["fifo", "link to a later run id", "device link"])
-def test_a_latest_that_is_not_a_regular_file_is_warned_and_replaced(
+def test_a_latest_that_is_not_a_regular_file_is_warned_and_kept(
     tmp_path: Path, kind: str, gap: bool, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A device node needs root to make, so a link to /dev/zero stands in for it."""
@@ -495,11 +495,14 @@ def test_a_latest_that_is_not_a_regular_file_is_warned_and_replaced(
     latest = root / "out" / "orders" / "LATEST"
     target = _plant_latest(kind, latest, later.run.run_id, tmp_path)
     _drop_flags(monkeypatch, gap)
+    planted = os.lstat(latest)
     warnings = _commit_within(layout, latest)
-    assert [w.code for w in warnings] == ["layout.latest_invalid"]
-    assert latest.is_file() and not latest.is_symlink()
-    assert latest.read_text(encoding="utf-8").strip() == layout.run.run_id
+    assert [w.code for w in warnings] == ["layout.latest_write_failed"]
+    # The planted entry is unchanged: same kind, same inode, and a link still points where it did.
+    kept = os.lstat(latest)
+    assert (kept.st_mode, kept.st_ino) == (planted.st_mode, planted.st_ino)
     if target is not None:
+        assert latest.is_symlink() and latest.readlink() == target
         assert target.read_text(encoding="utf-8") == f"{later.run.run_id}\n"
 
 

@@ -11,6 +11,46 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-27: six engine slices (TRS S1a, test-flight fix, F06, parquet S1, RG-E2, GEN-STREAM-ALL S1a)
+
+No row closed. Rows moved:
+
+- TEXT-REDACT-RUST-SPLICE (S1a): engine #806 (2026-11-27, `5d768b2c7`) adds the `text_span_splice` Arrow entry to the native companion, with a bound probe.
+- TEST-FLIGHT-FIX (bucket_perturb dates): engine #819 (2026-11-27, `046d42950`) sets `date_format` on bucket_perturb text dates in the test flight and reports the error type when a flight fails.
+- TEST-FLAKE (F06): engine #836 (2026-11-27, `c981c79ea`) makes the root-relative path test portable, so it passes on the Mac.
+- PARQUET-CHUNKED-NULLABLE-INT (S1): engine #833 (2026-11-27, `2ee01100a`) makes chunked nullable-int Parquet output match the full-frame route, with a schema error that carries no values.
+- RATCHET-GROWTH (RG-E2): engine #801 (2026-11-27, `564881a3e`) makes each ratchet bound carry a max or a min.
+- GEN-STREAM-ALL (S1a): engine #813 (2026-11-27, `9812da814`) adds `pool_take` and makes the batch assembler accept Arrow arrays, the base for streamed generation.
+
+## 2026-11-27: engine 0.28.5 repin (CLI)
+
+- **CLI**: the engine repin to 0.28.5 (tag `v0.28.5`, `c786122fd`). `requirements-certified.txt` keeps its 70 pins, `jsonpath-ng` included; fingerprint is now `4a1765c9...`, a certified row in the engine. The empty fixed-width parity test passes with no expected-fail mark.
+
+## 2026-11-27: INIT-SCAN-SCAFFOLD E2, F31-AUDIT AE1a1, GEN-NONFAKER-DRAWS S2
+
+No row closed. Rows moved:
+
+- INIT-SCAN-SCAFFOLD (E2): engine #831 (2026-11-27, `8e4eb23ba`) makes the starter config from the init scan read the model detector hits. It also refuses column headers that look suspect.
+- F31-AUDIT (AE1a1): engine #795 (2026-11-27, `8a580c8e8`) makes the safe-text sentry scan every `.const` and `.literal_template` call in every engine module. Before, it only scanned modules that mention SafeText.
+- GEN-NONFAKER-DRAWS (S2): engine #797 (2026-11-27, `fd44de88b`) runs `uuid` and string `random_choice` on the sequential and out-of-core routes, and pools `lorem_text`. Its generated values change, so the change ships as a breaking entry in the changelog fragment.
+
+## 2026-11-26: PROP-SURFACE E-S1a, DECOY-LANG S2, delivery C2p, PRE-SCAN-RUN C0, EXPERIMENTAL-TIER S0
+
+No row closed. Rows moved:
+
+- PROP-SURFACE (row 24zj, E-S1a): engine #822 (2026-11-26, `6d6e1aca3`) drops 21 root names that now import from their sub-packages, and removes `TelemetryClient`, `ExecutionEvent` and `event_to_legacy_dict` from the engine surface.
+- CLI delivery (row 61, C2p): CLI #420 (2026-11-26, `43e1a070`) writes the `LATEST` run pointer through one module, `io/_pointer.py`, under the engine pointer lock. Windows keeps today's write. A new G-ONE-POINTER sentry stops a second pointer writer. C2a is next, after the engine 0.28.5 release and BE0.
+- DECOY-LANG (S2): CLI #419 (2026-11-26, `a0bcd3a3`) reports `.decoy` findings on their source line in JSON and SARIF output. This unblocks S4, S6 and init C5a.
+- PRE-SCAN-RUN (C0): CLI #418 (2026-11-26, `0179eb8b`) adds a test-only route manifest and the G-CONFIG-READER sentry, so every run path is proven to execute a pipeline's `pre_scan` block.
+- EXPERIMENTAL-TIER (S0): engine #832 (2026-11-26, `f54ad388b`) moves the experimental-export check and tier key into `contracts.stability`, so the CLI census reads one source.
+
+Other merges:
+
+- **Engine #791 (2026-11-26, `3a9ecb2b1`):** EMPTY-LAYOUT-PARITY. An empty fixed-width read now takes its column types from the layout, the same as a non-empty one.
+- **Engine #817 (2026-11-26, `843eae66b`):** C6C-I. A test fix: the mixed-hash call site passes table, columns and strategy as keywords.
+- **CLI #428 (2026-11-26, `56f51406`):** a test fix. The pytest-timeout sentry no longer fails when the test machine is busy.
+- **CLI #415 (2026-11-26, `7455f185`):** roadmap docs only. Adds the engine audit findings and STRUCTURE-REVIEW to 1.x.
+
 ## 2026-11-25: CLI-SPLIT report and fit splits, FPE-CHECKSUM-NATIVE S2a
 
 No row closed. Rows moved:

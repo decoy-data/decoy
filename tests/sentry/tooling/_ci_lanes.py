@@ -6,8 +6,16 @@ the CLI cases are seeded in test_ci_lanes.py. Pure functions over parsed data, s
 modified copy of the real tree and needs no files on disk.
 
 Deliberate differences from the engine copy, for engine CI-E2b to fold back:
-- No M5. The CLI has no hosted gates.sh suite lane, so the gates.sh agreement check and its
-  engine-only `tests.sentry.parallel._resources` import are dropped; `Tree` holds no gates text.
+- M5 (CLI-PAR S1) is ported with three differences. The marker expressions come from the shared
+  `gate_args` reader instead of the engine's `parse_marker_expr`, and an empty gates.sh `-m`
+  expression means the two passes are exactly `not serial` and `serial`. The job is `ci.yml:pytest`
+  over `tests`, not the engine's `regression-gate`, and it must run four workers with
+  `--dist loadfile`. The engine's `_rest` and `_has_workers` discard scheduling values; here
+  `Pass` keeps them, normalized across `-n 4`, `-n4`, `--numprocesses=4` and `--dist=loadfile`,
+  and each CI pass is compared with the real argv gates.sh builds (`Tree.gates_argvs`, recorded
+  by running the script against a stub pytest), not only with the other CI pass. `Tree` holds the
+  gates.sh text and those argvs. `--dist` and `--numprocesses` are in `_VALUE_OPTS`, so
+  `loadfile` is never read as a test path.
 - R2 allows one templated job name: a matrix over exactly `python`, equal to
   `SUPPORTED_MINORS` in scripts/dev/lock_version.sh (`Tree.minors`), and named
   `<key> (py${{ matrix.python }})`.
@@ -34,15 +42,20 @@ Shell parsing is the shared ci_scan._shell_tokens.commands; nothing here tokeniz
 from __future__ import annotations
 
 import ast
+import json
 import re
 import shlex
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
 
 import yaml
+from tests.child_env import child_env
 from tests.sentry.ci_scan._shell_tokens import base, commands
+from tests.sentry.tooling import gate_args
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -61,7 +74,8 @@ MATRIX_NAME = "{key} (py${{{{ matrix.python }}}})"
 # pytest options that take a value, so the value is not read as a test path.
 _VALUE_OPTS = {
     "-k", "-p", "-n", "-c", "-W", "--tb", "--junitxml", "--durations", "--ignore", "--ignore-glob",
-    "--deselect", "--maxfail", "--rootdir", "--basetemp", "--timeout", "--cov",
+    "--deselect", "--dist", "--numprocesses", "--maxfail", "--rootdir", "--basetemp", "--timeout",
+    "--cov",
 }  # fmt: skip
 _EXCLUDE = {"--ignore", "--ignore-glob", "--deselect"}
 # pytest short options that take a value; in a cluster such as `-qk x` the value option ends it.
@@ -88,6 +102,10 @@ class Tree:
     minors: list[str]  # SUPPORTED_MINORS in lock_version.sh
     scripts: dict[str, str]  # repository scripts named in a run step, by path
     test_dirs: list[str]  # folders directly under testpaths that hold test_*.py files
+    gates: str  # scripts/dev/gates.sh, or "" when the tree has none
+    # The pytest argv (after `-m pytest`) of each pass gates.sh builds for a whole-suite run at
+    # GATES_WORKERS=4, recorded by running the real builder against a stub pytest.
+    gates_argvs: tuple[tuple[str, ...], ...]
 
 
 class Lane(NamedTuple):
@@ -109,6 +127,43 @@ def _test_dirs(root: Path, testpaths: list[str]) -> list[str]:
         for d in (root / tp).iterdir()
         if d.is_dir() and any(d.rglob("test_*.py"))
     )
+
+
+_STUB_PYTHON = """#!/bin/sh
+case "$*" in *_gates_report.py*--workers)
+  # Whether this interpreter has xdist is not under test here: the probe asks for four workers.
+  echo "$GATES_WORKERS m5 stub: worker rule not under test"; exit 0 ;;
+esac
+if [ "$1" = -m ] && [ "$2" = pytest ] && [ "$3" != --version ]; then
+  exec "{real}" -c 'import json, sys; open(sys.argv[1], "a").write(json.dumps(sys.argv[2:]) + "\\n")' "{log}" "$@"
+fi
+exec "{real}" "$@"
+"""
+
+
+def gates_argvs(root: Path) -> tuple[tuple[str, ...], ...]:
+    """The pytest argvs gates.sh builds for `--steps tests --full` at four workers.
+
+    Runs the real script with a stub pytest that only records its arguments, so nothing recurses
+    into the suite. The script's own exit code is ignored (the stub writes no JUnit file)."""
+    script = root / "scripts/dev/gates.sh"
+    if not script.is_file():
+        return ()
+    with tempfile.TemporaryDirectory(prefix="m5-gates-") as tmp:
+        venv, log = Path(tmp) / "venv", Path(tmp) / "argv.jsonl"
+        (venv / "bin").mkdir(parents=True)
+        python = venv / "bin" / "python"
+        python.write_text(_STUB_PYTHON.format(real=sys.executable, log=log))
+        python.chmod(0o755)
+        env = child_env(drop_prefixes=("PYTEST_", "GATES_"))
+        env.pop("VIRTUAL_ENV", None)
+        env |= {"DECOY_VENV": str(venv), "GATES_WORKERS": "4", "TMPDIR": tmp}
+        subprocess.run(
+            ["bash", str(script), "--steps", "tests", "--full"],
+            cwd=root, env=env, capture_output=True, text=True, timeout=300, check=False,
+        )  # fmt: skip
+        lines = log.read_text().splitlines() if log.exists() else []
+        return tuple(tuple(json.loads(ln)[2:]) for ln in lines)
 
 
 def load(root: Path = ROOT) -> Tree:
@@ -137,6 +192,10 @@ def load(root: Path = ROOT) -> Tree:
         minors,
         {p: (root / p).read_text() for p in sorted(named)},
         _test_dirs(root, _ini(pyproject).get("testpaths", ["tests"])),
+        (root / "scripts/dev/gates.sh").read_text()
+        if (root / "scripts/dev/gates.sh").is_file()
+        else "",
+        gates_argvs(root),
     )
 
 
@@ -539,9 +598,171 @@ def trigger_findings(tree: Tree) -> list[str]:
     return out
 
 
+SUITE_JOB = ("ci.yml", "pytest")
+SERIAL_STEP_IF = "${{ !cancelled() }}"
+_REPORT_PREFIXES = ("--tb=", "--durations=")
+
+
+class Pass(NamedTuple):
+    """One pytest pass reduced to what selects tests and how they are scheduled."""
+
+    expr: str | None
+    paths: tuple[str, ...]
+    ignores: frozenset[tuple[str, str]]
+    workers: str | None  # the worker count, however it was spelled
+    dist: str | None
+    rest: tuple[str, ...]  # everything else, minus the route-specific reporting and temp options
+
+
+def _scheduling(args: list[str]) -> tuple[str | None, str | None, list[str]]:
+    """(workers, dist, other args): `-n 4`, `-n4`, `-n=4`, `--numprocesses 4` and `--numprocesses=4`
+    are one fact, as are `--dist loadfile` and `--dist=loadfile`."""
+    found: dict[str, str] = {}
+    rest: list[str] = []
+    i = 0
+    while i < len(args):
+        key, value, used = _scheduling_option(args, i)
+        if key:
+            found[key] = value
+        else:
+            rest.append(args[i])
+        i += used
+    workers = found.get("workers")
+    # `-n 0` runs in-process, the same as no -n at all (gates.sh's serial pass says it so that an
+    # inherited PYTEST_ADDOPTS cannot put the serial tests on workers).
+    return (None if workers == "0" else workers), found.get("dist"), rest
+
+
+def _scheduling_option(args: list[str], i: int) -> tuple[str, str, int]:
+    """(`workers` or `dist` or "", its value, args used) for the option at `args[i]`."""
+    a = args[i]
+    if a in ("-n", "--numprocesses", "--dist") and i + 1 < len(args):
+        return ("dist" if a == "--dist" else "workers"), args[i + 1], 2
+    for prefix, key in (("--numprocesses=", "workers"), ("--dist=", "dist")):
+        if a.startswith(prefix):
+            return key, a[len(prefix) :], 1
+    if a.startswith("-n") and not a.startswith("--") and len(a) > 2:
+        return "workers", a[2:].lstrip("="), 1
+    return "", "", 1
+
+
+def _rest(args: list[str]) -> tuple[str, ...]:
+    """The args without -m, the scheduling options and the options that only name where reports
+    and temp files go (`--junitxml`, `--basetemp`); `--opt value` is joined as `--opt=value`."""
+    out: list[str] = []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a in ("--ignore", "--tb", "--durations") and i + 1 < len(args):
+            out.append(f"{a}={args[i + 1]}")
+            i += 2
+        elif a in ("-m", "--junitxml", "--basetemp") and i + 1 < len(args):
+            i += 2
+        elif a.startswith(("--junitxml=", "--basetemp=")) or (
+            a.startswith("-m") and not a.startswith("--")
+        ):
+            i += 1
+        else:
+            out.append(a)
+            i += 1
+    return tuple(out)
+
+
+def _pass(args: list[str]) -> Pass:
+    expr, _whole, _bad, paths, ignores = _read_args(args, None)
+    workers, dist, others = _scheduling(args)
+    return Pass(expr, paths, frozenset(ignores), workers, dist, _rest(others))
+
+
+def _norm(expr: str | None) -> str:
+    return " ".join((expr or "").split())
+
+
+def _suite_passes(tree: Tree) -> list[tuple[dict[str, Any], Pass]]:
+    """(step, pass) of each pytest command in the ci.yml `pytest` job."""
+    job = tree.workflows.get(SUITE_JOB[0], {}).get("jobs", {}).get(SUITE_JOB[1], {})
+    out = []
+    for step in job.get("steps", []):
+        for cmd in commands(step.get("run", "")):
+            args = _pytest_args(cmd)
+            if args is not None:
+                out.append((step, _pass(args)))
+    return out
+
+
+def _ci_pass_findings(
+    par_step: dict[str, Any], par: Pass, ser_step: dict[str, Any], ser: Pass
+) -> list[str]:
+    out = []
+    if "if" in par_step or str(ser_step.get("if", "")).strip() != SERIAL_STEP_IF:
+        out.append(f"M5 the serial pass needs `if: {SERIAL_STEP_IF}` and the parallel pass none")
+    shown = {f"{opt}={value}" for opt, value in par.ignores}
+    ci_ok = (
+        par.paths == ser.paths == ("tests",)
+        and par.ignores == ser.ignores
+        and par.rest == ser.rest
+        and all(a in ("tests", *shown) or a.startswith(_REPORT_PREFIXES) for a in par.rest)
+    )
+    if not ci_ok:
+        out.append("M5 the two CI passes differ in paths, ignores or other options, or select more")
+    if (par.workers, par.dist, ser.workers, ser.dist) != ("4", "loadfile", None, None):
+        out.append("M5 the parallel pass needs four workers and `--dist loadfile`; the serial none")
+    return out
+
+
+def _gates_pass_findings(tree: Tree, want: tuple[str, str], ci: tuple[Pass, Pass]) -> list[str]:
+    """Each CI pass against the argv gates.sh builds for the same expression."""
+    gate = {_norm(p.expr): p for p in map(_pass, map(list, tree.gates_argvs))}
+    if len(tree.gates_argvs) != 2 or set(gate) != set(want):
+        return ["M5 gates.sh did not build the two passes for a four-worker whole-suite run"]
+    out = []
+    for label, expr, mine in zip(("parallel", "serial"), want, ci, strict=True):
+        theirs = gate[expr]
+        if (mine.paths, mine.ignores, mine.workers, mine.dist) != (
+            theirs.paths,
+            theirs.ignores,
+            theirs.workers,
+            theirs.dist,
+        ):
+            out.append(
+                f"M5 the CI {label} pass differs from gates.sh in paths, ignores or scheduling"
+            )
+    return out
+
+
+def _agreement_findings(tree: Tree) -> list[str]:
+    """M5: the ci.yml `pytest` job runs the two-pass split scripts/dev/gates.sh builds.
+
+    A parallel pass (`not serial`, four workers, `--dist loadfile`) and a plain serial pass
+    (`serial`, no xdist, `if: !cancelled()`), both over the whole suite with the same ignore list
+    and options. gates.sh is read two ways: its marker expressions from the text (`gate_args`) and
+    the real argv of both passes (`Tree.gates_argvs`), so a drift in either copy of the split is
+    a finding. A tree without gates.sh or without the job has nothing to compare (the registry
+    rules report a missing job)."""
+    if not tree.gates or SUITE_JOB[1] not in tree.workflows.get(SUITE_JOB[0], {}).get("jobs", {}):
+        return []
+    try:
+        want = gate_args.pass_expressions(tree.gates)
+    except ValueError as e:
+        return [f"M5 {e}"]
+    passes = _suite_passes(tree)
+    if len(passes) != 2:
+        return [
+            f"M5 {SUITE_JOB[0]}:{SUITE_JOB[1]} must run exactly two pytest passes, parallel and serial"
+        ]
+    by_expr = {_norm(p.expr): (step, p) for step, p in passes}
+    if set(by_expr) != set(want):
+        return [f"M5 the two CI passes must select {want[0]!r} and {want[1]!r}, as gates.sh does"]
+    (par_step, par), (ser_step, ser) = by_expr[want[0]], by_expr[want[1]]
+    return _ci_pass_findings(par_step, par, ser_step, ser) + _gates_pass_findings(
+        tree, want, (par, ser)
+    )
+
+
 def findings(tree: Tree) -> list[str]:
     return (
         marker_findings(tree)
+        + _agreement_findings(tree)
         + path_findings(tree)
         + trigger_findings(tree)
         + registry_findings(tree)

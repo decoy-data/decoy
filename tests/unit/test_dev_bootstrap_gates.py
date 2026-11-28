@@ -6,7 +6,6 @@ than leave "same failures as baseline" as a claim."""
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -14,6 +13,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from tests.child_env import child_env
 
 REPO = Path(__file__).resolve().parents[2]
 DEV = REPO / "scripts" / "dev"
@@ -27,7 +27,9 @@ def _run(
     argv: list[str], cwd: Path, check: bool = False, **extra: str
 ) -> subprocess.CompletedProcess[str]:
     # Point the scripts at the interpreter running this test so nothing is installed.
-    env = {**os.environ, "DECOY_VENV": sys.prefix, **extra}
+    # One worker unless a test asks for more: an inherited GATES_WORKERS (a T3 run sets 4) would
+    # pass `-n 4` to the nested gates run, and the outer worker's xdist state must not leak in.
+    env = child_env() | {"DECOY_VENV": sys.prefix, "GATES_WORKERS": "1", **extra}
     env.pop("VIRTUAL_ENV", None)
     return subprocess.run(
         argv, cwd=cwd, env=env, capture_output=True, text=True, timeout=600, check=check

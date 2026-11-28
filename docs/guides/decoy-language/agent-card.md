@@ -225,8 +225,8 @@ pipeline {
   `regex` needs `integrity: true`.
 - `expect <check>(table.column, key: value)`: `leak_check`, `fk_intact`, `no_orphan_children`,
   `luhn`, `npi`, `iban`, `vin`, `regex_match`, `column_in_set`.
-- `quarantine("path", triggers: [...])`, `baseline("path", on_drift: warn)`, `delivery(strict)` or
-  `delivery(best_effort)`, `namespace <name> for table.column, ...`.
+- `quarantine("path", triggers: [...])`, `baseline("path", on_drift: warn)`, `delivery(strict)` (the engine
+  refuses `best_effort` with `delivery_best_effort_unreleased`), `namespace <name> for table.column, ...`.
 - `options { }` takes any top-level config block that has no statement of its own.
 
 ## Mistakes the compiler catches, and the fix

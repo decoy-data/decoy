@@ -42,3 +42,20 @@ ignore_imports =
     decoy.ci.runner -> decoy.cli.exit_codes
     decoy.ci.staged -> decoy.cli.exit_codes
     decoy.ui.output -> decoy.cli.exit_codes
+
+# Inside cli.io the leaf modules sit below `_layout`, `_placement` and `_pipelines`. A leaf that
+# imports one of them, even inside a function, is a cycle that import-linter's layers contract
+# cannot see (it only places the top-level children of `decoy`). `_pointer` is the case this was
+# added for: `_layout` imports it, so it takes `is_run_id` from `_run_id`, never from `_layout`.
+[importlinter:contract:io-leaves]
+name = cli.io leaf modules import nothing above them
+type = forbidden
+source_modules =
+    decoy.cli.io._pointer
+    decoy.cli.io._run_id
+    decoy.cli.io._small_file
+    decoy.cli.io._layout_errors
+forbidden_modules =
+    decoy.cli.io._layout
+    decoy.cli.io._placement
+    decoy.cli.io._pipelines

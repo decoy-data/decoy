@@ -257,6 +257,7 @@ def test_resource(monkeypatch) -> None:
     assert attrs == {"service.name": "decoy-cli", "service.version": "9.9"}
 
 
+@pytest.mark.serial  # a wall-clock bound: CPU load from other workers would slow the call
 def test_flush_black_hole_is_bounded(listeners) -> None:
     hole = listeners("black_hole")
     tel = build_provider(hole.url, {}, service_version="t")
