@@ -535,6 +535,13 @@ def test_a6_verify_reads_raw_where_display_differs(tmp_path: Path, name: str) ->
         "issues"
     ]
     assert issue.startswith(f"input fingerprint changed: {top} (table 'payroll')")
+    human = runner.invoke(app, ["report", "verify", str(ev)], env={"COLUMNS": "10000"})
+    assert human.exit_code == EXIT_FINDINGS
+    err = human.stderr if human.stderr_bytes is not None else human.output
+    first = err.splitlines()[0]
+    assert first == (
+        "error: integrity check failed: fingerprint mismatch, 1 fingerprint(s) changed in ev.json"
+    )
 
 
 @pytest.mark.serial
