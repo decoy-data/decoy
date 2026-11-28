@@ -200,11 +200,18 @@ def test_at42_the_writers_run_in_the_documented_order(tmp_path: Path, monkeypatc
             "result_file",
         }
     ]
-    assert order[:5] == ["attempt", "vault", "bind", "swap", "live_evidence"], order
-    assert order.index("cleanup") > order.index("live_evidence")
-    assert order.index("ledger") > order.index("swap")
-    tail = order[order.index("notify") :]
-    assert tail.index("document") < tail.index("result_file")
+    assert order == [
+        "attempt",
+        "vault",
+        "bind",
+        "swap",
+        "live_evidence",
+        "cleanup",
+        "ledger",
+        "notify",
+        "document",
+        "result_file",
+    ], order
     (folder,) = runs(root)
     assert not (folder / "r.json").exists()  # the result document is never a run member
     assert litter(root) == []
