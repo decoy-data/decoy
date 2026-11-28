@@ -10,15 +10,17 @@ fresh, and print no sentinel on stdout, stderr or in any file it wrote.
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
 from decoy.__main__ import app
-from decoy.cli.evidence import build_manifest, compute_manifest_hash
+from decoy.cli.evidence import ManifestError, build_manifest, compute_manifest_hash, read_manifest
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.library import open_library
 from tests.e2e.library._records import build
@@ -309,3 +311,226 @@ def test_library_show_payload(tmp_path: Path) -> None:
         f"could not open https://{_HOST}",
     ]
     assert doc["record"]["payload"]["pipeline_path"] == f"https://{_HOST}"
+
+
+# --- A3: two different manifests through every reader (plan rows 25, 26, 38 to 40, 53 to 62) ---
+
+_CARRIER = f"https://svc:{_sentinel('carrier')}@h.example/x"
+_SHOWN = "https://h.example"
+
+
+def ab_manifests(tmp_path: Path) -> tuple[Path, Path]:
+    """Legacy manifests A and B from real CSV files: B changes the carrier table's file and
+    count, adds a table and records one `probe` warning whose column is the carrier."""
+    paths = []
+    for side, rows, extra in (("a", 3, False), ("b", 4, True)):
+        d = tmp_path / side
+        d.mkdir(parents=True)
+        tables = [_CARRIER, *(["extra"] if extra else [])]
+        config: dict[str, Any] = {"sources": {}, "targets": {}}
+        for i, name in enumerate(tables):
+            (d / f"in{i}.csv").write_text("id\n1\n", encoding="utf-8")
+            (d / f"out{i}.csv").write_text(f"id\n{rows}\n", encoding="utf-8")
+            config["sources"][name] = {"type": "file", "path": str(d / f"in{i}.csv")}
+            config["targets"][name] = {
+                "type": "file", "format": "csv", "path": str(d / f"out{i}.csv")
+            }  # fmt: skip
+        pipeline = d / "p.yaml"
+        pipeline.write_text("version: 2\n", encoding="utf-8")
+        probe = SimpleNamespace(code="probe", provider=None, column=_CARRIER, detail={})
+        manifest = build_manifest(
+            pipeline_path=pipeline, config_dict=config,
+            run_result={"row_counts": dict.fromkeys(tables, rows)}, cli_version="0.1.0",
+            engine_version="0.22.0", engine_warnings=[probe] if extra else None,
+        )  # fmt: skip
+        paths.append(d / "evidence.json")
+        paths[-1].write_text(json.dumps(manifest), encoding="utf-8")
+    return paths[0], paths[1]
+
+
+def test_a3_two_manifests_reach_no_output_and_show_the_safe_table(tmp_path: Path) -> None:
+    a, b = ab_manifests(tmp_path)
+    routes = [
+        (["report", "diff", str(a), str(b), *args[4:]], code, w)
+        if args[1] == "diff"
+        else (args, code, w)
+        for args, code, w in _reader_routes(b, tmp_path, 0)
+    ]
+    texts = [_run(args, code, tmp_path, w) for args, code, w in routes]
+    card, shown = texts[0], json.loads(texts[1])["manifest"]
+    assert shown["row_counts"] == {_SHOWN: 4, "extra": 4}
+    assert (
+        set(shown["input_fingerprints"]) == set(shown["output_fingerprints"]) == {_SHOWN, "extra"}
+    )
+    assert shown["warnings"][0]["column"] == _SHOWN
+    assert re.search(r"Warnings\W+1\b", card)
+    assert re.search(re.escape(_SHOWN) + r"\W+4\b", card)
+    for doc in (tmp_path / "r.html", tmp_path / "r.md"):
+        assert _SHOWN in doc.read_text(encoding="utf-8")
+    diff = json.loads(texts[7])
+    assert {"table": _SHOWN, "old": 3, "new": 4, "delta": 1} in diff["row_count_deltas"]
+    assert re.search(re.escape(_SHOWN) + r"\W+3\W+4\W+\+1", texts[6])
+    assert json.loads(texts[9])["issues"] == []
+    assert "All fingerprints match" in texts[8]
+    assert _run(["report", "verify", str(a)], 0, tmp_path)
+
+
+def _refusal(tmp_path: Path, ev: Path, message: str, project: Path | None = None) -> None:
+    for sub in ("show", "verify"):
+        # `report show` has no --project; it finds the marker above the file, as verify does.
+        extra = ["--project", str(project)] if project and sub == "verify" else []
+        human = _run(["report", sub, str(ev), *extra], EXIT_USAGE, tmp_path)
+        assert message in human
+        doc = json.loads(_run(["report", sub, str(ev), "--json", *extra], EXIT_USAGE, tmp_path))
+        assert doc["error"].startswith(message)
+
+
+@pytest.mark.parametrize(
+    ("group", "key", "value", "message"),
+    [
+        (
+            "output_fingerprints",
+            f"https://svc:{_sentinel('r26')}@h.example/x",
+            "not an object",
+            f"evidence manifest is malformed: `output_fingerprints.{_SHOWN}` must be an object.",
+        ),
+        (
+            "row_counts",
+            f"//svc:{_sentinel('r38')}@h.example/t",
+            "many",
+            "evidence manifest is malformed: `row_counts.//h.example` must be an integer.",
+        ),
+    ],
+    ids=["row26", "row38"],
+)
+def test_rows_26_38_malformed_names_the_displayed_table(
+    tmp_path: Path, group: str, key: str, value: Any, message: str
+) -> None:
+    ev = _legacy_manifest(tmp_path)
+    manifest = json.loads(ev.read_text(encoding="utf-8"))
+    manifest[group][key] = value
+    ev.write_text(json.dumps(manifest), encoding="utf-8")
+    _refusal(tmp_path, ev, message)
+
+
+def test_row_40_unparsable_file_at_a_url_shaped_path(tmp_path: Path) -> None:
+    bad = tmp_path / "https:" / "h" / "hook" / _sentinel("r40")
+    bad.parent.mkdir(parents=True)
+    bad.write_text("{not json", encoding="utf-8")
+    _refusal(tmp_path, bad, "could not parse (remote location) as JSON: ")
+
+
+def test_rows_25_39_verify_names_safe_table_and_digest(tmp_path: Path) -> None:
+    a, _ = ab_manifests(tmp_path)
+    manifest = json.loads(a.read_text(encoding="utf-8"))
+    entry = manifest["input_fingerprints"][_CARRIER]
+    entry["fingerprint"] = f"https://bob:{_sentinel('r39')}@db/x"
+    manifest["manifest_hash"] = compute_manifest_hash(manifest)
+    a.write_text(json.dumps(manifest), encoding="utf-8")
+    doc = json.loads(_run(["report", "verify", str(a), "--json"], EXIT_FINDINGS, tmp_path))
+    [issue] = doc["issues"]
+    assert f"(table '{_SHOWN}')" in issue
+    assert "(recorded (not a digest), current sha256:" in issue
+    assert f"(table '{_SHOWN}')" in _run(["report", "verify", str(a)], EXIT_FINDINGS, tmp_path)
+
+
+def _bound(ev: Path, pipeline: Path, written_at: str, pipeline_path: str) -> None:
+    """A project-bound manifest at `ev` with a valid pipeline fingerprint."""
+    from decoy.cli.evidence import hash_file
+
+    manifest: dict[str, Any] = {
+        "schema_version": "cli-local-1", "producer": "decoy-cli", "path_base": "project",
+        "project_manifest": written_at, "run_id": "r1", "run_timestamp": "2026-01-01T00:00:00Z",
+        "cli_version": "0", "engine_version": "0", "pipeline_path": pipeline_path,
+        "pipeline_fingerprint": hash_file(pipeline), "input_fingerprints": {},
+        "output_fingerprints": {}, "row_counts": {}, "key_label": None, "warnings": [],
+        "timings": [], "strategies": [], "manifest_hash": "",
+    }  # fmt: skip
+    manifest["manifest_hash"] = compute_manifest_hash(manifest)
+    ev.parent.mkdir(parents=True, exist_ok=True)
+    ev.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+@pytest.mark.parametrize("row", ["53", "54", "62"])
+def test_rows_53_54_62_project_refusals_name_no_carrier(tmp_path: Path, row: str) -> None:
+    (tmp_path / ".git").mkdir()  # the project walk stops here
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    pipeline = proj / "p.yaml"
+    pipeline.write_text("version: 2\n", encoding="utf-8")
+    marker = _sentinel("marker")
+    carrier = proj / "https:" / "h" / "hook" / marker
+    project = None
+    if row == "53":
+        ev, kind, start = carrier, "project_not_found", "(remote location) records paths relative"
+        _bound(ev, pipeline, "e.json", "p.yaml")
+    elif row == "54":
+        (proj / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
+        ev, kind, start = carrier, "project_mismatch", "(remote location) is not where its run"
+        _bound(ev, pipeline, "ev/other.json", "p.yaml")
+        project = proj
+    else:
+        (proj / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
+        ev, kind, start = proj / "ev" / "e.json", "path_outside_project", "evidence manifest is"
+        _bound(ev, pipeline, "ev/e.json", f"../https:/h/hook/{marker}")
+    with pytest.raises(ManifestError) as caught:
+        read_manifest(ev, project)
+    assert caught.value.kind == kind
+    assert caught.value.message.startswith(start)
+    assert str(caught.value) == caught.value.message
+    assert marker not in caught.value.message
+    if row == "62":
+        assert "`pipeline_path`" in caught.value.message
+    _refusal(tmp_path, ev, start, project)
+
+
+def test_verify_refuses_a_missing_project_under_a_carrier_path(tmp_path: Path) -> None:
+    ev = _written_manifest(tmp_path, True)
+    missing = tmp_path / "https:" / f"svc:{_sentinel('proj')}@h.example" / "nothere"
+    for mode in ([], ["--json"]):
+        _run(["report", "verify", str(ev), "--project", str(missing), *mode], EXIT_USAGE, tmp_path)
+
+
+# --- A6: verify keeps reading the raw path ---
+
+
+@pytest.mark.parametrize("name", ["payroll#2026.csv", "payroll?2026.csv"])
+def test_a6_verify_reads_raw_where_display_differs(tmp_path: Path, name: str) -> None:
+    share = tmp_path / "share"
+    share.mkdir()
+    payroll = share / name
+    payroll.write_text("id\n1\n", encoding="utf-8")
+    pipeline = tmp_path / "pipeline.yaml"
+    pipeline.write_text("version: 2\n", encoding="utf-8")
+    manifest = build_manifest(
+        pipeline_path=pipeline,
+        config_dict={"sources": {"payroll": {"type": "file", "path": "/" + str(payroll)}}},
+        run_result={"row_counts": {}},
+        cli_version="0",
+        engine_version="0",
+    )
+    assert manifest["input_fingerprints"]["payroll"]["fingerprint"] is not None
+    ev = tmp_path / "ev.json"
+    ev.write_text(json.dumps(manifest), encoding="utf-8")
+    top = "//" + str(tmp_path).split("/")[1]
+    shown = json.loads(_run(["report", "show", str(ev), "--json"], 0, tmp_path))["manifest"]
+    assert shown["input_fingerprints"]["payroll"]["path"] == top
+    assert _run(["report", "verify", str(ev)], 0, tmp_path)
+    payroll.write_text("id\n2\n", encoding="utf-8")
+    [issue] = json.loads(_run(["report", "verify", str(ev), "--json"], EXIT_FINDINGS, tmp_path))[
+        "issues"
+    ]
+    assert issue.startswith(f"input fingerprint changed: {top} (table 'payroll')")
+
+
+def test_a6_legacy_row_4_entry_still_resolves_and_reports_missing(tmp_path: Path) -> None:
+    ev = _legacy_manifest(tmp_path)
+    manifest = json.loads(ev.read_text(encoding="utf-8"))
+    row4 = f"/project/https:/user:{_sentinel('row4')}@host/in.csv"
+    manifest["input_fingerprints"] = {
+        "s": {"path": row4, "fingerprint": _FP, "fingerprint_method": "full", "size_bytes": 1}
+    }
+    manifest["manifest_hash"] = compute_manifest_hash(manifest)
+    ev.write_text(json.dumps(manifest), encoding="utf-8")
+    doc = json.loads(_run(["report", "verify", str(ev), "--json"], EXIT_FINDINGS, tmp_path))
+    assert "input missing: (remote location) (table 's') not found" in doc["issues"]

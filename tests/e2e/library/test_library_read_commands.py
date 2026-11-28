@@ -66,9 +66,14 @@ def _evidence(tmp_path: Path, day: int, rows: int) -> Any:
     return _build("evidence", manifest, day)
 
 
+_MARKER = "SENTINEL-marker-pw"
+
+
 def _opaque(root: Path, day: int = 20) -> str:
-    raw = json.loads(records.encode(_sample(9, day)))
+    raw = json.loads(records.encode(_sample(9, day, pipeline="pipelines/demo.yaml")))
     raw["kind"], raw["payload_schema"] = "future-thing", "future-thing/v1"
+    raw["payload"]["future_field"] = f"https://u:{_MARKER}@h/x"  # unreadable: never shown
+    raw["payload_digest"] = records.payload_digest(raw["payload"])
     raw["id"] = records.record_id(raw)
     target = object_path(root, raw["id"])
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -175,8 +180,12 @@ def test_show_an_opaque_or_newer_record_prints_the_envelope_only(root: Path) -> 
     result = _cli(root, "show", future)
     assert result.exit_code == EXIT_OK, result.output
     assert "future-thing" in result.output and "cannot be read by this version" in result.output
-    doc = json.loads(_cli(root, "show", future, "--json").stdout)
+    assert "pipelines/demo.yaml" in result.output and _MARKER not in result.output
+    shown = _cli(root, "show", future, "--json")
+    assert shown.exit_code == EXIT_OK and _MARKER not in shown.stdout
+    doc = json.loads(shown.stdout)
     assert doc["status"] == "opaque" and "payload" not in doc["record"]
+    assert doc["record"]["labels"]["pipeline"] == "pipelines/demo.yaml"
     raw = json.loads(records.encode(_sample(3, 14)))
     raw["payload_schema"] = "sample-run/v9"
     raw["id"] = records.record_id(raw)
@@ -334,3 +343,87 @@ def test_a_root_that_cannot_be_resolved_is_a_coded_runtime_error(
     assert result.exit_code == EXIT_RUNTIME, result.output
     assert "library_path_unsafe" in result.output
     assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+# -- One display boundary (plan 2026-11-28-d6-manifest-display-boundary, rows 43, 55, 61, 64) --
+
+
+def test_show_evidence_uses_the_location_rule_for_path_fields(root: Path, tmp_path: Path) -> None:
+    env = _evidence(tmp_path, 11, 3)
+    payload = json.loads(records.encode(env))["payload"]
+    row4 = "/project/https:/user:SENTINEL-row43-pw@host/in.csv"
+    payload["input_fingerprints"]["t"] = {
+        "path": row4, "fingerprint": None, "fingerprint_method": None, "size_bytes": None
+    }  # fmt: skip
+    payload["manifest_hash"] = evidence_module.compute_manifest_hash(payload)
+    rid = _put(root, _build("evidence", payload, 12))[0]
+    result = _cli(root, "show", rid, "--json")
+    assert result.exit_code == EXIT_OK, result.output
+    doc = json.loads(result.stdout)
+    assert doc["status"] == "known"
+    assert doc["record"]["payload"]["input_fingerprints"]["t"]["path"] == "(remote location)"
+    human = _cli(root, "show", rid)
+    assert "(remote location)" in human.output and "SENTINEL" not in human.output
+
+
+def test_show_and_diff_two_evidence_records_show_the_safe_table(root: Path, tmp_path: Path) -> None:
+    from tests.e2e.cli_fmt.test_credential_guard import _SHOWN, ab_manifests
+
+    pair = ab_manifests(tmp_path / "ab")
+    envs = [_build("evidence", json.loads(p.read_text()), 11 + i) for i, p in enumerate(pair)]
+    a, b = _put(root, *envs)
+    for rid in (a, b):
+        assert json.loads(_cli(root, "show", rid, "--json").stdout)["status"] == "known"
+    for args in (["show", b, "--json"], ["show", b], ["diff", a, b, "--json"], ["diff", a, b]):
+        result = _cli(root, *args)
+        assert result.exit_code == EXIT_OK, result.output
+        assert "SENTINEL" not in result.output and "svc:" not in result.output
+        assert _SHOWN in result.output
+    payload = json.loads(_cli(root, "show", b, "--json").stdout)["record"]["payload"]
+    assert payload["row_counts"] == {_SHOWN: 4, "extra": 4}
+    assert payload["warnings"][0]["column"] == _SHOWN
+    found = _diff(root, a, b)["diff"]
+    assert found["warnings_added"] == ["probe"]
+    assert {"table": _SHOWN, "old": 3, "new": 4, "delta": 1} in found["row_count_deltas"]
+
+
+def _future_sample(n: int, day: int, metadata: dict) -> Any:
+    """A sample-run envelope with an additive payload field, stored by its recomputed id."""
+    raw = json.loads(records.encode(_sample(n, day)))
+    raw["payload"]["future_metadata"] = metadata
+    raw["payload_digest"] = records.payload_digest(raw["payload"])
+    raw["id"] = records.record_id(raw)
+    return raw
+
+
+def _store(root: Path, *raws: dict) -> list[str]:
+    open_library(root)
+    for raw in raws:
+        target = object_path(root, raw["id"])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(records.canonical_bytes(raw))
+    return [str(raw["id"]) for raw in raws]
+
+
+def test_structural_diff_displays_each_raw_key_before_escaping(root: Path) -> None:
+    carrier = "https://u:SENTINEL-r55-pw@h/x"
+    old = _future_sample(1, 11, {carrier: "v1", "a~/b": "s1"})
+    new = _future_sample(1, 12, {carrier: "v2", "a~/b": "s2"})
+    a, b = _store(root, old, new)
+    for rid in (a, b):
+        assert json.loads(_cli(root, "show", rid, "--json").stdout)["status"] == "known"
+    found = _diff(root, a, b)["diff"]
+    changed = found["changed"]
+    assert changed.count("/payload/future_metadata/https:~1~1h") == 1
+    assert "/payload/future_metadata/a~0~1b" in changed
+    human = _cli(root, "diff", a, b)
+    assert human.exit_code == EXIT_OK and "SENTINEL" not in human.output
+    assert "/payload/future_metadata/https:~1~1h" in human.output
+
+
+def test_structural_diff_keeps_raw_keys_that_display_alike_apart(root: Path) -> None:
+    old = _future_sample(2, 11, {"https://a:1@h/x": "v1", "https://b:2@h/y": "w1"})
+    new = _future_sample(2, 12, {"https://a:1@h/x": "v2", "https://b:2@h/y": "w2"})
+    a, b = _store(root, old, new)
+    changed = _diff(root, a, b)["diff"]["changed"]
+    assert changed.count("/payload/future_metadata/https:~1~1h") == 2
