@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from decoy.ui.card import render_card
+from decoy.ui.output import OutputState
 from decoy.ui.table import make_table
 from decoy.ui.theme import warn
 
 
 def render_manifest_card(
-    state: Any,
+    state: OutputState,
     manifest: dict[str, Any],
     shown: dict[str, Any],
     evidence_file: Path,
