@@ -143,7 +143,16 @@ def test_blocked_run_writes_the_report_in_the_run_folder_it_never_published_to(
         result = runner.invoke(app, ["run", str(cfg), "--json"])
 
     assert result.exit_code == 4, result.output
-    (report,) = (tmp_path / "out").rglob("masked/pipeline.post-scan.json")
+    from decoy.cli.io._pointer import pointer_supported
+
+    if pointer_supported():
+        # Plan AT-59: a pre-bind abort on a project run leaves only
+        # `out/<name>/<run-id>.post-scan.json`, never a file in the run folder.
+        (report,) = (tmp_path / "out").rglob("*.post-scan.json")
+        assert report.parent.name != "masked" and report.name.endswith(".post-scan.json")
+        assert report.parent.parent.name == "out"
+    else:
+        (report,) = (tmp_path / "out").rglob("masked/pipeline.post-scan.json")
     assert json.loads(result.stdout)["post_scan"]["report"] == str(report.resolve())
     assert list((tmp_path / "out").rglob("*.csv")) == []
 
