@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from decoy.safe_url import redacted_location, safe_url_parts
+from decoy.safe_url import display_safe, redacted_location, safe_url_parts
 
 _PW = "SENTINEL-pw-1a2b"
 _TOK = "SENTINEL-tok-3c4d"
@@ -42,6 +42,10 @@ def test_unreadable_url_gives_none(url: str) -> None:
         ("data/out.csv", "data/out.csv"),
         ("data/payroll@2026?#.csv", "data/payroll@2026?#.csv"),
         ("//files/share/payroll@2026.csv", "//files/share/payroll@2026.csv"),
+        ("//files/share/payroll?2026.csv", "//files/share/payroll?2026.csv"),
+        ("//files/share/payroll#2026.csv", "//files/share/payroll#2026.csv"),
+        (f"//share/https://u:{_PW}@host/f", "(remote location)"),
+        (f"//host?access_token={_TOK}", "//host"),
         ("///data/report?#.csv", "///data/report?#.csv"),
         (f"https://u:{_PW}@files.example.com/o.csv?t={_TOK}", "https://files.example.com"),
         (f"sftp://u:{_PW}@[::1]:22/o.csv", "sftp://[::1]:22"),
@@ -58,3 +62,18 @@ def test_unreadable_url_gives_none(url: str) -> None:
 )
 def test_redacted_location(raw: str, shown: str) -> None:
     assert redacted_location(raw) == shown
+
+
+def test_display_safe_redacts_multiple_locations_inside_text() -> None:
+    text = f"could not open //u:{_PW}@files.example/share or https://h/path?token={_TOK} today"
+    assert display_safe(text) == "could not open //files.example or https://h today"
+
+
+def test_plain_share_before_credentialed_share() -> None:
+    assert display_safe(f"paths: //plain/share,//u:{_PW}@host/f") == "paths: //plain/share,//host"
+
+
+@pytest.mark.parametrize("prefix", ["", "could not open "])
+@pytest.mark.parametrize("scheme", ["", "https:"])
+def test_pasted_url_with_space_in_password(prefix: str, scheme: str) -> None:
+    assert display_safe(f"{prefix}{scheme}//user:pass word@host/path") == f"{prefix}{scheme}//host"

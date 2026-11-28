@@ -11,6 +11,7 @@ from decoy.cli._sources import (
     read_file,
 )
 from decoy.cli.evidence import (
+    manifest_file_available,
     resolve_manifest_path,
 )
 from decoy.cli.io import TargetFormatError, entry_format
@@ -258,12 +259,9 @@ def compare_data(
             if entry.get("fingerprint") is not None:
                 field = f"output_fingerprints.{table}.path"
                 path = resolve_manifest_path(manifest, raw, manifest_file=where, field=field)
-            try:
-                if path is not None and path.exists():
-                    found.append(path)
-                    continue
-            except (OSError, ValueError):
-                pass
+            if path is not None and manifest_file_available(path):
+                found.append(path)
+                continue
             _skip((raw,))
 
         if len(found) != len(sides):

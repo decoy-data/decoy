@@ -12,9 +12,10 @@ error carrying the text.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import overload
 from urllib.parse import urlsplit
 
 _UNKNOWN_LOCATION = "(remote location)"
@@ -53,46 +54,76 @@ def safe_url_parts(url: str) -> SafeUrl | None:
 def redacted_location(raw: str) -> str:
     """A recorded path or argument as it may be printed or stored.
 
-    A plain path is returned as it is. A remote reference keeps its scheme, host and port only:
-    the user, password, path, query and fragment are dropped (a query can hold a token). A
-    remote reference is a URL (it holds `://`) or a network-path reference (`//host/...`) that
-    has userinfo in its authority, a query or a fragment. A plain `//name/...` path with none of those, such as
-    `//build[1]/share`, is returned unchanged. A reference that cannot be read gives a fixed
-    text, never its characters.
+    A URL keeps its scheme and authority only. A double-slash filesystem path
+    can contain literal punctuation in its filename. Userinfo, an explicit port,
+    or a query assignment identifies a remote reference.
     """
-    if raw.startswith("//"):
-        return _redacted_network_path(raw)
-    if "://" not in raw:
-        return raw
+    return remote_location(raw) or raw
+
+
+def remote_location(raw: str, local_file: Callable[[Path], bool] | None = None) -> str | None:
+    """Return the safe remote location, or None for a file path.
+
+    A writer can identify an existing file whose name resembles a query.
+    A display reader has only the text and hides ambiguous query values.
+    """
+    if "://" in raw:
+        parts = safe_url_parts(raw)
+        if parts is None or not parts.scheme:
+            return _UNKNOWN_LOCATION
+        return f"{parts.scheme}://{parts.netloc}"
+    if not raw.startswith("//"):
+        return None
+    authority, _, path = raw[2:].partition("/")
+    if not authority:
+        return None
+    if not any(char in authority for char in "@?#"):
+        if not (_QUERY.search(path) or (":" in authority and "#" in path)):
+            return None
+        if local_file is not None and local_file(Path(raw)):
+            return None
     parts = safe_url_parts(raw)
-    if parts is None or not parts.scheme:
-        return _UNKNOWN_LOCATION
-    return f"{parts.scheme}://{parts.netloc}"
-
-
-def _redacted_network_path(raw: str) -> str:
-    """`//host[:port]` for a `//host/...` reference with `@`, `?` or `#`; other `//...` unchanged.
-
-    Plain is decided first, on the text, so a POSIX name such as `//build[1]/share` is never
-    rejected by URL host parsing.
-    """
-    authority = re.split(r"[/#?]", raw[2:], maxsplit=1)[0]
-    if not authority or ("@" not in authority and "?" not in raw and "#" not in raw):
-        return raw
-    parts = safe_url_parts(f"x:{raw}")
     return _UNKNOWN_LOCATION if parts is None else f"//{parts.netloc}"
 
 
-def display_safe(value: Any) -> Any:
-    """A copy of `value` with `redacted_location` applied to every string in it, keys included.
+_QUERY = re.compile(r"\?[^/#?\s=]+=")
+_LOCATION_START = re.compile(r"(?:(?<![A-Za-z0-9+.\-])[A-Za-z][A-Za-z0-9+.\-]*:|:)?//")
+# Keep pasted userinfo together even when its password contains an unescaped space.
+_LOCATION_BODY = re.compile(r"(?:[^/@?#\r\n]*@)?\S*")
 
-    The one display boundary: a manifest copy or a payload that a person will read or share goes
-    through here whole, so a field added later is covered without a list of field names.
-    """
+
+def _display_text(text: str) -> str:
+    if "//" not in text:
+        return text
+    pieces: list[str] = []
+    end = 0
+    for start in _LOCATION_START.finditer(text):
+        if start.start() < end:
+            continue
+        body = _LOCATION_BODY.match(text, start.end())
+        assert body is not None  # the body pattern also matches the empty string
+        shown = remote_location(text[start.start() : body.end()])
+        if shown is not None:
+            pieces.extend((text[end : start.start()], shown))
+            end = body.end()
+    pieces.append(text[end:])
+    return "".join(pieces)
+
+
+@overload
+def display_safe(value: dict[str, object]) -> dict[str, object]: ...
+
+
+@overload
+def display_safe(value: object) -> object: ...
+
+
+def display_safe(value: object) -> object:
+    """Redact location spans in every string in a display copy, including keys."""
     if isinstance(value, str):
-        return redacted_location(value)
+        return _display_text(value)
     if isinstance(value, dict):
-        return {display_safe(k): display_safe(v) for k, v in value.items()}
+        return {_display_text(k): display_safe(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
         return [display_safe(v) for v in value]
     return value

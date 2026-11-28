@@ -45,6 +45,7 @@ def _sources() -> dict[str, str]:
         "file_url": f"https://svc:{_sentinel('file_url')}@{_HOST}/f.csv?token={_sentinel('file_url_q')}",
         "s3": f"s3://svc:{_sentinel('s3')}@bucket/key.csv",
         "net_user": f"//svc:{_sentinel('net_user')}@{_HOST}/share/f.csv",
+        "nested_url": f"//share/https://svc:{_sentinel('nested')}@{_HOST}/f",
         "net_query": f"//{_HOST}/f.csv?access_token={_sentinel('net_query')}",
     }
 
@@ -101,13 +102,13 @@ def _legacy_manifest(tmp_path: Path) -> Path:
     return out
 
 
-def _written_manifest(tmp_path: Path, project: bool) -> Path:
+def _written_manifest(tmp_path: Path, project: bool, filename: str = "payroll@2026.csv") -> Path:
     """`build_manifest` over every source kind, the file kind given as a URL too."""
     pipeline = tmp_path / "pipeline.yaml"
     pipeline.write_text("version: 2\n", encoding="utf-8")
     if project:
         (tmp_path / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
-    payroll = tmp_path / "payroll@2026.csv"
+    payroll = tmp_path / filename
     payroll.write_text("id\n1\n", encoding="utf-8")
     config = {
         "sources": {
@@ -192,14 +193,20 @@ def test_legacy_manifest_fields_reach_no_output(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("project", [False, True], ids=["no_project", "marked_project"])
-def test_written_manifest_holds_and_shows_no_credential(tmp_path: Path, project: bool) -> None:
-    ev = _written_manifest(tmp_path, project)
+@pytest.mark.parametrize(
+    "filename",
+    ["payroll@2026.csv", "payroll#2026.csv", "payroll?2026.csv", "payroll?year=2026.csv"],
+)
+def test_written_manifest_holds_and_shows_no_credential(
+    tmp_path: Path, project: bool, filename: str
+) -> None:
+    ev = _written_manifest(tmp_path, project, filename)
     written = ev.read_text(encoding="utf-8")
     _assert_clean(written, "the written evidence file")
     assert json.loads(written)["input_fingerprints"]["payroll"]["fingerprint"] is not None
     for args, code, wrote in _reader_routes(ev, tmp_path, 0):
         _run(args, code, tmp_path, wrote, tmp_path if project else None)
-    (tmp_path / "payroll@2026.csv").write_text("id\n2\n", encoding="utf-8")
+    (tmp_path / filename).write_text("id\n2\n", encoding="utf-8")
     drift = _run(["report", "verify", str(ev), "--json"], EXIT_FINDINGS, tmp_path)
     assert "payroll" in str(json.loads(drift)["issues"])
 
@@ -264,7 +271,8 @@ def test_diff_warnings_and_unreadable_output(tmp_path: Path) -> None:
     paths = []
     for side in ("old", "new"):
         url = f"https://svc:{_sentinel(side)}@{_HOST}/warning"
-        manifest["warnings"] = [url, {"code": "changed", "column": url}]
+        warning = f"could not open //svc:{_sentinel(side)}@{_HOST}/share"
+        manifest["warnings"] = [warning, {"code": "changed", "column": f"could not open {url}"}]
         manifest["manifest_hash"] = compute_manifest_hash(manifest)
         path = tmp_path / f"{side}.json"
         path.write_text(json.dumps(manifest), encoding="utf-8")
@@ -275,12 +283,16 @@ def test_diff_warnings_and_unreadable_output(tmp_path: Path) -> None:
     doc = json.loads(_run([*args, "--json"], 0, tmp_path))
     assert doc["data_level"] == "skipped" and "//long.example" in doc["missing_files"]
     for field in ("warnings_added", "warnings_removed"):
-        assert doc[field] == [f"https://{_HOST}", {"code": "changed", "column": f"https://{_HOST}"}]
+        assert doc[field] == [
+            f"could not open //{_HOST}",
+            {"code": "changed", "column": f"could not open https://{_HOST}"},
+        ]
 
 
 def test_library_show_payload(tmp_path: Path) -> None:
     ev = _written_manifest(tmp_path, False)
     manifest = json.loads(ev.read_text())
+    manifest["warnings"] = [f"could not open {_sources()[key]}" for key in ("net_user", "file_url")]
     manifest["pipeline_path"] = _sources()["file_url"]
     manifest["manifest_hash"] = compute_manifest_hash(manifest)
     root = tmp_path / "library"
@@ -288,4 +300,8 @@ def test_library_show_payload(tmp_path: Path) -> None:
     args = ["library", "show", record.id, "--library", str(root)]
     assert f"https://{_HOST}" in _run(args, 0, tmp_path)
     doc = json.loads(_run([*args, "--json"], 0, tmp_path))
+    assert doc["record"]["payload"]["warnings"] == [
+        f"could not open //{_HOST}",
+        f"could not open https://{_HOST}",
+    ]
     assert doc["record"]["payload"]["pipeline_path"] == f"https://{_HOST}"

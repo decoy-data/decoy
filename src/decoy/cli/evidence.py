@@ -80,7 +80,7 @@ from decoy.cli.io import (
     resolve_target_format,
     resolved_source_config,
 )
-from decoy.safe_url import display_path, display_safe, redacted_location
+from decoy.safe_url import display_path, display_safe, redacted_location, remote_location
 
 _SCHEMA_VERSION = "cli-local-1"
 PATH_BASE_PROJECT = "project"
@@ -196,14 +196,6 @@ def _format_keys(table: str, tgt: dict[str, Any]) -> dict[str, Any]:
     return keys
 
 
-def _remote_location(raw: str) -> str | None:
-    """The safe text for a declared path that is a location, not a file: a URL, or a network-path
-    reference holding a user or password. None for a plain path. Every recorded path is
-    classified here before any path resolution, so no credential reaches the evidence file."""
-    shown = redacted_location(raw)
-    return None if shown == raw else shown
-
-
 def _placed(place_target: Callable[[str], Path] | None, raw: str, base: Path) -> Path | None:
     """Where the run put `raw`; None when the layout refuses it (nothing was written there)."""
     if place_target is None:
@@ -301,10 +293,12 @@ def build_manifest(
         declared_path = str(declared["path"])
         # Classified from the declared text, before any resolution: `resolve()` folds
         # `https://u:p@h/x` into `.../https:/u:p@h/x`, which no redactor can read as a URL.
-        remote = _remote_location(declared_path)
-        if remote is not None or "://" in declared_path:
+        remote = remote_location(
+            declared_path, manifest_file_available if declared.get("type") == "file" else None
+        )
+        if remote is not None:
             input_fingerprints[table_name] = {
-                "path": remote if remote is not None else redacted_location(declared_path),
+                "path": remote,
                 **_fingerprint(None),
             }
             continue
@@ -327,7 +321,9 @@ def build_manifest(
         tgt_path_str = tgt.get("path")
         if not tgt_path_str:
             continue
-        remote = _remote_location(str(tgt_path_str))
+        remote = remote_location(
+            str(tgt_path_str), manifest_file_available if tgt.get("type") == "file" else None
+        )
         tgt_path = (
             None if remote is not None else _placed(place_target, str(tgt_path_str), yaml_dir)
         )
@@ -566,18 +562,9 @@ def _same_file(a: Path, b: Path | None) -> bool:
         return False
 
 
-def _manifest_root(
-    manifest: dict[str, Any], manifest_file: Path | None, project: Path | None
+def _find_manifest_project(
+    project: Path | None, manifest_file: Path | None, written_at: str | None
 ) -> Path | None:
-    """The folder `path_base: "project"` paths are read from; None for the old rule.
-
-    The root is the typed `--project`, else the marker above the manifest file. Either way the
-    manifest file must sit where the run wrote it in that project (`project_manifest`).
-    """
-    if manifest.get("path_base") != PATH_BASE_PROJECT:
-        return None
-    where = "the manifest" if manifest_file is None else manifest_file.name
-    written_at = manifest["project_manifest"]
     failure: LayoutError | None = None
     root: Path | None = None
     try:
@@ -595,6 +582,22 @@ def _manifest_root(
                 failure.code, f"{failure.code}: cannot use --project {display_path(project)}"
             )
         raise ManifestError(failure.code, failure.message)
+    return root
+
+
+def _manifest_root(
+    manifest: dict[str, Any], manifest_file: Path | None, project: Path | None
+) -> Path | None:
+    """The folder `path_base: "project"` paths are read from; None for the old rule.
+
+    The root is the typed `--project`, else the marker above the manifest file. Either way the
+    manifest file must sit where the run wrote it in that project (`project_manifest`).
+    """
+    if manifest.get("path_base") != PATH_BASE_PROJECT:
+        return None
+    where = "the manifest" if manifest_file is None else manifest_file.name
+    written_at = manifest["project_manifest"]
+    root = _find_manifest_project(project, manifest_file, written_at)
     if root is None:
         why = (
             "was written outside its Decoy project"
@@ -654,12 +657,12 @@ def resolve_manifest_path(
     return path
 
 
-def _readable_file(path: Path, regular_only: bool) -> bool:
+def manifest_file_available(path: Path, regular_only: bool = False) -> bool:
     """Whether `path` names a file to hash. An OS error from the check (a name too long for the
     filesystem, a loop) means there is no such file, so it is a finding and not a crash."""
     try:
-        return path.exists() and (path.is_file() or not regular_only)
-    except OSError:
+        return path.is_file() if regular_only else path.exists()
+    except (OSError, ValueError):
         return False
 
 
@@ -715,7 +718,7 @@ def verify_manifest_issues(
     # Kinds stay literal in each call: `decoy ci` allowlists them by reading this module.
     for at, label, text, recorded, path in checks:
         what = ("pipeline", "input", "output")[at]
-        if not _readable_file(path, regular_files_only):
+        if not manifest_file_available(path, regular_files_only):
             issues.append(
                 EvidenceIssue(
                     ("pipeline_missing", "input_missing", "output_missing")[at],

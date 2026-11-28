@@ -31,7 +31,8 @@ def _smtp_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_a_bad_smtp_port_fails_only_the_email_channel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, flags
 ) -> None:
-    monkeypatch.setenv("DECOY_NOTIFY_SMTP_PORT", "abc")
+    invalid_port = "abc-invalid-smtp-port"
+    monkeypatch.setenv("DECOY_NOTIFY_SMTP_PORT", invalid_port)
     monkeypatch.setenv("DECOY_NOTIFY_SMTP_HOST", "smtp.example.com")
     monkeypatch.setenv("DECOY_NOTIFY_SMTP_FROM", "decoy@example.com")
     sent: list[str] = []
@@ -54,8 +55,8 @@ def test_a_bad_smtp_port_fails_only_the_email_channel(
     assert result.exit_code == 0, result.output
     assert sent == [WEBHOOK]
     everything = result.stdout + result.stderr + caplog.text
-    for secret in ("abc", "hookuser", "HOOKPASS"):
-        assert secret not in everything.replace("abcdef", "")
+    for secret in (invalid_port, "hookuser", "HOOKPASS"):
+        assert secret not in everything
     if "--json" in flags:
         doc = json.loads(result.stdout.strip().splitlines()[-1])
         hosts = {n["kind"]: n["target_host"] for n in doc["notify"]}
