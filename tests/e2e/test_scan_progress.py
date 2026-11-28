@@ -18,9 +18,7 @@ from decoy.ui.scan_progress import (
 from decoy.ui.theme import DECOY_THEME
 
 
-def _state(
-    mode: OutputMode, *, terminal: bool = False
-) -> tuple[OutputState, StringIO, StringIO]:
+def _state(mode: OutputMode, *, terminal: bool = False) -> tuple[OutputState, StringIO, StringIO]:
     out_buf = StringIO()
     err_buf = StringIO()
     state = OutputState(
@@ -59,9 +57,7 @@ def test_scan_multistage_handles_no_stages_gracefully():
 
 def test_stage_handle_renders_cloud_and_stages():
     """Direct render exercise -- no Live, no thread, just the build output."""
-    handle = _StageHandle(
-        live=None, stages=["Load", "Profile", "Save"], frame_state={"frame": 0}
-    )
+    handle = _StageHandle(live=None, stages=["Load", "Profile", "Save"], frame_state={"frame": 0})
     handle.complete()  # idx -> 1, so "Load" is done, "Profile" is running
 
     err_buf = StringIO()

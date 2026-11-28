@@ -78,6 +78,19 @@ def render_manifest_card(
             t.add_row(tname, str(info.get("path", "?")), fp, method, size)
         state.console.print(t)
 
+    _summary_tables(state, shown)
+
+    if not hash_ok:
+        state.err_console.print(
+            warn("warning:"),
+            "manifest_hash does not match the manifest body. "
+            "The manifest file may have been edited. "
+            "Run `decoy report verify` for a full fingerprint check.",
+        )
+
+
+def _summary_tables(state: OutputState, shown: DisplayCopy) -> None:
+    """The masking strategies and row counts tables, read from the display copy."""
     # Strategies table
     strategies = shown.get("strategies") or []
     if strategies:
@@ -94,11 +107,3 @@ def render_manifest_card(
         for tname, count in row_counts.items():
             t.add_row(str(tname), str(count))
         state.console.print(t)
-
-    if not hash_ok:
-        state.err_console.print(
-            warn("warning:"),
-            "manifest_hash does not match the manifest body. "
-            "The manifest file may have been edited. "
-            "Run `decoy report verify` for a full fingerprint check.",
-        )

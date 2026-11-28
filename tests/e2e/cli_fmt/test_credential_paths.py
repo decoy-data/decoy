@@ -19,7 +19,7 @@ from decoy.__main__ import app
 from decoy.cli.evidence import build_manifest, compute_manifest_hash
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import LayoutError
-from decoy.safe_url import display_copy
+from decoy.safe_url import DisplayCopy, display_copy
 from tests.e2e.cli_fmt.test_target_format_readers import _diff, _manifest, _write_manifest
 
 pytestmark = pytest.mark.usefixtures("mask_secret")
@@ -86,7 +86,7 @@ def _legacy_url_manifest(tmp_path: Path) -> Path:
     return out
 
 
-def _tag(value: Any, path: str) -> Any:
+def _tag(value: object, path: str) -> object:
     """Every leaf string becomes `HELPER<path>`, and every table key under a fingerprint group
     or `row_counts` becomes `HELPERKEY-<group>-<name>`."""
     if isinstance(value, str):
@@ -103,9 +103,11 @@ def _tag(value: Any, path: str) -> Any:
     return value
 
 
-def _tagged(manifest: dict[str, Any]) -> Any:
+def _tagged(manifest: dict[str, Any]) -> DisplayCopy:
     """A stand-in `display_manifest`: a display copy of the fully tagged manifest."""
-    return display_copy(_tag(manifest, ""))
+    shown = display_copy(_tag(manifest, ""))
+    assert isinstance(shown, DisplayCopy)
+    return shown
 
 
 _TAGS = (

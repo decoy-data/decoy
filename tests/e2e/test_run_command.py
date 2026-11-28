@@ -290,9 +290,7 @@ class TestExitCodeDispatch:
                     "columns": [{"name": "email", "strategy": "faker", "provider": "uuid"}],
                 }
             ],
-            "targets": {
-                "t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}
-            },
+            "targets": {"t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}},
         }
         config_path = tmp_path / "bad.yaml"
         config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
@@ -319,9 +317,7 @@ class TestExitCodeDispatch:
                     ],
                 }
             ],
-            "targets": {
-                "t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}
-            },
+            "targets": {"t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}},
         }
         config_path = tmp_path / "unknown-key.yaml"
         config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
@@ -336,9 +332,7 @@ class TestExitCodeDispatch:
             "global_settings": {"seed": 1},
             "sources": {"t": csv_source(tmp_path / "nope.csv")},
             "tables": [{"name": "t", "columns": [{"name": "a", "strategy": "redact"}]}],
-            "targets": {
-                "t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}
-            },
+            "targets": {"t": {"type": "file", "format": "csv", "path": str(tmp_path / "out.csv")}},
         }
         config_path = tmp_path / "missing-src.yaml"
         config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
@@ -369,9 +363,7 @@ class TestMixedConfigSuccess:
                 },
                 {
                     "name": "synth",
-                    "generate_columns": [
-                        {"name": "id", "type": "sequence", "start": 1, "step": 1}
-                    ],
+                    "generate_columns": [{"name": "id", "type": "sequence", "start": 1, "step": 1}],
                     "row_count": 5,
                 },
             ],

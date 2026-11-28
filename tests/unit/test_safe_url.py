@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
 
 import pytest
 from hypothesis import assume, given, settings
@@ -403,7 +402,7 @@ def test_a8_location_is_at_least_as_strict_as_text(prefix: str, carrier: str, su
     assert display_text(shown) == shown
 
 
-def _deep_strings(value: Any) -> list[str]:
+def _deep_strings(value: object) -> list[str]:
     if isinstance(value, str):
         return [value]
     if isinstance(value, dict):

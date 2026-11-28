@@ -47,8 +47,7 @@ def test_expected_examples_present_no_v1_holdovers():
     deliberate edits here, not a silent revival."""
     actual = {p.name for p in _example_paths()}
     assert actual == EXPECTED_EXAMPLES, (
-        f"Examples drift: missing={EXPECTED_EXAMPLES - actual}, "
-        f"extra={actual - EXPECTED_EXAMPLES}"
+        f"Examples drift: missing={EXPECTED_EXAMPLES - actual}, extra={actual - EXPECTED_EXAMPLES}"
     )
 
 

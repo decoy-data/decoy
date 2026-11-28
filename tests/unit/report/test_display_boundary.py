@@ -11,6 +11,7 @@ import copy
 import html
 import json
 import string
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -206,7 +207,9 @@ def _a10_manifest(tmp_path: Path) -> dict[str, Any]:
 
 
 @pytest.mark.parametrize("render", [render_html, render_markdown], ids=["html", "markdown"])
-def test_a10_public_renderers_take_a_raw_dict(tmp_path: Path, render: Any) -> None:
+def test_a10_public_renderers_take_a_raw_dict(
+    tmp_path: Path, render: Callable[[Mapping[str, Any]], str]
+) -> None:
     raw = _a10_manifest(tmp_path)
     text = html.unescape(render(raw))
     for secret in ("PW7", "Secret", "2024", "admin"):
@@ -289,7 +292,7 @@ def test_row_39_noncanonical_recorded_digest_is_not_previewed(tmp_path: Path) ->
     ids=["row26", "row38"],
 )
 def test_rows_26_38_field_names_use_the_displayed_key(
-    tmp_path: Path, group: str, key: str, value: Any, message: str
+    tmp_path: Path, group: str, key: str, value: object, message: str
 ) -> None:
     base, _ = _base(tmp_path, project=False)
     base[group][key] = value

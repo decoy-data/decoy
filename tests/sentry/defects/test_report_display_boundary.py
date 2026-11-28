@@ -96,26 +96,33 @@ def _is_decoy_cli(name: str, member: str) -> bool:
     return name.startswith("decoy.cli.") and _leaf(name) == member
 
 
+def _loader_names(mod: _Module, found: list[str]) -> dict[str, set[str]]:
+    """Per scope, the names bound to a `_load_manifest` result; bad loader and reader calls are
+    added to `found`."""
+    bound: dict[str, set[str]] = {}
+    for site, name in mod.calls():
+        parent, field = site.ancestors[-1]
+        if _is_decoy_cli(name, "read_manifest"):
+            ok = mod.name == "decoy.cli.report._shared" and site.scope == "_load_manifest"
+            if not (ok and isinstance(parent, ast.Return)):
+                found.append(f"{mod.name}:{site.lineno} read_manifest outside the forwarder")
+        elif name == _LOADER or (
+            _is_decoy_cli(name, "_load_manifest") and name.startswith("decoy.cli.report")
+        ):
+            targets = parent.targets if isinstance(parent, ast.Assign) else []
+            if field != "value" or len(targets) != 1 or not isinstance(targets[0], ast.Name):
+                found.append(f"{mod.name}:{site.lineno} _load_manifest not assigned to a name")
+                continue
+            bound.setdefault(site.scope, set()).add(targets[0].id)
+    return bound
+
+
 def _r1(modules: dict[str, _Module]) -> list[str]:
     found: list[str] = []
     for mod in modules.values():
         if not mod.name.startswith(("decoy.cli.report", "decoy.cli.library")):
             continue
-        bound: dict[str, set[str]] = {}
-        for site, name in mod.calls():
-            parent, field = site.ancestors[-1]
-            if _is_decoy_cli(name, "read_manifest"):
-                ok = mod.name == "decoy.cli.report._shared" and site.scope == "_load_manifest"
-                if not (ok and isinstance(parent, ast.Return)):
-                    found.append(f"{mod.name}:{site.lineno} read_manifest outside the forwarder")
-            elif name == _LOADER or (
-                _is_decoy_cli(name, "_load_manifest") and name.startswith("decoy.cli.report")
-            ):
-                targets = parent.targets if isinstance(parent, ast.Assign) else []
-                if field != "value" or len(targets) != 1 or not isinstance(targets[0], ast.Name):
-                    found.append(f"{mod.name}:{site.lineno} _load_manifest not assigned to a name")
-                    continue
-                bound.setdefault(site.scope, set()).add(targets[0].id)
+        bound = _loader_names(mod, found)
         for site in mod.sites:
             node = site.node
             if not (isinstance(node, ast.Name) and node.id in bound.get(site.scope, ())):

@@ -404,7 +404,7 @@ def _refusal(tmp_path: Path, ev: Path, message: str, project: Path | None = None
     ids=["row26", "row38"],
 )
 def test_rows_26_38_malformed_names_the_displayed_table(
-    tmp_path: Path, group: str, key: str, value: Any, message: str
+    tmp_path: Path, group: str, key: str, value: object, message: str
 ) -> None:
     ev = _legacy_manifest(tmp_path)
     manifest = json.loads(ev.read_text(encoding="utf-8"))

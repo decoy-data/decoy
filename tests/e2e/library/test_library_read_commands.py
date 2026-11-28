@@ -387,7 +387,7 @@ def test_show_and_diff_two_evidence_records_show_the_safe_table(root: Path, tmp_
     assert {"table": _SHOWN, "old": 3, "new": 4, "delta": 1} in found["row_count_deltas"]
 
 
-def _future_sample(n: int, day: int, metadata: dict) -> Any:
+def _future_sample(n: int, day: int, metadata: dict) -> dict[str, Any]:
     """A sample-run envelope with an additive payload field, stored by its recomputed id."""
     raw = json.loads(records.encode(_sample(n, day)))
     raw["payload"]["future_metadata"] = metadata

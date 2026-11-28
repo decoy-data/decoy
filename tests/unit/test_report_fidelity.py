@@ -57,7 +57,9 @@ def test_distribution_calls_engine_compute_quality_report(tmp_path: Path):
         result = runner.invoke(app, ["report", "fidelity", str(src), str(out), "--json"])
 
     assert result.exit_code == 0, result.output
-    assert spy_report.call_count == 1, "report fidelity must call compute_quality_report exactly once"
+    assert spy_report.call_count == 1, (
+        "report fidelity must call compute_quality_report exactly once"
+    )
     assert spy_policy.call_count == 1, "report fidelity must call apply_quality_policy exactly once"
 
     payload = _json.loads(result.output)
@@ -96,9 +98,7 @@ def test_distribution_generate_flag_sets_expect_row_parity_false(tmp_path: Path)
     _, kwargs = spy.call_args
     assert kwargs["expect_row_parity"] is False
     payload = _json.loads(result.output)
-    row_count_check = next(
-        c for c in payload["diagnostic"]["checks"] if c["check"] == "row_count"
-    )
+    row_count_check = next(c for c in payload["diagnostic"]["checks"] if c["check"] == "row_count")
     assert row_count_check["passed"] is True, (
         "row-count mismatch must not be flagged when --generate is set"
     )
@@ -111,9 +111,7 @@ def test_distribution_generate_flag_sets_expect_row_parity_false(tmp_path: Path)
 
 def test_distribution_joint_bad_spec_exits_usage(tmp_path: Path):
     src, out = _write_pair(tmp_path, {"a": [1], "b": [2]}, {"a": [1], "b": [2]})
-    result = runner.invoke(
-        app, ["report", "fidelity", str(src), str(out), "--joint", "onlyone"]
-    )
+    result = runner.invoke(app, ["report", "fidelity", str(src), str(out), "--joint", "onlyone"])
     assert result.exit_code == EXIT_USAGE
 
 
@@ -142,17 +140,13 @@ def test_distribution_joint_produces_pairwise_block(tmp_path: Path):
 
 def test_distribution_bad_mode_exits_usage(tmp_path: Path):
     src, out = _write_pair(tmp_path, {"a": [1]}, {"a": [1]})
-    result = runner.invoke(
-        app, ["report", "fidelity", str(src), str(out), "--mode", "bogus"]
-    )
+    result = runner.invoke(app, ["report", "fidelity", str(src), str(out), "--mode", "bogus"])
     assert result.exit_code == EXIT_USAGE
 
 
 def test_distribution_bad_min_grade_exits_usage(tmp_path: Path):
     src, out = _write_pair(tmp_path, {"a": [1]}, {"a": [1]})
-    result = runner.invoke(
-        app, ["report", "fidelity", str(src), str(out), "--min-grade", "Z"]
-    )
+    result = runner.invoke(app, ["report", "fidelity", str(src), str(out), "--min-grade", "Z"])
     assert result.exit_code == EXIT_USAGE
 
 
@@ -334,9 +328,7 @@ def test_distribution_config_prevents_intentional_loss_from_flagging(tmp_path: P
         ],
     )
     payload = _json.loads(with_config.output)
-    column_violations = [
-        v for v in payload["policy"]["violations"] if v["check"] == "column"
-    ]
+    column_violations = [v for v in payload["policy"]["violations"] if v["check"] == "column"]
     assert not column_violations, (
         "a --config naming the hash strategy must not raise the hashed "
         f"column's low value-identity similarity as accidental drift: {column_violations}"
@@ -351,9 +343,7 @@ def test_distribution_config_prevents_intentional_loss_from_flagging(tmp_path: P
 def test_distribution_missing_source_exits_usage(tmp_path: Path):
     out = tmp_path / "output.csv"
     pd.DataFrame({"a": [1]}).to_csv(out, index=False)
-    result = runner.invoke(
-        app, ["report", "fidelity", str(tmp_path / "nope.csv"), str(out)]
-    )
+    result = runner.invoke(app, ["report", "fidelity", str(tmp_path / "nope.csv"), str(out)])
     assert result.exit_code != 0
 
 

@@ -133,7 +133,9 @@ def _equivalent(template: str, column: str, col_cfg: dict, rule) -> str | None:
         if strategy != "faker":
             return f"disguise says faker, template says {strategy!r}"
         if want and col_cfg.get("provider") != want:
-            return f"disguise faker_type maps to {want!r}, template uses {col_cfg.get('provider')!r}"
+            return (
+                f"disguise faker_type maps to {want!r}, template uses {col_cfg.get('provider')!r}"
+            )
         return None
     if strategy != rule.mask:
         return f"disguise says {rule.mask!r}, template says {strategy!r}"
@@ -192,8 +194,7 @@ class TestFieldRuleCorrespondence:
         columns = {c["name"]: c for t in cfg["tables"] for c in t.get("columns", [])}
         # The mapping table itself must stay in step with the template.
         assert set(columns) == set(mapping), (
-            f"{name}: template columns and _COLUMN_DETECTOR diverge: "
-            f"{set(columns) ^ set(mapping)}"
+            f"{name}: template columns and _COLUMN_DETECTOR diverge: {set(columns) ^ set(mapping)}"
         )
         problems: list[str] = []
         for col_name, detector_id in mapping.items():
