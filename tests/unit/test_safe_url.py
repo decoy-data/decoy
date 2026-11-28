@@ -40,6 +40,9 @@ def test_unreadable_url_gives_none(url: str) -> None:
     ("raw", "shown"),
     [
         ("data/out.csv", "data/out.csv"),
+        ("data/payroll@2026?#.csv", "data/payroll@2026?#.csv"),
+        ("//files/share/payroll@2026.csv", "//files/share/payroll@2026.csv"),
+        ("///data/report?#.csv", "///data/report?#.csv"),
         (f"https://u:{_PW}@files.example.com/o.csv?t={_TOK}", "https://files.example.com"),
         (f"sftp://u:{_PW}@[::1]:22/o.csv", "sftp://[::1]:22"),
         (f"https://u:{_PW}@h:bad/o.csv?t={_TOK}", "(remote location)"),

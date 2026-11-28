@@ -590,6 +590,10 @@ def _manifest_root(
         failure = exc
     # Raised outside the handler so no layout error is chained onto the refusal.
     if failure is not None:
+        if project is not None:
+            raise ManifestError(
+                failure.code, f"{failure.code}: cannot use --project {display_path(project)}"
+            )
         raise ManifestError(failure.code, failure.message)
     if root is None:
         why = (

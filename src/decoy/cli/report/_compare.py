@@ -258,12 +258,15 @@ def compare_data(
             if entry.get("fingerprint") is not None:
                 field = f"output_fingerprints.{table}.path"
                 path = resolve_manifest_path(manifest, raw, manifest_file=where, field=field)
-            if path is not None and path.exists():
-                found.append(path)
-            else:
-                _skip((raw,))
+            try:
+                if path is not None and path.exists():
+                    found.append(path)
+                    continue
+            except (OSError, ValueError):
+                pass
+            _skip((raw,))
 
-        if missing_files:
+        if len(found) != len(sides):
             continue
 
         # Both sides are checked before either is read, each on its own recorded format.

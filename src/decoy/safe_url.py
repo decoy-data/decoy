@@ -56,11 +56,11 @@ def redacted_location(raw: str) -> str:
     A plain path is returned as it is. A remote reference keeps its scheme, host and port only:
     the user, password, path, query and fragment are dropped (a query can hold a token). A
     remote reference is a URL (it holds `://`) or a network-path reference (`//host/...`) that
-    holds `@`, `?` or `#`. A plain `//name/...` path with none of those, such as
+    has userinfo in its authority, a query or a fragment. A plain `//name/...` path with none of those, such as
     `//build[1]/share`, is returned unchanged. A reference that cannot be read gives a fixed
     text, never its characters.
     """
-    if raw.startswith("//") and "://" not in raw:
+    if raw.startswith("//"):
         return _redacted_network_path(raw)
     if "://" not in raw:
         return raw
@@ -76,7 +76,8 @@ def _redacted_network_path(raw: str) -> str:
     Plain is decided first, on the text, so a POSIX name such as `//build[1]/share` is never
     rejected by URL host parsing.
     """
-    if not any(mark in raw for mark in "@?#"):
+    authority = re.split(r"[/#?]", raw[2:], maxsplit=1)[0]
+    if not authority or ("@" not in authority and "?" not in raw and "#" not in raw):
         return raw
     parts = safe_url_parts(f"x:{raw}")
     return _UNKNOWN_LOCATION if parts is None else f"//{parts.netloc}"

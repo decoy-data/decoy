@@ -116,7 +116,9 @@ def _show(
             content = render_html(manifest)
         _write_out(state, ReportTarget(out, False), content)
         fmt_label = "Markdown" if fmt in ("markdown", "md") else "HTML"
-        state.console.print(success("ok"), f"{fmt_label} report written to", code(str(out)))
+        state.console.print(
+            success("ok"), f"{fmt_label} report written to", code(display_path(out))
+        )
         return
 
     # Default: the union card -- fingerprint tables + strategies + manifest_hash

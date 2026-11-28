@@ -20,6 +20,7 @@ import typer
 from decoy.cli.exit_codes import EXIT_OK, EXIT_USAGE
 from decoy.cli.io import PipelineRef, pipeline_option, resolve_pipeline
 from decoy.cli.library._cli import LibraryCommand, library_option, start
+from decoy.safe_url import display_safe
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 
 __all__ = ["diff_command", "list_command", "ref_command", "show_command"]
@@ -174,6 +175,8 @@ def show_command(
     record = _read(cmd, opened, _target(cmd, opened, target))
     status = _status(record)
     raw = dict(record.raw)
+    if status == "known":
+        raw["payload"] = display_safe(raw["payload"])
     shown = raw if status == "known" else {k: v for k, v in raw.items() if k != "payload"}
     emit_json(
         state,

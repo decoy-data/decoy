@@ -10,7 +10,7 @@ import typer
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.report._compare import compare_data, compare_manifests
 from decoy.cli.report._shared import _load_manifest
-from decoy.safe_url import display_path
+from decoy.safe_url import display_path, display_safe
 from decoy.ui.output import (
     OutputMode,
     emit_json,
@@ -105,7 +105,7 @@ def _diff(
     manifest_b = _load_manifest(evidence_file_b, state, "report diff")
 
     # --- Manifest/fingerprint-level comparison (always) ---
-    manifest_diff = compare_manifests(manifest_a, manifest_b)
+    manifest_diff = display_safe(compare_manifests(manifest_a, manifest_b))
 
     # --- Data-level comparison (when the referenced output files exist) ---
     data_result: dict[str, Any] | None = None

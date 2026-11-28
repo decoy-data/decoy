@@ -6,8 +6,9 @@ from pathlib import Path
 
 import typer
 
-from decoy._atomic import AtomicWriteError, WriteMode, describe, write_local_target
+from decoy._atomic import WriteMode, write_local_target
 from decoy.cli.exit_codes import EXIT_USAGE
+from decoy.cli.io import ReportTarget
 from decoy.cli.report._html import render_html
 from decoy.cli.report._markdown import render_markdown
 from decoy.cli.report._shared import _load_manifest
@@ -96,10 +97,11 @@ def _render(
     else:
         content = render_html(manifest)
 
-    try:
+    target = ReportTarget(out, False)
+    with target.recording():
         write_local_target(out, content.encode("utf-8"), WriteMode.REPLACE)
-    except AtomicWriteError as exc:
-        msg = f"could not write {out}: {describe(exc)}"
+    if target.error is not None:
+        msg = target.error
         if state.mode is OutputMode.json:
             emit_json(state, {"command": "report render", "status": "error", "error": msg})
         else:
@@ -115,7 +117,7 @@ def _render(
                 "command": "report render",
                 "status": "ok",
                 "evidence_file": display_path(evidence_file),
-                "output": str(out),
+                "output": display_path(out),
                 "format": fmt_label.lower(),
             },
         )
@@ -125,7 +127,7 @@ def _render(
         state.console.print(
             success("ok"),
             f"{fmt_label} report written to",
-            code(str(out)),
+            code(display_path(out)),
         )
         state.console.print(
             " ",

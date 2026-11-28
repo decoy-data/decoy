@@ -20,6 +20,8 @@ from typer.testing import CliRunner
 from decoy.__main__ import app
 from decoy.cli.evidence import build_manifest, compute_manifest_hash
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
+from decoy.cli.library import open_library
+from tests.e2e.library._records import build
 
 pytestmark = pytest.mark.usefixtures("mask_secret")
 runner = (
@@ -105,8 +107,11 @@ def _written_manifest(tmp_path: Path, project: bool) -> Path:
     pipeline.write_text("version: 2\n", encoding="utf-8")
     if project:
         (tmp_path / "decoy.yaml").write_text("kind: decoy-project/v1\n", encoding="utf-8")
+    payroll = tmp_path / "payroll@2026.csv"
+    payroll.write_text("id\n1\n", encoding="utf-8")
     config = {
         "sources": {
+            "payroll": {"type": "file", "path": "/" + str(payroll)},
             **{f"file_{k}": {"type": "file", "path": v} for k, v in _sources().items()},
             **{f"s3_{k}": {"type": "s3", "path": v} for k, v in _sources().items()},
         },
@@ -151,6 +156,8 @@ def _run(
     assert result.exit_code == expected, f"{shown}: exit {result.exit_code}\n{result.output}"
     text = result.output
     _assert_clean(text, f"output of {shown}")
+    if result.stderr_bytes is not None:
+        _assert_clean(result.stderr, f"stderr of {shown}")
     if wrote is not None:
         assert wrote.is_file() and wrote.stat().st_mtime >= started, f"{shown}: no fresh file"
         _assert_clean(wrote.read_text(encoding="utf-8"), f"file written by {shown}")
@@ -187,9 +194,14 @@ def test_legacy_manifest_fields_reach_no_output(tmp_path: Path) -> None:
 @pytest.mark.parametrize("project", [False, True], ids=["no_project", "marked_project"])
 def test_written_manifest_holds_and_shows_no_credential(tmp_path: Path, project: bool) -> None:
     ev = _written_manifest(tmp_path, project)
-    _assert_clean(ev.read_text(encoding="utf-8"), "the written evidence file")
+    written = ev.read_text(encoding="utf-8")
+    _assert_clean(written, "the written evidence file")
+    assert json.loads(written)["input_fingerprints"]["payroll"]["fingerprint"] is not None
     for args, code, wrote in _reader_routes(ev, tmp_path, 0):
         _run(args, code, tmp_path, wrote, tmp_path if project else None)
+    (tmp_path / "payroll@2026.csv").write_text("id\n2\n", encoding="utf-8")
+    drift = _run(["report", "verify", str(ev), "--json"], EXIT_FINDINGS, tmp_path)
+    assert "payroll" in str(json.loads(drift)["issues"])
 
 
 @pytest.mark.parametrize(
@@ -208,3 +220,72 @@ def test_evidence_file_argument_is_never_echoed(tmp_path: Path, arg: str) -> Non
     _run(["report", "render", arg, "--format", "html", "--output", out], EXIT_USAGE, tmp_path)
     _run(["report", "diff", arg, arg], EXIT_USAGE, tmp_path)
     _run(["report", "diff", arg, arg, "--json"], EXIT_USAGE, tmp_path)
+
+
+def test_output_argument(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    ev = _written_manifest(tmp_path, False)
+    arg = f"https://svc:{_sentinel('output')}@{_HOST}/out.html"
+    out = Path(arg)
+    for success in (True, False):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if not success:
+            out.unlink()
+            out.mkdir()  # a directory cannot be replaced with a report
+        for sub, mode in (("show", []), ("render", []), ("render", ["--json"])):
+            text = _run(
+                ["report", sub, str(ev), "--output", arg, *mode],
+                0 if success else EXIT_USAGE,
+                tmp_path,
+                out if success else None,
+            )
+            assert f"https://{_HOST}" in text
+            if mode:
+                doc = json.loads(text)
+                assert doc["status"] == ("ok" if success else "error")
+                if success:
+                    assert doc["output"] == f"https://{_HOST}"
+
+
+def test_verify_project_argument(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    ev = _written_manifest(tmp_path, True)
+    arg = f"https://svc:{_sentinel('project')}@{_HOST}/project"
+    for mode in ([], ["--json"]):
+        text = _run(["report", "verify", str(ev), "--project", arg, *mode], EXIT_USAGE, tmp_path)
+        assert f"https://{_HOST}" in text
+
+
+def test_diff_warnings_and_unreadable_output(tmp_path: Path) -> None:
+    ev = _legacy_manifest(tmp_path)
+    manifest = json.loads(ev.read_text())
+    long_path = f"//svc:{_LONG}{_sentinel('long_output')}@long.example/out.csv"
+    manifest["output_fingerprints"]["t"]["path"] = long_path
+    paths = []
+    for side in ("old", "new"):
+        url = f"https://svc:{_sentinel(side)}@{_HOST}/warning"
+        manifest["warnings"] = [url, {"code": "changed", "column": url}]
+        manifest["manifest_hash"] = compute_manifest_hash(manifest)
+        path = tmp_path / f"{side}.json"
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        paths.append(str(path))
+    args = ["report", "diff", *paths]
+    human = _run(args, 0, tmp_path)
+    assert "warning(s) added" in human and "warning(s) removed" in human
+    doc = json.loads(_run([*args, "--json"], 0, tmp_path))
+    assert doc["data_level"] == "skipped" and "//long.example" in doc["missing_files"]
+    for field in ("warnings_added", "warnings_removed"):
+        assert doc[field] == [f"https://{_HOST}", {"code": "changed", "column": f"https://{_HOST}"}]
+
+
+def test_library_show_payload(tmp_path: Path) -> None:
+    ev = _written_manifest(tmp_path, False)
+    manifest = json.loads(ev.read_text())
+    manifest["pipeline_path"] = _sources()["file_url"]
+    manifest["manifest_hash"] = compute_manifest_hash(manifest)
+    root = tmp_path / "library"
+    record = open_library(root).put(build("evidence", manifest, 1))
+    args = ["library", "show", record.id, "--library", str(root)]
+    assert f"https://{_HOST}" in _run(args, 0, tmp_path)
+    doc = json.loads(_run([*args, "--json"], 0, tmp_path))
+    assert doc["record"]["payload"]["pipeline_path"] == f"https://{_HOST}"
