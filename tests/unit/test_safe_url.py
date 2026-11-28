@@ -42,8 +42,8 @@ def test_unreadable_url_gives_none(url: str) -> None:
         ("data/out.csv", "data/out.csv"),
         ("data/payroll@2026?#.csv", "data/payroll@2026?#.csv"),
         ("//files/share/payroll@2026.csv", "//files/share/payroll@2026.csv"),
-        ("//files/share/payroll?2026.csv", "//files/share/payroll?2026.csv"),
-        ("//files/share/payroll#2026.csv", "//files/share/payroll#2026.csv"),
+        ("//files/share/payroll?2026.csv", "//files"),
+        ("//files/share/payroll#2026.csv", "//files"),
         (f"//share/https://u:{_PW}@host/f", "(remote location)"),
         (f"//host?access_token={_TOK}", "//host"),
         ("///data/report?#.csv", "///data/report?#.csv"),
@@ -70,10 +70,37 @@ def test_display_safe_redacts_multiple_locations_inside_text() -> None:
 
 
 def test_plain_share_before_credentialed_share() -> None:
-    assert display_safe(f"paths: //plain/share,//u:{_PW}@host/f") == "paths: //plain/share,//host"
+    assert display_safe(f"paths: //plain/share,//u:{_PW}@host/f") == "paths: (remote location)"
+    assert display_safe(f"paths: //plain/share, //u:{_PW}@host/f") == "paths: //plain/share, //host"
 
 
 @pytest.mark.parametrize("prefix", ["", "could not open "])
 @pytest.mark.parametrize("scheme", ["", "https:"])
 def test_pasted_url_with_space_in_password(prefix: str, scheme: str) -> None:
     assert display_safe(f"{prefix}{scheme}//user:pass word@host/path") == f"{prefix}{scheme}//host"
+
+
+@pytest.mark.parametrize(
+    ("raw", "shown"),
+    [
+        ("//id.example/callback#access_token=X", "//id.example"),
+        ("//host/p?token", "//host"),
+        (
+            "// WARNING: checksum mismatch for archive@2026.csv",
+            "// WARNING: checksum mismatch for archive@2026.csv",
+        ),
+        ("/var/run//deploy@prod/output.csv", "/var/run//deploy@prod/output.csv"),
+        (
+            "could not open //user:pass@first word@host/path today",
+            "could not open (remote location) today",
+        ),
+        ("//user:pw@files.example permission denied for ops@example.com", "(remote location)"),
+    ],
+)
+def test_display_location_boundaries(raw: str, shown: str) -> None:
+    assert display_safe(raw) == shown
+
+
+@pytest.mark.parametrize("prefix", ["'", '"', "(", "[", "{", "="])
+def test_opening_delimiter_starts_span(prefix: str) -> None:
+    assert display_safe(f"source{prefix}//host/p?token") == f"source{prefix}//host"

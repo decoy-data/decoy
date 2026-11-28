@@ -46,6 +46,7 @@ def _sources() -> dict[str, str]:
         "s3": f"s3://svc:{_sentinel('s3')}@bucket/key.csv",
         "net_user": f"//svc:{_sentinel('net_user')}@{_HOST}/share/f.csv",
         "nested_url": f"//share/https://svc:{_sentinel('nested')}@{_HOST}/f",
+        "fragment": f"//id.example/callback#access_token={_sentinel('fragment')}",
         "net_query": f"//{_HOST}/f.csv?access_token={_sentinel('net_query')}",
     }
 
@@ -188,6 +189,9 @@ def test_legacy_manifest_fields_reach_no_output(tmp_path: Path) -> None:
         _run(a, code, tmp_path, w) for a, code, w in _reader_routes(ev, tmp_path, EXIT_FINDINGS)
     ]
     # Verify read the entries: every recorded file is a finding, and the long one did not crash it.
+    assert (
+        json.loads(texts[1])["manifest"]["input_fingerprints"]["fragment"]["path"] == "//id.example"
+    )
     assert all(_HOST in t for t in texts[:2])
     assert "input missing" in texts[8] or "missing" in texts[8]
 

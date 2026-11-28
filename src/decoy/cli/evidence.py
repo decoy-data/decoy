@@ -283,6 +283,9 @@ def build_manifest(
     pipeline_path = pipeline_path.resolve()
     yaml_dir = pipeline_path.parent
 
+    def local_file(path: Path) -> bool:
+        return manifest_file_available(path, regular_only=True)
+
     # --- Input fingerprints: the files the run read, file sources resolved from the YAML folder ---
     declared_sources = config_dict.get("sources") or {}
     resolved_sources = resolved_source_config(config_dict, yaml_dir).get("sources") or {}
@@ -294,7 +297,7 @@ def build_manifest(
         # Classified from the declared text, before any resolution: `resolve()` folds
         # `https://u:p@h/x` into `.../https:/u:p@h/x`, which no redactor can read as a URL.
         remote = remote_location(
-            declared_path, manifest_file_available if declared.get("type") == "file" else None
+            declared_path, local_file if declared.get("type") == "file" else None
         )
         if remote is not None:
             input_fingerprints[table_name] = {
@@ -322,7 +325,7 @@ def build_manifest(
         if not tgt_path_str:
             continue
         remote = remote_location(
-            str(tgt_path_str), manifest_file_available if tgt.get("type") == "file" else None
+            str(tgt_path_str), local_file if tgt.get("type") == "file" else None
         )
         tgt_path = (
             None if remote is not None else _placed(place_target, str(tgt_path_str), yaml_dir)

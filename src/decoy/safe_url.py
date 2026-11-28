@@ -44,7 +44,7 @@ def safe_url_parts(url: str) -> SafeUrl | None:
         port = parts.port  # raises ValueError for a bad port
     except ValueError:
         return None
-    if not host:
+    if not host or parts.netloc.count("@") > 1:
         return None
     if ":" in host:  # an IPv6 literal loses its brackets in `hostname`
         host = f"[{host}]"
@@ -55,8 +55,8 @@ def redacted_location(raw: str) -> str:
     """A recorded path or argument as it may be printed or stored.
 
     A URL keeps its scheme and authority only. A double-slash filesystem path
-    can contain literal punctuation in its filename. Userinfo, an explicit port,
-    or a query assignment identifies a remote reference.
+    can contain literal punctuation in its filename. On display, userinfo,
+    a query delimiter or a fragment delimiter identifies a remote reference.
     """
     return remote_location(raw) or raw
 
@@ -72,13 +72,14 @@ def remote_location(raw: str, local_file: Callable[[Path], bool] | None = None) 
         if parts is None or not parts.scheme:
             return _UNKNOWN_LOCATION
         return f"{parts.scheme}://{parts.netloc}"
-    if not raw.startswith("//"):
+    authority = _AUTHORITY.match(raw)
+    if authority is None:
         return None
-    authority, _, path = raw[2:].partition("/")
-    if not authority:
-        return None
-    if not any(char in authority for char in "@?#"):
-        if not (_QUERY.search(path) or (":" in authority and "#" in path)):
+    if "@" not in authority[1]:
+        if "?" not in raw and "#" not in raw:
+            # Multiple authorities in one token have no unambiguous display host.
+            if any("@" in inner[1] for inner in _AUTHORITY.finditer(raw, authority.end())):
+                return _UNKNOWN_LOCATION
             return None
         if local_file is not None and local_file(Path(raw)):
             return None
@@ -86,10 +87,10 @@ def remote_location(raw: str, local_file: Callable[[Path], bool] | None = None) 
     return _UNKNOWN_LOCATION if parts is None else f"//{parts.netloc}"
 
 
-_QUERY = re.compile(r"\?[^/#?\s=]+=")
-_LOCATION_START = re.compile(r"(?:(?<![A-Za-z0-9+.\-])[A-Za-z][A-Za-z0-9+.\-]*:|:)?//")
-# Keep pasted userinfo together even when its password contains an unescaped space.
-_LOCATION_BODY = re.compile(r"(?:[^/@?#\r\n]*@)?\S*")
+_AUTHORITY = re.compile(r"//([^/?#\s][^/?#]*)")
+_LOCATION_START = re.compile(r"""(?<![^\s"'(\[{=])(?:[A-Za-z][A-Za-z0-9+.\-]*:|:)?//(?=[^/?#\s])""")
+# A pasted password can contain spaces and @. Match through the final authority @.
+_LOCATION_BODY = re.compile(r"(?:[^/?#\r\n]*@)?\S*")
 
 
 def _display_text(text: str) -> str:
