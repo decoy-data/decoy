@@ -2,62 +2,69 @@
 
 Status: current
 
-Owner decision 2026-11-21 (COLUMN-SHAPE-RULE), confirmed 2026-11-28 after an outside review. This is a product rule, not a plan. Customer-facing docs (the website, guides, the language reference) must state it. See "For customer docs" at the end.
+Owner decision 2026-11-21 (COLUMN-SHAPE-RULE), confirmed 2026-11-28 after an outside review. The rule below is the product direction. Customer-facing docs (the website, guides, the language reference) must state it, and must describe only what has shipped. The section "Where 1.0 stands" says which parts are built, and "For customer docs" lists what to say.
 
 ## The rule
 
-Text stays text until someone declares what it is. Decoy detects a type only while a pipeline is being set up (`decoy scan`, `decoy init`, `decoy fit`). It writes what it found into the pipeline, where a person confirms it. At run time Decoy only follows the declaration or refuses. It never guesses at run time.
+1. **Do not guess at run time.** Decoy detects a type or format only while a pipeline is set up (`decoy scan`, `decoy init`, `decoy fit`). It writes what it found into the pipeline, where a person confirms it. At run time it follows the declaration or refuses.
+2. **Declare only where a strategy needs it.** A declaration is needed only when a strategy reads a date or a number out of text. A supported source type (a typed Parquet, DuckDB, database or Arrow column) needs no declaration.
+3. **A bad cell never passes through.** A cell that does not match what the strategy needs is a row error. The run fails, or the row is quarantined when quarantine covers it. Decoy never writes the source value to the output in its place.
+4. **Errors never show the cell value.**
 
-## When a declaration is needed
+## When a declaration is needed (text sources)
 
-- **Typed sources** (Parquet, DuckDB, a database, Arrow) with a plain date or number column: the type comes from the source. No declaration.
-- **Strategies that do not read the value** (`hash`, `redact`, `tokenize`, faker replacement, `shuffle`, `categorical`): no declaration.
-- **Text columns that a strategy reads as a date or a number** (`date_shift`, `bucket_perturb`, `bucketize`, `top_code`, `fpe` where it depends on shape): the type and its format are required. A missing one is a coded refusal at plan compile, before any data row is read.
-- **A declaration on a typed column** is an override. A declaration that does not match the source type is refused.
+| Strategy | What it needs on a text column |
+|---|---|
+| `date_shift` | a strategy `date_format`, or a supported declared date type (not both: both is refused) |
+| `bucket_perturb` | a strategy `date_format` |
+| `bucketize`, `top_code` | a supported numeric cast |
+| `windowed_date` | nothing: its anchors use one fixed ISO grammar |
+| `fpe` | nothing: it accepts text or integers |
+| `hash`, `redact`, `tokenize`, faker replacement, `shuffle`, `categorical` | no type declaration (some of them still use the source value, for example as hash input) |
 
-`decoy init` and `decoy scan` write the declarations they detect with the `?` review mark. `decoy run` refuses until the person clears it. No flag clears it automatically. If detection is ambiguous (for example `01/02/2024`), Decoy writes no format and asks.
-
-Declarations are rare and machine-written, so most `.decoy` files gain no lines.
+A missing declaration is a coded refusal before masking starts. On a typed column, a redundant date format can give an unused-format warning, and a declared cast expects text or bytes.
 
 ## Bad cells
 
-A cell that does not match its declared type or format is a row error. The error names the table, the column and the reason. It never contains the cell value.
+What ships in 1.0:
 
-| Action | What happens | Status |
-|---|---|---|
-| `fail` | The run stops. This is the default. | 1.0 |
-| `quarantine` | The row is written to the quarantine file and counted, and the run finishes. | 1.0, when quarantine covers `format_error` |
-| `null` | The output cell is emptied and counted. | 1.x candidate (row TYPES-DECLARED) |
+- **Strategy row errors** (`format_error`). The run fails unless quarantine is turned on, covers that trigger, and the route supports it (`--chunked` refuses quarantine). Covered rows are counted and removed from the main output. The quarantine file is written from the masked output tables, so it is not a copy of the input, but it can still hold sensitive values: treat it as admin-only.
+- **Declared casts** (F06) have their own per-column policy: `fail`, `null` or `quarantine`. Their quarantine needs a protected runtime sink. It stores the raw framed rows and reports a receipt.
 
-These actions must never exist for masking, because each one can put a real value in the output or lose rows without notice:
+Under the rule, these must never be added for masking, because each one can put a real value in the output or lose rows without notice:
 
 - keeping the source value unchanged ("warn and continue");
 - best-effort conversion, or trying a second format;
 - dropping bad rows silently;
 - copying the raw record into the output.
 
-The quarantine file holds raw source data. Treat it as source data: admin-only, and named in the run report.
+## Where 1.0 stands
 
-## Unusual encodings
+- **Review mark.** `decoy run` refuses a `.decoy` rule while its `?` mark remains, and no flag clears it. YAML has no review mark. Writing detected declarations with the mark (the `as <shape>` syntax and marked starter output) is planned in COLUMN-SHAPE-RULE. Asking the user when a detected date format is ambiguous (for example `01/02/2024`) is also planned.
+- **`decoy fit`.** Exact `decoy fit` still lets pandas infer CSV types, so it can turn `007` into `7`. Row FIT-CODES-TEXT (1.0, not merged) keeps a column as text when every value is whole digits (optional sign) and at least one has a leading zero. A code column with no leading zero in the fitted rows is still read as a number. The DP fit path already reads text.
+- **Unusual date encodings.** Some typed sources store dates in forms that can read differently on different execution routes (dictionary-encoded dates, a timezone or unit that only pandas metadata restores, `date64` values with a time of day). Until row DATE-RANGE-SENTINEL S5 lands, support depends on the encoding and the route. S5 checks date inputs on every route, including carried columns. Its scope for these encodings is owner question Q9.
 
-Some typed sources store dates in forms that read differently on different execution routes (dictionary-encoded dates, dates whose timezone comes back only from pandas metadata, date64 values that are not whole days). For a column that a date strategy reads, Decoy refuses these with one coded error that names the fix (cast to a plain date or timestamp column). A column of that kind that is only kept, hashed, redacted or tokenized keeps working.
+## Planned for 1.x
 
-## Known limit in 1.0
+Row TYPES-DECLARED:
 
-`decoy fit` still lets pandas infer CSV column types. In 1.0 it keeps a column as text when every value is whole digits (optional sign) and at least one has a leading zero, so ZIPs and codes like `007` stay intact (row FIT-CODES-TEXT). A code column with no leading zero in the fitted rows is still read as a number. Row TYPES-DECLARED (1.x) moves `fit` to the same rule as masking: read CSV as text and apply declared types.
+- `decoy fit` reads CSV as text and applies declared types, and the FIT-CODES-TEXT zero-padding rule goes away.
+- One closed bad-cell setting per table in `.decoy`, built on the existing declared-cast policy, not a second mechanism.
 
 ## What to refuse as the language grows
 
-Keep `.decoy` simple. Do not add per-column bad-cell settings, sentinel patterns (only exact listed values), or "try these formats in order".
+Keep `.decoy` simple. Do not add sentinel patterns (only exact listed values) or "try these formats in order". Prefer one table-level bad-cell setting over a setting on every column.
 
 ## For customer docs
 
-State these points in plain words wherever types, CSV input, `decoy init`, `decoy fit` or quarantine are documented:
+Wherever types, CSV input, `decoy init`, `decoy fit` or quarantine are documented, say:
 
-1. Decoy does not guess types when it runs. It asks you to confirm what it detected (the `?` mark).
-2. You only declare a type when a strategy needs to read a date or number from text. `decoy init` fills it in.
-3. A bad cell stops the run by default, or goes to quarantine if you turn that on. Decoy never passes a bad cell through unmasked.
-4. Error messages never show your data.
-5. The 1.0 limit on `decoy fit` above.
+1. Decoy does not guess types when it runs. A `.decoy` rule marked `?` must be confirmed before `decoy run` accepts it.
+2. You declare a type only when a strategy reads a date or number from text. Give the table above.
+3. A bad cell stops the run by default. With quarantine on and covering the error, the row is removed and counted instead. A bad cell is never passed through unmasked.
+4. Bad-cell diagnostics omit the cell value. Strategy row errors name the table, the column and the trigger.
+5. The known limits under "Where 1.0 stands" that apply to the page.
 
-Background: established tools ended up in the same place. readr, Polars and DuckDB guess from the first rows and advise explicit types for production; Spark's CSV reader has type inference off by default; Frictionless Table Schema declares a type and format per field; dbt contracts fail the build on a type mismatch.
+Only describe a planned item once it has shipped.
+
+Background: established tools take the same approach. readr, Polars and DuckDB infer CSV types from a sample and advise explicit types for production. Spark's CSV reader has type inference off by default. Frictionless Table Schema declares a type and a format per field. dbt contracts fail the build on a type mismatch.
