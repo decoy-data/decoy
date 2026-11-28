@@ -485,6 +485,7 @@ def test_report_diff_old_manifest_human_mode_names_the_code(tmp_path: Path) -> N
 _PASSWORD = "SENTINEL-pw-7f3a"
 _TOKEN = "SENTINEL-tok-91c2"
 _URL = f"https://svc:{_PASSWORD}@files.example.com/out.csv?token={_TOKEN}"
+_NETWORK_PATH = f"//svc:{_PASSWORD}@files.example.com/private?token={_TOKEN}"
 
 
 @pytest.mark.parametrize("paired", [False, True], ids=["one_sided", "paired"])
@@ -530,7 +531,11 @@ def _legacy_url_manifest(tmp_path: Path) -> Path:
     base = _manifest(tmp_path, "a", tmp_path / "unused.csv", "csv")
     legacy = copy.deepcopy(base)
     legacy["output_fingerprints"]["t"] = {"path": _URL, "fingerprint": None}
-    legacy["input_fingerprints"] = {"s": {"path": _URL, "fingerprint": None}}
+    legacy["input_fingerprints"] = {
+        "s": {"path": _URL, "fingerprint": None},
+        "n": {"path": _NETWORK_PATH, "fingerprint": None},
+    }
+    legacy["pipeline_path"] = _URL
     legacy["manifest_hash"] = compute_manifest_hash(legacy)
     out = tmp_path / "legacy_url.json"
     out.write_text(json.dumps(legacy), encoding="utf-8")

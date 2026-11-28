@@ -52,11 +52,26 @@ def redacted_location(raw: str) -> str:
 
     A plain path is returned as it is. A URL (it holds `://`) keeps `scheme://host[:port]` only:
     the user, password, path and query are dropped. A URL that cannot be read gives a fixed
-    text, never its characters.
+    text, never its characters. A network-path reference (`//host/...`) with a user or password
+    keeps `//host[:port]` only; one without credentials is a plain path and is returned as is.
     """
+    if raw.startswith("//") and "://" not in raw:
+        return _redacted_network_path(raw)
     if "://" not in raw:
         return raw
     parts = safe_url_parts(raw)
     if parts is None or not parts.scheme:
         return _UNKNOWN_LOCATION
     return f"{parts.scheme}://{parts.netloc}"
+
+
+def _redacted_network_path(raw: str) -> str:
+    """`//host[:port]` for a `//user:pass@host/...` reference; other `//...` text unchanged."""
+    try:
+        netloc = urlsplit(raw).netloc
+    except ValueError:
+        return _UNKNOWN_LOCATION
+    if "@" not in netloc:
+        return raw
+    parts = safe_url_parts(f"x:{raw}")
+    return _UNKNOWN_LOCATION if parts is None else f"//{parts.netloc}"

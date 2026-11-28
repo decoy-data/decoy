@@ -44,6 +44,10 @@ def test_unreadable_url_gives_none(url: str) -> None:
         (f"sftp://u:{_PW}@[::1]:22/o.csv", "sftp://[::1]:22"),
         (f"https://u:{_PW}@h:bad/o.csv?t={_TOK}", "(remote location)"),
         (f"://u:{_PW}@h/o.csv", "(remote location)"),
+        (f"//u:{_PW}@files.example.com:8443/p?t={_TOK}", "//files.example.com:8443"),
+        (f"//u@[::1]/p?t={_TOK}", "//[::1]"),
+        (f"//u:{_PW}@h:bad/p", "(remote location)"),
+        ("//server/share/out.csv", "//server/share/out.csv"),
     ],
 )
 def test_redacted_location(raw: str, shown: str) -> None:

@@ -13,7 +13,6 @@ from decoy.ui.theme import warn
 
 def render_manifest_card(
     state: OutputState,
-    manifest: dict[str, Any],
     shown: dict[str, Any],
     evidence_file: Path,
     *,
@@ -21,25 +20,26 @@ def render_manifest_card(
 ) -> None:
     """Human-readable evidence manifest summary card.
 
-    `manifest` is the recorded manifest, `shown` its redacted copy for the path tables, and
-    `hash_ok` the caller's `manifest_hash` check (informational only).
+    `shown` is the redacted display copy of the manifest: the card reads every field from it,
+    so it holds nothing value-bearing from the recorded manifest. `hash_ok` is the caller's
+    `manifest_hash` check on the recorded one (informational only).
     """
 
-    schema_v = manifest.get("schema_version", "?")
-    run_id = manifest.get("run_id", "?")
-    run_ts = manifest.get("run_timestamp", "?")
-    cli_v = manifest.get("cli_version", "?")
-    eng_v = manifest.get("engine_version", "?")
-    pipeline_path = manifest.get("pipeline_path", "?")
-    pipeline_fp = manifest.get("pipeline_fingerprint") or ""
-    key_label = manifest.get("key_label") or "(none)"
-    warnings_list = manifest.get("warnings") or []
-    timings_list = manifest.get("timings") or []
+    schema_v = shown.get("schema_version", "?")
+    run_id = shown.get("run_id", "?")
+    run_ts = shown.get("run_timestamp", "?")
+    cli_v = shown.get("cli_version", "?")
+    eng_v = shown.get("engine_version", "?")
+    pipeline_path = shown.get("pipeline_path", "?")
+    pipeline_fp = shown.get("pipeline_fingerprint") or ""
+    key_label = shown.get("key_label") or "(none)"
+    warnings_list = shown.get("warnings") or []
+    timings_list = shown.get("timings") or []
     hash_status = "ok (unkeyed integrity check)" if hash_ok else "MISMATCH (manifest may be edited)"
 
     facts: list[tuple[str, str]] = [
         ("Schema version", schema_v),
-        ("Producer", manifest.get("producer", "?")),
+        ("Producer", shown.get("producer", "?")),
         ("Run ID", run_id[:16] + "..." if len(run_id) > 16 else run_id),
         ("Run timestamp", run_ts),
         ("CLI version", cli_v),
@@ -78,7 +78,7 @@ def render_manifest_card(
         state.console.print(t)
 
     # Strategies table
-    strategies = manifest.get("strategies") or []
+    strategies = shown.get("strategies") or []
     if strategies:
         t = make_table("Table", "Column", "Strategy", title="Masking strategies")
         for s in strategies:

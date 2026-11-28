@@ -125,7 +125,7 @@ def _show(
 
     hash_ok = manifest.get("manifest_hash", "") == evidence.compute_manifest_hash(manifest)
     render_manifest_card(
-        state, manifest, evidence.redact_manifest_paths(manifest), evidence_file, hash_ok=hash_ok
+        state, evidence.redact_manifest_paths(manifest), evidence_file, hash_ok=hash_ok
     )
 
     row_counts: dict[str, Any] = manifest.get("row_counts") or {}

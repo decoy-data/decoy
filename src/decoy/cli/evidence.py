@@ -512,13 +512,16 @@ def read_manifest(path: Path, project: Path | None = None) -> dict[str, Any]:
 
 
 def redact_manifest_paths(manifest: dict[str, Any]) -> dict[str, Any]:
-    """A copy of `manifest` with every recorded input and output path shown by its safe location.
+    """A copy of `manifest` with the pipeline path and every input and output path shown by its
+    safe location.
 
     For a manifest a person will read or share: a legacy one can hold a URL with a user, password
     and query. The `manifest_hash` is kept as recorded, so the copy is for display and is not
     verified.
     """
     shown = dict(manifest)
+    if isinstance(manifest.get("pipeline_path"), str):
+        shown["pipeline_path"] = redacted_location(manifest["pipeline_path"])
     for group in ("input_fingerprints", "output_fingerprints"):
         entries = manifest.get(group)
         if isinstance(entries, dict):
