@@ -158,6 +158,9 @@ def _share_span(text: str, start: int, a: int, whole: bool) -> tuple[int, str | 
             return end, _UNKNOWN_LOCATION
         if "?" not in body and "#" not in body:
             return end, None
+        # An `@` on the line would make the shown `//host` suspect on a second pass.
+        if text.rfind("@", a, _line_end(text, a)) >= 0:
+            return end, _UNKNOWN_LOCATION
         netloc = _netloc(body, -1)
     return end, _UNKNOWN_LOCATION if netloc is None else f"//{netloc}"
 

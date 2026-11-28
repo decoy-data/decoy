@@ -185,6 +185,7 @@ def _reader_routes(ev: Path, d: Path, verify_exit: int) -> list[tuple[list[str],
     ]
 
 
+@pytest.mark.serial
 def test_legacy_manifest_fields_reach_no_output(tmp_path: Path) -> None:
     ev = _legacy_manifest(tmp_path)
     texts = [
@@ -198,6 +199,7 @@ def test_legacy_manifest_fields_reach_no_output(tmp_path: Path) -> None:
     assert "input missing" in texts[8] or "missing" in texts[8]
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize("project", [False, True], ids=["no_project", "marked_project"])
 @pytest.mark.parametrize(
     "filename",
@@ -217,6 +219,7 @@ def test_written_manifest_holds_and_shows_no_credential(
     assert "payroll" in str(json.loads(drift)["issues"])
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize(
     "arg",
     [
@@ -235,6 +238,7 @@ def test_evidence_file_argument_is_never_echoed(tmp_path: Path, arg: str) -> Non
     _run(["report", "diff", arg, arg, "--json"], EXIT_USAGE, tmp_path)
 
 
+@pytest.mark.serial
 def test_output_argument(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     ev = _written_manifest(tmp_path, False)
@@ -260,6 +264,7 @@ def test_output_argument(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Non
                     assert doc["output"] == f"https://{_HOST}"
 
 
+@pytest.mark.serial
 def test_verify_project_argument(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     ev = _written_manifest(tmp_path, True)
@@ -269,6 +274,7 @@ def test_verify_project_argument(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
         assert f"https://{_HOST}" in text
 
 
+@pytest.mark.serial
 def test_diff_warnings_and_unreadable_output(tmp_path: Path) -> None:
     ev = _legacy_manifest(tmp_path)
     manifest = json.loads(ev.read_text())
@@ -295,6 +301,7 @@ def test_diff_warnings_and_unreadable_output(tmp_path: Path) -> None:
         ]
 
 
+@pytest.mark.serial
 def test_library_show_payload(tmp_path: Path) -> None:
     ev = _written_manifest(tmp_path, False)
     manifest = json.loads(ev.read_text())
@@ -348,6 +355,7 @@ def ab_manifests(tmp_path: Path) -> tuple[Path, Path]:
     return paths[0], paths[1]
 
 
+@pytest.mark.serial
 def test_a3_two_manifests_reach_no_output_and_show_the_safe_table(tmp_path: Path) -> None:
     a, b = ab_manifests(tmp_path)
     routes = [
@@ -385,6 +393,7 @@ def _refusal(tmp_path: Path, ev: Path, message: str, project: Path | None = None
         assert doc["error"].startswith(message)
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize(
     ("group", "key", "value", "message"),
     [
@@ -413,6 +422,7 @@ def test_rows_26_38_malformed_names_the_displayed_table(
     _refusal(tmp_path, ev, message)
 
 
+@pytest.mark.serial
 def test_row_40_unparsable_file_at_a_url_shaped_path(tmp_path: Path) -> None:
     bad = tmp_path / "https:" / "h" / "hook" / _sentinel("r40")
     bad.parent.mkdir(parents=True)
@@ -420,6 +430,7 @@ def test_row_40_unparsable_file_at_a_url_shaped_path(tmp_path: Path) -> None:
     _refusal(tmp_path, bad, "could not parse (remote location) as JSON: ")
 
 
+@pytest.mark.serial
 def test_rows_25_39_verify_names_safe_table_and_digest(tmp_path: Path) -> None:
     a, _ = ab_manifests(tmp_path)
     manifest = json.loads(a.read_text(encoding="utf-8"))
@@ -451,6 +462,7 @@ def _bound(ev: Path, pipeline: Path, written_at: str, pipeline_path: str) -> Non
     ev.write_text(json.dumps(manifest), encoding="utf-8")
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize("row", ["53", "54", "62"])
 def test_rows_53_54_62_project_refusals_name_no_carrier(tmp_path: Path, row: str) -> None:
     (tmp_path / ".git").mkdir()  # the project walk stops here
@@ -484,6 +496,7 @@ def test_rows_53_54_62_project_refusals_name_no_carrier(tmp_path: Path, row: str
     _refusal(tmp_path, ev, start, project)
 
 
+@pytest.mark.serial
 def test_verify_refuses_a_missing_project_under_a_carrier_path(tmp_path: Path) -> None:
     ev = _written_manifest(tmp_path, True)
     missing = tmp_path / "https:" / f"svc:{_sentinel('proj')}@h.example" / "nothere"
@@ -494,6 +507,7 @@ def test_verify_refuses_a_missing_project_under_a_carrier_path(tmp_path: Path) -
 # --- A6: verify keeps reading the raw path ---
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize("name", ["payroll#2026.csv", "payroll?2026.csv"])
 def test_a6_verify_reads_raw_where_display_differs(tmp_path: Path, name: str) -> None:
     share = tmp_path / "share"
@@ -523,6 +537,7 @@ def test_a6_verify_reads_raw_where_display_differs(tmp_path: Path, name: str) ->
     assert issue.startswith(f"input fingerprint changed: {top} (table 'payroll')")
 
 
+@pytest.mark.serial
 def test_a6_legacy_row_4_entry_still_resolves_and_reports_missing(tmp_path: Path) -> None:
     ev = _legacy_manifest(tmp_path)
     manifest = json.loads(ev.read_text(encoding="utf-8"))

@@ -147,6 +147,7 @@ _TEXT_ROWS = [
     ("51a", "https://hooks.example\\incoming\\marker", _REMOTE),
     ("51b", "https://u:marker@hooks.example\\incoming\\marker", _REMOTE),
     ("52", "see //service account:marker@files.example/x today", "see (remote location) today"),
+    ("65", "//h/p#x @", "(remote location) @"),
 ]
 
 

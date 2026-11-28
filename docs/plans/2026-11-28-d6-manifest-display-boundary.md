@@ -1,4 +1,6 @@
-Status: plan, revision 4
+Status: plan, revision 5
+
+Changelog, revision 5 (build): an ordinary `?`/`#` share whose line holds an `@` fails closed (step 4, row 65), because the shown `//host` followed by the rest of the line read as suspect on a second pass (A4); the sentry has no `sentry_registry.toml` row (section 5).
 
 Changelog, revision 4 (Codex round 2, edits 1 to 7). Rows 51 to 64 trace authority ambiguity, project refusals, pointer components, opaque envelopes, default export, valid fixtures and the isolated R4 seed.
 
@@ -71,9 +73,9 @@ Steps for one span:
    `@` follows on the line. Also inspect the prefix from A up to `/`, `?`, `#` or line end,
    including spaces. An `@` in that prefix, or a colon in it followed by a later `@` on the line,
    makes the span suspect. Row 47 stops at `/` before reaching the unrelated email. A suspect span uses step 3 and shows `//host[:port]`. Any other S2 span
-   is an ordinary share: no userinfo. It shows `//host` when the span holds `?` or `#`, shows
-   `(remote location)` when a later `//` authority in the span holds `@` (row 12), and is
-   otherwise unchanged.
+   is an ordinary share: no userinfo. It shows `(remote location)` when a later `//` authority in
+   the span holds `@` (row 12). When the span holds `?` or `#`, it shows `(remote location)` if its
+   line holds an `@` (row 65), else `//host`. Otherwise it is unchanged.
 5. **End and resume.** Without userinfo the span ends at the next whitespace. With userinfo it ends
    at the next whitespace after `H` (so everything up to the last `@` on the line is inside it). A
    closing `` > ) ] } " ' ` `` at the span end that matches the opener just before the span start
@@ -161,6 +163,7 @@ Two entry points:
 | 62 | correctly bound manifest, pipeline path `../https:/h/hook/marker` climbs above project root | `path_outside_project` names `pipeline_path`; no marker |
 | 63 | unmodified sentry input, then one extra `DisplayCopy({})` in `_show.py` | no diagnostics, then R4 alone (no loader-bound input) |
 | 64 | HTTPS path before row 55 pointer escaping, sibling key `a~/b` | displayed URL component `https:~1~1h`; ordinary sibling `a~0~1b` |
+| 65 | `//h/p#x @` (text) | `(remote location) @` (ordinary `#` share, later `@` on the line: fail closed, so a second pass is unchanged) |
 
 Trace notes. Rows 1 to 35 were re-traced against steps 1 to 6; all keep their revision 2 result
 except row 12 (now split by entry point, same placeholder), row 15 (fails closed: a password with
@@ -401,8 +404,9 @@ Choke point:
 
 ## 5. Sentry
 
-`tests/sentry/defects/test_report_display_boundary.py`, registered in
-`tests/sentry/test_sentry_manifest.py` (`SENTRIES`) and `scripts/dev/sentry_registry.toml`. Calls are
+`tests/sentry/defects/test_report_display_boundary.py`, found by `tests/sentry/test_sentry_manifest.py`
+(`SENTRIES` globs `tests/sentry/`). It has no `scripts/dev/sentry_registry.toml` row: that file binds
+baselines, and this sentry has none. Calls are
 resolved with `tests/sentry/io_policy/_calls.py` (as in
 `tests/sentry/cli_text/test_json_command_names.py:37,219-225`). The resolver binds imports only, so
 the sentry adds module-level `def` names of the scanned module itself (a bare same-file call
