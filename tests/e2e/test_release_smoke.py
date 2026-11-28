@@ -27,6 +27,7 @@ Out of scope for R6.8 (deferred / handled elsewhere):
 - Real Postgres / cloud connector tests -- file-only V1 scope.
 - OIDC -- N/A; CLI has no auth surface.
 """
+
 from __future__ import annotations
 
 import json
@@ -189,9 +190,7 @@ def test_command_help_includes_see_also(cmd: str):
     main commands."""
     result = runner.invoke(app, [cmd, "--help"])
     assert result.exit_code == 0, f"{cmd} --help failed: {result.output}"
-    assert "See also:" in result.output, (
-        f"{cmd} --help missing 'See also:' block"
-    )
+    assert "See also:" in result.output, f"{cmd} --help missing 'See also:' block"
 
 
 # --------------------------------------------------------------------------

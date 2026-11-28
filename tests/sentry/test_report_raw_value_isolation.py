@@ -54,6 +54,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from decoy.cli.report import compare_data, render_html, render_markdown
 
 # The sentinel must not be a real PII value; it just must be unique enough
@@ -61,9 +63,9 @@ from decoy.cli.report import compare_data, render_html, render_markdown
 _SENTINEL = "SENTRY_RAW_VALUE_ZZZZZ_" + "X" * 20
 
 
-def _outputs(path: Path) -> dict[str, Any]:
-    """A manifest (old path rule: paths as recorded) whose one output is `path`."""
-    entry = {"path": str(path), "fingerprint": "sha256:" + "0" * 64}
+def _outputs(path: Path, fmt: str) -> dict[str, Any]:
+    """A manifest (old path rule: paths as recorded) whose one output is `path` in `fmt`."""
+    entry = {"path": str(path), "fingerprint": "sha256:" + "0" * 64, "format": fmt}
     return {"output_fingerprints": {"data": entry}}
 
 
@@ -152,6 +154,23 @@ def test_render_markdown_does_not_read_sibling_files(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("kind", ["html", "markdown"])
+def test_private_documents_take_only_a_display_copy(tmp_path: Path, kind: str) -> None:
+    """The private document functions read a `DisplayCopy`; a raw dict is refused, and the
+    document from the display copy matches the public entry's."""
+    from decoy.cli.evidence import display_manifest
+    from decoy.cli.report._html import _html_document
+    from decoy.cli.report._markdown import _markdown_document
+
+    document = _html_document if kind == "html" else _markdown_document
+    public = render_html if kind == "html" else render_markdown
+    manifest = _make_manifest_with_file_paths(tmp_path)
+    with pytest.raises(TypeError):
+        document(manifest)  # type: ignore[arg-type]
+    shown = display_manifest(manifest)
+    assert document(shown) == public(manifest) == public(shown)
+
+
 def test_sentinel_actually_present_in_sibling_file(tmp_path: Path) -> None:
     """Negative control: confirm the sentinel IS in the sibling file.
 
@@ -210,9 +229,12 @@ def test_compare_data_does_not_leak_raw_string_values(tmp_path: Path) -> None:
     )
 
     result = compare_data(
-        _outputs(csv_a), _outputs(csv_b), manifest_file_a=None, manifest_file_b=None
+        _outputs(csv_a, "csv"), _outputs(csv_b, "csv"), manifest_file_a=None, manifest_file_b=None
     )
     serialised = _json.dumps(result)
+
+    # The data level ran: a refused or unread table would leave this empty and pass vacuously.
+    assert result["table_deltas"], "compare_data did not read the CSV outputs"
 
     assert _STRING_SENTINEL not in serialised, (
         f"compare_data leaked the string sentinel '{_STRING_SENTINEL}' into its "
@@ -264,9 +286,14 @@ def test_compare_data_does_not_leak_raw_numeric_values(tmp_path: Path) -> None:
     pq.write_table(pa.Table.from_pandas(df_b), str(parquet_b))
 
     result = compare_data(
-        _outputs(parquet_a), _outputs(parquet_b), manifest_file_a=None, manifest_file_b=None
+        _outputs(parquet_a, "parquet"),
+        _outputs(parquet_b, "parquet"),
+        manifest_file_a=None,
+        manifest_file_b=None,
     )
     serialised = _json.dumps(result)
+
+    assert result["table_deltas"], "compare_data did not read the Parquet outputs"
 
     assert str(_NUMERIC_SENTINEL) not in serialised, (
         f"compare_data leaked the numeric sentinel '{_NUMERIC_SENTINEL}' into its "

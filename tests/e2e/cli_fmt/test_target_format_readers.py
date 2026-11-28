@@ -13,6 +13,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -410,32 +411,74 @@ def _old_shape(path: Path, manifest: dict[str, Any]) -> Path:
 _FRAME = pd.DataFrame({"id": ["1", "2"], "name": ["Al", "Bo"]})
 
 
-def test_report_diff_old_manifest_falls_back(tmp_path: Path) -> None:
-    for kind, write in (("parquet", _FRAME.to_parquet), ("csv", _FRAME.to_csv)):
-        sides = []
-        for tag in ("a", "b"):
-            out = tmp_path / f"{tag}.{kind}"
-            write(out, index=False)
-            manifest = _manifest(tmp_path, tag, out, kind)
-            sides.append(_old_shape(tmp_path / f"{tag}_{kind}.json", manifest))
-        got = _data_level(*sides)
-        assert got["change"] is False
-        assert [d["row_count_a"] for d in got["deltas"]] == [2]
-        entry = json.loads(sides[0].read_text(encoding="utf-8"))["output_fingerprints"]["t"]
-        assert "format" not in entry
-        assert runner.invoke(app, ["report", "verify", str(sides[0])]).exit_code == 0
+_UNRECORDED_TEXT = (
+    "target_format_unrecorded: the evidence manifest entry records no format (written before "
+    "format recording); re-run the pipeline to write a new manifest"
+)
+_SKIPPED_KEYS = {"data_level", "any_data_change", "table_deltas", "missing_files", "data_note"}
 
 
-def test_report_diff_old_manifest_pq_holds_csv(tmp_path: Path) -> None:
-    paths = []
+def _flat(text: str) -> str:
+    """Terminal wrapping folded away, so a fixed message compares as one line."""
+    return " ".join(text.split())
+
+
+def _old_pair(d: Path, name: str, kind: str, write: Callable[..., object]) -> list[Path]:
+    sides = []
     for tag in ("a", "b"):
-        out = tmp_path / f"{tag}.pq"
-        _FRAME.to_csv(out, index=False)  # what the old CLI wrote for a .pq path
-        manifest = _manifest(tmp_path, tag, out, "parquet")
-        paths.append(_old_shape(tmp_path / f"{tag}.json", manifest))
-    got = _data_level(*paths)
-    assert got["change"] is False
-    assert [d["row_count_a"] for d in got["deltas"]] == [2]
+        out = d / f"{tag}_{name}"
+        write(out, index=False)
+        manifest = _manifest(d, tag, out, kind)
+        sides.append(_old_shape(d / f"{tag}_{kind}.json", manifest))
+    return sides
+
+
+@pytest.mark.parametrize(
+    ("name", "kind", "writer"),
+    [
+        ("x.parquet", "parquet", _FRAME.to_parquet),
+        ("x.csv", "csv", _FRAME.to_csv),
+        ("x.pq", "parquet", _FRAME.to_csv),  # what the old CLI wrote for a .pq path
+    ],
+)
+def test_report_diff_old_manifest_refused(
+    tmp_path: Path, name: str, kind: str, writer: Callable[..., object]
+) -> None:
+    from decoy.cli.report import compare_manifests
+
+    sides = _old_pair(tmp_path, name, kind, writer)
+    docs = [json.loads(p.read_text(encoding="utf-8")) for p in sides]
+    assert all("format" not in d["output_fingerprints"]["t"] for d in docs)
+    raws = [d["output_fingerprints"]["t"]["path"] for d in docs]
+    assert len(set(raws)) == 2
+
+    strict = _diff(*sides, "--require-data")
+    assert strict.exit_code == EXIT_USAGE, strict.output
+    assert _UNRECORDED_TEXT in json.loads(strict.stdout)["error"]
+
+    soft = _diff(*sides)
+    assert soft.exit_code == 0, soft.output
+    payload = json.loads(soft.stdout)
+    assert payload["data_level"] == "skipped"
+    assert payload["data_note"] == "refused: " + _UNRECORDED_TEXT
+    assert payload["missing_files"] == raws
+    assert payload["table_deltas"] == []
+    base = {"command", "status", "evidence_file_a", "evidence_file_b"} | set(
+        compare_manifests(*docs)
+    )
+    assert set(payload) == base | _SKIPPED_KEYS
+    assert "refusals" not in payload
+    assert runner.invoke(app, ["report", "verify", str(sides[0])]).exit_code == 0
+
+
+def test_report_diff_old_manifest_human_mode_names_the_code(tmp_path: Path) -> None:
+    sides = _old_pair(tmp_path, "x.csv", "csv", _FRAME.to_csv)
+    strict = runner.invoke(app, ["report", "diff", str(sides[0]), str(sides[1]), "--require-data"])
+    assert strict.exit_code == EXIT_USAGE
+    assert "refused: " + _UNRECORDED_TEXT in _flat(strict.output)
+    soft = runner.invoke(app, ["report", "diff", str(sides[0]), str(sides[1])])
+    assert soft.exit_code == 0
+    assert "refused: " + _UNRECORDED_TEXT in _flat(soft.output)
 
 
 def test_report_diff_sides_read_independently(tmp_path: Path) -> None:
@@ -462,31 +505,66 @@ def test_unreadable_entries_are_value_free(tmp_path: Path) -> None:
             {"name": "n", "start": 7, "width": 3, "type": "int", "align": "right"},
         ]
     }
-    cases = {
-        "engine_refused_fixed_width": {
-            "path": str(refused),
-            "format": "fixed_width",
-            "layout": refused_layout,
-        },
-        "layout_int": {"format": "fixed_width", "layout": 5},
-        "layout_true": {"format": "fixed_width", "layout": True},
-        "layout_string": {"format": "fixed_width", "layout": "x"},
-        "layout_list": {"format": "fixed_width", "layout": [1]},
-        "layout_empty": {"format": "fixed_width", "layout": {}},
-        "layout_without_columns": {"format": "fixed_width", "layout": {"columns": 5}},
-        "unknown_format": {"format": "xml"},
-        "fixed_width_no_layout": {"format": "fixed_width"},
-        "undecodable_csv": {"path": str(bad), "format": "csv"},
+    unreadable = "target_format_unreadable: the file's format cannot be determined"
+    # label -> (entry keys, fixed refusal text or None: a parser failure keeps no code)
+    cases: dict[str, tuple[dict[str, Any], str | None]] = {
+        "engine_refused_fixed_width": (
+            {"path": str(refused), "format": "fixed_width", "layout": refused_layout},
+            None,
+        ),
+        "layout_int": ({"format": "fixed_width", "layout": 5}, unreadable),
+        "layout_true": ({"format": "fixed_width", "layout": True}, unreadable),
+        "layout_string": ({"format": "fixed_width", "layout": "x"}, unreadable),
+        "layout_list": ({"format": "fixed_width", "layout": [1]}, unreadable),
+        "layout_empty": ({"format": "fixed_width", "layout": {}}, unreadable),
+        "layout_without_columns": ({"format": "fixed_width", "layout": {"columns": 5}}, None),
+        "unknown_format": ({"format": "xml"}, unreadable),
+        "fixed_width_no_layout": ({"format": "fixed_width"}, unreadable),
+        "undecodable_csv": ({"path": str(bad), "format": "csv"}, None),
+        "old_shape": ({"format": None, "layout": None}, _UNRECORDED_TEXT),
     }
-    for label, entry in cases.items():
+    for label, (entry, text) in cases.items():
         ev = _write_manifest(tmp_path / f"{label}.json", base, **entry)
         soft = _diff(ev, ev)
         assert soft.exit_code == 0, (label, soft.output)
-        assert json.loads(soft.stdout)["data_level"] == "skipped", label
+        soft_doc = json.loads(soft.stdout)
+        assert soft_doc["data_level"] == "skipped", label
         strict = _diff(ev, ev, "--require-data")
         assert strict.exit_code == EXIT_USAGE, (label, strict.output)
-        for output in (soft.output, strict.output):
+        human_soft = runner.invoke(app, ["report", "diff", str(ev), str(ev)])
+        human_strict = runner.invoke(app, ["report", "diff", str(ev), str(ev), "--require-data"])
+        assert human_soft.exit_code == 0 and human_strict.exit_code == EXIT_USAGE, label
+        for output in (soft.output, strict.output, human_soft.output, human_strict.output):
             assert _CELL not in output
+        texts = (
+            soft_doc.get("data_note"),
+            json.loads(strict.stdout)["error"],
+            _flat(human_soft.output),
+            _flat(human_strict.output),
+        )
+        for shown in texts:
+            if text is None:
+                assert "refused:" not in (shown or ""), label
+            else:
+                assert "refused: " + text in (shown or ""), (label, shown)
+        if text is not None:
+            assert soft_doc["data_note"] == "refused: " + text, label
+
+
+def test_a_corrupt_or_missing_output_carries_no_refusal_text(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.csv"
+    bad.write_bytes(b"id,name\n\xff\xfe\x80,\xc3\x28\n")
+    base = _manifest(tmp_path, "a", bad, "csv")
+    gone = {"path": str(tmp_path / "gone.csv"), "format": "csv"}
+    for label, entry in {"corrupt": {"format": "csv"}, "missing": gone}.items():
+        ev = _write_manifest(tmp_path / f"{label}.json", base, **entry)
+        soft = _diff(ev, ev)
+        assert "data_note" not in json.loads(soft.stdout), label
+        strict = _diff(ev, ev, "--require-data")
+        assert strict.exit_code == EXIT_USAGE and "refused:" not in strict.output, label
+        human = runner.invoke(app, ["report", "diff", str(ev), str(ev)])
+        human_strict = runner.invoke(app, ["report", "diff", str(ev), str(ev), "--require-data"])
+        assert "refused:" not in human.output + human_strict.output, label
 
 
 # ---------------------------------------------------------------------------

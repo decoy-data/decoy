@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import typer
 
-from decoy.cli.evidence import (
-    _render_manifest_card,
-)
+from decoy.cli import evidence
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import ReportTarget
 from decoy.cli.report._html import render_html
 from decoy.cli.report._markdown import render_markdown
 from decoy.cli.report._shared import _load_manifest, _write_out
+from decoy.safe_url import display_path
+from decoy.ui.evidence_card import render_manifest_card
 from decoy.ui.output import (
     OutputMode,
     emit_json,
@@ -32,7 +31,7 @@ Examples:
     Write a full HTML report from the evidence manifest.
 
   decoy report show evidence.json --json
-    Emit the raw evidence manifest as structured JSON.
+    Emit the display copy of the evidence manifest as structured JSON.
 
 The terminal card is the UNION of the former `report summarize` + `evidence
 show`: run metadata + manifest_hash integrity status, input/output fingerprint
@@ -84,6 +83,8 @@ def _show(
     """
     state = setup_output(json_, quiet, verbose)
     manifest = _load_manifest(evidence_file, state, "report show")
+    # The one display copy: JSON, the card and the written reports all print it.
+    shown = evidence.display_manifest(manifest)
 
     # --json: emit the full manifest
     if state.mode is OutputMode.json:
@@ -92,8 +93,8 @@ def _show(
             {
                 "command": "report show",
                 "status": "ok",
-                "evidence_file": str(evidence_file),
-                "manifest": manifest,
+                "evidence_file": display_path(evidence_file),
+                "manifest": shown,
             },
         )
         return
@@ -111,24 +112,16 @@ def _show(
             )
             raise typer.Exit(code=EXIT_USAGE)
         if fmt in ("markdown", "md"):
-            content = render_markdown(manifest)
+            content = render_markdown(shown)
         else:
-            content = render_html(manifest)
+            content = render_html(shown)
         _write_out(state, ReportTarget(out, False), content)
         fmt_label = "Markdown" if fmt in ("markdown", "md") else "HTML"
-        state.console.print(success("ok"), f"{fmt_label} report written to", code(str(out)))
+        state.console.print(
+            success("ok"), f"{fmt_label} report written to", code(display_path(out))
+        )
         return
 
-    # Default: the union card -- fingerprint tables + strategies + manifest_hash
-    # status (from the former `evidence show`) PLUS the row_counts table (from
-    # the former `report summarize`/`show`).
-    from decoy.ui.table import make_table
-
-    _render_manifest_card(state, manifest, evidence_file)
-
-    row_counts: dict[str, Any] = manifest.get("row_counts") or {}
-    if row_counts:
-        t = make_table("Table", "Rows", title="Row counts")
-        for tname, count in row_counts.items():
-            t.add_row(str(tname), str(count))
-        state.console.print(t)
+    # Default: the union card (fingerprints, strategies, manifest_hash status, row counts).
+    hash_ok = evidence.manifest_hash_ok(manifest)
+    render_manifest_card(state, shown, evidence_file, hash_ok=hash_ok)

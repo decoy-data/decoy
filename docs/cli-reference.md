@@ -1556,7 +1556,7 @@ Examples:
     Write a full HTML report from the evidence manifest.
 
   decoy report show evidence.json --json
-    Emit the raw evidence manifest as structured JSON.
+    Emit the display copy of the evidence manifest as structured JSON.
 
 The terminal card is the UNION of the former `report summarize` + `evidence
 show`: run metadata + manifest_hash integrity status, input/output fingerprint

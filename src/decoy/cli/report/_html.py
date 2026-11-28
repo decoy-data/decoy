@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import html as _html_mod
 import json as _json
+from collections.abc import Mapping
 from typing import Any
+
+from decoy.cli import evidence
+from decoy.safe_url import DisplayCopy
 
 _HTML_CSS = """\
 body { font-family: monospace; max-width: 900px; margin: 2em auto; background: #111; color: #e0e0e0; }
@@ -27,15 +31,24 @@ def _esc(value: Any) -> str:
     return _html_mod.escape(str(value) if value is not None else "")
 
 
-def render_html(manifest: dict[str, Any]) -> str:
+def render_html(manifest: Mapping[str, Any]) -> str:
     """Render a manifest dict to a self-contained, offline HTML report.
 
     EVIDENCE-SAFE: builds entirely from the manifest dict. Does NOT read any
     source CSV, output CSV, or pipeline YAML file from disk. The manifest
     itself never contains raw row values (see build_manifest in evidence.py).
 
+    A display copy passes through; any other mapping goes through `display_manifest` first.
     Returns a complete HTML document as a string.
     """
+    shown = manifest if isinstance(manifest, DisplayCopy) else evidence.display_manifest(manifest)
+    return _html_document(shown)
+
+
+def _html_document(manifest: DisplayCopy) -> str:
+    """The HTML report of a display copy; every value printed comes from it."""
+    if not isinstance(manifest, DisplayCopy):
+        raise TypeError("_html_document takes the display copy of a manifest")
     run_id = _esc(manifest.get("run_id", "?"))
     run_ts = _esc(manifest.get("run_timestamp", "?"))
     schema_v = _esc(manifest.get("schema_version", "?"))
@@ -103,7 +116,7 @@ def render_html(manifest: dict[str, Any]) -> str:
             fp = _esc(info_val.get("fingerprint") or "(none)")
             method = _esc(info_val.get("fingerprint_method") or "?")
             size = _esc(info_val.get("size_bytes") or "?")
-            path_v = _esc(info_val.get("path") or "?")
+            path_v = _esc(str(info_val.get("path") or "?"))
             parts.append(
                 f"<tr><td>{_esc(tname)}</td><td>{path_v}</td>"
                 f'<td class="fp">{fp}</td><td>{method}</td><td>{size}</td></tr>'
@@ -123,7 +136,7 @@ def render_html(manifest: dict[str, Any]) -> str:
             fp = _esc(info_val.get("fingerprint") or "(none)")
             method = _esc(info_val.get("fingerprint_method") or "?")
             size = _esc(info_val.get("size_bytes") or "?")
-            path_v = _esc(info_val.get("path") or "?")
+            path_v = _esc(str(info_val.get("path") or "?"))
             parts.append(
                 f"<tr><td>{_esc(tname)}</td><td>{path_v}</td>"
                 f'<td class="fp">{fp}</td><td>{method}</td><td>{size}</td></tr>'

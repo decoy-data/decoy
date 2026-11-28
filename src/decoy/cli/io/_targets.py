@@ -54,6 +54,7 @@ SUFFIX_MISMATCH = "target_format_suffix_mismatch"
 STREAMING_UNSUPPORTED = "target_format_streaming_unsupported"
 FORMAT_UNKNOWN = "target_format_unknown"
 UNREADABLE = "target_format_unreadable"
+UNRECORDED = "target_format_unrecorded"
 CSV_UNSUPPORTED_TYPE = "target.csv_unsupported_type"
 CSV_SCHEMA_DRIFT = "target.csv_schema_drift"
 
@@ -237,14 +238,6 @@ def resolve_target_format(table: str, entry: Mapping[str, Any]) -> str:
     return str(entry["format"])
 
 
-def _legacy_format_for_path(path: Path) -> str:
-    """The format the pre-CLI-FMT writer gave a path: `.parquet` was Parquet, all else CSV.
-
-    Not `format_for_path`: the old writer put CSV bytes into a `.pq` path.
-    """
-    return "parquet" if path.suffix.lower() == ".parquet" else "csv"
-
-
 def _unreadable(fmt: object, layout: object) -> TargetFormatError | None:
     if not is_target_format(fmt):
         return TargetFormatError(UNREADABLE, "the file's format cannot be determined")
@@ -299,16 +292,19 @@ def input_format(
     return format_for_path(path), None
 
 
-def entry_format(path: Path, recorded: Mapping[str, Any]) -> tuple[str, Mapping[str, Any] | None]:
+def entry_format(recorded: Mapping[str, Any]) -> tuple[str, Mapping[str, Any] | None]:
     """The format and layout to read one evidence-manifest output in.
 
-    `path` is the output already resolved from the manifest (`resolve_manifest_path`), never
-    the stored text. `recorded` holds the entry's `format` and `layout` keys, without its path.
-    No `format` means a manifest written before CLI-FMT: the legacy suffix rule. An unknown
-    format, or fixed_width without a layout, is refused.
+    `recorded` holds the entry's `format` and `layout` keys, without its path. An entry with no
+    `format` was written before format recording and is refused (`UNRECORDED`), as is an unknown
+    format or fixed_width without a layout.
     """
     if "format" not in recorded:
-        return _legacy_format_for_path(path), None
+        raise TargetFormatError(
+            UNRECORDED,
+            "the evidence manifest entry records no format (written before format recording); "
+            "re-run the pipeline to write a new manifest",
+        )
     layout = recorded.get("layout")
     error = _unreadable(recorded["format"], layout)
     if error is not None:

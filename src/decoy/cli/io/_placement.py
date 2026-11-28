@@ -50,6 +50,7 @@ from decoy.cli.io._layout_errors import (
 )
 from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._run_outputs import OutputKind, RunOutput, replaces_final, run_outputs
+from decoy.safe_url import display_path
 
 if TYPE_CHECKING:
     from decoy.cli.io._pipelines import PipelineRef
@@ -565,7 +566,7 @@ class ReportTarget:
             if self.implicit:
                 self.warning = REPORT_NOT_WRITTEN.warning()
             else:
-                self.error = f"could not write {self.path}: {describe(exc)}"
+                self.error = f"could not write {display_path(str(self.path))}: {describe(exc)}"
 
 
 def report_dest(kind: str, file: Path, ref: PipelineRef | None, typed: Path | None) -> ReportTarget:

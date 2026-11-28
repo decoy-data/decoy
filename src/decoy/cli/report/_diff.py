@@ -7,9 +7,11 @@ from typing import Any
 
 import typer
 
+from decoy.cli.evidence import digest_preview
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.report._compare import compare_data, compare_manifests
 from decoy.cli.report._shared import _load_manifest
+from decoy.safe_url import DisplayCopy, display_path, display_safe
 from decoy.ui.output import (
     OutputMode,
     emit_json,
@@ -104,17 +106,19 @@ def _diff(
     manifest_b = _load_manifest(evidence_file_b, state, "report diff")
 
     # --- Manifest/fingerprint-level comparison (always) ---
-    manifest_diff = compare_manifests(manifest_a, manifest_b)
+    manifest_diff = display_safe(compare_manifests(manifest_a, manifest_b))
 
     # --- Data-level comparison (when the referenced output files exist) ---
-    data_result: dict[str, Any] | None = None
+    data_result: DisplayCopy | None = None
     data_dep_error: str | None = None
     try:
-        data_result = compare_data(
-            manifest_a,
-            manifest_b,
-            manifest_file_a=evidence_file_a,
-            manifest_file_b=evidence_file_b,
+        data_result = display_safe(
+            compare_data(
+                manifest_a,
+                manifest_b,
+                manifest_file_a=evidence_file_a,
+                manifest_file_b=evidence_file_b,
+            )
         )
     except RuntimeError as _dep_err:
         # pandas (or a parquet reader) is not installed. Treat the data level
@@ -122,6 +126,7 @@ def _diff(
         data_dep_error = str(_dep_err)
 
     missing_files: list[str] = list(data_result["missing_files"]) if data_result else []
+    refused = _refusal_text(data_result["refusals"]) if data_result else None
     data_available = data_result is not None and not missing_files
 
     # --require-data: restore the strict hard-fail when the data level could
@@ -131,6 +136,8 @@ def _diff(
             msg = "Output files are missing or unreadable and cannot be compared: " + ", ".join(
                 missing_files
             )
+            if refused:
+                msg += "; " + refused
         else:
             msg = data_dep_error or "data-level comparison is unavailable."
         if state.mode is OutputMode.json:
@@ -150,8 +157,8 @@ def _diff(
         payload: dict[str, Any] = {
             "command": "report diff",
             "status": "ok",
-            "evidence_file_a": str(evidence_file_a),
-            "evidence_file_b": str(evidence_file_b),
+            "evidence_file_a": display_path(evidence_file_a),
+            "evidence_file_b": display_path(evidence_file_b),
         }
         payload.update(manifest_diff)
         if data_available and data_result is not None:
@@ -163,8 +170,8 @@ def _diff(
             payload["any_data_change"] = None
             payload["table_deltas"] = []
             payload["missing_files"] = missing_files
-            if data_dep_error:
-                payload["data_note"] = data_dep_error
+            if data_dep_error or refused:
+                payload["data_note"] = data_dep_error or refused
         emit_json(state, payload)
         return
 
@@ -190,9 +197,9 @@ def _diff(
         state.console.print(
             warn("changes detected"),
             "between",
-            code(str(evidence_file_a)),
+            code(display_path(evidence_file_a)),
             "and",
-            code(str(evidence_file_b)),
+            code(display_path(evidence_file_b)),
         )
         state.console.print("")
         if manifest_changed:
@@ -219,7 +226,12 @@ def _diff(
         # Degraded: the output files are gone. Note, not failure.
         state.console.print("")
         note = (
-            "output files missing (" + ", ".join(missing_files) + ")"
+            "output files missing"
+            + (" or refused" if refused else "")
+            + " ("
+            + ", ".join(missing_files)
+            + ")"
+            + (f"; {refused}" if refused else "")
             if missing_files
             else (data_dep_error or "data-level comparison unavailable")
         )
@@ -231,8 +243,17 @@ def _diff(
         )
 
 
-def _render_data_diff(state: Any, diff_result: dict[str, Any]) -> None:
-    """Render a `compare_data` result to the terminal (per-table deltas)."""
+def _refusal_text(refusals: list[list[str]]) -> str | None:
+    """The fixed `refused: code: message` text for refused outputs, or None when none were."""
+    if not refusals:
+        return None
+    return "refused: " + "; ".join(f"{code}: {message}" for code, message in refusals)
+
+
+def _render_data_diff(state: Any, diff_result: DisplayCopy) -> None:
+    """Render the display copy of a `compare_data` result to the terminal (per-table deltas)."""
+    if not isinstance(diff_result, DisplayCopy):
+        raise TypeError("_render_data_diff takes a display copy")
     from decoy.ui.table import make_table
 
     for td in diff_result["table_deltas"]:
@@ -274,13 +295,15 @@ def _render_data_diff(state: Any, diff_result: dict[str, Any]) -> None:
                 state.console.print(t)
 
 
-def _render_manifest_compare(state: Any, diff: dict[str, Any]) -> None:
-    """Render a `compare_manifests` result to the terminal (shared helper).
+def _render_manifest_compare(state: Any, diff: DisplayCopy) -> None:
+    """Render the display copy of a `compare_manifests` result to the terminal (shared helper).
 
     Prints the pipeline-fingerprint change, per-table input/output fingerprint
     changes, row-count deltas, and warnings added/removed. Caller decides the
     headline and whether any change was found.
     """
+    if not isinstance(diff, DisplayCopy):
+        raise TypeError("_render_manifest_compare takes a display copy")
     from decoy.ui.table import make_table
 
     # Pipeline fingerprint
@@ -355,7 +378,5 @@ def _render_manifest_compare(state: Any, diff: dict[str, Any]) -> None:
 
 
 def _fp_short(fp: str | None) -> str:
-    """Return a shortened fingerprint for display (prefix + ellipsis)."""
-    if not fp:
-        return "(none)"
-    return (fp[:23] + "...") if len(fp) > 23 else fp
+    """A fingerprint preview; a legacy value that is not a canonical digest is not cut."""
+    return digest_preview(fp, 23) if fp else "(none)"

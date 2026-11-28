@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as _json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -10,9 +11,11 @@ from decoy.cli._sources import (
     read_file,
 )
 from decoy.cli.evidence import (
+    manifest_file_available,
     resolve_manifest_path,
 )
-from decoy.cli.io import entry_format
+from decoy.cli.io import TargetFormatError, entry_format
+from decoy.safe_url import display_location
 
 
 def _warning_key(w: Any) -> str:
@@ -155,6 +158,24 @@ def _column_profile(df: "Any") -> dict[str, dict[str, Any]]:
     return profile
 
 
+def _entry_formats(
+    entries: Sequence[Mapping[str, Any]],
+) -> tuple[list[tuple[str, Mapping[str, Any] | None]], list[TargetFormatError]]:
+    """The recorded `(format, layout)` of every present entry, and the refusals instead.
+
+    The one projection and check for a table seen on one side or both, so a key a reader needs
+    cannot pass on one path and fail on the other. Every entry is checked before any is read.
+    """
+    formats: list[tuple[str, Mapping[str, Any] | None]] = []
+    errors: list[TargetFormatError] = []
+    for entry in entries:
+        try:
+            formats.append(entry_format({k: entry[k] for k in ("format", "layout") if k in entry}))
+        except TargetFormatError as err:
+            errors.append(err)
+    return formats, errors
+
+
 def compare_data(
     manifest_a: dict[str, Any],
     manifest_b: dict[str, Any],
@@ -168,11 +189,14 @@ def compare_data(
     `path` is resolved by `evidence.resolve_manifest_path` against its own manifest's project,
     never the working directory; an entry with a null fingerprint (nothing written) counts as
     missing. Since CLI-FMT an entry records the `format` (and fixed-width `layout`) it was
-    written in; each side is read by its own entry, and one without `format` takes the legacy
-    suffix rule. Raises `ManifestError` when a stored path is refused.
+    written in; each side is read by its own entry. An entry without `format` (or with one that
+    cannot be read) is refused before either side of its table is read; the table's paths go to
+    `missing_files` and the refusal's code and fixed message to `refusals`. Raises
+    `ManifestError` when a stored path is refused.
 
-    Returns `any_data_change` (bool), `missing_files` (recorded paths not found or not
-    readable) and `table_deltas`: per table, `row_count_a`/`_b`/`_delta`, `columns_added` and
+    Returns `any_data_change` (bool), `missing_files` (recorded paths not found, not readable or
+    refused), `refusals` (sorted `(code, message)` pairs of the refused entries) and
+    `table_deltas`: per table, `row_count_a`/`_b`/`_delta`, `columns_added` and
     `columns_removed` (B against A), and `column_deltas` with `null_count_delta`,
     `unique_count_delta`, `dtype_kind_a`/`_b` and `dtype_changed` for each changed column.
 
@@ -190,7 +214,14 @@ def compare_data(
 
     table_deltas: list[dict[str, Any]] = []
     missing_files: list[str] = []
+    refusals: set[tuple[str, str]] = set()
     any_data_change = False
+
+    def _skip(raws: tuple[str, ...], errors: Sequence[TargetFormatError] = ()) -> None:
+        """The one place a table's paths are recorded as skipped, with any refusal codes."""
+        shown = (display_location(r) for r in raws)
+        missing_files.extend(s for s in dict.fromkeys(shown) if s not in missing_files)
+        refusals.update((err.code, str(err)) for err in errors)
 
     for table in all_tables:
         fp_a = output_fps_a.get(table) or {}
@@ -199,7 +230,12 @@ def compare_data(
         path_b_str = fp_b.get("path") if isinstance(fp_b, dict) else None
 
         if not path_a_str or not path_b_str:
-            # Table only in one run -- treat as a change
+            # Table only in one run -- treat as a change, unless its one entry is refused.
+            present = [(raw, fp) for raw, fp in ((path_a_str, fp_a), (path_b_str, fp_b)) if raw]
+            _, lone_errors = _entry_formats([fp for _, fp in present])
+            if lone_errors:
+                _skip(tuple(raw for raw, _ in present), lone_errors)
+                continue
             any_data_change = True
             table_deltas.append(
                 {
@@ -223,25 +259,27 @@ def compare_data(
             if entry.get("fingerprint") is not None:
                 field = f"output_fingerprints.{table}.path"
                 path = resolve_manifest_path(manifest, raw, manifest_file=where, field=field)
-            if path is not None and path.exists():
+            if path is not None and manifest_file_available(path):
                 found.append(path)
-            elif raw not in missing_files:
-                missing_files.append(raw)
+                continue
+            _skip((raw,))
 
-        if missing_files:
+        if len(found) != len(sides):
             continue
 
-        # Each side is read by its own recorded format (an old entry: the legacy suffix rule).
-        rec_a, rec_b = ({k: fp[k] for k in ("format", "layout") if k in fp} for fp in (fp_a, fp_b))
+        # Both sides are checked before either is read, each on its own recorded format.
+        formats, errors = _entry_formats([fp_a, fp_b])
+        if errors:
+            _skip((path_a_str, path_b_str), errors)
+            continue
+        (fmt_a, layout_a), (fmt_b, layout_b) = formats
         try:
-            df_a = read_file(found[0], *entry_format(found[0], rec_a), table=table)
-            df_b = read_file(found[1], *entry_format(found[1], rec_b), table=table)
+            df_a = read_file(found[0], fmt_a, layout_a, table=table)
+            df_b = read_file(found[1], fmt_b, layout_b, table=table)
         except (OSError, ValueError, DecoyError):
             # Unreadable (corrupt, truncated, or not its recorded format): treat it as missing so
             # --require-data still fails. The parser message is dropped: it can echo cell values.
-            for p_str in (path_a_str, path_b_str):
-                if p_str not in missing_files:
-                    missing_files.append(p_str)
+            _skip((path_a_str, path_b_str))
             continue
 
         rows_a = len(df_a)
@@ -309,4 +347,5 @@ def compare_data(
         "any_data_change": any_data_change,
         "table_deltas": table_deltas,
         "missing_files": missing_files,
+        "refusals": sorted(refusals),
     }

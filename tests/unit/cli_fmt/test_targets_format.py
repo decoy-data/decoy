@@ -12,6 +12,7 @@ from decoy.cli.io._targets import (
     STREAMING_UNSUPPORTED,
     SUFFIX_MISMATCH,
     UNREADABLE,
+    UNRECORDED,
     TargetFormatError,
     check_target_formats,
     claimed_format,
@@ -174,40 +175,133 @@ def test_input_format_refuses_an_unreadable_declaration_before_any_open(
 
 
 @pytest.mark.parametrize(
-    ("entry", "expected"),
+    ("recorded", "expected"),
     [
-        ({"path": "o.parquet"}, ("parquet", None)),
-        ({"path": "o.PARQUET"}, ("parquet", None)),
-        ({"path": "o.pq"}, ("csv", None)),
-        ({"path": "o.dat"}, ("csv", None)),
-        ({"path": "o.pq", "format": "parquet"}, ("parquet", None)),
-        ({"path": "o.parquet", "format": "csv"}, ("csv", None)),
-        ({"path": "o", "format": "fixed_width", "layout": _LAYOUT}, ("fixed_width", _LAYOUT)),
+        ({"format": "parquet"}, ("parquet", None)),
+        ({"format": "csv"}, ("csv", None)),
+        ({"format": "fixed_width", "layout": _LAYOUT}, ("fixed_width", _LAYOUT)),
+        ({"format": "csv", "layout": _LAYOUT}, ("csv", None)),
     ],
 )
-def test_entry_format(entry: dict, expected: tuple) -> None:
-    recorded = {k: v for k, v in entry.items() if k != "path"}
-    assert entry_format(Path(entry["path"]), recorded) == expected
+def test_entry_format(recorded: dict, expected: tuple) -> None:
+    assert entry_format(recorded) == expected
+
+
+_UNRECORDED_TEXT = (
+    "the evidence manifest entry records no format (written before format recording); "
+    "re-run the pipeline to write a new manifest"
+)
+
+
+@pytest.mark.parametrize("recorded", [{}, {"layout": _LAYOUT}, {"layout": "SEEDED_LAYOUT_ZZ"}])
+def test_entry_format_refuses_an_entry_with_no_format(recorded: dict) -> None:
+    with pytest.raises(TargetFormatError) as err:
+        entry_format(recorded)
+    assert err.value.code == UNRECORDED == "target_format_unrecorded"
+    assert str(err.value) == _UNRECORDED_TEXT
+    assert err.value.__cause__ is None and err.value.__context__ is None
 
 
 @pytest.mark.parametrize(
-    "entry",
+    "recorded",
     [
-        {"path": "o.csv", "format": "xml"},
-        {"path": "o.csv", "format": None},
-        {"path": "o.txt", "format": "fixed_width"},
-        {"path": "o.txt", "format": "fixed_width", "layout": 5},
-        {"path": "o.txt", "format": "fixed_width", "layout": True},
-        {"path": "o.txt", "format": "fixed_width", "layout": "x"},
-        {"path": "o.txt", "format": "fixed_width", "layout": [1]},
-        {"path": "o.txt", "format": "fixed_width", "layout": {}},
+        {"format": "xml"},
+        {"format": None},
+        {"format": "fixed_width"},
+        {"format": "fixed_width", "layout": 5},
+        {"format": "fixed_width", "layout": True},
+        {"format": "fixed_width", "layout": "x"},
+        {"format": "fixed_width", "layout": [1]},
+        {"format": "fixed_width", "layout": {}},
     ],
 )
-def test_entry_format_refuses_what_it_cannot_read(entry: dict) -> None:
+def test_entry_format_refuses_what_it_cannot_read(recorded: dict) -> None:
     with pytest.raises(TargetFormatError) as err:
-        entry_format(Path(entry["path"]), {k: v for k, v in entry.items() if k != "path"})
+        entry_format(recorded)
     assert err.value.code == UNREADABLE
-    assert "xml" not in str(err.value) and "o.csv" not in str(err.value)
+    assert "xml" not in str(err.value)
+
+
+def _fp(**keys: object) -> dict:
+    return {"path": "p", "fingerprint": "sha256:" + "0" * 64, **keys}
+
+
+def _compare(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, side_a: dict, side_b: dict) -> dict:
+    """`compare_data` over two one-table manifests, with every file read forbidden."""
+    from decoy.cli.report import _compare as compare_mod
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise AssertionError("a file was read for a refused table")
+
+    monkeypatch.setattr(compare_mod, "read_file", boom)
+    for name in ("pa", "pb", "pa2", "pb2"):
+        (tmp_path / name).write_text("x", encoding="utf-8")
+    manifests = [{"output_fingerprints": side} for side in (side_a, side_b)]
+    return compare_mod.compare_data(*manifests, manifest_file_a=None, manifest_file_b=None)
+
+
+def _entry(tmp_path: Path, name: str, **keys: object) -> dict:
+    return {"t": {**_fp(**keys), "path": str(tmp_path / name)}}
+
+
+_UNREADABLE_PAIR = ("target_format_unreadable", "the file's format cannot be determined")
+_UNRECORDED_PAIR = ("target_format_unrecorded", _UNRECORDED_TEXT)
+
+
+@pytest.mark.parametrize(
+    ("fmt_a", "fmt_b", "expected"),
+    [
+        (None, "csv", [_UNRECORDED_PAIR]),
+        ("csv", None, [_UNRECORDED_PAIR]),
+        (None, None, [_UNRECORDED_PAIR]),
+        ("xml", None, [_UNREADABLE_PAIR, _UNRECORDED_PAIR]),
+        (None, "xml", [_UNREADABLE_PAIR, _UNRECORDED_PAIR]),
+    ],
+)
+def test_compare_data_checks_both_sides_before_any_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    fmt_a: str | None,
+    fmt_b: str | None,
+    expected: list,
+) -> None:
+    def keys(fmt: str | None) -> dict:
+        return {} if fmt is None else {"format": fmt}
+
+    result = _compare(
+        monkeypatch,
+        tmp_path,
+        _entry(tmp_path, "pa", **keys(fmt_a)),
+        _entry(tmp_path, "pb", **keys(fmt_b)),
+    )
+    assert sorted(map(tuple, result["refusals"])) == sorted(expected)
+    assert result["missing_files"] == [str(tmp_path / "pa"), str(tmp_path / "pb")]
+    assert result["table_deltas"] == []
+
+
+@pytest.mark.parametrize("only_in", ["a", "b"])
+def test_compare_data_refuses_a_one_sided_entry_with_no_format(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, only_in: str
+) -> None:
+    old, none = _entry(tmp_path, "pa"), {}
+    side_a, side_b = (old, none) if only_in == "a" else (none, old)
+    result = _compare(monkeypatch, tmp_path, side_a, side_b)
+    assert [tuple(r) for r in result["refusals"]] == [_UNRECORDED_PAIR]
+    assert result["missing_files"] == [str(tmp_path / "pa")]
+    assert result["table_deltas"] == []
+    assert result["any_data_change"] is False
+
+
+@pytest.mark.parametrize("only_in", ["a", "b"])
+def test_compare_data_keeps_the_delta_for_a_one_sided_current_entry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, only_in: str
+) -> None:
+    current, none = _entry(tmp_path, "pa", format="csv"), {}
+    side_a, side_b = (current, none) if only_in == "a" else (none, current)
+    result = _compare(monkeypatch, tmp_path, side_a, side_b)
+    assert result["refusals"] == [] and result["missing_files"] == []
+    assert [d["note"] for d in result["table_deltas"]] == ["table only exists in one run"]
+    assert result["any_data_change"] is True
 
 
 def test_every_declared_format_has_a_display_name() -> None:

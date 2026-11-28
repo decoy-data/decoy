@@ -28,7 +28,7 @@ layers =
     _mask_secret | _mask_secret_guidance | _native_gate | _row_sample | _env_flags
     _atomic_batch
     _atomic
-    _config_file | _outbound
+    _config_file | _outbound | safe_url
     _private_file | _version | _yaml_errors | lang
     _source_positions
 ignore_imports =

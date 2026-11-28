@@ -1,4 +1,4 @@
-"""Local run evidence manifests: build, hash, verify, and render (SP-17).
+"""Local run evidence manifests: build, hash, and verify (SP-17).
 
 Local evidence manifests are produced by `decoy run --evidence-out <path>` and
 contain fingerprints of the pipeline config, input files, and output files at
@@ -6,8 +6,8 @@ the time of the run. They also include a self-consistency fingerprint
 (`manifest_hash`) that covers the entire manifest body.
 
 It is a helper module for `decoy report` (show, render, verify, diff) and `decoy ci check`:
-the builder, hasher, the one strict reader and verifier, and the `report show` card. It
-registers no Typer app of its own.
+the builder, hasher, and the one strict reader and verifier. The `report show` card is in
+`decoy.ui.evidence_card`. It registers no Typer app of its own.
 
 `report verify` re-hashes the pipeline config, each input and output file, and the manifest
 body (`manifest_hash`) to detect drift. It does not check platform audit logs, that the output
@@ -23,26 +23,19 @@ Output entry format keys (additive to cli-local-1)
 An `output_fingerprints` entry for a file target also records `format` (`csv`, `parquet` or
 `fixed_width`, the format the file was written in) and, for fixed width only, `layout` (the
 target's validated layout: column names and positions, no data). The version string does not
-change. A reader treats an entry without `format` as written by an older CLI and applies the
-legacy rule: `.parquet` is Parquet, everything else CSV. It must not use the suffix rule of
-`format_for_path` for those entries, because the old writer put CSV bytes into a `.pq` path.
-`manifest_hash` covers the new keys on new manifests; old manifests verify unchanged.
+change. `report diff` refuses an entry without `format` (written by an older CLI) with
+`target_format_unrecorded`; it applies no suffix rule, because the old writer put CSV bytes into
+a `.pq` path. `manifest_hash` covers the new keys on new manifests; old manifests verify unchanged.
 
 Path base (additive to cli-local-1)
 -----------------------------------
 A run in a project with a `decoy.yaml` marker records `path_base: "project"` and writes every
 path inside the project relative to its root (POSIX); paths outside it are absolute. A run with
 no marker records absolute paths and no `path_base`. A stored path becomes a file path only in
-`resolve_manifest_path` (sentry G-ONE-MANIFEST-PATH), which `read_manifest`,
-`verify_manifest_issues` and `report diff`'s `compare_data` call. It reads `path_base` paths
-from the project root: the typed `--project`, else the marker found above the manifest file,
-never `DECOY_PROJECT` or the working directory, so every consumer works from any folder. A manifest without `path_base` keeps the old rule (paths as recorded,
-relative ones from the working directory).
-
-Paths are resolved before they are made relative, so a lexical `..` or a symlinked folder is
-never recorded as inside the project. The reader parses a project-relative path with
-`decoy.cli.io.contained_path`, the layout's one rule: "/" separators only, no drive or UNC
-anchor, no climb above the root, no symlink out.
+`resolve_manifest_path` (sentry G-ONE-MANIFEST-PATH; its docstring has the rules), which
+`read_manifest`, `verify_manifest_issues` and `report diff`'s `compare_data` call, so every
+consumer works from any folder. Paths are resolved before they are made relative, so a lexical
+`..` or a symlinked folder is never recorded as inside the project.
 
 Project binding: a `path_base` manifest records `project_manifest`, where it was written
 relative to its project root, or null when written outside the project. The reader refuses a
@@ -64,9 +57,11 @@ import hashlib
 import json as _json
 import os
 import posixpath
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import cache
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -80,7 +75,16 @@ from decoy.cli.io import (
     resolve_target_format,
     resolved_source_config,
 )
-from decoy.ui.theme import warn
+from decoy.safe_url import (
+    DisplayCopy,
+    display_copy,
+    display_file_name,
+    display_location,
+    display_text,
+    location_fields,
+    redacted_location,
+    remote_location,
+)
 
 _SCHEMA_VERSION = "cli-local-1"
 PATH_BASE_PROJECT = "project"
@@ -89,12 +93,7 @@ PATH_BASE_PROJECT = "project"
 # _MANIFEST_HASH_STRIP_FIELDS (api/evidence/hashing.py) so adding a
 # signature field later does not silently break the hash.
 _MANIFEST_HASH_STRIP_FIELDS: frozenset[str] = frozenset(
-    {
-        "manifest_hash",
-        "signature",
-        "signature_alg",
-        "signature_key_id",
-    }
+    {"manifest_hash", "signature", "signature_alg", "signature_key_id"}
 )
 
 # The manifest schema: field -> (accepted types, required, wording). A required string field
@@ -138,14 +137,8 @@ _ENTRY_FIELDS: dict[str, _Rule] = {
 
 
 def hash_file(path: Path) -> str:
-    """Return the SHA-256 fingerprint of the file at `path` as ``sha256:<hex>``.
-
-    Reads in 64 KiB chunks so it works on large files without loading all
-    into memory. Standard Python stdlib hashlib; no external dependency.
-
-    Returns a ``sha256:<hex>`` prefixed string (71 chars total) matching
-    the fingerprint form used by decoy-platform/api/evidence/hashing.py.
-    """
+    """The SHA-256 of the file at `path` as ``sha256:<hex>`` (71 characters, the form of
+    decoy-platform `api/evidence/hashing.py`), read in 64 KiB chunks."""
     h = hashlib.sha256()
     with path.open("rb") as fh:
         while True:
@@ -157,15 +150,11 @@ def hash_file(path: Path) -> str:
 
 
 def compute_manifest_hash(manifest: dict[str, Any]) -> str:
-    """Compute SHA-256 over the manifest body, returning ``sha256:<hex>``.
+    """SHA-256 over the manifest body as ``sha256:<hex>``, so verify detects an edited manifest.
 
-    Strips the four reserved fields (``manifest_hash``, ``signature``,
-    ``signature_alg``, ``signature_key_id``) before hashing, matching the
-    platform's field-strip set so a future signature field does not silently
-    break the hash. Rejects non-finite floats (NaN, Infinity) per the R3.1
-    canonical-JSON rule -- they do not round-trip JSON.
-
-    This lets `evidence verify` detect edits to the manifest file itself.
+    The four reserved fields (`_MANIFEST_HASH_STRIP_FIELDS`, the platform's strip set) are left
+    out, so a future signature field cannot break the hash. Non-finite floats (NaN, Infinity) are
+    refused by the R3.1 canonical-JSON rule: they do not round-trip JSON.
     """
     # Imported here so the engine stays off the CLI's start-up path.
     from decoy_engine.records import canonical_bytes
@@ -180,8 +169,8 @@ def _format_keys(table: str, tgt: dict[str, Any]) -> dict[str, Any]:
     """The `format` (and fixed-width `layout`) keys of a file target; none for any other target.
 
     A target the writer would have refused (suffix contradiction) cannot reach here after a
-    successful run; if one does, the entry stays in the legacy shape rather than failing a
-    finished run.
+    successful run; if one does, the entry has no format (`report diff` refuses it) rather than
+    failing a finished run.
     """
     if tgt.get("type", "file") != "file":
         return {}
@@ -207,13 +196,8 @@ def _placed(place_target: Callable[[str], Path] | None, raw: str, base: Path) ->
 
 
 def _inside(path: Path, root: Path) -> str | None:
-    """`path` relative to `root` (POSIX) with both resolved first; None when it lies outside or
-    when the reader's rule (`contained_path`) would not read the text back, such as a POSIX
-    file name holding a backslash.
-
-    Resolving first keeps `sub/../../x` and a symlink out of the project from passing a lexical
-    prefix test.
-    """
+    """`path` relative to `root` (POSIX, both resolved); None when outside or when
+    `contained_path` would not read it back (a POSIX file name holding a backslash)."""
     try:
         text = path.resolve().relative_to(root.resolve()).as_posix()
     except (ValueError, OSError, RuntimeError):
@@ -267,35 +251,40 @@ def build_manifest(
     `project_manifest` (where `evidence_path`, the file the manifest is written to, sits in the
     project; null when outside it). Without it every path is recorded absolute.
 
-    The manifest records:
-      - versions, run metadata, pipeline fingerprint
-      - per-table input and output file fingerprints (sha256:<hex> + size)
-      - per-table row timings and engine quality warnings
-      - per-column strategy summary (no raw values)
-      - a manifest_hash covering all of the above
-
-    Raw row values, secrets, plaintext key material, and PII samples are
-    NEVER included. The spec for this invariant is the `no_raw_values` test.
-    Schema ``cli-local-1``, producer ``"decoy-cli"``, so a reader can route by both. Only the
-    success path calls this; failed runs leave no CLI-local manifest.
+    The manifest records versions, run metadata, the pipeline fingerprint, per-table input and
+    output fingerprints (sha256:<hex> and size), timings, engine quality warnings, the per-column
+    strategy summary and a manifest_hash over all of it. Raw row values, secrets, key material
+    and PII samples are NEVER included (the `no_raw_values` test). Schema ``cli-local-1``,
+    producer ``"decoy-cli"``. Only the success path calls this; a failed run leaves none.
     """
     pipeline_fingerprint = hash_file(pipeline_path)
     pipeline_path = pipeline_path.resolve()
     yaml_dir = pipeline_path.parent
 
+    def local_file(path: Path) -> bool:
+        return manifest_file_available(path, regular_only=True)
+
     # --- Input fingerprints: the files the run read, file sources resolved from the YAML folder ---
-    sources = resolved_source_config(config_dict, yaml_dir).get("sources") or {}
+    declared_sources = config_dict.get("sources") or {}
+    resolved_sources = resolved_source_config(config_dict, yaml_dir).get("sources") or {}
     input_fingerprints: dict[str, Any] = {}
-    for table_name, src in sources.items():
-        if not isinstance(src, dict):
+    for table_name, declared in declared_sources.items():
+        if not isinstance(declared, dict) or not declared.get("path"):
             continue
-        src_path_str = src.get("path")
-        if not src_path_str:
+        declared_path = str(declared["path"])
+        # Classified from the declared text, before any resolution: `resolve()` folds
+        # `https://u:p@h/x` into `.../https:/u:p@h/x`, which no redactor can read as a URL.
+        remote = remote_location(
+            declared_path, local_file if declared.get("type") == "file" else None
+        )
+        if remote is not None:
+            input_fingerprints[table_name] = {"path": remote, **_fingerprint(None)}
             continue
-        src_path = Path(str(src_path_str))
-        if "://" in str(src_path_str) or not src_path.is_absolute():
-            # A URL, or a non-file source the run did not open from this path: nothing to hash.
-            input_fingerprints[table_name] = {"path": str(src_path_str), **_fingerprint(None)}
+        src_path = Path(str(resolved_sources[table_name].get("path")))
+        if not src_path.is_absolute():
+            # Not a file the run opened: nothing to hash, and recorded only as it may be shown.
+            shown = display_location(declared_path)
+            input_fingerprints[table_name] = {"path": shown, **_fingerprint(None)}
             continue
         input_fingerprints[table_name] = {
             "path": _recorded(src_path, project_root),
@@ -311,8 +300,19 @@ def build_manifest(
         tgt_path_str = tgt.get("path")
         if not tgt_path_str:
             continue
-        tgt_path = _placed(place_target, str(tgt_path_str), yaml_dir)
-        recorded = str(tgt_path_str) if tgt_path is None else _recorded(tgt_path, project_root)
+        remote = remote_location(
+            str(tgt_path_str), local_file if tgt.get("type") == "file" else None
+        )
+        tgt_path = (
+            None if remote is not None else _placed(place_target, str(tgt_path_str), yaml_dir)
+        )
+        recorded = (
+            remote
+            if remote is not None
+            else redacted_location(str(tgt_path_str))
+            if tgt_path is None
+            else _recorded(tgt_path, project_root)
+        )
         entry: dict[str, Any] = {"path": recorded}
         entry.update(_format_keys(table_name, tgt))
         entry.update(_fingerprint(tgt_path))
@@ -391,7 +391,7 @@ def build_manifest(
         "run_timestamp": datetime.now(tz=timezone.utc).isoformat(),
         "cli_version": cli_version,
         "engine_version": engine_version,
-        "pipeline_path": _recorded(pipeline_path, project_root),
+        "pipeline_path": redacted_location(_recorded(pipeline_path, project_root)),
         "pipeline_fingerprint": pipeline_fingerprint,
         "input_fingerprints": input_fingerprints,
         "output_fingerprints": output_fingerprints,
@@ -417,12 +417,18 @@ class EvidenceIssue:
 
 class ManifestError(ValueError):
     """A manifest the verifier will not read. `kind` is a fixed label; `message` names fields
-    and files, never a recorded value."""
+    and files, never a recorded value. A table key in a field name is shown by its safe form."""
 
     def __init__(self, kind: str, message: str) -> None:
+        message = display_text(message)
         super().__init__(message)
         self.kind = kind
         self.message = message
+
+
+def _field(group: str, table: str, leaf: str | None = None) -> str:
+    """A field name whose table key is displayed before the join (a `.` would hide a URL)."""
+    return ".".join((group, display_text(table), *(() if leaf is None else (leaf,))))
 
 
 def _malformed(field: str, rule: str) -> ManifestError:
@@ -465,11 +471,11 @@ def check_manifest(manifest: Any) -> dict[str, Any]:
     for group in ("input_fingerprints", "output_fingerprints"):
         for table, info in manifest[group].items():
             if not isinstance(info, dict):
-                raise _malformed(f"{group}.{table}", "must be an object")
-            _check_fields(info, _ENTRY_FIELDS, f"{group}.{table}.")
+                raise _malformed(_field(group, table), "must be an object")
+            _check_fields(info, _ENTRY_FIELDS, _field(group, table) + ".")
     for table, count in manifest.get("row_counts", {}).items():
         if not _is(count, (int,)):
-            raise _malformed(f"row_counts.{table}", "must be an integer")
+            raise _malformed(_field("row_counts", table), "must be an integer")
     return manifest
 
 
@@ -485,16 +491,21 @@ def read_manifest(path: Path, project: Path | None = None) -> dict[str, Any]:
     encoding, or not JSON; NaN and Infinity are refused because the hash cannot carry them),
     as `check_manifest`, or as the resolver. Messages name the file, never its content.
     """
-    if not path.is_file():
-        raise ManifestError("missing", f"evidence file not found: {path}")
+    shown_path = display_location(str(path))
+    try:
+        is_file = path.is_file()
+    except OSError:  # a name too long for the filesystem has no file behind it
+        is_file = False
+    if not is_file:
+        raise ManifestError("missing", f"evidence file not found: {shown_path}")
     refusal = None
     try:
         parsed = _json.loads(path.read_text(encoding="utf-8"), parse_constant=_no_constant)
     except (OSError, UnicodeDecodeError) as exc:
-        refusal = f"could not read {path}: {type(exc).__name__}"
+        refusal = f"could not read {shown_path}: {type(exc).__name__}"
     except (ValueError, RecursionError) as exc:
         why = exc.msg if isinstance(exc, _json.JSONDecodeError) else type(exc).__name__
-        refusal = f"could not parse {path.name} as JSON: {why}"
+        refusal = f"could not parse {display_file_name(path)} as JSON: {why}"
     # Raised outside the handlers so the parser's error, which can quote the file, is not chained.
     if refusal is not None:
         raise ManifestError("unreadable", refusal)
@@ -502,6 +513,31 @@ def read_manifest(path: Path, project: Path | None = None) -> dict[str, Any]:
     for _at, _table, field, raw, _recorded_fp in _stored_files(manifest):
         resolve_manifest_path(manifest, raw, manifest_file=path, project=project, field=field)
     return manifest
+
+
+@cache
+def evidence_location_fields() -> frozenset[tuple[str, ...]]:
+    """The location fields of a manifest: the pinned engine's evidence `path_fields`."""
+    from decoy_engine.records import kind_spec
+
+    return location_fields(getattr(kind_spec("evidence"), "path_fields", ()), "/payload/")
+
+
+def display_manifest(manifest: Mapping[str, Any]) -> DisplayCopy:
+    """The one display copy of a manifest (`manifest_hash` as recorded: never verified)."""
+    return display_copy(manifest, evidence_location_fields())
+
+
+def manifest_hash_ok(manifest: dict[str, Any]) -> bool:
+    """Whether the recorded `manifest_hash` matches the recorded manifest (unkeyed)."""
+    return bool(manifest.get("manifest_hash", "") == compute_manifest_hash(manifest))
+
+
+def digest_preview(value: object, width: int) -> str:
+    """A canonical digest's first `width` characters; a cut legacy value could look like a host."""
+    if isinstance(value, str) and re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+        return value[:width] + "..."
+    return "(not a digest)"
 
 
 def _stored_files(manifest: dict[str, Any]) -> list[tuple[int, str, str, str, str]]:
@@ -513,7 +549,7 @@ def _stored_files(manifest: dict[str, Any]) -> list[tuple[int, str, str, str, st
         for table, info in manifest[group].items():
             if info["fingerprint"] is not None:
                 found.append(
-                    (at, table, f"{group}.{table}.path", info["path"], info["fingerprint"])
+                    (at, table, _field(group, table, "path"), info["path"], info["fingerprint"])
                 )
     return found
 
@@ -525,18 +561,9 @@ def _same_file(a: Path, b: Path | None) -> bool:
         return False
 
 
-def _manifest_root(
-    manifest: dict[str, Any], manifest_file: Path | None, project: Path | None
+def _find_manifest_project(
+    project: Path | None, manifest_file: Path | None, written_at: str | None
 ) -> Path | None:
-    """The folder `path_base: "project"` paths are read from; None for the old rule.
-
-    The root is the typed `--project`, else the marker above the manifest file. Either way the
-    manifest file must sit where the run wrote it in that project (`project_manifest`).
-    """
-    if manifest.get("path_base") != PATH_BASE_PROJECT:
-        return None
-    where = "the manifest" if manifest_file is None else manifest_file.name
-    written_at = manifest["project_manifest"]
     failure: LayoutError | None = None
     root: Path | None = None
     try:
@@ -549,7 +576,28 @@ def _manifest_root(
         failure = exc
     # Raised outside the handler so no layout error is chained onto the refusal.
     if failure is not None:
+        if project is not None:
+            raise ManifestError(
+                failure.code,
+                f"{failure.code}: cannot use --project {display_location(str(project))}",
+            )
         raise ManifestError(failure.code, failure.message)
+    return root
+
+
+def _manifest_root(
+    manifest: dict[str, Any], manifest_file: Path | None, project: Path | None
+) -> Path | None:
+    """The folder `path_base: "project"` paths are read from; None for the old rule.
+
+    The root is the typed `--project`, else the marker above the manifest file. Either way the
+    manifest file must sit where the run wrote it in that project (`project_manifest`).
+    """
+    if manifest.get("path_base") != PATH_BASE_PROJECT:
+        return None
+    where = "the manifest" if manifest_file is None else display_file_name(manifest_file)
+    written_at = manifest["project_manifest"]
+    root = _find_manifest_project(project, manifest_file, written_at)
     if root is None:
         why = (
             "was written outside its Decoy project"
@@ -609,6 +657,15 @@ def resolve_manifest_path(
     return path
 
 
+def manifest_file_available(path: Path, regular_only: bool = False) -> bool:
+    """Whether `path` names a file to hash. An OS error from the check (a name too long for the
+    filesystem, a loop) means there is no such file, so it is a finding and not a crash."""
+    try:
+        return path.is_file() if regular_only else path.exists()
+    except (OSError, ValueError):
+        return False
+
+
 def verify_manifest_issues(
     manifest: dict[str, Any],
     *,
@@ -618,25 +675,21 @@ def verify_manifest_issues(
 ) -> list[EvidenceIssue]:
     """Verify a manifest's fingerprints against the current on-disk state.
 
-    The one manifest reader `report verify` and `decoy ci check` share. `manifest_file` is
-    where the manifest was read from and `project` the typed `--project`; they locate the
-    root for a `path_base: "project"` manifest (see the module docstring). Raises
-    `ManifestError` for a malformed manifest, a path outside the project, or a project root
-    that cannot be found or does not hold the manifest. Every path is checked before any file
-    is hashed. Returns typed issues; empty means the manifest_hash (UNKEYED: catches drift, not
-    a tamperer who recomputes it) and every recorded fingerprint match.
-
-    `regular_files_only` (used by `decoy ci check`, where the manifest may come from an
-    untrusted change): a recorded path that exists but is not a regular file (FIFO, device)
-    is reported as missing instead of being hashed, so it cannot hang the check.
+    The one reader `report verify` and `decoy ci check` share. `manifest_file` and the typed
+    `project` locate the root of a `path_base: "project"` manifest. Raises `ManifestError` for a
+    malformed manifest, a path outside the project, or a root that is missing or does not hold
+    the manifest; every path is checked before any file is hashed. Empty means the UNKEYED
+    manifest_hash and every fingerprint match. Messages are built from displayed parts.
+    `regular_files_only` (`decoy ci check`, an untrusted change): a path that is not a regular
+    file (FIFO, device) is reported missing instead of hashed, so it cannot hang the check.
     """
     check_manifest(manifest)
     # All resolved before any hashing so a refused path never leaves a partial result.
     checks = [
         (
             at,
-            f" (table {table!r})" if at else "",
-            raw,
+            f" (table {display_text(table)!r})" if at else "",
+            display_location(raw),
             recorded,
             resolve_manifest_path(
                 manifest, raw, manifest_file=manifest_file, project=project, field=field
@@ -653,7 +706,8 @@ def verify_manifest_issues(
             EvidenceIssue(
                 "manifest_hash_mismatch",
                 f"manifest integrity: manifest_hash mismatch "
-                f"(recorded {recorded_hash[:16]}..., computed {computed_hash[:16]}...); "
+                f"(recorded {digest_preview(recorded_hash, 16)}, "
+                f"computed {digest_preview(computed_hash, 16)}); "
                 "manifest file may have been edited",
             )
         )
@@ -661,7 +715,7 @@ def verify_manifest_issues(
     # Kinds stay literal in each call: `decoy ci` allowlists them by reading this module.
     for at, label, text, recorded, path in checks:
         what = ("pipeline", "input", "output")[at]
-        if not path.exists() or (regular_files_only and not path.is_file()):
+        if not manifest_file_available(path, regular_files_only):
             issues.append(
                 EvidenceIssue(
                     ("pipeline_missing", "input_missing", "output_missing")[at],
@@ -669,7 +723,10 @@ def verify_manifest_issues(
                 )
             )
             continue
-        current = hash_file(path)
+        try:
+            current = hash_file(path)
+        except OSError:
+            current = ""
         if current != recorded:
             issues.append(
                 EvidenceIssue(
@@ -679,7 +736,8 @@ def verify_manifest_issues(
                         "output_fingerprint_changed",
                     )[at],
                     f"{what} fingerprint changed: {text}{label} "
-                    f"(recorded {recorded[:16]}..., current {current[:16]}...)",
+                    f"(recorded {digest_preview(recorded, 16)}, "
+                    f"current {digest_preview(current, 16)})",
                 )
             )
     return issues
@@ -693,98 +751,16 @@ def verify_manifest(
     return [issue.message for issue in issues]
 
 
-# ---------------------------------------------------------------------------
-# Shared manifest-summary card (rendered by `decoy report show`)
-# ---------------------------------------------------------------------------
-
-
-def _render_manifest_card(state: Any, manifest: dict[str, Any], evidence_file: Path) -> None:
-    """Human-readable evidence manifest summary card."""
-    from decoy.ui.card import render_card
-    from decoy.ui.table import make_table
-
-    # Quick manifest integrity check for the display (informational only).
-    recorded_hash = manifest.get("manifest_hash", "")
-    computed_hash = compute_manifest_hash(manifest)
-    hash_ok = recorded_hash == computed_hash
-
-    schema_v = manifest.get("schema_version", "?")
-    run_id = manifest.get("run_id", "?")
-    run_ts = manifest.get("run_timestamp", "?")
-    cli_v = manifest.get("cli_version", "?")
-    eng_v = manifest.get("engine_version", "?")
-    pipeline_path = manifest.get("pipeline_path", "?")
-    pipeline_fp = manifest.get("pipeline_fingerprint") or ""
-    key_label = manifest.get("key_label") or "(none)"
-    warnings_list = manifest.get("warnings") or []
-    timings_list = manifest.get("timings") or []
-    hash_status = "ok (unkeyed integrity check)" if hash_ok else "MISMATCH (manifest may be edited)"
-
-    facts: list[tuple[str, str]] = [
-        ("Schema version", schema_v),
-        ("Producer", manifest.get("producer", "?")),
-        ("Run ID", run_id[:16] + "..." if len(run_id) > 16 else run_id),
-        ("Run timestamp", run_ts),
-        ("CLI version", cli_v),
-        ("Engine version", eng_v),
-        ("Pipeline", pipeline_path),
-        ("Pipeline fingerprint", pipeline_fp[:23] + "..." if pipeline_fp else "(none)"),
-        ("Key label", key_label),
-        ("Manifest hash", hash_status),
-        ("Warnings", str(len(warnings_list))),
-        ("Timings recorded", str(len(timings_list))),
-    ]
-
-    render_card(
-        state,
-        command="decoy report show",
-        facts=facts,
-        next_hint=f"decoy report verify {evidence_file}",
-        status="ok" if hash_ok else "warn",
-    )
-
-    for group, title in (("input_fingerprints", "Input"), ("output_fingerprints", "Output")):
-        entries = manifest.get(group) or {}
-        if not entries:
-            continue
-        t = make_table(
-            "Table", "Path", "Fingerprint (prefix)", "Method", "Size", title=f"{title} fingerprints"
-        )
-        for tname, info in entries.items():
-            if not isinstance(info, dict):
-                continue
-            fp = (info.get("fingerprint") or "")[:23] + "..."
-            method = info.get("fingerprint_method") or "?"
-            size = str(info.get("size_bytes") or "?")
-            t.add_row(tname, info.get("path", "?"), fp, method, size)
-        state.console.print(t)
-
-    # Strategies table
-    strategies = manifest.get("strategies") or []
-    if strategies:
-        t = make_table("Table", "Column", "Strategy", title="Masking strategies")
-        for s in strategies:
-            if not isinstance(s, dict):
-                continue
-            t.add_row(s.get("table", "?"), s.get("column", "?"), s.get("strategy", "?"))
-        state.console.print(t)
-
-    if not hash_ok:
-        state.err_console.print(
-            warn("warning:"),
-            "manifest_hash does not match the manifest body. "
-            "The manifest file may have been edited. "
-            "Run `decoy report verify` for a full fingerprint check.",
-        )
-
-
 # Public exports (used by run.py --evidence-out and tests)
 __all__ = [
     "ManifestError",
     "build_manifest",
     "check_manifest",
     "compute_manifest_hash",
+    "digest_preview",
+    "display_manifest",
     "hash_file",
+    "manifest_hash_ok",
     "read_manifest",
     "resolve_manifest_path",
     "verify_manifest",
