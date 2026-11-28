@@ -11,7 +11,10 @@ error carrying the text.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 from urllib.parse import urlsplit
 
 _UNKNOWN_LOCATION = "(remote location)"
@@ -48,12 +51,14 @@ def safe_url_parts(url: str) -> SafeUrl | None:
 
 
 def redacted_location(raw: str) -> str:
-    """A recorded path as it may be printed or stored.
+    """A recorded path or argument as it may be printed or stored.
 
-    A plain path is returned as it is. A URL (it holds `://`) keeps `scheme://host[:port]` only:
-    the user, password, path and query are dropped. A URL that cannot be read gives a fixed
-    text, never its characters. A network-path reference (`//host/...`) with a user or password
-    keeps `//host[:port]` only; one without credentials is a plain path and is returned as is.
+    A plain path is returned as it is. A remote reference keeps its scheme, host and port only:
+    the user, password, path, query and fragment are dropped (a query can hold a token). A
+    remote reference is a URL (it holds `://`) or a network-path reference (`//host/...`) that
+    holds `@`, `?` or `#`. A plain `//name/...` path with none of those, such as
+    `//build[1]/share`, is returned unchanged. A reference that cannot be read gives a fixed
+    text, never its characters.
     """
     if raw.startswith("//") and "://" not in raw:
         return _redacted_network_path(raw)
@@ -66,13 +71,40 @@ def redacted_location(raw: str) -> str:
 
 
 def _redacted_network_path(raw: str) -> str:
-    """`//host[:port]` for a `//user:pass@host/...` reference; other `//...` text unchanged.
+    """`//host[:port]` for a `//host/...` reference with `@`, `?` or `#`; other `//...` unchanged.
 
-    Credential-free is decided first, on the text before the first `/`, `?` or `#`, so a POSIX
-    name such as `//build[1]/share` is never rejected by URL host parsing.
+    Plain is decided first, on the text, so a POSIX name such as `//build[1]/share` is never
+    rejected by URL host parsing.
     """
-    authority = raw[2:].split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
-    if "@" not in authority:
+    if not any(mark in raw for mark in "@?#"):
         return raw
     parts = safe_url_parts(f"x:{raw}")
     return _UNKNOWN_LOCATION if parts is None else f"//{parts.netloc}"
+
+
+def display_safe(value: Any) -> Any:
+    """A copy of `value` with `redacted_location` applied to every string in it, keys included.
+
+    The one display boundary: a manifest copy or a payload that a person will read or share goes
+    through here whole, so a field added later is covered without a list of field names.
+    """
+    if isinstance(value, str):
+        return redacted_location(value)
+    if isinstance(value, dict):
+        return {display_safe(k): display_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [display_safe(v) for v in value]
+    return value
+
+
+_COLLAPSED_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*):/(?!/)")
+
+
+def display_path(path: Path | str) -> str:
+    """A user-supplied path argument as it may be echoed.
+
+    `Path` folds `https://u:p@h/x` into `https:/u:p@h/x`, so the collapsed scheme is restored
+    before `redacted_location` reads it.
+    """
+    text = str(path)
+    return redacted_location(_COLLAPSED_SCHEME.sub(r"\1://", text))

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from decoy.safe_url import display_path
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputState
 from decoy.ui.table import make_table
@@ -56,7 +57,7 @@ def render_manifest_card(
         state,
         command="decoy report show",
         facts=facts,
-        next_hint=f"decoy report verify {evidence_file}",
+        next_hint=f"decoy report verify {display_path(evidence_file)}",
         status="ok" if hash_ok else "warn",
     )
 

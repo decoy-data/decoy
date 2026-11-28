@@ -13,6 +13,7 @@ from decoy.cli.io import ReportTarget
 from decoy.cli.report._html import render_html
 from decoy.cli.report._markdown import render_markdown
 from decoy.cli.report._shared import _load_manifest, _write_out
+from decoy.safe_url import display_path
 from decoy.ui.evidence_card import render_manifest_card
 from decoy.ui.output import (
     OutputMode,
@@ -91,7 +92,7 @@ def _show(
             {
                 "command": "report show",
                 "status": "ok",
-                "evidence_file": str(evidence_file),
+                "evidence_file": display_path(evidence_file),
                 "manifest": evidence.redact_manifest_paths(manifest),
             },
         )

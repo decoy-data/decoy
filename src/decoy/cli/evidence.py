@@ -80,7 +80,7 @@ from decoy.cli.io import (
     resolve_target_format,
     resolved_source_config,
 )
-from decoy.safe_url import redacted_location
+from decoy.safe_url import display_path, display_safe, redacted_location
 
 _SCHEMA_VERSION = "cli-local-1"
 PATH_BASE_PROJECT = "project"
@@ -292,23 +292,26 @@ def build_manifest(
     yaml_dir = pipeline_path.parent
 
     # --- Input fingerprints: the files the run read, file sources resolved from the YAML folder ---
-    sources = resolved_source_config(config_dict, yaml_dir).get("sources") or {}
+    declared_sources = config_dict.get("sources") or {}
+    resolved_sources = resolved_source_config(config_dict, yaml_dir).get("sources") or {}
     input_fingerprints: dict[str, Any] = {}
-    for table_name, src in sources.items():
-        if not isinstance(src, dict):
+    for table_name, declared in declared_sources.items():
+        if not isinstance(declared, dict) or not declared.get("path"):
             continue
-        src_path_str = src.get("path")
-        if not src_path_str:
-            continue
-        src_path = Path(str(src_path_str))
-        remote = _remote_location(str(src_path_str))
-        if remote is not None or "://" in str(src_path_str) or not src_path.is_absolute():
-            # A URL or credentialed location, or a non-file source the run did not open from
-            # this path: nothing to hash.
+        declared_path = str(declared["path"])
+        # Classified from the declared text, before any resolution: `resolve()` folds
+        # `https://u:p@h/x` into `.../https:/u:p@h/x`, which no redactor can read as a URL.
+        remote = _remote_location(declared_path)
+        if remote is not None or "://" in declared_path:
             input_fingerprints[table_name] = {
-                "path": remote if remote is not None else redacted_location(str(src_path_str)),
+                "path": remote if remote is not None else redacted_location(declared_path),
                 **_fingerprint(None),
             }
+            continue
+        src_path = Path(str(resolved_sources[table_name].get("path")))
+        if not src_path.is_absolute():
+            # A non-file source the run did not open from this path: nothing to hash.
+            input_fingerprints[table_name] = {"path": declared_path, **_fingerprint(None)}
             continue
         input_fingerprints[table_name] = {
             "path": _recorded(src_path, project_root),
@@ -413,7 +416,7 @@ def build_manifest(
         "run_timestamp": datetime.now(tz=timezone.utc).isoformat(),
         "cli_version": cli_version,
         "engine_version": engine_version,
-        "pipeline_path": _recorded(pipeline_path, project_root),
+        "pipeline_path": redacted_location(_recorded(pipeline_path, project_root)),
         "pipeline_fingerprint": pipeline_fingerprint,
         "input_fingerprints": input_fingerprints,
         "output_fingerprints": output_fingerprints,
@@ -507,16 +510,21 @@ def read_manifest(path: Path, project: Path | None = None) -> dict[str, Any]:
     encoding, or not JSON; NaN and Infinity are refused because the hash cannot carry them),
     as `check_manifest`, or as the resolver. Messages name the file, never its content.
     """
-    if not path.is_file():
-        raise ManifestError("missing", f"evidence file not found: {path}")
+    shown_path = display_path(path)
+    try:
+        is_file = path.is_file()
+    except OSError:  # a name too long for the filesystem has no file behind it
+        is_file = False
+    if not is_file:
+        raise ManifestError("missing", f"evidence file not found: {shown_path}")
     refusal = None
     try:
         parsed = _json.loads(path.read_text(encoding="utf-8"), parse_constant=_no_constant)
     except (OSError, UnicodeDecodeError) as exc:
-        refusal = f"could not read {path}: {type(exc).__name__}"
+        refusal = f"could not read {shown_path}: {type(exc).__name__}"
     except (ValueError, RecursionError) as exc:
         why = exc.msg if isinstance(exc, _json.JSONDecodeError) else type(exc).__name__
-        refusal = f"could not parse {path.name} as JSON: {why}"
+        refusal = f"could not parse {display_path(path.name)} as JSON: {why}"
     # Raised outside the handlers so the parser's error, which can quote the file, is not chained.
     if refusal is not None:
         raise ManifestError("unreadable", refusal)
@@ -527,25 +535,13 @@ def read_manifest(path: Path, project: Path | None = None) -> dict[str, Any]:
 
 
 def redact_manifest_paths(manifest: dict[str, Any]) -> dict[str, Any]:
-    """A copy of `manifest` with the pipeline path and every input and output path shown by its
-    safe location.
+    """A display copy of `manifest`: every string in it shown by its safe location.
 
     For a manifest a person will read or share: a legacy one can hold a URL with a user, password
-    and query. The `manifest_hash` is kept as recorded, so the copy is for display and is not
-    verified.
+    and query in any path field. `display_safe` walks the whole manifest, so no field is picked by
+    name. The `manifest_hash` is kept as recorded, so the copy is for display and is not verified.
     """
-    shown = dict(manifest)
-    if isinstance(manifest.get("pipeline_path"), str):
-        shown["pipeline_path"] = redacted_location(manifest["pipeline_path"])
-    for group in ("input_fingerprints", "output_fingerprints"):
-        entries = manifest.get(group)
-        if isinstance(entries, dict):
-            shown[group] = {
-                name: {**info, "path": redacted_location(info["path"])}
-                if isinstance(info, dict) and isinstance(info.get("path"), str)
-                else info
-                for name, info in entries.items()
-            }
+    shown: dict[str, Any] = display_safe(manifest)
     return shown
 
 
@@ -654,6 +650,15 @@ def resolve_manifest_path(
     return path
 
 
+def _readable_file(path: Path, regular_only: bool) -> bool:
+    """Whether `path` names a file to hash. An OS error from the check (a name too long for the
+    filesystem, a loop) means there is no such file, so it is a finding and not a crash."""
+    try:
+        return path.exists() and (path.is_file() or not regular_only)
+    except OSError:
+        return False
+
+
 def verify_manifest_issues(
     manifest: dict[str, Any],
     *,
@@ -706,7 +711,7 @@ def verify_manifest_issues(
     # Kinds stay literal in each call: `decoy ci` allowlists them by reading this module.
     for at, label, text, recorded, path in checks:
         what = ("pipeline", "input", "output")[at]
-        if not path.exists() or (regular_files_only and not path.is_file()):
+        if not _readable_file(path, regular_files_only):
             issues.append(
                 EvidenceIssue(
                     ("pipeline_missing", "input_missing", "output_missing")[at],
@@ -714,7 +719,10 @@ def verify_manifest_issues(
                 )
             )
             continue
-        current = hash_file(path)
+        try:
+            current = hash_file(path)
+        except OSError:
+            current = ""
         if current != recorded:
             issues.append(
                 EvidenceIssue(

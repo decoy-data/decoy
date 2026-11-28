@@ -11,6 +11,7 @@ from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.report._html import render_html
 from decoy.cli.report._markdown import render_markdown
 from decoy.cli.report._shared import _load_manifest
+from decoy.safe_url import display_path
 from decoy.ui.output import (
     OutputMode,
     emit_json,
@@ -113,7 +114,7 @@ def _render(
             {
                 "command": "report render",
                 "status": "ok",
-                "evidence_file": str(evidence_file),
+                "evidence_file": display_path(evidence_file),
                 "output": str(out),
                 "format": fmt_label.lower(),
             },

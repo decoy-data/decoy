@@ -10,6 +10,7 @@ import typer
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.report._compare import compare_data, compare_manifests
 from decoy.cli.report._shared import _load_manifest
+from decoy.safe_url import display_path
 from decoy.ui.output import (
     OutputMode,
     emit_json,
@@ -153,8 +154,8 @@ def _diff(
         payload: dict[str, Any] = {
             "command": "report diff",
             "status": "ok",
-            "evidence_file_a": str(evidence_file_a),
-            "evidence_file_b": str(evidence_file_b),
+            "evidence_file_a": display_path(evidence_file_a),
+            "evidence_file_b": display_path(evidence_file_b),
         }
         payload.update(manifest_diff)
         if data_available and data_result is not None:
@@ -193,9 +194,9 @@ def _diff(
         state.console.print(
             warn("changes detected"),
             "between",
-            code(str(evidence_file_a)),
+            code(display_path(evidence_file_a)),
             "and",
-            code(str(evidence_file_b)),
+            code(display_path(evidence_file_b)),
         )
         state.console.print("")
         if manifest_changed:
