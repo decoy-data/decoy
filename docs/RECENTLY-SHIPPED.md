@@ -11,6 +11,16 @@ the roadmap's current + next-up, and reconcile any trailing plan STATUS lines.
 
 Status: record
 
+## 2026-11-27: five engine merges (F31-AUDIT AE5 and AE6, DELIV BE0-E, INIT-SCAN-SCAFFOLD E1, DATE-SHIFT-TYPED S1b-1)
+
+Rows moved:
+
+- DATE-SHIFT-TYPED (S1b-1): engine #799 (2026-11-27, `7822182c5`) sends every source read through one conversion. A source column that pandas cannot hold now fails with a coded error that names the table and column and no values. A post-mask column the checker cannot read is reported as an error, where before it was skipped.
+- F31-AUDIT (AE5): engine #810 (2026-11-27, `b0e2cefda`) stops error messages from repeating the text of the exception underneath them. Each one names the cause by type or by its registered reason, so a value that sat in that text cannot reach the message. Error classes, reason codes and exit codes are unchanged.
+- F31-AUDIT (AE6): engine #811 (2026-11-27, `d1d7453ac`) adds canary tests that plant a marker value and check it never reaches errors, logs, warnings or progress events. The two native type translators now raise one shared error that carries no value.
+- INIT-SCAN-SCAFFOLD (E1): engine #830 (2026-11-27, `395c1c662`) fills in `regex` when a detector list leaves it out, instead of refusing the config. Regex always runs, so the refusal guarded nothing. A guard test keeps a second copy of that rule from appearing.
+- DELIV (row 61, BE0-E): engine #838 (2026-11-27, `c8fdcc6cc`) makes validation refuse `delivery.mode: best_effort`. No run ever implemented that mode, so a config that set it used to pass validation and then had no run behind it.
+
 ## 2026-11-27: six engine slices (TRS S1a, test-flight fix, F06, parquet S1, RG-E2, GEN-STREAM-ALL S1a)
 
 No row closed. Rows moved:
