@@ -16,12 +16,13 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from decoy._atomic import AtomicWriteError, describe, destination_entry
 from decoy._config_file import ConfigFileError, load_config_mapping
 from decoy._private_file import PrivateFileError
 from decoy.cli.exit_codes import EXIT_USAGE
+from decoy.cli.io import _pointer
 from decoy.cli.io._cloud import cloud_root_issues, has_cloud_targets
 from decoy.cli.io._layout import (
     RunFolder,
@@ -49,7 +50,6 @@ from decoy.cli.io._layout_errors import (
     LayoutError,
     LayoutWarning,
 )
-from decoy.cli.io._pointer import STRICT_MEMBER_DEPTH, strict_route
 from decoy.cli.io._run_id import is_run_id
 from decoy.cli.io._run_outputs import OutputKind, RunOutput, replaces_final, run_outputs
 
@@ -207,6 +207,19 @@ class Split:
 
 
 DeliveryRoot = Relative | Fixed | NoLocalOutput | Split
+
+# The deepest member path the engine's publication accepts (`UNIT_PATH_MAX_DEPTH`; a guard test
+# compares the two, since the engine exports no name for it).
+STRICT_MEMBER_DEPTH: Final = 8
+
+
+def strict_route(root: DeliveryRoot, *, chunked: bool = False) -> bool:
+    """Whether the engine's strict stage runs: the one rule `DeliverySink.open` and the gate share.
+
+    Only a run folder (every output relative) goes through the stage, on a host that has the
+    engine's pointer. An absolute folder, `--out-dir` and a run with no local output pass through.
+    """
+    return isinstance(root, Relative) and not chunked and _pointer.pointer_supported()
 
 
 def delivery_root(config_dict: dict, fixed: Path | None = None) -> DeliveryRoot:
@@ -434,7 +447,7 @@ def layout_issues(
     for location, _raw in urls:
         issues.append((location, OUTPUT_PATH_ESCAPES.error(path="a URL", base=base)))
     # The strict stage is the one with a member depth limit and its own files in the run folder.
-    strict = fixed is None and strict_route(chunked=placement.chunked)
+    strict = strict_route(delivery_root(config_dict, fixed), chunked=placement.chunked)
     for location, raw in placed:
         if not names_a_file_inside(raw) or (
             fixed is not None and fixed.exists() and contained_path(folder or fixed, raw) is None

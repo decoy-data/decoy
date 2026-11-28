@@ -16,20 +16,24 @@ from unittest import mock
 
 import pytest
 
-from decoy.cli.io import _delivery, _pointer
+from decoy.__main__ import app
+from decoy.cli.io import _delivery, _placement, _pointer
 from decoy.cli.io._placement import OutputPlacement
 from decoy.cli.io._run_outputs import run_outputs
 from decoy.cli.run import _deliver, _evidence
 from decoy.cli.run._context import CLI_REFUSAL_CODES, DELIVERY_SIDE_FILE_BUSY
 from tests.child_env import child_env
 from tests.e2e.delivery_sink._support import (
+    deliver_then,
     document,
     latest,
     litter,
     post_scan,
     project,
     run,
+    runner,
     runs,
+    uncertain_swap,
     vaulted,
 )
 
@@ -140,14 +144,63 @@ def test_a_lock_that_cannot_be_taken_refuses_and_never_proceeds_unlocked(
     vaulted(yml, monkeypatch)
     vault = tmp_path / "v.db"
 
+    real = LocalOutputDir.lock
+
     def unavailable(self, *a, **k):
-        raise LockUnavailable("no lock here")
+        # Only the side-file request fails; the engine's own pointer lock must still work, or
+        # the run would stop for a different reason and hide a side lock that is skipped.
+        if Path(self.locator) == vault:
+            raise LockUnavailable("no lock here")
+        return real(self, *a, **k)
 
     with mock.patch.object(LocalOutputDir, "lock", unavailable):
         result = run(yml, "--vault", str(vault))
     assert result.exit_code == 3, result.output
+    assert DELIVERY_SIDE_FILE_BUSY in result.output
     assert not vault.exists()
     assert latest(root) is None
+
+
+@posix
+def test_an_absolute_only_project_run_reserves_no_lock_name(tmp_path: Path, monkeypatch) -> None:
+    """Absolute targets pass through the engine's stage, which makes no lock file, so a name
+    that looks like a lock is free for another output (the gate and the sink share one rule)."""
+    _root, yml = project(tmp_path, tables=1, targets="absolute")
+    vaulted(yml, monkeypatch)
+    folder = tmp_path / "side"
+    folder.mkdir()
+    result = run(
+        yml,
+        "--vault",
+        str(folder / "v.db"),
+        "--evidence-out",
+        str(folder / ".v.db.decoy-lock"),
+    )
+    assert result.exit_code == 0, result.output[-400:]
+    # The only such name is the evidence file the run was asked to write.
+    assert _locks(tmp_path) == ["side/.v.db.decoy-lock"]
+
+
+def test_one_rule_says_which_roots_take_the_strict_stage() -> None:
+    from decoy.cli.io._placement import Fixed, NoLocalOutput, Relative, Split, strict_route
+
+    assert strict_route(Relative()) is _pointer.pointer_supported()
+    assert strict_route(Relative(), chunked=True) is False
+    assert strict_route(Fixed(Path("/x"))) is False
+    assert strict_route(NoLocalOutput()) is False
+    assert strict_route(Split("a", "b")) is False
+
+
+def test_the_report_sibling_names_follow_the_run_id_rule() -> None:
+    from decoy.cli.io._run_outputs import in_flight_name
+
+    run_id = "20261128T120000000000Z-0a1b2c3d"
+    assert in_flight_name(f"{run_id}.post-scan.json")
+    assert in_flight_name(f".{run_id}.post-scan.json.decoy-lock")
+    assert not in_flight_name(f"{run_id}.post-scan.json.decoy-lock")  # no leading dot
+    assert not in_flight_name(f".{run_id}.post-scan.json")  # a report has no leading dot
+    assert not in_flight_name("20261128T120000000000Z-0a1b2.post-scan.json")  # not a run id
+    assert not in_flight_name("20261128T120000000000Z-0a1b2c3d1.post-scan.json")
 
 
 def test_the_busy_code_is_registered() -> None:
@@ -207,31 +260,40 @@ def test_a_vault_file_that_is_not_this_runs_does_not_make_the_fact_committed(
 # --- 19.4: an uncertain receipt shows no path, however the run ends -------------------------
 
 
-def _uncertain():
-    from decoy_engine.publication import LocalPointerStore
+def _faults():
+    import typer
 
-    real = LocalPointerStore.replace_if
+    from decoy.cli.run._context import UsageRefusal
 
-    def replace_then_doubt(self, expected, payload):
-        real(self, expected, payload)
-        return "uncertain"
-
-    return mock.patch.object(LocalPointerStore, "replace_if", replace_then_doubt)
+    return [
+        pytest.param(lambda: typer.Exit(3), id="exit"),
+        pytest.param(lambda: RuntimeError("late"), id="error"),
+        pytest.param(lambda: UsageRefusal("late refusal"), id="usage-refusal"),
+    ]
 
 
 @posix
-@pytest.mark.parametrize("fault", [SystemExit(3), RuntimeError("late")], ids=["exit", "error"])
-def test_an_uncertain_receipt_that_is_recovered_shows_no_path(tmp_path: Path, fault) -> None:
-    import typer
-
-    root, yml = project(tmp_path)
-    err = typer.Exit(3) if isinstance(fault, SystemExit) else fault
-    with _uncertain(), mock.patch.object(_evidence, "publish_attempts", side_effect=err):
+@pytest.mark.parametrize("make_fault", _faults())
+def test_an_uncertain_receipt_that_is_recovered_shows_no_path(tmp_path: Path, make_fault) -> None:
+    root, yml = project(tmp_path / "json")
+    with uncertain_swap(), deliver_then(make_fault()):
         result = run(yml)
+    assert result.exit_code == 0, result.output[-400:]
     out = result.output
     body = json.loads(out[out.index("{") :])
     assert all(r["path"] is None for r in body["tables"]), body["tables"]
     assert str(root) not in json.dumps(body["tables"])
+    codes = [w["code"] for w in body["warnings"]]
+    assert codes.count("delivery_cleanup_incomplete") == 1
+
+    root2, yml2 = project(tmp_path / "human")
+    with uncertain_swap(), deliver_then(make_fault()):
+        human = runner.invoke(app, ["run", str(yml2)], env={"COLUMNS": "400"})
+    assert human.exit_code == 0, human.output[-400:]
+    assert human.output.count("cleaning up after it did not") == 1
+    (folder,) = runs(root2)
+    assert str(folder.resolve() / "t1.csv") not in human.output
+    assert str(folder.resolve() / "t2.csv") not in human.output
 
 
 # --- 19.4: the not-delivered report ---------------------------------------------------------
@@ -400,7 +462,7 @@ def test_a_pass_through_host_keeps_the_deep_target(tmp_path: Path) -> None:
 def test_the_depth_limit_equals_the_engines() -> None:
     from decoy_engine._canonical import UNIT_PATH_MAX_DEPTH
 
-    assert _pointer.STRICT_MEMBER_DEPTH == UNIT_PATH_MAX_DEPTH
+    assert _placement.STRICT_MEMBER_DEPTH == UNIT_PATH_MAX_DEPTH
 
 
 def test_the_deliverable_target_set_equals_the_engines() -> None:

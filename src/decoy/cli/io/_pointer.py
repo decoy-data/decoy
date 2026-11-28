@@ -48,16 +48,6 @@ def lock_name(leaf: str) -> str:
     return f".{leaf}.decoy-lock"
 
 
-# The deepest member path the engine's publication accepts (`UNIT_PATH_MAX_DEPTH`; a guard test
-# compares the two, since the engine exports no name for it).
-STRICT_MEMBER_DEPTH: Final = 8
-
-
-def strict_route(*, chunked: bool) -> bool:
-    """Whether a project run goes through the engine's strict stage: POSIX, plain route."""
-    return _pointer_supported() and not chunked
-
-
 def pointer_supported() -> bool:
     """Whether this host runs the engine's pointer (the one answer every delivery caller reads)."""
     return _pointer_supported()

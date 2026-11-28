@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
 import yaml
@@ -103,3 +104,30 @@ def post_scan(yml: Path) -> None:
     cfg = yaml.safe_load(yml.read_text(encoding="utf-8"))
     cfg["post_scan"] = {"integrity": True}
     yml.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+
+def uncertain_swap():
+    """The pointer swap lands, then reports that it cannot confirm: an uncertain receipt."""
+    from decoy_engine.publication import LocalPointerStore
+
+    real = LocalPointerStore.replace_if
+
+    def replace_then_doubt(self, expected, payload):
+        real(self, expected, payload)
+        return "uncertain"
+
+    return mock.patch.object(LocalPointerStore, "replace_if", replace_then_doubt)
+
+
+def deliver_then(fault: BaseException):
+    """Run the real delivery, then raise `fault` out of `DeliverySink.deliver` (an error that
+    escapes after the receipt exists, the way a scope exit or a late refusal would)."""
+    from decoy.cli.io import _delivery
+
+    real = _delivery.DeliverySink.deliver
+
+    def deliver_then_fail(self, decision, ledger):
+        real(self, decision, ledger)
+        raise fault
+
+    return mock.patch.object(_delivery.DeliverySink, "deliver", deliver_then_fail)

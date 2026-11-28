@@ -32,7 +32,14 @@ from decoy.cli.io._layout_errors import (
     LATEST_COMMIT_UNCERTAIN,
     LayoutWarning,
 )
-from decoy.cli.io._placement import Fixed, NoLocalOutput, Relative, Split, delivery_root
+from decoy.cli.io._placement import (
+    Fixed,
+    NoLocalOutput,
+    Relative,
+    Split,
+    delivery_root,
+    strict_route,
+)
 from decoy.cli.io._published import Ledger, LocalOutput
 from decoy.cli.io._run_outputs import not_delivered_report_name
 from decoy.cli.io._side_lock import SideFile, hold_side_files
@@ -362,7 +369,7 @@ class DeliverySink:
         folder = layout.pipeline_dir
         if layout.run is None or folder is None:
             raise RuntimeError("a relative delivery root needs a run folder")
-        if not _pointer.pointer_supported():
+        if not strict_route(root):
             return cls(RootKind.run_folder, PassThroughStage(), _Direct(layout), layout, hooks)
         from decoy_engine.fileaccess import FileRequest, FileRole, current
         from decoy_engine.publication import DeliveryStage

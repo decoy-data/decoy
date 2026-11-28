@@ -61,9 +61,7 @@ def test_the_resident_preflight_runs_before_the_target_loop() -> None:
 
 def test_moving_the_preflight_below_the_loop_is_red() -> None:
     seeded = (
-        "def write_targets(c, o):\n"
-        "    for t in c:\n        pass\n"
-        "    preflight_csv_targets(c, o)\n"
+        "def write_targets(c, o):\n    for t in c:\n        pass\n    preflight_csv_targets(c, o)\n"
     )
     assert not preflight_before_loop(seeded)
     assert not preflight_before_loop("def write_targets(c, o):\n    for t in c:\n        pass\n")

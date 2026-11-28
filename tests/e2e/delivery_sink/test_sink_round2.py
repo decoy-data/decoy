@@ -18,11 +18,12 @@ from unittest import mock
 import pytest
 
 from decoy.__main__ import app
-from decoy.cli.io import _delivery, _pointer
+from decoy.cli.io import _delivery, _placement
 from decoy.cli.run import _deliver, _evidence
 from decoy.cli.run._context import DELIVERY_SIDE_FILE_BUSY
 from tests.child_env import child_env
 from tests.e2e.delivery_sink._support import (
+    deliver_then,
     document,
     latest,
     litter,
@@ -31,6 +32,7 @@ from tests.e2e.delivery_sink._support import (
     run,
     runner,
     runs,
+    uncertain_swap,
     vaulted,
 )
 
@@ -46,18 +48,6 @@ def _withhold(*_a, **_k) -> bool:
     return True
 
 
-def _uncertain():
-    from decoy_engine.publication import LocalPointerStore
-
-    real = LocalPointerStore.replace_if
-
-    def replace_then_doubt(self, expected, payload):
-        real(self, expected, payload)
-        return "uncertain"
-
-    return mock.patch.object(LocalPointerStore, "replace_if", replace_then_doubt)
-
-
 # --- V1.4 ------------------------------------------------------------------------------------
 
 
@@ -65,15 +55,22 @@ def _uncertain():
 def test_a_usage_refusal_after_an_uncertain_receipt_shows_no_path(tmp_path: Path) -> None:
     from decoy.cli.run._context import UsageRefusal
 
-    _root, yml = project(tmp_path)
-    with (
-        _uncertain(),
-        mock.patch.object(_evidence, "publish_attempts", side_effect=UsageRefusal("late refusal")),
-    ):
+    _root, yml = project(tmp_path / "json")
+    with uncertain_swap(), deliver_then(UsageRefusal("late refusal")):
         result = run(yml)
+    assert result.exit_code == 0, result.output[-400:]
     body = _body(result)
     assert all(r["path"] is None for r in body["tables"]), body["tables"]
     assert document(result)["delivery"]["outcome"] == "delivered"
+    assert [w["code"] for w in body["warnings"]].count("delivery_cleanup_incomplete") == 1
+
+    root2, yml2 = project(tmp_path / "human")
+    with uncertain_swap(), deliver_then(UsageRefusal("late refusal")):
+        human = runner.invoke(app, ["run", str(yml2)], env={"COLUMNS": "400"})
+    assert human.exit_code == 0, human.output[-400:]
+    (folder,) = runs(root2)
+    assert str(folder.resolve() / "t1.csv") not in human.output
+    assert str(folder.resolve() / "t2.csv") not in human.output
 
 
 # --- AT-36d: the receipt decides the paths, in both renderers -------------------------------
@@ -101,7 +98,7 @@ def test_at36d_a_withheld_run_shows_no_table_path(tmp_path: Path) -> None:
 @posix
 def test_at36d_an_uncertain_receipt_shows_no_path_in_the_human_output(tmp_path: Path) -> None:
     root, yml = project(tmp_path)
-    with _uncertain():
+    with uncertain_swap():
         result = runner.invoke(app, ["run", str(yml)])
     assert result.exit_code == 0, result.output[-400:]
     (folder,) = runs(root)
@@ -193,7 +190,7 @@ def test_the_depth_refusal_names_the_table_and_the_limit_and_no_value(tmp_path: 
     ((code, message, location),) = layout_failures(yml, cfg)
     assert code == "layout.delivery_member_too_deep"
     assert location is not None and "t1" in location
-    assert str(_pointer.STRICT_MEMBER_DEPTH) in message
+    assert str(_placement.STRICT_MEMBER_DEPTH) in message
     assert "secret-folder" not in message
 
 
