@@ -196,6 +196,14 @@ def _format_keys(table: str, tgt: dict[str, Any]) -> dict[str, Any]:
     return keys
 
 
+def _remote_location(raw: str) -> str | None:
+    """The safe text for a declared path that is a location, not a file: a URL, or a network-path
+    reference holding a user or password. None for a plain path. Every recorded path is
+    classified here before any path resolution, so no credential reaches the evidence file."""
+    shown = redacted_location(raw)
+    return None if shown == raw else shown
+
+
 def _placed(place_target: Callable[[str], Path] | None, raw: str, base: Path) -> Path | None:
     """Where the run put `raw`; None when the layout refuses it (nothing was written there)."""
     if place_target is None:
@@ -293,10 +301,12 @@ def build_manifest(
         if not src_path_str:
             continue
         src_path = Path(str(src_path_str))
-        if "://" in str(src_path_str) or not src_path.is_absolute():
-            # A URL, or a non-file source the run did not open from this path: nothing to hash.
+        remote = _remote_location(str(src_path_str))
+        if remote is not None or "://" in str(src_path_str) or not src_path.is_absolute():
+            # A URL or credentialed location, or a non-file source the run did not open from
+            # this path: nothing to hash.
             input_fingerprints[table_name] = {
-                "path": redacted_location(str(src_path_str)),
+                "path": remote if remote is not None else redacted_location(str(src_path_str)),
                 **_fingerprint(None),
             }
             continue
@@ -314,9 +324,14 @@ def build_manifest(
         tgt_path_str = tgt.get("path")
         if not tgt_path_str:
             continue
-        tgt_path = _placed(place_target, str(tgt_path_str), yaml_dir)
+        remote = _remote_location(str(tgt_path_str))
+        tgt_path = (
+            None if remote is not None else _placed(place_target, str(tgt_path_str), yaml_dir)
+        )
         recorded = (
-            redacted_location(str(tgt_path_str))
+            remote
+            if remote is not None
+            else redacted_location(str(tgt_path_str))
             if tgt_path is None
             else _recorded(tgt_path, project_root)
         )
@@ -666,7 +681,7 @@ def verify_manifest_issues(
         (
             at,
             f" (table {table!r})" if at else "",
-            raw,
+            redacted_location(raw),
             recorded,
             resolve_manifest_path(
                 manifest, raw, manifest_file=manifest_file, project=project, field=field

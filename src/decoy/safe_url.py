@@ -66,12 +66,13 @@ def redacted_location(raw: str) -> str:
 
 
 def _redacted_network_path(raw: str) -> str:
-    """`//host[:port]` for a `//user:pass@host/...` reference; other `//...` text unchanged."""
-    try:
-        netloc = urlsplit(raw).netloc
-    except ValueError:
-        return _UNKNOWN_LOCATION
-    if "@" not in netloc:
+    """`//host[:port]` for a `//user:pass@host/...` reference; other `//...` text unchanged.
+
+    Credential-free is decided first, on the text before the first `/`, `?` or `#`, so a POSIX
+    name such as `//build[1]/share` is never rejected by URL host parsing.
+    """
+    authority = raw[2:].split("/", 1)[0].split("?", 1)[0].split("#", 1)[0]
+    if "@" not in authority:
         return raw
     parts = safe_url_parts(f"x:{raw}")
     return _UNKNOWN_LOCATION if parts is None else f"//{parts.netloc}"

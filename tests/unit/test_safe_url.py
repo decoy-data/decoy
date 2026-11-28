@@ -48,6 +48,7 @@ def test_unreadable_url_gives_none(url: str) -> None:
         (f"//u@[::1]/p?t={_TOK}", "//[::1]"),
         (f"//u:{_PW}@h:bad/p", "(remote location)"),
         ("//server/share/out.csv", "//server/share/out.csv"),
+        ("//build[1]/share/report.csv", "//build[1]/share/report.csv"),
     ],
 )
 def test_redacted_location(raw: str, shown: str) -> None:
