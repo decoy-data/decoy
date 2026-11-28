@@ -280,16 +280,27 @@ class RunContext:
         Nothing published gives no member. `output_dir` appears only when a listed file is
         below the run folder or `--out-dir`; absolute paths are listed without it.
         """
-        if not self._published:
+        shown = shown_published(self)
+        if not shown:
             return {}
-        files = [Path(path).resolve() for path in self._published.values()]
-        members: dict = {
-            "outputs": [{"table": t, "path": str(f)} for t, f in zip(self._published, files)]
-        }
+        files = [Path(path).resolve() for path in shown.values()]
+        members: dict = {"outputs": [{"table": t, "path": str(f)} for t, f in zip(shown, files)]}
         folder = self.layout.output_dir() if self.layout is not None else None
         if folder is not None and any(folder in f.parents for f in files):
             members["output_dir"] = str(folder)
         return members
+
+
+def outputs_shown(ctx: RunContext) -> bool:
+    """Whether a renderer may name where the run's outputs are: the one receipt check. On the
+    strict route an uncertain or missing receipt shows no location, though the run delivered."""
+    sink = ctx._sink
+    return sink is None or sink.mode != "strict" or sink.confirmed
+
+
+def shown_published(ctx: RunContext) -> Ledger:
+    """The ledger as a renderer may show it."""
+    return ctx._published if outputs_shown(ctx) else Ledger()
 
 
 def output_placement(ctx: RunContext) -> OutputPlacement:

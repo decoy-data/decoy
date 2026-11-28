@@ -46,7 +46,9 @@ def body(result) -> dict:
 def test_at36b_the_ledger_refuses_a_bare_path(tmp_path: Path) -> None:
     ledger = Ledger()
     ledger["t1"] = LocalOutput(tmp_path / "a.csv")
-    members = RunContext.published_members(types.SimpleNamespace(_published=ledger, layout=None))
+    members = RunContext.published_members(
+        types.SimpleNamespace(_published=ledger, layout=None, _sink=None)
+    )
     assert members == {"outputs": [{"table": "t1", "path": str((tmp_path / "a.csv").resolve())}]}
     with pytest.raises(TypeError):
         ledger["t2"] = tmp_path / "b.csv"  # type: ignore[assignment]

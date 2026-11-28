@@ -282,7 +282,7 @@ def test_an_uncertain_receipt_that_is_recovered_shows_no_path(tmp_path: Path, ma
     out = result.output
     body = json.loads(out[out.index("{") :])
     assert all(r["path"] is None for r in body["tables"]), body["tables"]
-    assert str(root) not in json.dumps(body["tables"])
+    _assert_no_location(out, root)
     codes = [w["code"] for w in body["warnings"]]
     assert codes.count("delivery_cleanup_incomplete") == 1
 
@@ -291,9 +291,44 @@ def test_an_uncertain_receipt_that_is_recovered_shows_no_path(tmp_path: Path, ma
         human = runner.invoke(app, ["run", str(yml2)], env={"COLUMNS": "400"})
     assert human.exit_code == 0, human.output[-400:]
     assert human.output.count("cleaning up after it did not") == 1
-    (folder,) = runs(root2)
-    assert str(folder.resolve() / "t1.csv") not in human.output
-    assert str(folder.resolve() / "t2.csv") not in human.output
+    _assert_no_location(human.output, root2)
+
+
+def _assert_no_location(output: str, root: Path) -> None:
+    """The whole response, not a member of it: no path into the project's `out/` folder (the
+    run's own config path may appear) and no table file name."""
+    for form in {str(root / "out"), str(root.resolve() / "out")}:
+        assert form not in output, form
+    assert "t1.csv" not in output
+    assert "t2.csv" not in output
+
+
+@posix
+def test_an_uncertain_receipt_names_no_report_of_an_earlier_run(tmp_path: Path) -> None:
+    root, yml = project(tmp_path / "json", tables=1)
+    post_scan(yml)
+    earlier = tmp_path / "verdicts" / "report.json"
+    earlier.parent.mkdir()
+    earlier.write_text("an earlier verdict\n", encoding="utf-8")
+    with uncertain_swap():
+        result = run(yml, "--integrity-out", str(earlier))
+    assert result.exit_code == 0, result.output[-400:]
+    assert earlier.read_text(encoding="utf-8") == "an earlier verdict\n"
+    assert "report.json" not in result.output
+    assert str(earlier.parent) not in result.output
+    _assert_no_location(result.output, root)
+
+    root2, yml2 = project(tmp_path / "human", tables=1)
+    post_scan(yml2)
+    with uncertain_swap():
+        human = runner.invoke(
+            app,
+            ["run", str(yml2), "--integrity-out", str(earlier)],
+            env={"COLUMNS": "400"},
+        )
+    assert human.exit_code == 0, human.output[-400:]
+    assert "report.json" not in human.output
+    _assert_no_location(human.output, root2)
 
 
 # --- 19.4: the not-delivered report ---------------------------------------------------------
@@ -658,3 +693,31 @@ def test_at82e_out_dir_with_a_relative_and_an_absolute_target_in_that_folder(
     assert sorted(p.name for p in out.glob("*.csv")) == ["t1.csv", "t2.csv"]
     assert document(result)["delivery"]["mode"] == "in_place"
     assert latest(root) is None
+
+
+# --- 19.7: a split with an over-deep member -------------------------------------------------
+
+
+@posix
+def test_a_split_with_an_over_deep_member_reports_the_split_first(tmp_path: Path) -> None:
+    """The depth limit belongs to the strict stage, and a split never reaches it: the split is
+    reported first, and the depth refusal appears once the split is gone. Both are refused."""
+    import yaml
+
+    root, yml = project(tmp_path, tables=2)
+    cfg = yaml.safe_load(yml.read_text(encoding="utf-8"))
+    cfg["targets"]["t1"]["path"] = "/".join(["d"] * 8) + "/t1.csv"  # relative, 9 components
+    cfg["targets"]["t2"]["path"] = str(tmp_path / "abs" / "t2.csv")  # absolute: a second root
+    yml.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    result = run(yml)
+    assert result.exit_code != 0
+    assert "layout.delivery_root_split" in result.output
+    assert "layout.delivery_member_too_deep" not in result.output
+    assert not (root / "out").exists()
+
+    cfg["targets"]["t2"]["path"] = "t2.csv"  # the split is gone; the deep member remains
+    yml.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+    again = run(yml)
+    assert again.exit_code != 0
+    assert "layout.delivery_member_too_deep" in again.output
+    assert "layout.delivery_root_split" not in again.output

@@ -30,7 +30,13 @@ from decoy._version import __version__ as _cli_version
 from decoy.cli import exit_codes
 from decoy.cli.exit_codes import run_exit_code
 from decoy.cli.io import declared_format
-from decoy.cli.run._context import RunContext, library_choice, library_label, output_placement
+from decoy.cli.run._context import (
+    RunContext,
+    library_choice,
+    library_label,
+    output_placement,
+    shown_published,
+)
 from decoy.ui.output import OutputMode, emit_error, emit_json
 from decoy.ui.theme import warn
 
@@ -98,7 +104,7 @@ def _entry(ctx: RunContext, name: str, targets: dict, sink: DeliverySink | None 
         return TableDelivery(
             state="delivered",
             format=fmt,
-            output=_output(ctx, published),
+            output=_output(ctx, published) if name in shown_published(ctx) else None,
             reason=None,
             dropped_because=None,
         )

@@ -532,8 +532,11 @@ class DeliverySink:
 
     def report_location(self, staged_for: Path | None) -> Path | None:
         """Where the post-scan report really is: the run folder when the run bound, the
-        not-delivered file when it was written, otherwise nowhere."""
-        if self.mode != "strict" or (self.receipt is not None and self.receipt.state != "nothing"):
+        not-delivered file when it was written, otherwise nowhere. An uncertain receipt shows no
+        path, and its attempt report was discarded."""
+        if self.mode != "strict":
+            return staged_for
+        if self.confirmed:
             return staged_for
         return self.report_path
 
@@ -557,7 +560,7 @@ class DeliverySink:
         self._step(lambda: self._fill(ledger, decision))
 
     def _warn_uncertain(self) -> None:
-        self._hooks.show_warning(LATEST_COMMIT_UNCERTAIN.warning(path=self._layout.pipeline_dir))
+        self._hooks.show_warning(LATEST_COMMIT_UNCERTAIN.warning())
 
     def _link_current(self) -> None:
         run, folder = self._layout.run, self._layout.pipeline_dir
@@ -592,6 +595,11 @@ class DeliverySink:
     def _side_report_if_unbound(self) -> None:
         if not self._bound():
             self._publish_side_report()
+
+    @property
+    def confirmed(self) -> bool:
+        """True when the receipt is `delivered`. Only then may a renderer show a path."""
+        return self.receipt is not None and self.receipt.state == "delivered"
 
     def settled(self) -> bool:
         """True once the visibility point has passed: a delivered or uncertain receipt."""

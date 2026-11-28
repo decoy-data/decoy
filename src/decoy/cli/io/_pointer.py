@@ -174,7 +174,7 @@ def swap_latest(folder: Path, run_id: str) -> tuple[LayoutWarning, ...]:
     if failed:
         return (*warnings, LATEST_WRITE_FAILED.warning(path=folder))
     if uncertain:
-        warnings.append(LATEST_COMMIT_UNCERTAIN.warning(path=folder))
+        warnings.append(LATEST_COMMIT_UNCERTAIN.warning())
     return tuple(warnings)
 
 

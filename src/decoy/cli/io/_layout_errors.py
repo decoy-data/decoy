@@ -146,7 +146,7 @@ LATEST_WRITE_FAILED = Descriptor(
 )
 LATEST_COMMIT_UNCERTAIN = Descriptor(
     "layout.publication_commit_uncertain",
-    "LATEST in {path} was replaced, but the folder could not be synced; it may not survive a crash.",
+    "LATEST was replaced, but the folder could not be synced; it may not survive a crash.",
 )
 GITIGNORE_WRITE_FAILED = Descriptor(
     "layout.gitignore_write_failed",

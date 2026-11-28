@@ -633,14 +633,17 @@ class RunLayout:
             }
         return {"project": project, "pipeline": pipeline}
 
-    def summary_facts(self) -> list[tuple[str, str]]:
+    def summary_facts(self, *, outputs: bool = True) -> list[tuple[str, str]]:
         """The summary lines: project, run folder and the latest pointer.
 
-        A path under the current folder prints relative to it, any other path absolute.
+        A path under the current folder prints relative to it, any other path absolute. With
+        `outputs` false the run folder and the pointer are left out (an unconfirmed delivery).
         """
         facts: list[tuple[str, str]] = []
         if self._project is not None:
             facts.append(("Project", shown_path(self._project.root.resolve())))
+        if not outputs:
+            return facts
         folder = self.output_dir()
         if folder is not None:
             facts.append(

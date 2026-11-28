@@ -26,6 +26,7 @@ from decoy.cli.run._context import (
     DeliveryRefusal,
     IntegrityWriteRefusal,
     RunContext,
+    shown_published,
 )
 from decoy.ui.output import OutputMode
 from decoy.ui.theme import warn
@@ -93,17 +94,11 @@ def shown_tables(ctx: RunContext) -> list[dict]:
     """The table records both renderers show. On the strict route a path is kept only for a
     table of a run whose recorded receipt is `delivered`: nothing, an uncertain receipt and a
     missing receipt show no path, however the run got out (the one projection)."""
-    sink = ctx._sink
-    if sink is None or sink.mode != "strict":
+    shown = shown_published(ctx)
+    if ctx._sink is None or ctx._sink.mode != "strict":
         return ctx._table_records
-    confirmed = sink.receipt is not None and sink.receipt.state == "delivered"
     return [
-        {
-            **r,
-            "path": str(ctx._published[r["name"]])
-            if confirmed and r["name"] in ctx._published
-            else None,
-        }
+        {**r, "path": str(shown[r["name"]]) if r["name"] in shown else None}
         for r in ctx._table_records
     ]
 

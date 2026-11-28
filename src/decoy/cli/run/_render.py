@@ -9,7 +9,7 @@ from rich.text import Text
 from decoy.cli import gen
 from decoy.cli.io import post_scan_members, print_post_scan, shown_path
 from decoy.cli.run import _deliver, _result
-from decoy.cli.run._context import Mode, RunContext
+from decoy.cli.run._context import Mode, RunContext, outputs_shown
 from decoy.cli.run._prepare import _has_kind
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputMode
@@ -164,7 +164,7 @@ def finish(ctx: RunContext) -> None:
         ("Files", str(sum(1 for r in _deliver.shown_tables(ctx) if r["path"] is not None))),
     ]
     if ctx.layout is not None:
-        facts.extend(ctx.layout.summary_facts())
+        facts.extend(ctx.layout.summary_facts(outputs=outputs_shown(ctx)))
     if _warnings:
         facts.append(("Warnings", str(len(_warnings))))
     facts.extend(_library_facts(ctx.library_outcome))

@@ -30,9 +30,9 @@ version numbers follow the [versioning policy](docs/release/versioning.md).
 ### Changed
 
 - **`decoy run` in a project delivers through the engine's stage; five changes you can see (DELIV C2a, roadmap row 61).**
-  - A run that cannot take the lock of its `--vault` or `--evidence-out` file because another run holds it now stops before any write with `delivery_side_file_busy` (exit 3). Run again when the other run is done.
+  - A run that cannot take the lock of its `--vault` or `--evidence-out` file because another run holds it now stops before it publishes anything, after staging has written its files, with `delivery_side_file_busy` (exit 3). Run again when the other run is done.
   - On POSIX hosts a hidden file named `.<file>.decoy-lock` now stays beside each `--vault` and `--evidence-out` file of a project run (for example `.vault.db.decoy-lock`). The file is empty and is never removed. A run to `--out-dir`, to an absolute folder, or with no file output takes no such lock and makes no such file.
-  - A run that delivers no tables because the post-scan withheld them now writes its verdict to `out/<name>/<run-id>.post-scan.json`, beside the run folder, and still exits 4. The file is create-only: an existing file of that name is never replaced.
+  - A run that delivers no tables because the post-scan withheld them now writes its verdict to `out/<name>/<run-id>.post-scan.json`, beside the run folder, and still exits 4. This is the default when `--integrity-out` is absent; with `--integrity-out` the verdict goes there. The sibling file is create-only: an existing file of that name is never replaced.
   - A `LATEST` entry that is a link, is not a regular file, or is larger than 4 KiB now stops the run before it stages anything (exit 3), where a run used to replace it.
   - An error that happens after the tables were delivered no longer changes the result. The run keeps its files and its pointer, exits 0, and shows one `delivery_cleanup_incomplete` warning. Interrupts (Ctrl-C) still stop the run as before.
 
