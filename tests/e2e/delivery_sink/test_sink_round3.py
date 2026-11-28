@@ -189,3 +189,19 @@ def test_at83_the_plain_branch_writes_before_it_delivers(tmp_path: Path) -> None
     ):
         assert run(yml).exit_code == 0
     assert events == ["write", "deliver"]
+
+
+def test_at83_the_cleanup_warning_is_recorded_once_however_often_it_is_noted() -> None:
+    from decoy.cli.run import _deliver
+
+    seen: list[dict] = []
+
+    class Ctx:
+        _cli_warnings = seen
+
+        def add_cli_warning(self, code: str, text: str) -> None:
+            seen.append({"code": code, "text": text})
+
+    _deliver.note_cleanup(Ctx())  # type: ignore[arg-type]
+    _deliver.note_cleanup(Ctx())  # type: ignore[arg-type]
+    assert [w["code"] for w in seen] == ["delivery_cleanup_incomplete"]
