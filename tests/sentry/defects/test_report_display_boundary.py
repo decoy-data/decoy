@@ -12,7 +12,8 @@ The plan is `docs/plans/2026-11-28-d6-manifest-display-boundary.md`, section 5. 
   only `diff_payloads` reaches. The forwarder list must equal the unwrapped sites found.
 - R3: each private document function annotates its input `DisplayCopy` and names no raw reader,
   and the public `render_html` and `render_markdown` hand it only a display copy.
-- R4: `DisplayCopy(` is called only inside `decoy/safe_url.py`.
+- R4: `DisplayCopy` is called only inside `decoy/safe_url.py`, matched on the resolved name so
+  an import alias does not hide the call.
 
 Calls are resolved with `tests/sentry/io_policy/_calls.py`; a bare call to a function defined in
 the same module resolves to `<module>.<name>`. The seeded mutations prove each rule fails alone.
@@ -225,13 +226,19 @@ def _r3(modules: dict[str, _Module]) -> list[str]:
 
 
 def _r4(modules: dict[str, _Module]) -> list[str]:
-    return [
-        f"{mod.name}:{n.lineno} builds DisplayCopy"
-        for mod in modules.values()
-        if mod.name != "decoy.safe_url"
-        for n in ast.walk(mod.tree)
-        if isinstance(n, ast.Call) and "DisplayCopy" == ast.unparse(n.func).rpartition(".")[2]
-    ]
+    """A call resolved to `DisplayCopy` through any import alias, or written as `DisplayCopy`."""
+    found: list[str] = []
+    for mod in modules.values():
+        if mod.name == "decoy.safe_url":
+            continue
+        for site in mod.sites:
+            call = site.node
+            if not isinstance(call, ast.Call):
+                continue
+            name = mod.resolve(call, site) or ast.unparse(call.func)
+            if _leaf(name) == "DisplayCopy":
+                found.append(f"{mod.name}:{site.lineno} builds DisplayCopy")
+    return found
 
 
 RULES = {"R1": _r1, "R2": _r2, "R3": _r3, "R4": _r4}
@@ -310,6 +317,14 @@ SEEDS = {
         "decoy.cli.report._show",
         "    shown = evidence.display_manifest(manifest)\n",
         "    shown = evidence.display_manifest(manifest)\n    _empty = DisplayCopy({})\n",
+    ),
+    "show builds DisplayCopy through an import alias": (
+        "R4",
+        "decoy.cli.report._show",
+        "    shown = evidence.display_manifest(manifest)\n",
+        "    shown = evidence.display_manifest(manifest)\n"
+        "    from decoy.safe_url import DisplayCopy as Shown\n\n"
+        "    _empty = Shown({})\n",
     ),
 }
 
