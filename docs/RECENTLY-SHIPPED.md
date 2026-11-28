@@ -15,12 +15,12 @@ Status: record
 
 No row closed. Rows moved:
 
-- TEXT-REDACT-RUST-SPLICE (S1a): engine #806 (`5d768b2c7`) adds the `text_span_splice` Arrow entry to the native companion, with a bound probe.
-- TEST-FLIGHT-FIX (bucket_perturb dates): engine #819 (`046d42950`) sets `date_format` on bucket_perturb text dates in the test flight and shows the job error when a flight fails.
-- TEST-FLAKE (F06): engine #836 (`c981c79ea`) makes the root-relative path test portable, so it passes on the Mac.
-- PARQUET-CHUNKED-NULLABLE-INT (S1): engine #833 (`2ee01100a`) makes chunked nullable-int Parquet output match the full-frame route, with a schema error that carries no values.
-- RATCHET-GROWTH (RG-E2): engine #801 (`564881a3e`) makes each ratchet bound carry a max or a min.
-- GEN-STREAM-ALL (S1a): engine #813 (`9812da814`) adds `pool_take` and the Arrow batch assembler, the base for streamed generation.
+- TEXT-REDACT-RUST-SPLICE (S1a): engine #806 (2026-11-27, `5d768b2c7`) adds the `text_span_splice` Arrow entry to the native companion, with a bound probe.
+- TEST-FLIGHT-FIX (bucket_perturb dates): engine #819 (2026-11-27, `046d42950`) sets `date_format` on bucket_perturb text dates in the test flight and reports the error type when a flight fails.
+- TEST-FLAKE (F06): engine #836 (2026-11-27, `c981c79ea`) makes the root-relative path test portable, so it passes on the Mac.
+- PARQUET-CHUNKED-NULLABLE-INT (S1): engine #833 (2026-11-27, `2ee01100a`) makes chunked nullable-int Parquet output match the full-frame route, with a schema error that carries no values.
+- RATCHET-GROWTH (RG-E2): engine #801 (2026-11-27, `564881a3e`) makes each ratchet bound carry a max or a min.
+- GEN-STREAM-ALL (S1a): engine #813 (2026-11-27, `9812da814`) adds `pool_take` and makes the batch assembler accept Arrow arrays, the base for streamed generation.
 
 ## 2026-11-27: engine 0.28.5 repin (CLI)
 
