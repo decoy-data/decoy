@@ -12,7 +12,7 @@ from decoy.cli.evidence import (
 )
 from decoy.cli.exit_codes import EXIT_FINDINGS, EXIT_USAGE
 from decoy.cli.report._shared import _load_manifest
-from decoy.safe_url import display_path
+from decoy.safe_url import display_file_name, display_path
 from decoy.ui.output import (
     OutputMode,
     emit_json,
@@ -131,13 +131,13 @@ def _verify(
     if not issues:
         state.console.print(
             success("OK"),
-            f"All fingerprints match. ({display_path(evidence_file.name)})",
+            f"All fingerprints match. ({display_file_name(evidence_file)})",
         )
         return
 
     state.err_console.print(
         error("INTEGRITY CHECK FAILED: fingerprint mismatch"),
-        f"{len(issues)} fingerprint(s) changed in {display_path(evidence_file.name)}",
+        f"{len(issues)} fingerprint(s) changed in {display_file_name(evidence_file)}",
     )
     for issue in issues:
         state.err_console.print(" ", hint("-"), issue)

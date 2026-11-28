@@ -112,28 +112,39 @@ def _run_result(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict:
     }
 
 
-def _escape(key: str) -> str:
-    return key.replace("~", "~0").replace("/", "~1")
+def _pointer(path: tuple[str | int, ...]) -> str:
+    """The RFC 6901 pointer of a raw leaf path: each key is displayed, then escaped, so a URL
+    in a key is shown by its safe form and a `/` it holds cannot split it."""
+    from decoy.safe_url import display_text
+
+    parts = (str(c) if isinstance(c, int) else display_text(c) for c in path)
+    return "/payload" + "".join("/" + p.replace("~", "~0").replace("/", "~1") for p in parts)
 
 
-def _leaves(value: Any, pointer: str) -> Iterator[tuple[str, Any]]:
+def _leaves(value: Any, path: tuple[str | int, ...]) -> Iterator[tuple[tuple[str | int, ...], Any]]:
     if isinstance(value, Mapping) and value:
         for key in sorted(value):
-            yield from _leaves(value[key], f"{pointer}/{_escape(str(key))}")
+            yield from _leaves(value[key], (*path, str(key)))
     elif isinstance(value, (list, tuple)) and value:
         for i, item in enumerate(value):
-            yield from _leaves(item, f"{pointer}/{i}")
+            yield from _leaves(item, (*path, i))
     else:
-        yield pointer, value
+        yield path, value
 
 
 def _structural(old: Mapping[str, Any], new: Mapping[str, Any]) -> dict:
+    """Leaves are matched and compared by their raw paths; one pointer is listed per raw
+    difference, so two keys that display alike stay two entries."""
     from decoy_engine.records import payload_digest
 
-    before, after = dict(_leaves(old, "/payload")), dict(_leaves(new, "/payload"))
+    before, after = dict(_leaves(old, ())), dict(_leaves(new, ()))
+
+    def pointers(paths: Iterator[tuple[str | int, ...]]) -> list[str]:
+        return sorted(_pointer(p) for p in paths)
+
     return {
-        "changed": sorted(p for p in set(before) & set(after) if before[p] != after[p]),
-        "added": sorted(set(after) - set(before)),
-        "removed": sorted(set(before) - set(after)),
+        "changed": pointers(p for p in before.keys() & after.keys() if before[p] != after[p]),
+        "added": pointers(p for p in after.keys() - before.keys()),
+        "removed": pointers(p for p in before.keys() - after.keys()),
         "payload_digest": _pair(payload_digest(dict(old)), payload_digest(dict(new))),
     }

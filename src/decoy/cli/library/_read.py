@@ -20,7 +20,7 @@ import typer
 from decoy.cli.exit_codes import EXIT_OK, EXIT_USAGE
 from decoy.cli.io import PipelineRef, pipeline_option, resolve_pipeline
 from decoy.cli.library._cli import LibraryCommand, library_option, start
-from decoy.safe_url import display_safe
+from decoy.safe_url import display_copy, display_safe, location_fields
 from decoy.ui.output import OutputMode, OutputState, emit_json, setup_output
 
 __all__ = ["diff_command", "list_command", "ref_command", "show_command"]
@@ -174,25 +174,31 @@ def show_command(
     opened = cmd.library(cmd.root(library).path)
     record = _read(cmd, opened, _target(cmd, opened, target))
     status = _status(record)
-    raw = dict(record.raw)
+    # One display copy of the envelope; an unreadable payload is dropped before it is copied.
+    # A readable record's location fields (the kind's `path_fields`) take the location rule.
+    fields: frozenset[tuple[str, ...]] = frozenset()
     if status == "known":
-        raw["payload"] = display_safe(raw["payload"])
-    shown = raw if status == "known" else {k: v for k, v in raw.items() if k != "payload"}
+        from decoy_engine.records import kind_spec
+
+        spec = kind_spec(record.kind)
+        fields = location_fields(spec.path_fields if spec else (), "/")
+    envelope = {k: v for k, v in record.raw.items() if status == "known" or k != "payload"}
+    shown = display_copy(envelope, fields)
     emit_json(
         state,
         {
             "command": "library show",
             "status": status,
-            "payload_schema": raw.get("payload_schema"),
+            "payload_schema": shown.get("payload_schema"),
             "record": shown,
         },
     )
     for key in ("id", "kind", "payload_schema", "created_at", "invocation_id"):
-        _say(state, f"{key}:", str(raw.get(key)))
+        _say(state, f"{key}:", str(shown.get(key)))
     for key in ("producer", "labels", "links"):
-        _say(state, f"{key}:", json.dumps(raw.get(key)))
+        _say(state, f"{key}:", json.dumps(shown.get(key)))
     if status == "known":
-        _say(state, "payload:", json.dumps(raw.get("payload"), indent=2))
+        _say(state, "payload:", json.dumps(shown.get("payload"), indent=2))
     elif status == "opaque":
         _say(state, "payload: cannot be read by this version (unknown kind); needs a newer Decoy")
     else:
@@ -223,8 +229,8 @@ def diff_command(
     if old.kind != new.kind:
         cmd.fail(f"cannot diff records of different kinds ({old.kind} and {new.kind})")
     spec = kind_spec(old.kind)
-    rule, found = diff_payloads(
-        spec.diff_rule if spec else None, old.raw["payload"], new.raw["payload"]
+    rule, found = display_safe(
+        diff_payloads(spec.diff_rule if spec else None, old.raw["payload"], new.raw["payload"])
     )
     emit_json(
         state,

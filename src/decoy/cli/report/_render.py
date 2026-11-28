@@ -7,6 +7,7 @@ from pathlib import Path
 import typer
 
 from decoy._atomic import WriteMode, write_local_target
+from decoy.cli import evidence
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import ReportTarget
 from decoy.cli.report._html import render_html
@@ -92,10 +93,8 @@ def _render(
             state.err_console.print(error("error:"), msg)
         raise typer.Exit(code=EXIT_USAGE)
 
-    if fmt in ("markdown", "md"):
-        content = render_markdown(manifest)
-    else:
-        content = render_html(manifest)
+    shown = evidence.display_manifest(manifest)
+    content = render_markdown(shown) if fmt in ("markdown", "md") else render_html(shown)
 
     target = ReportTarget(out, False)
     with target.recording():

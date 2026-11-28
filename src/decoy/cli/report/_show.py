@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import typer
 
@@ -84,6 +83,8 @@ def _show(
     """
     state = setup_output(json_, quiet, verbose)
     manifest = _load_manifest(evidence_file, state, "report show")
+    # The one display copy: JSON, the card and the written reports all print it.
+    shown = evidence.display_manifest(manifest)
 
     # --json: emit the full manifest
     if state.mode is OutputMode.json:
@@ -93,7 +94,7 @@ def _show(
                 "command": "report show",
                 "status": "ok",
                 "evidence_file": display_path(evidence_file),
-                "manifest": evidence.redact_manifest_paths(manifest),
+                "manifest": shown,
             },
         )
         return
@@ -111,9 +112,9 @@ def _show(
             )
             raise typer.Exit(code=EXIT_USAGE)
         if fmt in ("markdown", "md"):
-            content = render_markdown(manifest)
+            content = render_markdown(shown)
         else:
-            content = render_html(manifest)
+            content = render_html(shown)
         _write_out(state, ReportTarget(out, False), content)
         fmt_label = "Markdown" if fmt in ("markdown", "md") else "HTML"
         state.console.print(
@@ -121,19 +122,6 @@ def _show(
         )
         return
 
-    # Default: the union card -- fingerprint tables + strategies + manifest_hash
-    # status (from the former `evidence show`) PLUS the row_counts table (from
-    # the former `report summarize`/`show`).
-    from decoy.ui.table import make_table
-
-    hash_ok = manifest.get("manifest_hash", "") == evidence.compute_manifest_hash(manifest)
-    render_manifest_card(
-        state, evidence.redact_manifest_paths(manifest), evidence_file, hash_ok=hash_ok
-    )
-
-    row_counts: dict[str, Any] = manifest.get("row_counts") or {}
-    if row_counts:
-        t = make_table("Table", "Rows", title="Row counts")
-        for tname, count in row_counts.items():
-            t.add_row(str(tname), str(count))
-        state.console.print(t)
+    # Default: the union card (fingerprints, strategies, manifest_hash status, row counts).
+    hash_ok = evidence.manifest_hash_ok(manifest)
+    render_manifest_card(state, shown, evidence_file, hash_ok=hash_ok)

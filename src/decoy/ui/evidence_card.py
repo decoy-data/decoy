@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from decoy.safe_url import display_path
+from decoy.safe_url import DisplayCopy, display_path
 from decoy.ui.card import render_card
 from decoy.ui.output import OutputState
 from decoy.ui.table import make_table
@@ -14,17 +13,19 @@ from decoy.ui.theme import warn
 
 def render_manifest_card(
     state: OutputState,
-    shown: dict[str, Any],
+    shown: DisplayCopy,
     evidence_file: Path,
     *,
     hash_ok: bool,
 ) -> None:
     """Human-readable evidence manifest summary card.
 
-    `shown` is the redacted display copy of the manifest: the card reads every field from it,
-    so it holds nothing value-bearing from the recorded manifest. `hash_ok` is the caller's
-    `manifest_hash` check on the recorded one (informational only).
+    `shown` is the display copy of the manifest (`display_manifest`): the card reads every field,
+    the row counts included, from it. `hash_ok` is the caller's `manifest_hash` check on the
+    recorded one (informational only).
     """
+    if not isinstance(shown, DisplayCopy):
+        raise TypeError("render_manifest_card takes the display copy of a manifest")
 
     schema_v = shown.get("schema_version", "?")
     run_id = shown.get("run_id", "?")
@@ -61,7 +62,6 @@ def render_manifest_card(
         status="ok" if hash_ok else "warn",
     )
 
-    # The tables show the redacted copy.
     for group, title in (("input_fingerprints", "Input"), ("output_fingerprints", "Output")):
         entries = shown.get(group) or {}
         if not entries:
@@ -86,6 +86,13 @@ def render_manifest_card(
             if not isinstance(s, dict):
                 continue
             t.add_row(s.get("table", "?"), s.get("column", "?"), s.get("strategy", "?"))
+        state.console.print(t)
+
+    row_counts = shown.get("row_counts") or {}
+    if row_counts:
+        t = make_table("Table", "Rows", title="Row counts")
+        for tname, count in row_counts.items():
+            t.add_row(str(tname), str(count))
         state.console.print(t)
 
     if not hash_ok:

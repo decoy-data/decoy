@@ -3,21 +3,30 @@
 from __future__ import annotations
 
 import json as _json
+from collections.abc import Mapping
 from typing import Any
 
 from decoy.cli import evidence
+from decoy.safe_url import DisplayCopy
 
 
-def render_markdown(manifest: dict[str, Any]) -> str:
+def render_markdown(manifest: Mapping[str, Any]) -> str:
     """Render a manifest dict to a plain Markdown report.
 
     EVIDENCE-SAFE: builds entirely from the manifest dict. Does NOT read any
     source CSV, output CSV, or pipeline YAML file from disk.
 
+    A display copy passes through; any other mapping goes through `display_manifest` first.
     Returns a Markdown string suitable for writing to a .md file.
     """
-    # The one redaction definition; a renderer never picks fields to redact itself.
-    manifest = evidence.redact_manifest_paths(manifest)
+    shown = manifest if isinstance(manifest, DisplayCopy) else evidence.display_manifest(manifest)
+    return _markdown_document(shown)
+
+
+def _markdown_document(manifest: DisplayCopy) -> str:
+    """The Markdown report of a display copy; every value printed comes from it."""
+    if not isinstance(manifest, DisplayCopy):
+        raise TypeError("_markdown_document takes the display copy of a manifest")
     run_id = manifest.get("run_id", "?")
     run_ts = manifest.get("run_timestamp", "?")
     schema_v = manifest.get("schema_version", "?")

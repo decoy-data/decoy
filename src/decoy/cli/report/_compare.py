@@ -15,7 +15,7 @@ from decoy.cli.evidence import (
     resolve_manifest_path,
 )
 from decoy.cli.io import TargetFormatError, entry_format
-from decoy.safe_url import redacted_location
+from decoy.safe_url import display_location
 
 
 def _warning_key(w: Any) -> str:
@@ -219,7 +219,7 @@ def compare_data(
 
     def _skip(raws: tuple[str, ...], errors: Sequence[TargetFormatError] = ()) -> None:
         """The one place a table's paths are recorded as skipped, with any refusal codes."""
-        shown = (redacted_location(r) for r in raws)
+        shown = (display_location(r) for r in raws)
         missing_files.extend(s for s in dict.fromkeys(shown) if s not in missing_files)
         refusals.update((err.code, str(err)) for err in errors)
 

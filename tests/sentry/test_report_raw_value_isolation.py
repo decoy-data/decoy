@@ -54,6 +54,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from decoy.cli.report import compare_data, render_html, render_markdown
 
 # The sentinel must not be a real PII value; it just must be unique enough
@@ -150,6 +152,23 @@ def test_render_markdown_does_not_read_sibling_files(tmp_path: Path) -> None:
         f"render_markdown leaked the sentinel '{_SENTINEL}' into the Markdown report. "
         "The renderer must build from the manifest dict only."
     )
+
+
+@pytest.mark.parametrize("kind", ["html", "markdown"])
+def test_private_documents_take_only_a_display_copy(tmp_path: Path, kind: str) -> None:
+    """The private document functions read a `DisplayCopy`; a raw dict is refused, and the
+    document from the display copy matches the public entry's."""
+    from decoy.cli.evidence import display_manifest
+    from decoy.cli.report._html import _html_document
+    from decoy.cli.report._markdown import _markdown_document
+
+    document = _html_document if kind == "html" else _markdown_document
+    public = render_html if kind == "html" else render_markdown
+    manifest = _make_manifest_with_file_paths(tmp_path)
+    with pytest.raises(TypeError):
+        document(manifest)  # type: ignore[arg-type]
+    shown = display_manifest(manifest)
+    assert document(shown) == public(manifest) == public(shown)
 
 
 def test_sentinel_actually_present_in_sibling_file(tmp_path: Path) -> None:

@@ -1,7 +1,8 @@
 """A credential in a recorded path never reaches evidence output (PROP-SHIMS D6 review rounds).
 
 A legacy manifest can hold a URL or a `//user:pass@host/...` reference as a path. Every reader
-shows the safe location from `decoy.safe_url.redacted_location`, and the writer records only that.
+shows the display copy from `decoy.cli.evidence.display_manifest`, and the writer records only
+the safe location.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from decoy.__main__ import app
 from decoy.cli.evidence import build_manifest, compute_manifest_hash
 from decoy.cli.exit_codes import EXIT_USAGE
 from decoy.cli.io import LayoutError
+from decoy.safe_url import display_copy
 from tests.e2e.cli_fmt.test_target_format_readers import _diff, _manifest, _write_manifest
 
 pytestmark = pytest.mark.usefixtures("mask_secret")
@@ -77,10 +79,42 @@ def _legacy_url_manifest(tmp_path: Path) -> Path:
         "n": {"path": _NETWORK_PATH, "fingerprint": None},
     }
     legacy["pipeline_path"] = _URL
+    legacy["row_counts"] = {"t": 2}
     legacy["manifest_hash"] = compute_manifest_hash(legacy)
     out = tmp_path / "legacy_url.json"
     out.write_text(json.dumps(legacy), encoding="utf-8")
     return out
+
+
+def _tag(value: Any, path: str) -> Any:
+    """Every leaf string becomes `HELPER<path>`, and every table key under a fingerprint group
+    or `row_counts` becomes `HELPERKEY-<group>-<name>`."""
+    if isinstance(value, str):
+        return f"HELPER{path}"
+    if isinstance(value, dict):
+        group = path.strip("/")
+        keyed = group in ("input_fingerprints", "output_fingerprints", "row_counts")
+        return {
+            (f"HELPERKEY-{group}-{k}" if keyed else k): _tag(v, f"{path}/{k}")
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_tag(v, f"{path}/{i}") for i, v in enumerate(value)]
+    return value
+
+
+def _tagged(manifest: dict[str, Any]) -> Any:
+    """A stand-in `display_manifest`: a display copy of the fully tagged manifest."""
+    return display_copy(_tag(manifest, ""))
+
+
+_TAGS = (
+    "HELPER/input_fingerprints/s/path",
+    "HELPER/output_fingerprints/t/path",
+    "HELPERKEY-input_fingerprints-s",
+    "HELPERKEY-output_fingerprints-t",
+    "HELPERKEY-row_counts-t",
+)
 
 
 def _assert_no_sentinel(text: str) -> None:
@@ -111,25 +145,20 @@ def test_report_show_never_echoes_a_credential_bearing_url(tmp_path: Path) -> No
         _assert_no_sentinel(text)
 
 
-def test_report_show_card_displays_exactly_what_the_redaction_helper_returns(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("json_", [False, True], ids=["card", "json"])
+def test_report_show_displays_exactly_what_the_display_helper_returns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, json_: bool
 ) -> None:
-    # A stand-in helper tags every path it is given. The card shows a tag only for the paths
-    # it took from the helper, so a card that picks its own fields to redact misses one.
+    # A stand-in helper tags every leaf and table key it is given. The output shows a tag only
+    # for what it took from the helper, so a surface that reads the original misses one.
     ev = _legacy_url_manifest(tmp_path)
-
-    def tagged(manifest: dict[str, Any]) -> dict[str, Any]:
-        shown = copy.deepcopy(manifest)
-        for group in ("input_fingerprints", "output_fingerprints"):
-            for name, info in shown[group].items():
-                info["path"] = f"HELPER-{group}-{name}"
-        return shown
-
-    monkeypatch.setattr("decoy.cli.evidence.redact_manifest_paths", tagged)
-    result = runner.invoke(app, ["report", "show", str(ev)], env={"COLUMNS": "10000"})
+    monkeypatch.setattr("decoy.cli.evidence.display_manifest", _tagged)
+    args = ["report", "show", str(ev), *(["--json"] if json_ else [])]
+    result = runner.invoke(app, args, env={"COLUMNS": "10000"})
     assert result.exit_code == 0, result.output
-    assert "HELPER-input_fingerprints-s" in result.output
-    assert "HELPER-output_fingerprints-t" in result.output
+    for tag in _TAGS:
+        assert tag in result.output
+    _assert_no_sentinel(result.output)
 
 
 @pytest.mark.parametrize("cmd", ["show", "render"])
@@ -137,24 +166,17 @@ def test_report_show_card_displays_exactly_what_the_redaction_helper_returns(
 def test_written_reports_display_exactly_what_the_redaction_helper_returns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cmd: str, fmt: str
 ) -> None:
-    # Same stand-in as the card test: a renderer that selects its own fields to redact, or is
-    # handed the original manifest, shows the raw path instead of the tag.
+    # Same stand-in as the show test: a renderer handed the original manifest shows the raw
+    # value instead of the tag.
     ev = _legacy_url_manifest(tmp_path)
-
-    def tagged(manifest: dict[str, Any]) -> dict[str, Any]:
-        shown = copy.deepcopy(manifest)
-        for group in ("input_fingerprints", "output_fingerprints"):
-            for name, info in shown[group].items():
-                info["path"] = f"HELPER-{group}-{name}"
-        return shown
-
-    monkeypatch.setattr("decoy.cli.evidence.redact_manifest_paths", tagged)
+    monkeypatch.setattr("decoy.cli.evidence.display_manifest", _tagged)
     written = tmp_path / "report.out"
     result = runner.invoke(app, ["report", cmd, str(ev), "--format", fmt, "--output", str(written)])
     assert result.exit_code == 0, result.output
     text = written.read_text(encoding="utf-8")
-    assert "HELPER-input_fingerprints-s" in text
-    assert "HELPER-output_fingerprints-t" in text
+    for tag in _TAGS:
+        assert tag in text
+    _assert_no_sentinel(text)
 
 
 @pytest.mark.parametrize("target", [_URL, "https://svc:" + _PASSWORD + "@host/o.csv"])
