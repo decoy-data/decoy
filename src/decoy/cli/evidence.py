@@ -1,4 +1,4 @@
-"""Local run evidence manifests: build, hash, verify, and render (SP-17).
+"""Local run evidence manifests: build, hash, and verify (SP-17).
 
 Local evidence manifests are produced by `decoy run --evidence-out <path>` and
 contain fingerprints of the pipeline config, input files, and output files at
@@ -6,7 +6,8 @@ the time of the run. They also include a self-consistency fingerprint
 (`manifest_hash`) that covers the entire manifest body.
 
 It is a helper module for `decoy report` (show, render, verify, diff) and `decoy ci check`:
-the builder, hasher, the one strict reader and verifier, and the `report show` card. It
+the builder, hasher, and the one strict reader and verifier. The `report show` card is in
+`decoy.ui.evidence_card`. It
 registers no Typer app of its own.
 
 `report verify` re-hashes the pipeline config, each input and output file, and the manifest
@@ -80,7 +81,6 @@ from decoy.cli.io import (
     resolved_source_config,
 )
 from decoy.safe_url import redacted_location
-from decoy.ui.theme import warn
 
 _SCHEMA_VERSION = "cli-local-1"
 PATH_BASE_PROJECT = "project"
@@ -718,93 +718,6 @@ def verify_manifest(
     """`verify_manifest_issues` rendered as the public list of issue strings."""
     issues = verify_manifest_issues(manifest, manifest_file=manifest_file, project=project)
     return [issue.message for issue in issues]
-
-
-# ---------------------------------------------------------------------------
-# Shared manifest-summary card (rendered by `decoy report show`)
-# ---------------------------------------------------------------------------
-
-
-def _render_manifest_card(state: Any, manifest: dict[str, Any], evidence_file: Path) -> None:
-    """Human-readable evidence manifest summary card."""
-    from decoy.ui.card import render_card
-    from decoy.ui.table import make_table
-
-    # Quick manifest integrity check for the display (informational only).
-    recorded_hash = manifest.get("manifest_hash", "")
-    computed_hash = compute_manifest_hash(manifest)
-    hash_ok = recorded_hash == computed_hash
-
-    schema_v = manifest.get("schema_version", "?")
-    run_id = manifest.get("run_id", "?")
-    run_ts = manifest.get("run_timestamp", "?")
-    cli_v = manifest.get("cli_version", "?")
-    eng_v = manifest.get("engine_version", "?")
-    pipeline_path = manifest.get("pipeline_path", "?")
-    pipeline_fp = manifest.get("pipeline_fingerprint") or ""
-    key_label = manifest.get("key_label") or "(none)"
-    warnings_list = manifest.get("warnings") or []
-    timings_list = manifest.get("timings") or []
-    hash_status = "ok (unkeyed integrity check)" if hash_ok else "MISMATCH (manifest may be edited)"
-
-    facts: list[tuple[str, str]] = [
-        ("Schema version", schema_v),
-        ("Producer", manifest.get("producer", "?")),
-        ("Run ID", run_id[:16] + "..." if len(run_id) > 16 else run_id),
-        ("Run timestamp", run_ts),
-        ("CLI version", cli_v),
-        ("Engine version", eng_v),
-        ("Pipeline", pipeline_path),
-        ("Pipeline fingerprint", pipeline_fp[:23] + "..." if pipeline_fp else "(none)"),
-        ("Key label", key_label),
-        ("Manifest hash", hash_status),
-        ("Warnings", str(len(warnings_list))),
-        ("Timings recorded", str(len(timings_list))),
-    ]
-
-    render_card(
-        state,
-        command="decoy report show",
-        facts=facts,
-        next_hint=f"decoy report verify {evidence_file}",
-        status="ok" if hash_ok else "warn",
-    )
-
-    # The hash check above ran on the recorded manifest; the tables show the redacted copy.
-    shown = redact_manifest_paths(manifest)
-    for group, title in (("input_fingerprints", "Input"), ("output_fingerprints", "Output")):
-        entries = shown.get(group) or {}
-        if not entries:
-            continue
-        t = make_table(
-            "Table", "Path", "Fingerprint (prefix)", "Method", "Size", title=f"{title} fingerprints"
-        )
-        for tname, info in entries.items():
-            if not isinstance(info, dict):
-                continue
-            fp = (info.get("fingerprint") or "")[:23] + "..."
-            method = info.get("fingerprint_method") or "?"
-            size = str(info.get("size_bytes") or "?")
-            t.add_row(tname, str(info.get("path", "?")), fp, method, size)
-        state.console.print(t)
-
-    # Strategies table
-    strategies = manifest.get("strategies") or []
-    if strategies:
-        t = make_table("Table", "Column", "Strategy", title="Masking strategies")
-        for s in strategies:
-            if not isinstance(s, dict):
-                continue
-            t.add_row(s.get("table", "?"), s.get("column", "?"), s.get("strategy", "?"))
-        state.console.print(t)
-
-    if not hash_ok:
-        state.err_console.print(
-            warn("warning:"),
-            "manifest_hash does not match the manifest body. "
-            "The manifest file may have been edited. "
-            "Run `decoy report verify` for a full fingerprint check.",
-        )
 
 
 # Public exports (used by run.py --evidence-out and tests)
